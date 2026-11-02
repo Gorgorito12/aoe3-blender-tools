@@ -1,0 +1,1 @@
+Courthouse: 373 triangles, 315 vertices; footprint 11.6 x 14.1 m; texture 1024 x 1024

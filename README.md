@@ -1,0 +1,116 @@
+# AoE3 Blender Tools
+
+A Blender add-on for making low-poly buildings for Age of Empires III mods. It builds a building
+from exact primitives (flat walls, straight edges), lays out one UV atlas, paints its texture from
+the real facade measurements, checks that the result is game-ready, and exports it.
+
+| White House | Courthouse |
+|---|---|
+| ![White House](examples/whitehouse/preview_front34.jpg) | ![Courthouse](examples/courthouse/preview_front34.jpg) |
+| **Capitol** | **Mansion** |
+| ![Capitol](examples/capitol/preview_front34.jpg) | ![Mansion](examples/mansion/preview_front34.jpg) |
+
+These are the four presets as generated: 92 to 413 triangles each, one 1024 × 1024 texture.
+
+Status: version 0.1, phase 1. The models have not been tested in the game yet; see
+[Getting a building into the game](#getting-a-building-into-the-game).
+
+## Why
+
+AI 3D generators make a building as a sculpted surface: decimated to a game budget, its walls come
+out wavy and its windows warped. The buildings of a 2007 RTS are the opposite: a few hundred to a
+few thousand triangles of simple, straight geometry, with the detail painted in the texture. This
+add-on builds them that way. The details are in [docs/building-guidelines.md](docs/building-guidelines.md).
+
+## Features
+
+- **Building generator** (neoclassical for now): width, depth, 1 to 4 storeys, plinth, window
+  spacing, a portico with 2 to 8 columns and a pediment, a hipped roof of any pitch, a cupola,
+  chimneys. Presets: White House, Courthouse, Capitol, Mansion.
+- **Painted texture**: stone courses, quoins, windows with sash bars and caps, the door with its
+  fanlight, slate rows, dentils, brick, all aligned with the geometry. Colours are settings. Flat
+  colour, no baked lighting. Painted with numpy only, so nothing extra is installed in Blender.
+- **Game-ready check**: triangle budget, the 16-bit vertex limit, one UV map inside 0..1,
+  power-of-two textures, material count, origin at the footprint centre and base on the ground,
+  degenerate faces, hidden bottom faces, and overlapping coplanar faces (they flicker in game).
+- **Export**: GLB and FBX with the texture embedded, OBJ + MTL, the texture as PNG, and a stats
+  file. Attach points (`flag_attach` on the cupola) are exported as empties.
+
+## Install
+
+Download or build the zip (`python tools/build_zip.py` writes `dist/`), then:
+
+- **Blender 4.2 or later:** Edit > Preferences > Get Extensions > Install from Disk, and pick
+  `aoe3_blender_tools-0.1.0.zip`.
+- **Blender 3.6 to 4.1:** Edit > Preferences > Add-ons > Install, and pick
+  `aoe3_blender_tools-0.1.0-legacy.zip`.
+
+Tested with Blender 5.2 (as the `bpy` module, headless): install from the zip, generate, check and
+export all work. The Blender 3.6 to 4.1 path is untested.
+
+## Use
+
+3D Viewport > Sidebar (N) > **AoE3**.
+
+1. **Building Generator**: pick a preset and load it, change the settings, then **Generate
+   Building**. Generating again replaces the object of the same name. When a setting cannot be
+   built (for example more columns than the front allows), it is reduced and a warning says so.
+2. **Check and Export**: **Check** lists the problems of the active object; **Export** writes the
+   files to the chosen folder (default `//aoe3_export`, next to the .blend).
+
+Conventions: 1 unit = 1 m, Z up, the front (portico) faces −Y, the origin is the centre of the
+footprint (steps included) on the ground. GLB, FBX and OBJ are written Y-up.
+
+## Command line
+
+Everything also runs headless, with Blender or with the `bpy` module:
+
+```
+python -m venv venv
+venv/bin/pip install bpy==5.2.3                       # Blender 5.2 as a module (Python 3.13)
+venv/bin/python tests/run_tests.py                     # the test suite
+venv/bin/python scripts/generate.py --preset ALL       # examples/<name>/ with exports and renders
+venv/bin/python scripts/generate.py --preset CAPITOL --out out --no-render
+```
+
+With a Blender install: `blender -b --factory-startup -P scripts/generate.py -- --preset ALL`.
+
+## Getting a building into the game
+
+None of these steps is done or tested yet. Each one copies from a stock building rather than
+guessing.
+
+1. **Scale and orientation.** Import a stock building of similar size with a Granny (`.gr2`)
+   importer for Blender, and match this model's scale and facing to it. 1 unit = 1 m is an
+   assumption.
+2. **Export** the mesh to `.gr2` with the same community add-on.
+3. **Texture**: convert the PNG to `.ddt`. Stock textures may carry a player-colour mask in their
+   alpha; the generated one has none yet.
+4. **Anim XML**: copy the anim file of a stock building of similar size and swap only the model.
+   It keeps its construction stages, damage states and destruction. Rename `flag_attach` to the
+   attach point name that file uses.
+5. **Proto**: give the unit its entry in `protoy.xml` (and its compiled `.xmb`), with an
+   obstruction matching the footprint after scaling.
+
+`tools/bar.py` lists and extracts the game's `.bar` archives, and `tools/xmbedit.py` reads and
+writes its compiled XML (`.xmb`): see [tools/README.md](tools/README.md).
+
+## Roadmap
+
+- **Phase 2, calibration with the game:** read a stock building imported in Blender into a
+  profile (size, facing, attach point names, triangle and texture budget) and fit new models to
+  it; call the community `.gr2` exporter when it is installed; write the `.ddt`; write the anim
+  XML and the proto entry.
+- Bake the texture of a detailed model (for example from an AI generator) onto the clean mesh, so
+  the look comes from there and the geometry stays exact.
+- More building styles and parts: gable roofs, towers, colonnades, timber and thatch.
+
+## Game files and other mods
+
+Do not commit files from the game or from other mods to this repository: models, textures and
+data belong to their owners. Calibration profiles keep measurements only.
+
+## License
+
+GPL-3.0-or-later ([LICENSE](LICENSE)), as Blender requires for add-ons. Age of Empires is a
+trademark of Microsoft; this project is not affiliated with Microsoft.

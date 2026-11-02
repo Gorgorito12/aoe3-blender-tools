@@ -1,0 +1,1 @@
+Capitol: 413 triangles, 355 vertices; footprint 20.6 x 17.9 m; texture 1024 x 1024

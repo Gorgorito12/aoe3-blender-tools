@@ -1,0 +1,1 @@
+Mansion: 92 triangles, 78 vertices; footprint 12.6 x 10.3 m; texture 1024 x 1024

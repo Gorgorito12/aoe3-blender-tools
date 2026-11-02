@@ -1,0 +1,1 @@
+WhiteHouse: 355 triangles, 299 vertices; footprint 14.6 x 14.6 m; texture 1024 x 1024
