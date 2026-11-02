@@ -154,6 +154,8 @@ writes its compiled XML (`.xmb`): see [tools/README.md](tools/README.md).
 3. **Buildings:** a kit of parts per architectural style found in the survey (colonial, European,
    Asian, native, forts, walls and gates), and baking the texture of a detailed model onto a clean
    mesh. The neoclassical generator here is the first one (phase 1, done).
+   Textures: relief baking, material swatches, Stable Diffusion with ControlNet and the other
+   options in [docs/texture-plan.md](docs/texture-plan.md).
 4. **Units:** reuse the stock skeletons and animations; build the body from parts or fit a
    detailed mesh to a stock skeleton; textures with the player-colour mask.
 

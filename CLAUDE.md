@@ -58,6 +58,8 @@ python tools/build_zip.py                          # dist/ zips (extension and l
   the others keep the GLB, a preview and the stats. `generate.py` writes every export: delete the
   extra files when regenerating the trimmed presets.
 - `docs/building-guidelines.md`: requirements, pitfalls, what is still to verify in game.
+- `docs/texture-plan.md`: the options to improve the textures without losing their alignment, their
+  cost and licences (to verify), and the order to try them.
 
 ## Working rules
 
