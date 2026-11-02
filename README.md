@@ -1,8 +1,14 @@
 # AoE3 Blender Tools
 
-A Blender add-on for making low-poly buildings for Age of Empires III mods. It builds a building
-from exact primitives (flat walls, straight edges), lays out one UV atlas, paints its texture from
-the real facade measurements, checks that the result is game-ready, and exports it.
+A toolkit for making game-ready buildings and units for Age of Empires III mods, in the style of
+the art a mod already has. It has two parts:
+
+- **An art survey** (`tools/art_survey.py`): it reads the models, textures and anim files of the
+  game and of a mod, and reports their conventions: budgets, texture sizes, attach point names,
+  anim file structure, and which stock parts the mod reuses. The generators are calibrated on it.
+- **A Blender add-on**: generators that build models from exact primitives (flat walls, straight
+  edges), lay out one UV atlas, paint the texture from the real measurements, check that the
+  result is game-ready, and export it. The first generator makes neoclassical buildings.
 
 | White House | Courthouse |
 |---|---|
@@ -12,8 +18,9 @@ the real facade measurements, checks that the result is game-ready, and exports 
 
 These are the four presets as generated: 92 to 413 triangles each, one 1024 × 1024 texture.
 
-Status: version 0.1, phase 1. The models have not been tested in the game yet; see
-[Getting a building into the game](#getting-a-building-into-the-game).
+Status: version 0.1. The survey and the first building generator are done; nothing has been
+tested in the game yet (see [Getting a building into the game](#getting-a-building-into-the-game)),
+and the survey has only run on synthetic files so far.
 
 ## Why
 
@@ -21,6 +28,24 @@ AI 3D generators make a building as a sculpted surface: decimated to a game budg
 out wavy and its windows warped. The buildings of a 2007 RTS are the opposite: a few hundred to a
 few thousand triangles of simple, straight geometry, with the detail painted in the texture. This
 add-on builds them that way. The details are in [docs/building-guidelines.md](docs/building-guidelines.md).
+
+## Art survey
+
+Read-only, standard library only, so it runs with any Python 3 on the machine that has the game:
+
+```
+python -I tools/art_survey.py "<game folder>" --bar --out survey/stock --label Stock
+python -I tools/art_survey.py "<mod folder>" --bar --out survey/mod --reference survey/stock/report.json
+```
+
+`--bar` reads the `.bar` archives in memory; nothing is extracted. Each run writes `report.json`
+and `summary.md`: counts, anim files per folder, how many of the mod's anim files reuse stock
+files, own files or both, the most referenced files, reference kinds, attach point and bone names,
+logic types, anim names, texture sizes and formats from the `.ddt` headers, and the elements of
+the anim files. The reports hold measurements and paths, never file contents, but they name the
+mod's files: keep them out of public repositories.
+
+Not read yet: the meshes inside `.gr2` files (triangle and bone counts need a Granny reader).
 
 ## Features
 
@@ -97,13 +122,17 @@ writes its compiled XML (`.xmb`): see [tools/README.md](tools/README.md).
 
 ## Roadmap
 
-- **Phase 2, calibration with the game:** read a stock building imported in Blender into a
-  profile (size, facing, attach point names, triangle and texture budget) and fit new models to
-  it; call the community `.gr2` exporter when it is installed; write the `.ddt`; write the anim
-  XML and the proto entry.
-- Bake the texture of a detailed model (for example from an AI generator) onto the clean mesh, so
-  the look comes from there and the geometry stays exact.
-- More building styles and parts: gable roofs, towers, colonnades, timber and thatch.
+1. **Survey** (tool done): run it on the game and on the target mod, and turn the report into
+   per-category profiles: triangle and texture budgets, scale, facing, attach point names, anim
+   file templates, and the stock parts most reused.
+2. **Calibration and game formats:** fit the generators to those profiles; read `.gr2` meshes for
+   the budgets; call the community `.gr2` exporter when it is installed; write `.ddt`; write anim
+   files and proto entries from templates.
+3. **Buildings:** a kit of parts per architectural style found in the survey (colonial, European,
+   Asian, native, forts, walls and gates), and baking the texture of a detailed model onto a clean
+   mesh. The neoclassical generator here is the first one (phase 1, done).
+4. **Units:** reuse the stock skeletons and animations; build the body from parts or fit a
+   detailed mesh to a stock skeleton; textures with the player-colour mask.
 
 ## Game files and other mods
 

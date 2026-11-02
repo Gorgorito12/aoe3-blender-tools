@@ -4,10 +4,12 @@ Guidance for Claude Code in this repository.
 
 ## Purpose
 
-A Blender add-on (`aoe3_blender_tools/`) that generates low-poly buildings for Age of Empires III
-mods, checks that they are game-ready and exports them. Phase 1 (generator, painted texture,
-checks, GLB/FBX/OBJ export) is done; phase 2 (calibration against stock models, `.gr2` and `.ddt`
-export, anim XML and proto entries) is in the README's roadmap.
+A toolkit for making every kind of building and unit for Age of Empires III mods, in the style of
+a mod's existing art: an art survey (`tools/art_survey.py`) that learns the conventions of the game
+and of a mod, and a Blender add-on (`aoe3_blender_tools/`) whose generators are calibrated on it,
+check the result and export it. Done: the survey tool (tested on synthetic files only) and a first
+generator (neoclassical buildings). Next: run the survey on the user's machine, then calibration,
+game formats, more building styles and units (README, "Roadmap").
 
 ## Public repository rules
 
@@ -15,6 +17,8 @@ export, anim XML and proto entries) is in the README's roadmap.
   the private projects this tool came from, and do not link private documents.
 - Never commit game or mod assets (models, textures, data, extracted files). Calibration profiles
   keep measurements only.
+- Never commit survey reports (`report.json`, `summary.md`) of a mod: they name its files. They
+  belong to the user's private repository.
 - License: GPL-3.0-or-later (Blender's requirement for add-ons). New source files start with
   `# SPDX-License-Identifier: GPL-3.0-or-later`.
 
@@ -25,6 +29,7 @@ outside the repository or in an ignored folder (`venv/`).
 
 ```
 venv/bin/python tests/run_tests.py                 # must print "all tests passed"
+python -I tests/test_art_survey.py                 # survey tests, plain Python
 venv/bin/python scripts/generate.py --preset ALL   # regenerates examples/ (about 2 min per view)
 python tools/build_zip.py                          # dist/ zips (extension and legacy)
 ```
@@ -45,7 +50,8 @@ python tools/build_zip.py                          # dist/ zips (extension and l
   geometry as pure data) and `paint.py` are pure Python; `blender_io.py` (object creation, export)
   and `validate.py` (checks) need Blender.
 - `scripts/generate.py`: headless generation with renders. `tests/run_tests.py`: headless tests.
-- `tools/`: `bar.py`, `xmbedit.py` (game data, standard library only), `build_zip.py`.
+- `tools/`: `art_survey.py` (uses `bar.py` and `xmbedit.py`; standard library only, it runs on the
+  user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`.
 - `examples/`: generated presets. `whitehouse/` keeps every export and the .blend; the others keep
   the GLB, a preview and the stats.
 - `docs/building-guidelines.md`: requirements, pitfalls, what is still to verify in game.
