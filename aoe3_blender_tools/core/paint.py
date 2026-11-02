@@ -50,6 +50,19 @@ def paint(model):
     lw = max(1, int(round(px_per_m * 0.035)))      # thick line ~3.5 cm
 
     # --- facades -----------------------------------------------------------------------------------
+    SHUT = (46, 72, 52)
+
+    def shutters(region, uc, v0, h, w, room):
+        sw = min(0.42, room)
+        if sw < 0.12:
+            return
+        for a in (uc - w / 2 - 0.12 - sw, uc + w / 2 + 0.12):
+            rect(region, a, v0 - 0.04, a + sw, v0 + h + 0.04, SHUT, _shade(SHUT, 0.7))
+            vv = v0 + 0.12
+            while vv < v0 + h - 0.05:
+                hline(region, vv, a + 0.04, a + sw - 0.04, _shade(SHUT, 0.75))
+                vv += 0.14
+
     def window(region, uc, v0, h, w=1.0, cap="flat"):
         rect(region, uc - w / 2 - 0.12, v0 - 0.08, uc + w / 2 + 0.12, v0 + h + 0.1, WHITE, SHADOW)
         rect(region, uc - w / 2 - 0.2, v0 - 0.16, uc + w / 2 + 0.2, v0 - 0.04, WHITE, SHADOW)
@@ -62,6 +75,10 @@ def paint(model):
         if cap == "pediment":
             cv.triangle([P(region, uc - w / 2 - 0.3, top), P(region, uc + w / 2 + 0.3, top),
                          P(region, uc, top + 0.45)], WHITE)
+            hline(region, top, uc - w / 2 - 0.3, uc + w / 2 + 0.3, SHADOW)
+        elif cap == "segment":           # a shallow arch
+            cx_, cy_ = P(region, uc, top)
+            cv.ellipse(cx_, cy_, (w / 2 + 0.3) * px_per_m, 0.32 * px_per_m, WHITE, upper_half=True)
             hline(region, top, uc - w / 2 - 0.3, uc + w / 2 + 0.3, SHADOW)
         else:
             rect(region, uc - w / 2 - 0.25, top, uc + w / 2 + 0.25, top + 0.16, WHITE, SHADOW)
@@ -93,7 +110,8 @@ def paint(model):
                 u += joint
             v += course
             n += 1
-        for side in (0, 1):                                  # quoins
+        storeys = spec.get("storeys", p.storeys)
+        for side in (0, 1) if spec.get("quoins", True) else ():      # quoins
             v, k = 0.0, 0
             while v < sh - 0.4:
                 w = 0.45 if k % 2 == 0 else 0.3
@@ -101,20 +119,30 @@ def paint(model):
                 rect(region, a, v, b, v + 0.42, _shade(WALL, 1.025), WALL_LINE)
                 v += 0.42
                 k += 1
-        for s in range(1, p.storeys):                        # string courses, frieze
+        for s in range(1, storeys):                          # string courses, frieze
             vs = s * STOREY_H
             rect(region, 0, vs - 0.05, sw, vs + 0.2, BAND, WALL_LINE)
         rect(region, 0, sh - 0.4, sw, sh, BAND, WALL_LINE)
-        for uc in spec["bays"]:
-            for s in range(p.storeys):
+        bays = spec["bays"]
+        gaps = [b - a for a, b in zip(bays, bays[1:])]
+        for i, uc in enumerate(bays):
+            near = min([g for g in gaps[max(0, i - 1):i + 1]] or [sw])
+            edge = min(uc, sw - uc)
+            room = min((near - 1.24) / 2 - 0.05, edge - 0.62 - 0.05) if spec.get("quoins", True) is False \
+                else min((near - 1.24) / 2 - 0.05, edge - 0.62 - 0.45)
+            for s in range(storeys):
                 base = s * STOREY_H
                 if s == 0:
                     if spec["door"] is not None and abs(uc - spec["door"]) < 0.01:
                         door(region, uc)
-                    else:
-                        window(region, uc, base + 0.8, 1.9, cap="pediment")
+                        continue
+                    cap = ("pediment" if i % 2 == 0 else "segment") if spec.get("alt_caps") else "pediment"
+                    v0, h = base + 0.8, 1.9
                 else:
-                    window(region, uc, base + 0.55, 1.65, cap="flat")
+                    cap, v0, h = "flat", base + 0.55, 1.65
+                if spec.get("shutters"):
+                    shutters(region, uc, v0, h, 1.0, room)
+                window(region, uc, v0, h, cap=cap)
 
     for region, spec in model.facades.items():
         facade(region, spec)

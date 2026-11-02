@@ -53,19 +53,23 @@ def presets_generate_and_pass_checks():
         res = validate.check(obj)
         assert not problems(res), (key, problems(res))
         tris, _ = blender_io.triangle_count(obj)
-        assert 50 < tris < 2000, (key, tris)
+        assert 50 < tris < 4000, (key, tris)
 
 
 @test
 def parameter_sweep_has_no_overlaps_or_errors():
     rng = random.Random(7)
-    for i in range(24):
+    for i in range(40):
         p = building.BuildingParams(
             name=f"Sweep{i}", width=rng.uniform(6, 24), depth=rng.uniform(5, 16), storeys=rng.randint(1, 3),
             plinth=rng.choice([0.4, 0.8, 1.2]), roof_pitch=rng.uniform(0.3, 0.9),
             portico=rng.random() < 0.7, columns=rng.choice([2, 4, 6, 8]),
             column_spacing=rng.uniform(1.4, 2.4), cupola=rng.random() < 0.5, chimneys=rng.randint(0, 2),
-            side_bays=rng.choice([0, 0, 2, 3, 5]), detail=rng.choice(["LOW", "MEDIUM"]), texture_size=512)
+            side_bays=rng.choice([0, 0, 2, 3, 5]), detail=rng.choice(["LOW", "MEDIUM"]), texture_size=512,
+            back_portico=rng.choice(["NONE", "BOW"]), bow_radius=rng.uniform(1.5, 5.0),
+            bow_columns=rng.randint(2, 8), wings=rng.random() < 0.4, wing_gap=rng.uniform(2.0, 7.0),
+            wing_width=rng.uniform(3.0, 9.0), wing_depth=rng.uniform(3.0, 8.0), flagpole=rng.random() < 0.3,
+            shutters=rng.random() < 0.5)
         model = building.build(p)
         obj = blender_io.create_object(model, paint.paint(model))
         res = validate.check(obj)
@@ -80,12 +84,16 @@ def medium_detail_presets_pass_checks():
         obj = blender_io.create_object(model, paint.paint(model))
         res = validate.check(obj)
         assert not problems(res), (key, problems(res))
-        low = sum(len(f.pts) - 2 for f in building.build(prm).faces)
+        low = sum(len(f.pts) - 2 for f in building.build(building.BuildingParams(**{**prm.__dict__, "detail": "LOW"})).faces)
         tris, _ = blender_io.triangle_count(obj)
         assert tris > 2 * low, (key, low, tris)
     wh = building.build(building.BuildingParams(**{**building.PRESETS["WHITE_HOUSE"].__dict__, "detail": "MEDIUM"}))
     tris = sum(len(f.pts) - 2 for f in wh.faces)
     assert 1000 <= tris <= 1400, tris
+    # the balustrade runs on all four sides (the side runs are long in y and thin in x)
+    for axis in (0, 1):
+        sides = [f for f in wh.faces if f.region == "balus" and abs(building.newell(f.pts)[axis]) > 0.9]
+        assert len(sides) >= 4, (axis, len(sides))
 
 
 @test

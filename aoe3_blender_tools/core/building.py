@@ -33,7 +33,17 @@ class BuildingParams:
     column_spacing: float = 1.8
     portico_depth: float = 3.3
     cupola: bool = True
-    chimneys: int = 1               # 0..2
+    flagpole: bool = False          # a mast on the roof (the flag's attach point goes on top)
+    chimneys: int = 1               # 0..8 (1 or 2: near the side ends; more: in pairs on the roof)
+    back_portico: str = "NONE"      # NONE or BOW: a semicircular colonnade around a bowed bay
+    bow_radius: float = 3.2         # radius of the bowed wall
+    bow_columns: int = 6
+    wings: bool = False             # one-storey pavilions joined to the block by colonnades
+    wing_gap: float = 5.0           # colonnade length
+    wing_width: float = 6.5
+    wing_depth: float = 5.5
+    shutters: bool = False          # painted shutters on the back and bow windows
+    window_caps: str = "PEDIMENT"   # ground floor window caps: PEDIMENT, or ALTERNATE (with arches)
     detail: str = "LOW"             # LOW (flat walls, ~350 tris) or MEDIUM (~1,200 tris: recessed
                                     # windows, balustrade, profiled cornice, finer columns)
     texture_size: int = 1024        # final size; painted at twice that and filtered down
@@ -53,6 +63,13 @@ PRESETS = {
                               column_spacing=1.9, portico_depth=3.6, cupola=True, chimneys=0),
     "MANSION": BuildingParams(name="Mansion", width=12.0, depth=8.0, storeys=2, portico=False,
                               cupola=False, chimneys=2),
+    "WHITE_HOUSE_1914": BuildingParams(
+        name="WhiteHouse1914", width=21.0, depth=10.5, storeys=2, plinth=0.9, roof_pitch=0.32,
+        bay_spacing=1.8, side_bays=3, portico=True, columns=4, column_spacing=2.0, portico_depth=3.6,
+        cupola=False, flagpole=True, chimneys=8, back_portico="BOW", bow_radius=3.2, bow_columns=6,
+        wings=True, wing_gap=5.0, wing_width=6.5, wing_depth=5.5, shutters=True, window_caps="ALTERNATE",
+        detail="MEDIUM",
+        texture_size=2048),
 }
 
 
@@ -116,7 +133,19 @@ def clamp_params(p):
     p.bay_spacing = max(1.3, p.bay_spacing)
     p.side_bays = max(0, min(15, int(p.side_bays)))
     p.columns = max(2, min(8, int(p.columns) // 2 * 2))
-    p.chimneys = max(0, min(2, int(p.chimneys)))
+    p.chimneys = max(0, min(8, int(p.chimneys)))
+    p.back_portico = str(p.back_portico).upper() if str(p.back_portico).upper() in ("NONE", "BOW") else "NONE"
+    # the bowed bay and its colonnade (radius + 2 m, entablature + 0.45 m) must fit the back
+    p.bow_radius = max(1.5, min(p.bow_radius, p.width / 2 + 0.3 - 3.2, p.depth))
+    p.bow_columns = max(2, min(10, int(p.bow_columns)))
+    # the colonnade arc (radius + 2 m, 0.35 rad kept free at each end) must space the column bases
+    # (axis-aligned 1.0 m abaci) at least 1.0 * sqrt 2 apart, whatever the direction along the arc
+    p.bow_columns = max(2, min(p.bow_columns, int((math.pi - 0.7) * (p.bow_radius + 2.0) / 1.45) + 1))
+    if p.width / 2 + 0.3 - 3.2 < 1.5:
+        p.back_portico = "NONE"
+    p.wing_gap = max(2.0, p.wing_gap)
+    p.wing_width = max(3.0, p.wing_width)
+    p.wing_depth = max(3.0, min(p.wing_depth, p.depth))
     p.detail = str(p.detail).upper() if str(p.detail).upper() in ("LOW", "MEDIUM") else "LOW"
     p.texture_size = 1 << int(round(math.log2(max(256, min(4096, p.texture_size)))))
     # the portico must fit the front and stay under the roof (its pediment is buried in the roof)
@@ -318,30 +347,54 @@ def build(params):
             n -= 1
         return [D / 2] if n == 1 or usable <= 0 else [1.2 + i * usable / (n - 1) for i in range(n)]
 
+    def flank(a, b):
+        """Bays from a to b (distances from the axis), never closer than MIN_STEP."""
+        if b - a < 0:
+            return []
+        n = max(1, min(int(round((b - a) / p.bay_spacing)) + 1, int((b - a) / MIN_STEP) + 1))
+        return [a + i * (b - a) / (n - 1) for i in range(n)] if n > 1 else [(a + b) / 2]
+
     if p.portico:
         # behind the portico: one bay between each pair of columns (the middle one is the door);
-        # beside it: bays from the portico edge to 1.2 m from the corner
+        # beside it: bays from the portico edge to 1.2 m from the corner, clear of the last one
         mids = [W / 2 + (cols[i] + cols[i + 1]) / 2 for i in range(len(cols) - 1)]
-        a, b = port_half + 0.25, W / 2 - 1.2
-        side = []
-        if b - a >= 0:
-            n = max(1, int(round((b - a) / p.bay_spacing)) + 1)
-            side = [a + i * (b - a) / (n - 1) for i in range(n)] if n > 1 else [(a + b) / 2]
+        last_mid = (cols[-1] + cols[-2]) / 2 if len(cols) > 1 else 0.0
+        side = flank(max(port_half + 0.25, last_mid + MIN_STEP), W / 2 - 1.2)
         front_bays = sorted(set(round(u, 3) for u in mids + [W / 2 + s for s in side] + [W / 2 - s for s in side]))
     else:
         front_bays = sorted(set(round(u, 3) for u in bays(W) + [W / 2]))
+    bow = p.back_portico == "BOW"
+    R_bow = p.bow_radius
+    R_col = R_bow + 2.0
+    N_BOW = 5                                   # wall segments of the bowed bay
+    bow_seg = 2 * R_bow * math.sin(math.pi / (2 * N_BOW))
+    if bow:
+        side = flank(R_bow + 0.6, W / 2 - 1.2)
+        back_bays = sorted(set(round(u, 3) for u in [W / 2 + s for s in side] + [W / 2 - s for s in side]))
+    else:
+        back_bays = bays(W)
     facades = {
-        "front": {"bays": front_bays, "door": W / 2},
-        "back": {"bays": bays(W), "door": None},
+        "front": {"bays": front_bays, "door": W / 2, "alt_caps": str(p.window_caps).upper() == "ALTERNATE"},
+        "back": {"bays": back_bays, "door": None, "shutters": p.shutters},
         "side": {"bays": side_bay_list(), "door": None},
     }
+    if bow:
+        # a window per wall segment only when the segment leaves wall beside it: otherwise the
+        # reveals of neighbouring segments would cross at the corners
+        facades["bow"] = {"bays": [bow_seg / 2] if bow_seg >= 1.6 else [], "door": None, "quoins": False,
+                          "shutters": p.shutters, "height": wall_h + CORNICE_H}
+    hw, hd = p.wing_width / 2, p.wing_depth / 2
+    WING_P = 0.4                                # wing plinth
+    if p.wings:
+        facades["wing_long"] = {"bays": bays(p.wing_width), "door": None, "storeys": 1}
+        facades["wing_short"] = {"bays": bays(p.wing_depth), "door": None, "storeys": 1}
 
     # openings (u0, v0, u1, v1) per facade, in the facade's own coordinates; the same rectangles
     # the painter fills with glass and wood, so a recessed opening shows them on its back face
     def openings(spec):
         out = []
         for uc in spec["bays"]:
-            for st in range(p.storeys):
+            for st in range(spec.get("storeys", p.storeys)):
                 base = st * STOREY_H
                 if st == 0 and spec["door"] is not None and abs(uc - spec["door"]) < 0.01:
                     out.append((uc - 0.7, 0.0, uc + 0.7, 2.75))
@@ -368,8 +421,13 @@ def build(params):
     if medium:
         regions += [Region("reveal", 1.6, 2.8), Region("balus", max(W, D) + 1.0, 0.95)]
     if p.portico:
-        regions += [Region("pedi", 2 * ped_half, ped_apex - eave_z),
-                    Region("column", 2 * math.pi * col_r, ent_bottom - 0.3 - plinth)]
+        regions += [Region("pedi", 2 * ped_half, ped_apex - eave_z)]
+    if p.portico or bow or p.wings:
+        regions += [Region("column", 2 * math.pi * col_r, ent_bottom - 0.3 - plinth)]
+    if bow:
+        regions += [Region("bow", bow_seg, wall_h + CORNICE_H)]
+    if p.wings:
+        regions += [Region("wing_long", p.wing_width, STOREY_H), Region("wing_short", p.wing_depth, STOREY_H)]
     atlas = Atlas(2 * p.texture_size, regions)
 
     faces = []
@@ -426,7 +484,7 @@ def build(params):
             pts, uvs = pts[::-1], uvs[::-1]
         faces.append(Face(list(pts), region, list(uvs), smooth))
 
-    def wall(origin, ua, length, height, region, holes, depth=0.18):
+    def wall(origin, ua, length, height, region, holes, depth=0.18, uoff=0.0):
         """A wall around its openings (a triangulated polygon with holes, or a grid when the layout
         does not allow it; no T-junctions either way), each opening recessed by
         `depth`: side and sill reveals and a back face that keeps the facade UVs."""
@@ -435,14 +493,17 @@ def build(params):
         inward = (-out[0], -out[1], -out[2])
 
         def P(u, v, d=0.0):
+            u -= uoff                     # u in the region's coordinates; the wall starts at uoff
             return (origin[0] + ua[0] * u + inward[0] * d, origin[1] + ua[1] * u + inward[1] * d,
                     origin[2] + v)
 
-        tris = wall_triangles(length, height, holes)
+        holes = [h for h in holes if h[0] >= uoff - 1e-6 and h[2] <= uoff + length + 1e-6]
+        tris = wall_triangles(length, height, [(h[0] - uoff, h[1], h[2] - uoff, h[3]) for h in holes])
         if tris is not None:
             for t in tris:
-                facing([P(u, v) for u, v in t], list(t), region, out)
-        us = sorted({0.0, length, *[h[0] for h in holes], *[h[2] for h in holes]})
+                t = [(u + uoff, v) for u, v in t]
+                facing([P(u, v) for u, v in t], t, region, out)
+        us = sorted({uoff, uoff + length, *[h[0] for h in holes], *[h[2] for h in holes]})
         vs = sorted({0.0, height, *[h[1] for h in holes], *[h[3] for h in holes]})
         for i in range(len(us) - 1) if tris is None else ():
             for j in range(len(vs) - 1):
@@ -464,13 +525,95 @@ def build(params):
                        [(0, 0), (w, 0), (w, depth), (0, depth)], "reveal", up)
             # no top reveal: it faces down, and the game camera looks from above
 
+    def make_wall(origin, ua, length, height, region, spec, uoff=0.0):
+        """A facade wall: recessed openings at medium detail, a flat quad at low detail."""
+        if medium:
+            wall(origin, ua, length, height, region, openings(spec), uoff=uoff)
+            return
+        out = _cross(ua, (0.0, 0.0, 1.0))
+        pts = [(origin[0], origin[1], origin[2]), (origin[0] + ua[0] * length, origin[1] + ua[1] * length, origin[2]),
+               (origin[0] + ua[0] * length, origin[1] + ua[1] * length, origin[2] + height),
+               (origin[0], origin[1], origin[2] + height)]
+        facing(pts, [(uoff, 0), (uoff + length, 0), (uoff + length, height), (uoff, height)], region, out)
+
+    def hipped_roof(cx, cy, hx, hy, z, rp, region="roof"):
+        """A hipped roof over the rectangle cx +- hx, cy +- hy at height z (a pyramid if square)."""
+        rz = z + rp * min(hx, hy)
+        if hx >= hy:
+            rh = hx - hy
+            a, b = (cx - rh, cy, rz), (cx + rh, cy, rz)
+            face_auto([(cx - hx, cy - hy, z), (cx + hx, cy - hy, z), b, a], region)
+            face_auto([(cx + hx, cy + hy, z), (cx - hx, cy + hy, z), a, b], region)
+            face_auto([(cx - hx, cy + hy, z), (cx - hx, cy - hy, z), a], region)
+            face_auto([(cx + hx, cy - hy, z), (cx + hx, cy + hy, z), b], region)
+        else:
+            rh = hy - hx
+            a, b = (cx, cy - rh, rz), (cx, cy + rh, rz)
+            face_auto([(cx - hx, cy - hy, z), (cx + hx, cy - hy, z), a], region)
+            face_auto([(cx + hx, cy + hy, z), (cx - hx, cy + hy, z), b], region)
+            face_auto([(cx - hx, cy + hy, z), (cx - hx, cy - hy, z), a, b], region)
+            face_auto([(cx + hx, cy - hy, z), (cx + hx, cy + hy, z), b, a], region)
+        return rz
+
+    def column(cx, cy, z0, z1):
+        """A column from z0 to its abacus top z1, as the portico's."""
+        if medium:      # square plinth and torus, shaft, echinus and abacus
+            box(cx - 0.45, cx + 0.45, cy - 0.45, cy + 0.45, z0, z0 + 0.18, "white", "white")
+            oct_ = [2 * math.pi * (i + 0.5) / 8 for i in range(8)]
+            ring(cx, cy, 0.42, z0 + 0.18, z0 + 0.3, 8, "white", per_face=True, phase=math.pi / 8)
+            faces.append(Face([(cx + 0.42 * math.cos(a), cy + 0.42 * math.sin(a), z0 + 0.3) for a in oct_],
+                              "white", [(0.9 + 0.42 * math.cos(a), 0.8 + 0.42 * math.sin(a)) for a in oct_]))
+            ring(cx, cy, col_r, z0 + 0.3, z1 - 0.32, 10, "column", smooth=True)
+            ring(cx, cy, 0.43, z1 - 0.32, z1 - 0.16, 8, "white", per_face=True, phase=math.pi / 8)
+            box(cx - 0.5, cx + 0.5, cy - 0.5, cy + 0.5, z1 - 0.16, z1, "white", "white", skip=("top",))
+        else:
+            box(cx - 0.45, cx + 0.45, cy - 0.45, cy + 0.45, z0, z0 + 0.25, "white", "white")
+            ring(cx, cy, col_r, z0 + 0.25, z1 - 0.3, 10, "column", smooth=True)
+            box(cx - 0.48, cx + 0.48, cy - 0.48, cy + 0.48, z1 - 0.3, z1, "white", "white", skip=("top",))
+
+    def arc_pts(cx, cy, r, t0, t1, n):
+        return [(cx + r * math.cos(t0 + (t1 - t0) * i / n), cy + r * math.sin(t0 + (t1 - t0) * i / n)) for i in range(n + 1)]
+
+    def arc_band(cx, cy, r, t0, t1, n, z0, z1, region, inward=False):
+        """Vertical quads along an arc, facing out (or in)."""
+        pts = arc_pts(cx, cy, r, t0, t1, n)
+        reg = atlas[region]
+        u = 0.0
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            seg = math.hypot(bx - ax, by - ay)
+            u0 = 0.0 if u + seg > reg.world_w else u          # restart along the region when full
+            mx, my = (ax + bx) / 2 - cx, (ay + by) / 2 - cy
+            nrm = (-mx, -my, 0.0) if inward else (mx, my, 0.0)
+            h = min(z1 - z0, reg.world_h)
+            facing([(ax, ay, z0), (bx, by, z0), (bx, by, z1), (ax, ay, z1)],
+                   [(u0, 0), (min(u0 + seg, reg.world_w), 0), (min(u0 + seg, reg.world_w), h), (u0, h)], region, nrm)
+            u = u0 + seg
+
+    def chord_cap(cx, cy, r, ychord, n, z, region):
+        """The part of a half disc (centre cx, cy, bulging to +y) beyond y = ychord, as one face."""
+        t = math.asin(max(-1.0, min(1.0, (ychord - cy) / r)))
+        pts = arc_pts(cx, cy, r, t, math.pi - t, n)
+        face_auto([(x, y, z) for x, y in pts], region)
+        return t
+
+    def chimney(cx, cy, foot, top):
+        box(cx - 0.4, cx + 0.4, cy - 0.4, cy + 0.4, foot, top, "brick", "brick", skip=("top",))
+        if medium:
+            box(cx - 0.46, cx + 0.46, cy - 0.46, cy + 0.46, top - 0.35, top - 0.2, "white", "white")
+        box(cx - 0.5, cx + 0.5, cy - 0.5, cy + 0.5, top, top + 0.2, "white", "brick")
+
     # main block
     box(-W / 2 - 0.2, W / 2 + 0.2, -D / 2 - 0.2, D / 2 + 0.2, 0, plinth, "plinth", "stone")
+    make_wall((-W / 2, front_y, plinth), (1.0, 0.0, 0.0), W, wall_h, "front", facades["front"])
+    if bow:     # the back wall stops where the bowed bay starts (x = +-R_bow)
+        make_wall((W / 2, D / 2, plinth), (-1.0, 0.0, 0.0), W / 2 - R_bow, wall_h, "back", facades["back"])
+        make_wall((-R_bow, D / 2, plinth), (-1.0, 0.0, 0.0), W / 2 - R_bow, wall_h, "back", facades["back"],
+                  uoff=W / 2 + R_bow)
+    else:
+        make_wall((W / 2, D / 2, plinth), (-1.0, 0.0, 0.0), W, wall_h, "back", facades["back"])
+    make_wall((-W / 2, D / 2, plinth), (0.0, -1.0, 0.0), D, wall_h, "side", facades["side"])
+    make_wall((W / 2, -D / 2, plinth), (0.0, 1.0, 0.0), D, wall_h, "side", facades["side"])
     if medium:
-        wall((-W / 2, front_y, plinth), (1.0, 0.0, 0.0), W, wall_h, "front", openings(facades["front"]))
-        wall((W / 2, D / 2, plinth), (-1.0, 0.0, 0.0), W, wall_h, "back", openings(facades["back"]))
-        wall((-W / 2, D / 2, plinth), (0.0, -1.0, 0.0), D, wall_h, "side", openings(facades["side"]))
-        wall((W / 2, -D / 2, plinth), (0.0, 1.0, 0.0), D, wall_h, "side", openings(facades["side"]))
         # profiled cornice: a bed moulding, then the corona showing the trim's dentil band
         box(-W / 2 - 0.12, W / 2 + 0.12, -D / 2 - 0.12, D / 2 + 0.12, wall_top, wall_top + 0.18,
             "trim", "trim", skip=("top",))
@@ -482,31 +625,70 @@ def build(params):
         }.items():
             face_auto(pts, "trim", voff=0.44)
     else:
-        face_auto([(-W / 2, front_y, plinth), (W / 2, front_y, plinth), (W / 2, front_y, wall_top),
-                   (-W / 2, front_y, wall_top)], "front", anchor=(-W / 2, front_y, plinth))
-        face_auto([(W / 2, D / 2, plinth), (-W / 2, D / 2, plinth), (-W / 2, D / 2, wall_top),
-                   (W / 2, D / 2, wall_top)], "back", anchor=(W / 2, D / 2, plinth))
-        face_auto([(-W / 2, D / 2, plinth), (-W / 2, -D / 2, plinth), (-W / 2, -D / 2, wall_top),
-                   (-W / 2, D / 2, wall_top)], "side", anchor=(-W / 2, D / 2, plinth))
-        face_auto([(W / 2, -D / 2, plinth), (W / 2, D / 2, plinth), (W / 2, D / 2, wall_top),
-                   (W / 2, -D / 2, wall_top)], "side", anchor=(W / 2, -D / 2, plinth))
         box(-ex, ex, -ey, ey, wall_top, eave_z, "trim", "trim", skip=("top",))
 
     # hipped roof (ridge along the longer side; a pyramid when square)
-    if ex >= ey:
-        rh = ex - ey
-        a, b = (-rh, 0.0, ridge_z), (rh, 0.0, ridge_z)
-        face_auto([(-ex, -ey, eave_z), (ex, -ey, eave_z), b, a], "roof")
-        face_auto([(ex, ey, eave_z), (-ex, ey, eave_z), a, b], "roof")
-        face_auto([(-ex, ey, eave_z), (-ex, -ey, eave_z), a], "roof")
-        face_auto([(ex, -ey, eave_z), (ex, ey, eave_z), b], "roof")
-    else:
-        rh = ey - ex
-        a, b = (0.0, -rh, ridge_z), (0.0, rh, ridge_z)
-        face_auto([(-ex, -ey, eave_z), (ex, -ey, eave_z), a], "roof")
-        face_auto([(ex, ey, eave_z), (-ex, ey, eave_z), b], "roof")
-        face_auto([(-ex, ey, eave_z), (-ex, -ey, eave_z), a, b], "roof")
-        face_auto([(ex, -ey, eave_z), (ex, ey, eave_z), b, a], "roof")
+    hipped_roof(0.0, 0.0, ex, ey, eave_z, pitch)
+
+    # bowed bay with its semicircular colonnade (the back, +y): bay walls up to the eave, columns on
+    # a larger arc, an entablature band, a flat roof beyond the eave line, a platform and steps
+    R_ent = R_col + 0.45
+    if bow:
+        cyb = D / 2
+        pts = arc_pts(0.0, cyb, R_bow, 0.0, math.pi, N_BOW)
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            seg = math.hypot(bx - ax, by - ay)
+            make_wall((ax, ay, plinth), ((bx - ax) / seg, (by - ay) / seg, 0.0), seg, wall_h + CORNICE_H, "bow",
+                      facades["bow"])
+        R_plat = R_col + 0.7
+        t_p = chord_cap(0.0, cyb, R_plat, D / 2 + 0.2, 12, plinth, "stone")
+        arc_band(0.0, cyb, R_plat, t_p, math.pi - t_p, 12, 0.0, plinth, "plinth")
+        t0 = 0.35
+        for i in range(p.bow_columns):
+            t = t0 + (math.pi - 2 * t0) * i / max(1, p.bow_columns - 1)
+            column(R_col * math.cos(t), cyb + R_col * math.sin(t), plinth, ent_bottom)
+        t_r = chord_cap(0.0, cyb, R_ent, ey, 12, eave_z, "lead")
+        arc_band(0.0, cyb, R_ent, t_r, math.pi - t_r, 12, ent_bottom, eave_z, "trim")
+        # steps from the platform's arc, with cheek walls at medium detail
+        sh2 = 1.6
+        y0 = cyb + math.sqrt(R_plat ** 2 - sh2 ** 2)
+        for i in range(n_steps):
+            h = plinth * (n_steps - i) / (n_steps + 1)
+            box(-sh2, sh2, y0 + step_d * i, y0 + step_d * (i + 1), 0, h, "stone", "stone",
+                skip=("-y", "-x", "+x") if medium else ("-y",))
+        if medium:
+            for sx0, sx1 in ((-sh2 - 0.35, -sh2), (sh2, sh2 + 0.35)):
+                # from y0: starting inside the platform would overlap its top in the same plane
+                box(sx0, sx1, y0, y0 + step_d * n_steps, 0, plinth, "stone", "stone", skip=("-y",))
+
+    # wings: a pavilion on each side, joined to the block by a colonnade
+    if p.wings:
+        for sgn in (-1, 1):
+            wx = sgn * (W / 2 + p.wing_gap + hw)
+            wtop = WING_P + STOREY_H
+            box(wx - hw - 0.15, wx + hw + 0.15, -hd - 0.15, hd + 0.15, 0, WING_P, "plinth", "stone")
+            make_wall((wx - hw, -hd, WING_P), (1.0, 0.0, 0.0), p.wing_width, STOREY_H, "wing_long", facades["wing_long"])
+            make_wall((wx + hw, hd, WING_P), (-1.0, 0.0, 0.0), p.wing_width, STOREY_H, "wing_long", facades["wing_long"])
+            make_wall((wx - hw, hd, WING_P), (0.0, -1.0, 0.0), p.wing_depth, STOREY_H, "wing_short", facades["wing_short"])
+            make_wall((wx + hw, -hd, WING_P), (0.0, 1.0, 0.0), p.wing_depth, STOREY_H, "wing_short", facades["wing_short"])
+            box(wx - hw - 0.25, wx + hw + 0.25, -hd - 0.25, hd + 0.25, wtop, wtop + 0.3, "trim", "trim", skip=("top",))
+            wridge = hipped_roof(wx, 0.0, hw + 0.25, hd + 0.25, wtop + 0.3, 0.5)
+            ccx = wx + sgn * hw * 0.35
+            chimney(ccx, 0.0, wtop + 0.3 + 0.5 * max(0.0, min(hw + 0.25 - abs(ccx - wx), hd + 0.25)) - 0.4,
+                    wridge + 0.8)
+            # colonnade: a low floor, two rows of slender columns, a flat roof slab
+            x_in, x_out = W / 2 + 0.2, wx - hw - 0.15
+            if sgn < 0:
+                x_in, x_out = wx + hw + 0.15, -W / 2 - 0.2
+            box(x_in, x_out, -1.4, 1.4, 0, 0.25, "plinth", "stone", skip=("-x", "+x"))
+            slab0, slab1 = (W / 2, wx - hw) if sgn > 0 else (wx + hw, -W / 2)
+            box(slab0, slab1, -1.45, 1.45, 2.75, 3.1, "trim", "lead", skip=("-x", "+x"))
+            length = x_out - x_in
+            n = max(2, int(round(length / 1.7)) + 1)
+            for i in range(n):
+                cx = x_in + 0.45 + (length - 0.9) * i / (n - 1)
+                for cy in (-1.15, 1.15):
+                    ring(cx, cy, 0.17, 0.25, 2.75, 8, "column", smooth=True)
 
     # balustrade on the cornice: straight segments that never overlap at the corners (the side
     # ones stop at the inner face of the front and back ones), posts at the corners, at the ends
@@ -515,40 +697,44 @@ def build(params):
         PH, IN, TH = 0.75, 0.05, 0.25          # height, inset from the eave, thickness
         o_x, o_y, i_x, i_y = ex - IN, ey - IN, ex - IN - TH, ey - IN - TH
         gap = ped_half + 0.25 if p.portico else 0.0
-        runs = [(-o_x, o_x, i_y, o_y)]                                   # back
+        xg = R_ent + 0.1 if bow else 0.0
+        runs = [(-o_x, -xg, i_y, o_y), (xg, o_x, i_y, o_y)] if bow else [(-o_x, o_x, i_y, o_y)]   # back
         runs += [(-o_x, -gap, -o_y, -i_y), (gap, o_x, -o_y, -i_y)] if gap else [(-o_x, o_x, -o_y, -i_y)]
         runs += [(-o_x, -i_x, -i_y, i_y), (i_x, o_x, -i_y, i_y)]        # sides
         for x0, x1, y0, y1 in runs:
-            if x1 - x0 > 0.01 and y1 - y0 > 0.01:
+            # a stub shorter than a post is left out (the length is the longer side)
+            if max(x1 - x0, y1 - y0) > 0.45 and min(x1 - x0, y1 - y0) > 0.01:
                 box(x0, x1, y0, y1, eave_z, eave_z + PH, "balus", "white")
         posts = [(-ex + 0.2, -ey + 0.2), (ex - 0.2, -ey + 0.2), (-ex + 0.2, ey - 0.2), (ex - 0.2, ey - 0.2)]
         if gap:
             posts += [(-gap, -ey + 0.2), (gap, -ey + 0.2)]
-        n_long = max(0, int((2 * ex - 0.4) / 5.0))
-        posts += [(-ex + 0.2 + (2 * ex - 0.4) * (i + 1) / (n_long + 1), ey - 0.2) for i in range(n_long)]
-        for px, py in posts:
+        if bow:
+            posts += [(-xg, ey - 0.2), (xg, ey - 0.2)]
+            # the bow's balustrade, on the colonnade's flat roof
+            t_b = math.asin(min(1.0, 0.3 / (R_ent - 0.05)))
+            arc_band(0.0, D / 2, R_ent - 0.05, t_b, math.pi - t_b, 12, eave_z, eave_z + PH, "balus")
+            arc_band(0.0, D / 2, R_ent - 0.3, t_b, math.pi - t_b, 12, eave_z, eave_z + PH, "balus", inward=True)
+            outer = arc_pts(0.0, D / 2, R_ent - 0.05, t_b, math.pi - t_b, 12)
+            inner = arc_pts(0.0, D / 2, R_ent - 0.3, t_b, math.pi - t_b, 12)
+            for (ax, ay), (bx, by), (cx_, cy_), (dx, dy) in zip(outer, outer[1:], inner[1:], inner):
+                facing([(ax, ay, eave_z + PH), (bx, by, eave_z + PH), (cx_, cy_, eave_z + PH), (dx, dy, eave_z + PH)],
+                       [(0, 0), (0.6, 0), (0.6, 0.25), (0, 0.25)], "white", (0.0, 0.0, 1.0))
+        else:
+            n_long = max(0, int((2 * ex - 0.4) / 5.0))
+            posts += [(-ex + 0.2 + (2 * ex - 0.4) * (i + 1) / (n_long + 1), ey - 0.2) for i in range(n_long)]
+        kept = []
+        for px, py in posts:            # two posts closer than their width would overlap
+            if all(abs(px - qx) >= 0.42 or abs(py - qy) >= 0.42 for qx, qy in kept):
+                kept.append((px, py))
+        for px, py in kept:
             box(px - 0.2, px + 0.2, py - 0.2, py + 0.2, eave_z, eave_z + PH + 0.15, "white", "white")
 
     # portico (the platform stops at the plinth front: an overlap would be coplanar with the
     # plinth top and z-fight)
     if p.portico:
         box(-port_half, port_half, port_y, plinth_y, 0, plinth, "plinth", "stone", skip=("+y",))
-        col_top = ent_bottom - 0.3
         for cx in cols:
-            if medium:      # square plinth and torus, shaft, echinus and abacus
-                box(cx - 0.45, cx + 0.45, col_y - 0.45, col_y + 0.45, plinth, plinth + 0.18, "white", "white")
-                oct_ = [2 * math.pi * (i + 0.5) / 8 for i in range(8)]
-                ring(cx, col_y, 0.42, plinth + 0.18, plinth + 0.3, 8, "white", per_face=True, phase=math.pi / 8)
-                faces.append(Face([(cx + 0.42 * math.cos(a), col_y + 0.42 * math.sin(a), plinth + 0.3) for a in oct_],
-                                  "white", [(0.9 + 0.42 * math.cos(a), 0.8 + 0.42 * math.sin(a)) for a in oct_]))
-                ring(cx, col_y, col_r, plinth + 0.3, ent_bottom - 0.32, 10, "column", smooth=True)
-                ring(cx, col_y, 0.43, ent_bottom - 0.32, ent_bottom - 0.16, 8, "white", per_face=True, phase=math.pi / 8)
-                box(cx - 0.5, cx + 0.5, col_y - 0.5, col_y + 0.5, ent_bottom - 0.16, ent_bottom, "white", "white",
-                    skip=("top",))
-            else:
-                box(cx - 0.45, cx + 0.45, col_y - 0.45, col_y + 0.45, plinth, plinth + 0.25, "white", "white")
-                ring(cx, col_y, col_r, plinth + 0.25, col_top, 10, "column", smooth=True)
-                box(cx - 0.48, cx + 0.48, col_y - 0.48, col_y + 0.48, col_top, ent_bottom, "white", "white", skip=("top",))
+            column(cx, col_y, plinth, ent_bottom)
         box(-port_half, port_half, port_y, front_y, ent_bottom, eave_z, "trim", "trim", skip=("+y", "top"))
         face_auto([(-ped_half, ped_y, eave_z), (ped_half, ped_y, eave_z), (0, ped_y, ped_apex)], "pedi",
                   anchor=(-ped_half, ped_y, eave_z))
@@ -601,19 +787,30 @@ def build(params):
             faces.append(Face([(lan_r * math.cos(a0), lan_r * math.sin(a0), zb), (lan_r * math.cos(a1), lan_r * math.sin(a1), zb),
                                (0, 0, top)], "lead", [(i * 0.4, 0), ((i + 1) * 0.4, 0), ((i + 0.5) * 0.4, 0.8)]))
         attach["flag_attach"] = (0.0, 0.0, top)
+    elif p.flagpole:
+        top = ridge_z + 4.5
+        box(-0.07, 0.07, -0.07, 0.07, ridge_z - 0.3, top, "white", "white")
+        attach["flag_attach"] = (0.0, 0.0, top)
     else:
         attach["flag_attach"] = (0.0, 0.0, ridge_z + 0.1)
 
-    # chimneys (their foot is inside the roof)
-    for k in range(p.chimneys):
-        sx = -1 if k == 0 else 1
-        cx, cy = sx * max(1.0, W / 2 - 2.0), D * 0.18
-        foot = roof_z(cx, cy) - 0.4
-        top = ridge_z + 1.0
-        box(cx - 0.4, cx + 0.4, cy - 0.4, cy + 0.4, foot, top, "brick", "brick", skip=("top",))
-        if medium:
-            box(cx - 0.46, cx + 0.46, cy - 0.46, cy + 0.46, top - 0.35, top - 0.2, "white", "white")
-        box(cx - 0.5, cx + 0.5, cy - 0.5, cy + 0.5, top, top + 0.2, "white", "brick")
+    # chimneys (their foot is inside the roof): 1 or 2 near the side ends, more in pairs
+    if p.chimneys <= 2:
+        spots = [(-max(1.0, W / 2 - 2.0), D * 0.18), (max(1.0, W / 2 - 2.0), D * 0.18)][:p.chimneys]
+    else:
+        a_, b_, c_ = W * 0.17, W * 0.36, D * 0.25
+        spots = [(-a_, -c_), (a_, -c_), (-a_, c_), (a_, c_), (-b_, -c_), (b_, -c_), (-b_, c_), (b_, c_)][:p.chimneys]
+    # keep the chimneys whose caps (1.0 m) clear each other and the cupola or flagpole
+    centre_r = drum_r * 1.3 + 0.6 if p.cupola else (0.6 if p.flagpole else 0.0)
+    kept = []
+    for cx, cy in spots:
+        if centre_r and abs(cx) < centre_r and abs(cy) < centre_r:
+            continue
+        if all(max(abs(cx - qx), abs(cy - qy)) >= 1.1 for qx, qy in kept):
+            kept.append((cx, cy))
+    for cx, cy in kept:
+        chimney(cx, cy, roof_z(cx, cy) - 0.4, ridge_z + 1.0)
+    chimneys_built = len(kept)
 
     # recentre the footprint on the origin
     xs = [q[0] for f in faces for q in f.pts]
@@ -631,4 +828,11 @@ def build(params):
         want, got = getattr(params, attr), getattr(p, attr)
         if params.portico and abs(want - got) > 1e-6:
             notes.append(f"{label} {want:g} -> {got:g}: the portico must fit the front and its pediment stay under the roof.")
+    if chimneys_built < p.chimneys:
+        notes.append(f"Chimneys {p.chimneys} -> {chimneys_built}: the others would overlap each other or the roof's centre piece.")
+    if bow:
+        for attr, label in (("bow_radius", "Bow radius"), ("bow_columns", "Bow columns")):
+            want, got = getattr(params, attr), getattr(p, attr)
+            if abs(want - got) > 1e-6:
+                notes.append(f"{label} {want:g} -> {got:g}: the bow and its colonnade must fit the back.")
     return Model(p, faces, attach, atlas, facades, dims, notes)

@@ -30,7 +30,8 @@ outside the repository or in an ignored folder (`venv/`).
 ```
 venv/bin/python tests/run_tests.py                 # must print "all tests passed"
 python -I tests/test_art_survey.py                 # survey tests, plain Python
-venv/bin/python scripts/generate.py --preset ALL   # regenerates examples/ (about 2 min per view)
+venv/bin/python scripts/generate.py --preset ALL   # regenerates examples/ (about 40 s per view)
+venv/bin/python scripts/sweep.py --count 200       # random option sets through the checks: 0 failures
 python tools/build_zip.py                          # dist/ zips (extension and legacy)
 ```
 
@@ -52,8 +53,10 @@ python tools/build_zip.py                          # dist/ zips (extension and l
 - `scripts/generate.py`: headless generation with renders. `tests/run_tests.py`: headless tests.
 - `tools/`: `art_survey.py` (uses `bar.py` and `xmbedit.py`; standard library only, it runs on the
   user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`.
-- `examples/`: generated presets. `whitehouse/` and `whitehouse_medium/` keep every export and the
-  .blend; the others keep the GLB, a preview and the stats.
+- `examples/`: generated presets. `whitehouse/`, `whitehouse_medium/` and `whitehouse1914/` keep
+  every export and the .blend (`whitehouse1914/preview_sheet.jpg` is a 2 x 2 sheet of its views);
+  the others keep the GLB, a preview and the stats. `generate.py` writes every export: delete the
+  extra files when regenerating the trimmed presets.
 - `docs/building-guidelines.md`: requirements, pitfalls, what is still to verify in game.
 
 ## Working rules
@@ -62,6 +65,9 @@ python tools/build_zip.py                          # dist/ zips (extension and l
   catches overlapping coplanar faces, faces with repeated corners and UVs outside their regions.
 - Count triangles per region after a detail change (`building.build(...)`, then sum per
   `Face.region`); the medium White House must stay near 1,200 (the test allows 1,000 to 1,400).
+  Compare every preset's count before and after a change: an unexpected drop is a lost part
+  (it caught the side balustrades disappearing).
+- Run `scripts/sweep.py` after any geometry change; a new option goes into its `random_params`.
 - Look at the renders after a visual change (`scripts/generate.py`, then read the JPEGs).
 - Mark game facts as measured, engine limit, or to verify, as `docs/building-guidelines.md` does.
 - Regenerate `examples/` when the output of a preset changes, and keep the README gallery in step.

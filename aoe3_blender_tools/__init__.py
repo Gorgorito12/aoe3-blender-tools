@@ -54,7 +54,21 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     column_spacing: FloatProperty(name="Column spacing", default=1.8, min=1.2, max=4.0, unit="LENGTH")
     portico_depth: FloatProperty(name="Portico depth", default=3.3, min=1.5, max=8.0, unit="LENGTH")
     cupola: BoolProperty(name="Cupola", default=True)
-    chimneys: IntProperty(name="Chimneys", default=1, min=0, max=2)
+    chimneys: IntProperty(name="Chimneys", default=1, min=0, max=8)
+    flagpole: BoolProperty(name="Flagpole", default=False, description="A mast on the roof (used when there is no cupola)")
+    back_portico: EnumProperty(name="Back portico", items=[
+        ("NONE", "None", "A flat back facade"),
+        ("BOW", "Bow", "A semicircular colonnade around a bowed bay, with a balustraded flat roof")], default="NONE")
+    bow_radius: FloatProperty(name="Bow radius", default=3.2, min=1.5, max=12.0, unit="LENGTH")
+    bow_columns: IntProperty(name="Bow columns", default=6, min=2, max=10)
+    wings: BoolProperty(name="Wings", default=False, description="One-storey pavilions joined by colonnades")
+    wing_gap: FloatProperty(name="Colonnade length", default=5.0, min=2.0, max=30.0, unit="LENGTH")
+    wing_width: FloatProperty(name="Wing width", default=6.5, min=3.0, max=30.0, unit="LENGTH")
+    wing_depth: FloatProperty(name="Wing depth", default=5.5, min=3.0, max=30.0, unit="LENGTH")
+    shutters: BoolProperty(name="Shutters", default=False, description="Painted shutters on the back and bow windows")
+    window_caps: EnumProperty(name="Window caps", items=[
+        ("PEDIMENT", "Pediments", "Triangular pediments over the ground floor windows"),
+        ("ALTERNATE", "Alternate", "Triangular and arched caps in turn on the front")], default="PEDIMENT")
     texture_size: EnumProperty(name="Texture", items=[("512", "512", ""), ("1024", "1024", ""),
                                                       ("2048", "2048", "")], default="1024")
     seed: IntProperty(name="Seed", default=1870)
@@ -83,7 +97,10 @@ def params_from_props(s):
         plinth=s.plinth, roof_pitch=s.roof_pitch, bay_spacing=s.bay_spacing, side_bays=s.side_bays,
         detail=s.detail, portico=s.portico,
         columns=s.columns, column_spacing=s.column_spacing, portico_depth=s.portico_depth,
-        cupola=s.cupola, chimneys=s.chimneys, texture_size=int(s.texture_size), seed=s.seed)
+        cupola=s.cupola, chimneys=s.chimneys, texture_size=int(s.texture_size), seed=s.seed,
+        flagpole=s.flagpole, back_portico=s.back_portico, bow_radius=s.bow_radius, bow_columns=s.bow_columns,
+        wings=s.wings, wing_gap=s.wing_gap, wing_width=s.wing_width, wing_depth=s.wing_depth, shutters=s.shutters,
+        window_caps=s.window_caps)
     p.colors = {k: tuple(int(round(c * 255)) for c in getattr(s, "color_" + k)) for k in COLOR_KEYS}
     return p
 
@@ -91,7 +108,9 @@ def params_from_props(s):
 def props_from_params(s, p):
     for attr in ("name", "width", "depth", "storeys", "plinth", "roof_pitch", "bay_spacing", "side_bays",
                  "detail", "portico",
-                 "columns", "column_spacing", "portico_depth", "cupola", "chimneys", "seed"):
+                 "columns", "column_spacing", "portico_depth", "cupola", "chimneys", "seed", "flagpole",
+                 "back_portico", "bow_radius", "bow_columns", "wings", "wing_gap", "wing_width", "wing_depth",
+                 "shutters", "window_caps"):
         setattr(s, attr, getattr(p, attr))
     s.texture_size = str(p.texture_size)
     for k in COLOR_KEYS:
@@ -193,13 +212,27 @@ class AOE3_PT_building(bpy.types.Panel):
         col = lay.column(align=True)
         col.prop(s, "roof_pitch")
         col.prop(s, "cupola")
+        col.prop(s, "flagpole")
         col.prop(s, "chimneys")
+        col.prop(s, "shutters")
+        col.prop(s, "window_caps")
         lay.prop(s, "portico")
         if s.portico:
             col = lay.column(align=True)
             col.prop(s, "columns")
             col.prop(s, "column_spacing")
             col.prop(s, "portico_depth")
+        lay.prop(s, "back_portico")
+        if s.back_portico == "BOW":
+            col = lay.column(align=True)
+            col.prop(s, "bow_radius")
+            col.prop(s, "bow_columns")
+        lay.prop(s, "wings")
+        if s.wings:
+            col = lay.column(align=True)
+            col.prop(s, "wing_gap")
+            col.prop(s, "wing_width")
+            col.prop(s, "wing_depth")
         row = lay.row(align=True)
         row.prop(s, "texture_size")
         row.prop(s, "seed")

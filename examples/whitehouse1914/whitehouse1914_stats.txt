@@ -1,0 +1,1 @@
+WhiteHouse1914: 3035 triangles, 2338 vertices; footprint 44.5 x 23.6 m; texture 2048 x 2048

@@ -21,6 +21,13 @@ the art a mod already has. It has two parts:
 The four presets at low detail have 92 to 413 triangles; the White House at medium detail has
 1,235. Each has one 1024 × 1024 texture.
 
+**White House, 1914** (preset `WHITE_HOUSE_1914`, built from a reference picture): north and south
+elevations, then views from the south-west and the north-east. 3,035 triangles at medium detail,
+one 2048 × 2048 texture, 44.5 × 23.6 m with the wings. The game's ground is flat, so the basement
+that the real site shows on the south is left out.
+
+![White House 1914](examples/whitehouse1914/preview_sheet.jpg)
+
 Status: version 0.1. The survey and the first building generator are done; nothing has been
 tested in the game yet (see [Getting a building into the game](#getting-a-building-into-the-game)),
 and the survey has only run on synthetic files so far.
@@ -54,7 +61,13 @@ Not read yet: the meshes inside `.gr2` files (triangle and bone counts need a Gr
 
 - **Building generator** (neoclassical for now): width, depth, 1 to 4 storeys, plinth, window
   spacing and side windows, a portico with 2 to 8 columns and a pediment, a hipped roof of any
-  pitch, a cupola, chimneys. Presets: White House, Courthouse, Capitol, Mansion.
+  pitch, a cupola or a flagpole, up to 8 chimneys, a semicircular back portico (columns on an arc
+  around a bowed bay, with a balustraded flat roof), wings (one-storey pavilions joined by
+  colonnades), shutters, and alternating window caps. Presets: White House, Courthouse, Capitol,
+  Mansion, White House 1914.
+- **Values that cannot be built are reduced, with a warning**: more columns than the front holds,
+  a bow too large for the back, chimneys that would overlap. A random sweep of 1,200 option sets
+  passes the checks.
 - **Two detail levels.** Low: flat walls with painted windows (about 350 triangles). Medium
   (about 1,200): windows and doors recessed into the walls, a balustrade with posts on the roof
   edge, a profiled cornice, columns with a base and a capital, cheek walls beside the steps and
@@ -103,6 +116,8 @@ venv/bin/pip install bpy==5.2.3                       # Blender 5.2 as a module 
 venv/bin/python tests/run_tests.py                     # the test suite
 venv/bin/python scripts/generate.py --preset ALL       # examples/<name>/ with exports and renders
 venv/bin/python scripts/generate.py --preset WHITE_HOUSE --detail MEDIUM
+venv/bin/python scripts/generate.py --preset WHITE_HOUSE_1914 --views front,back,front34,back34
+venv/bin/python scripts/sweep.py --count 200                # random options through the checks
 venv/bin/python scripts/generate.py --preset CAPITOL --out out --no-render
 ```
 

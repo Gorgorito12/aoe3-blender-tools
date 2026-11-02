@@ -3,10 +3,12 @@
 
     python scripts/generate.py [--preset WHITE_HOUSE|COURTHOUSE|CAPITOL|MANSION|ALL]
                                [--detail LOW|MEDIUM] [--out DIR]
-                               [--views front34,back34,wire | --no-render]
+                               [--views front34,back34,wire,front,back | --no-render]
+Presets: WHITE_HOUSE, COURTHOUSE, CAPITOL, MANSION, WHITE_HOUSE_1914 (or ALL).
 
 or with Blender: blender -b --factory-startup -P scripts/generate.py -- [same options]
-The default output is examples/<name>/ (examples/<name>_medium/ for --detail MEDIUM).
+The default output is examples/<name>/; with a --detail other than the preset's own, it is
+examples/<name>_<detail>/.
 """
 import dataclasses
 import math
@@ -76,10 +78,15 @@ def setup_render(scene):
 
 def shoot(scene, cam, obj, path, azimuth, elevation, clay=False):
     fp = obj.get("aoe3_footprint") or (15, 15)
-    size = max(fp[0], fp[1], max(v.co.z for v in obj.data.vertices))
-    cam.data.ortho_scale = size * 1.75
+    height = max(v.co.z for v in obj.data.vertices)
+    size = max(fp[0], fp[1], height)
+    if elevation < 20:          # a straight elevation: frame the width
+        cam.data.ortho_scale = max(fp[0], fp[1]) * 1.12
+        target = Vector((0, 0, height * 0.42))
+    else:
+        cam.data.ortho_scale = size * 1.75
+        target = Vector((0, 0, size * 0.3))
     az, el = math.radians(azimuth), math.radians(elevation)
-    target = Vector((0, 0, size * 0.3))
     cam.location = target + Vector((math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el))) * 80
     cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
     mat = obj.data.materials[0]
@@ -110,18 +117,20 @@ def shoot(scene, cam, obj, path, azimuth, elevation, clay=False):
         nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
 
 
-VIEWS = {"front34": (-35, 42, False), "back34": (145, 42, False), "wire": (-35, 42, True)}
+VIEWS = {"front34": (-35, 42, False), "back34": (145, 42, False), "wire": (-35, 42, True),
+         "front": (0, 12, False), "back": (180, 12, False)}
 
 
 def generate(key, out, views, detail):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     params = building.PRESETS[key]
-    if detail == "MEDIUM":
-        params = dataclasses.replace(params, detail="MEDIUM", name=params.name + "Medium")
+    if detail and detail != params.detail:      # --detail overrides the preset's own level
+        params = dataclasses.replace(params, detail=detail,
+                                     name=params.name + ("Medium" if detail == "MEDIUM" else "Low"))
     model = building.build(params)
     obj = blender_io.create_object(model, paint.paint(model))
-    folder = out or os.path.join(ROOT, "examples", building.PRESETS[key].name.lower()
-                                 + ("_medium" if detail == "MEDIUM" else ""))
+    suffix = "" if not detail or detail == building.PRESETS[key].detail else "_" + detail.lower()
+    folder = out or os.path.join(ROOT, "examples", building.PRESETS[key].name.lower() + suffix)
     paths = blender_io.export(obj, folder)
     try:
         bpy.context.preferences.filepaths.save_version = 0     # no .blend1 backup
@@ -142,7 +151,7 @@ def main():
     preset = opt("--preset", "WHITE_HOUSE").upper()
     keys = list(building.PRESETS) if preset == "ALL" else [preset]
     views = [] if "--no-render" in argv else opt("--views", "front34,back34,wire").split(",")
-    detail = opt("--detail", "LOW").upper()
+    detail = (opt("--detail") or "").upper() or None
     for key in keys:
         generate(key, opt("--out") if len(keys) == 1 else None, views, detail)
 
