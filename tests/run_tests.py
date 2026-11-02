@@ -59,17 +59,47 @@ def presets_generate_and_pass_checks():
 @test
 def parameter_sweep_has_no_overlaps_or_errors():
     rng = random.Random(7)
-    for i in range(14):
+    for i in range(24):
         p = building.BuildingParams(
             name=f"Sweep{i}", width=rng.uniform(6, 24), depth=rng.uniform(5, 16), storeys=rng.randint(1, 3),
             plinth=rng.choice([0.4, 0.8, 1.2]), roof_pitch=rng.uniform(0.3, 0.9),
             portico=rng.random() < 0.7, columns=rng.choice([2, 4, 6, 8]),
             column_spacing=rng.uniform(1.4, 2.4), cupola=rng.random() < 0.5, chimneys=rng.randint(0, 2),
-            texture_size=512)
+            side_bays=rng.choice([0, 0, 2, 3, 5]), detail=rng.choice(["LOW", "MEDIUM"]), texture_size=512)
         model = building.build(p)
         obj = blender_io.create_object(model, paint.paint(model))
         res = validate.check(obj)
         assert not problems(res), (i, p, problems(res))
+
+
+@test
+def medium_detail_presets_pass_checks():
+    for key, prm in building.PRESETS.items():
+        p = building.BuildingParams(**{**prm.__dict__, "detail": "MEDIUM"})
+        model = building.build(p)
+        obj = blender_io.create_object(model, paint.paint(model))
+        res = validate.check(obj)
+        assert not problems(res), (key, problems(res))
+        low = sum(len(f.pts) - 2 for f in building.build(prm).faces)
+        tris, _ = blender_io.triangle_count(obj)
+        assert tris > 2 * low, (key, low, tris)
+    wh = building.build(building.BuildingParams(**{**building.PRESETS["WHITE_HOUSE"].__dict__, "detail": "MEDIUM"}))
+    tris = sum(len(f.pts) - 2 for f in wh.faces)
+    assert 1000 <= tris <= 1400, tris
+
+
+@test
+def wall_triangulation_covers_the_wall_exactly():
+    holes = [(1.0, 0.8, 2.0, 2.7), (1.0, 3.65, 2.0, 5.3), (4.3, 0.0, 5.7, 2.75), (4.5, 3.65, 5.5, 5.3)]
+    tris = building.wall_triangles(8.0, 6.2, holes)
+    assert tris is not None
+    area = sum(abs(building._area2(*t)) / 2 for t in tris)
+    assert abs(area - (8.0 * 6.2 - sum((h[2] - h[0]) * (h[3] - h[1]) for h in holes))) < 1e-6
+    for t in tris:                       # no triangle inside an opening
+        cx, cy = sum(q[0] for q in t) / 3, sum(q[1] for q in t) / 3
+        assert not any(h[0] < cx < h[2] and h[1] < cy < h[3] for h in holes), t
+    # an opening wider than the one below it cannot be slit: the caller falls back to a grid
+    assert building.wall_triangles(8.0, 6.2, [(1.0, 0.8, 2.0, 2.7), (0.5, 3.65, 2.5, 5.3)]) is None
 
 
 @test
@@ -151,6 +181,7 @@ def main():
     addon.register()
     try:
         for t in (presets_generate_and_pass_checks, parameter_sweep_has_no_overlaps_or_errors,
+                  medium_detail_presets_pass_checks, wall_triangulation_covers_the_wall_exactly,
                   regenerating_replaces_the_object, export_and_reimport, checks_catch_known_problems,
                   atlas_and_texture_sizes):
             t()

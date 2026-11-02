@@ -43,6 +43,12 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     roof_pitch: FloatProperty(name="Roof pitch", default=0.54, min=0.15, max=1.5,
                               description="Rise over run, the same on all four sides")
     bay_spacing: FloatProperty(name="Window spacing", default=1.8, min=1.3, max=6.0, unit="LENGTH")
+    side_bays: IntProperty(name="Side windows", default=3, min=0, max=15,
+                           description="Windows per row on each side; 0 = from the window spacing")
+    detail: EnumProperty(name="Detail", items=[
+        ("LOW", "Low", "Flat walls with painted windows (about 350 triangles)"),
+        ("MEDIUM", "Medium", "Recessed windows and doors, balustrade, profiled cornice, finer columns "
+                             "(about 1,200 triangles)")], default="LOW")
     portico: BoolProperty(name="Portico", default=True)
     columns: IntProperty(name="Columns", default=4, min=2, max=8, step=2)
     column_spacing: FloatProperty(name="Column spacing", default=1.8, min=1.2, max=4.0, unit="LENGTH")
@@ -74,7 +80,8 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
 def params_from_props(s):
     p = building.BuildingParams(
         name=s.name.strip() or "Building", width=s.width, depth=s.depth, storeys=s.storeys,
-        plinth=s.plinth, roof_pitch=s.roof_pitch, bay_spacing=s.bay_spacing, portico=s.portico,
+        plinth=s.plinth, roof_pitch=s.roof_pitch, bay_spacing=s.bay_spacing, side_bays=s.side_bays,
+        detail=s.detail, portico=s.portico,
         columns=s.columns, column_spacing=s.column_spacing, portico_depth=s.portico_depth,
         cupola=s.cupola, chimneys=s.chimneys, texture_size=int(s.texture_size), seed=s.seed)
     p.colors = {k: tuple(int(round(c * 255)) for c in getattr(s, "color_" + k)) for k in COLOR_KEYS}
@@ -82,7 +89,8 @@ def params_from_props(s):
 
 
 def props_from_params(s, p):
-    for attr in ("name", "width", "depth", "storeys", "plinth", "roof_pitch", "bay_spacing", "portico",
+    for attr in ("name", "width", "depth", "storeys", "plinth", "roof_pitch", "bay_spacing", "side_bays",
+                 "detail", "portico",
                  "columns", "column_spacing", "portico_depth", "cupola", "chimneys", "seed"):
         setattr(s, attr, getattr(p, attr))
     s.texture_size = str(p.texture_size)
@@ -174,12 +182,14 @@ class AOE3_PT_building(bpy.types.Panel):
         row.prop(s, "preset", text="")
         row.operator("aoe3.load_preset", text="", icon="IMPORT")
         lay.prop(s, "name")
+        lay.prop(s, "detail", expand=True)
         col = lay.column(align=True)
         col.prop(s, "width")
         col.prop(s, "depth")
         col.prop(s, "storeys")
         col.prop(s, "plinth")
         col.prop(s, "bay_spacing")
+        col.prop(s, "side_bays")
         col = lay.column(align=True)
         col.prop(s, "roof_pitch")
         col.prop(s, "cupola")

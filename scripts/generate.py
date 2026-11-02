@@ -2,11 +2,13 @@
 """Generate a preset headless: mesh, texture, exports, .blend and preview renders.
 
     python scripts/generate.py [--preset WHITE_HOUSE|COURTHOUSE|CAPITOL|MANSION|ALL]
-                               [--out DIR] [--views front34,back34,wire | --no-render]
+                               [--detail LOW|MEDIUM] [--out DIR]
+                               [--views front34,back34,wire | --no-render]
 
 or with Blender: blender -b --factory-startup -P scripts/generate.py -- [same options]
-The default output is examples/<name>/.
+The default output is examples/<name>/ (examples/<name>_medium/ for --detail MEDIUM).
 """
+import dataclasses
 import math
 import os
 import sys
@@ -111,12 +113,15 @@ def shoot(scene, cam, obj, path, azimuth, elevation, clay=False):
 VIEWS = {"front34": (-35, 42, False), "back34": (145, 42, False), "wire": (-35, 42, True)}
 
 
-def generate(key, out, views):
+def generate(key, out, views, detail):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     params = building.PRESETS[key]
+    if detail == "MEDIUM":
+        params = dataclasses.replace(params, detail="MEDIUM", name=params.name + "Medium")
     model = building.build(params)
     obj = blender_io.create_object(model, paint.paint(model))
-    folder = out or os.path.join(ROOT, "examples", params.name.lower())
+    folder = out or os.path.join(ROOT, "examples", building.PRESETS[key].name.lower()
+                                 + ("_medium" if detail == "MEDIUM" else ""))
     paths = blender_io.export(obj, folder)
     try:
         bpy.context.preferences.filepaths.save_version = 0     # no .blend1 backup
@@ -137,8 +142,9 @@ def main():
     preset = opt("--preset", "WHITE_HOUSE").upper()
     keys = list(building.PRESETS) if preset == "ALL" else [preset]
     views = [] if "--no-render" in argv else opt("--views", "front34,back34,wire").split(",")
+    detail = opt("--detail", "LOW").upper()
     for key in keys:
-        generate(key, opt("--out") if len(keys) == 1 else None, views)
+        generate(key, opt("--out") if len(keys) == 1 else None, views, detail)
 
 
 main()

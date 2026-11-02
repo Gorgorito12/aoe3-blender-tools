@@ -199,6 +199,24 @@ def paint(model):
     rect("cupwin", 0.0, 0.0, 0.8, 0.12, _shade(WHITE, 0.94))
 
     fill("white", WHITE)
+
+    if "reveal" in at:                       # inside of the recessed openings: wall stone, darker
+        rr = at["reveal"]
+        fill("reveal", _shade(WALL, 0.86))
+        for vv in np.arange(0.42, rr.world_h, 0.42):
+            hline("reveal", vv, 0, rr.world_w, _shade(WALL, 0.8))
+    if "balus" in at:                        # balustrade: base and rail with turned balusters
+        rb = at["balus"]
+        GAP = _shade(WHITE, 0.55)
+        fill("balus", GAP)
+        rect("balus", 0, 0, rb.world_w, 0.15, WHITE, SHADOW)
+        rect("balus", 0, 0.6, rb.world_w, rb.world_h, WHITE, SHADOW)
+        u = 0.06
+        while u < rb.world_w - 0.12:
+            cxp, _ = P("balus", u + 0.06, 0)
+            for (v0, v1, half) in ((0.15, 0.22, 0.05), (0.22, 0.42, 0.065), (0.42, 0.52, 0.04), (0.52, 0.6, 0.055)):
+                rect("balus", u + 0.06 - half, v0, u + 0.06 + half, v1, WHITE)
+            u += 0.22
     LE = C["lead"]
     fill("lead", LE)
     for uu in np.arange(0, 7.0, 7.0 / 16):
