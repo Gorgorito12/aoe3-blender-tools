@@ -52,14 +52,16 @@ python tools/build_zip.py                          # dist/ zips (extension and l
 - `scripts/generate.py`: headless generation with renders. `tests/run_tests.py`: headless tests.
 - `tools/`: `art_survey.py` (uses `bar.py` and `xmbedit.py`; standard library only, it runs on the
   user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`.
-- `examples/`: generated presets. `whitehouse/` keeps every export and the .blend; the others keep
-  the GLB, a preview and the stats.
+- `examples/`: generated presets. `whitehouse/` and `whitehouse_medium/` keep every export and the
+  .blend; the others keep the GLB, a preview and the stats.
 - `docs/building-guidelines.md`: requirements, pitfalls, what is still to verify in game.
 
 ## Working rules
 
-- Every geometry change must keep the test suite green; the parameter sweep catches overlapping
-  coplanar faces and UVs outside their regions.
+- Every geometry change must keep the test suite green; the parameter sweep (both detail levels)
+  catches overlapping coplanar faces, faces with repeated corners and UVs outside their regions.
+- Count triangles per region after a detail change (`building.build(...)`, then sum per
+  `Face.region`); the medium White House must stay near 1,200 (the test allows 1,000 to 1,400).
 - Look at the renders after a visual change (`scripts/generate.py`, then read the JPEGs).
 - Mark game facts as measured, engine limit, or to verify, as `docs/building-guidelines.md` does.
 - Regenerate `examples/` when the output of a preset changes, and keep the README gallery in step.

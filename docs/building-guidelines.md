@@ -46,6 +46,16 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
   square texture at the largest uniform texel density that fits.
 - `core/paint.py` paints each region at twice the final size and filters it down. Facade regions
   map one to one onto their walls, so the windows land where the painter puts them.
+- At medium detail, each wall is one polygon with its openings as holes: every stack of
+  openings is joined to the bottom edge, and to the opening below it, by a zero-width slit, and
+  the result is ear-clipped. That needs far fewer triangles than a grid (91 instead of 160 on the
+  White House front) and adds no T-junction: the slits only add points on the wall's bottom edge
+  and on the top edges of openings, where no other face has an edge. A layout that cannot be slit
+  (an opening wider than the one below it) falls back to a grid, also without T-junctions.
+- Openings are recessed by 18 cm, with side and sill reveals and a back face that keeps the
+  facade's UVs, so the painted glass and door show on it. There is no top reveal (it faces down,
+  away from the game camera) and no sill under a door (the plinth top is its floor; a sill there
+  would be coplanar with it).
 - `core/blender_io.py` turns the data into a mesh, a material with the packed texture, a
   Triangulate modifier (the .blend keeps quads for editing) and attach empties.
 - `core/validate.py` runs the checks above on the evaluated mesh.

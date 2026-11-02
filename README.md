@@ -15,8 +15,11 @@ the art a mod already has. It has two parts:
 | ![White House](examples/whitehouse/preview_front34.jpg) | ![Courthouse](examples/courthouse/preview_front34.jpg) |
 | **Capitol** | **Mansion** |
 | ![Capitol](examples/capitol/preview_front34.jpg) | ![Mansion](examples/mansion/preview_front34.jpg) |
+| **White House, medium detail** | **The same, geometry only** |
+| ![White House medium](examples/whitehouse_medium/preview_front34.jpg) | ![White House medium, clay](examples/whitehouse_medium/preview_wire.jpg) |
 
-These are the four presets as generated: 92 to 413 triangles each, one 1024 × 1024 texture.
+The four presets at low detail have 92 to 413 triangles; the White House at medium detail has
+1,235. Each has one 1024 × 1024 texture.
 
 Status: version 0.1. The survey and the first building generator are done; nothing has been
 tested in the game yet (see [Getting a building into the game](#getting-a-building-into-the-game)),
@@ -50,8 +53,12 @@ Not read yet: the meshes inside `.gr2` files (triangle and bone counts need a Gr
 ## Features
 
 - **Building generator** (neoclassical for now): width, depth, 1 to 4 storeys, plinth, window
-  spacing, a portico with 2 to 8 columns and a pediment, a hipped roof of any pitch, a cupola,
-  chimneys. Presets: White House, Courthouse, Capitol, Mansion.
+  spacing and side windows, a portico with 2 to 8 columns and a pediment, a hipped roof of any
+  pitch, a cupola, chimneys. Presets: White House, Courthouse, Capitol, Mansion.
+- **Two detail levels.** Low: flat walls with painted windows (about 350 triangles). Medium
+  (about 1,200): windows and doors recessed into the walls, a balustrade with posts on the roof
+  edge, a profiled cornice, columns with a base and a capital, cheek walls beside the steps and
+  banded chimneys. The walls stay one polygon with holes, triangulated without T-junctions.
 - **Painted texture**: stone courses, quoins, windows with sash bars and caps, the door with its
   fanlight, slate rows, dentils, brick, all aligned with the geometry. Colours are settings. Flat
   colour, no baked lighting. Painted with numpy only, so nothing extra is installed in Blender.
@@ -95,6 +102,7 @@ python -m venv venv
 venv/bin/pip install bpy==5.2.3                       # Blender 5.2 as a module (Python 3.13)
 venv/bin/python tests/run_tests.py                     # the test suite
 venv/bin/python scripts/generate.py --preset ALL       # examples/<name>/ with exports and renders
+venv/bin/python scripts/generate.py --preset WHITE_HOUSE --detail MEDIUM
 venv/bin/python scripts/generate.py --preset CAPITOL --out out --no-render
 ```
 
