@@ -12,6 +12,8 @@ bl_info = {      # read only by Blender versions without extensions; 4.2+ reads 
     "category": "Object",
 }
 
+import os  # noqa: E402
+
 import bpy  # noqa: E402
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,  # noqa: E402
                        FloatVectorProperty, IntProperty, PointerProperty, StringProperty)
@@ -98,6 +100,11 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     game_damaged: BoolProperty(name="Damaged model", default=True,
                                description="Also write a damaged texture (soot, missing slates, cracks) "
                                            "that the game shows once the building has lost hit points")
+    game_install: StringProperty(name="Test copy", subtype="DIR_PATH", default="",
+                                 description="A copy of the game (or of the mod's folder) to deploy into; "
+                                             "a Steam folder is refused")
+    game_builder: StringProperty(name="Builder", default="Settler",
+                                 description="The unit that gets the building in its build list (empty: none)")
     game_template: StringProperty(name="Proto template", default="House",
                                   description="The unit whose proto entry the new building copies")
     game_player_colour: BoolProperty(name="Player colour", default=False,
@@ -360,11 +367,59 @@ class AOE3_PT_game_export(bpy.types.Panel):
         row.prop(s, "game_lowpoly", toggle=True)
         row.prop(s, "game_damaged", toggle=True)
         lay.operator("aoe3.export_game", icon="EXPORT")
+        lay.separator()
+        lay.prop(s, "game_install")
+        lay.prop(s, "game_builder")
+        row = lay.row(align=True)
+        row.operator("aoe3.deploy_game", icon="PLAY")
+        row.operator("aoe3.undo_deploy", icon="LOOP_BACK")
+
+
+class AOE3_OT_deploy_game(bpy.types.Operator):
+    bl_idname = "aoe3.deploy_game"
+    bl_label = "Deploy to Test Copy"
+    bl_description = ("Put the exported bundle into a test copy of the game (never a Steam folder): "
+                      "art files, the unit and its strings; backups are kept for Undo")
+
+    def execute(self, context):
+        from .aoe3game import deploy
+        s = context.scene.aoe3_building
+        folder = bpy.path.abspath(s.game_dir)
+        if not os.path.exists(os.path.join(folder, "bundle.json")):
+            self.report({"ERROR"}, "No bundle there: run Export for the Game first")
+            return {"CANCELLED"}
+        try:
+            d = deploy.Deployment(bpy.path.abspath(s.game_install))
+            lines = []
+            m = d.apply(folder, log=lines.append, builder=s.game_builder.strip() or None)
+        except (deploy.RefusedPath, ValueError, OSError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Deployed {m.get('units')} as unit {m.get('unit_id')}; restart the game")
+        return {"FINISHED"}
+
+
+class AOE3_OT_undo_deploy(bpy.types.Operator):
+    bl_idname = "aoe3.undo_deploy"
+    bl_label = "Undo"
+    bl_description = "Take the deployed building out of the test copy and restore its files"
+
+    def execute(self, context):
+        from .aoe3game import deploy
+        s = context.scene.aoe3_building
+        try:
+            deploy.Deployment(bpy.path.abspath(s.game_install)).undo(log=lambda line: None)
+        except (deploy.RefusedPath, OSError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, "Test copy restored")
+        return {"FINISHED"}
 
 
 CLASSES = (AOE3_PG_result, AOE3_PG_building, AOE3_OT_load_preset, AOE3_OT_generate_building,
-           AOE3_OT_check_building, AOE3_OT_export_building, AOE3_OT_export_game, AOE3_PT_building,
-           AOE3_PT_check_export, AOE3_PT_game_export)
+           AOE3_OT_check_building, AOE3_OT_export_building, AOE3_OT_export_game,
+           AOE3_OT_deploy_game, AOE3_OT_undo_deploy, AOE3_PT_building, AOE3_PT_check_export,
+           AOE3_PT_game_export)
 
 
 def register():

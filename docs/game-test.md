@@ -76,8 +76,10 @@ across walked round its south side, 0.3 to 2 units outside the obstruction squar
 Low-poly and damaged variants (2026-11-03): the game loads the anim file with the `LowPoly` and
 `Destruction` logic and the three models without an error. The damaged model did not show, at
 70 % nor at 2 % of the hit points: the `Destruction` logic is not driven by the hit points alone.
-The stock houses pair their damaged model with a damage template (`.dmg`, impact points and
-debris bones) in the Idle anim's `simskeleton`; that is the next thing to try. The low-poly
+Borrowing the stock outpost's damage system, as the mod's own large buildings do (`simskeleton`
+with `outpost_generic_damaged` and its `.dmg`, and `shape="outpost_generic"` on the model
+references), did not change that at 60 %. The next thing to try is real hits: the damage
+template's impact points probably react to projectiles, not to hit points set by a trigger. The low-poly
 model needs the game's low model detail setting (not tried).
 
 Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds

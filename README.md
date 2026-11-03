@@ -120,9 +120,10 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 - **Player colour**: an option paints the string courses and shutters for the owner's colour
   (texture alpha 0 there, as the stock textures mark it); the export then uses the game's
   player-colour shader.
-- **Deployment** (`tools/game_deploy.py`): copies a bundle into a test copy of the game, adds
-  the unit and its strings, runs the mod's own validators, and undoes it all on request. It
-  refuses any Steam folder.
+- **Deployment** (`tools/game_deploy.py`, or Deploy to Test Copy and Undo in the add-on):
+  copies a bundle into a test copy of the game, adds the unit and its strings and a builder for
+  it, runs the mod's own validators, and undoes it all on request. It refuses any Steam folder.
+- **Relief**: a bump map for each texture, made from its drawing (DXT5, as the game's own).
 - **Calibrated checks**: with the profile, the triangle budget is the one measured for buildings
   of the same footprint.
 
@@ -148,7 +149,8 @@ export all work. The Blender 3.6 to 4.1 path is untested.
 2. **Check and Export**: **Check** lists the problems of the active object; **Export** writes the
    files to the chosen folder (default `//aoe3_export`, next to the .blend).
 3. **Game Export**: writes the bundle for the game (mod folder, name shown in game, proto
-   template, player colour) to the chosen folder (default `//aoe3_game`).
+   template, texture format, icon, low-poly and damaged models) to the chosen folder (default
+   `//aoe3_game`); **Deploy to Test Copy** puts it into a copy of the game, **Undo** takes it out.
 
 Conventions: 1 unit = 1 m, Z up, the front (portico) faces −Y, the origin is the centre of the
 footprint (steps included) on the ground. GLB, FBX and OBJ are written Y-up.

@@ -22,6 +22,9 @@ UNITS_PER_METER = gr2_write.STOCK_BASIS["units_per_meter"]
 OBSTRUCTION_RATIO = 0.85
 DECAL_RATIO = 1.25
 FLAT_BUMP_TEXTURE = r"C:\aoe3bt\art\shadows_selections\flat_normal_black_spec.ddt"
+# The damage system a building borrows when it has a damaged model, as the mod's own large
+# buildings do: the stock outpost's damage skeleton and template.
+DAMAGE_SKELETON = (r"buildings\outpost\outpost_generic_damaged", r"buildings\outpost\outpost_generic.dmg")
 RUBBLE = {"2x2": "BuildingRubble2x2", "3x3": "BuildingRubble3x3", "4x4": "BuildingRubble4x4",
           "5x5": "BuildingRubble5x5", "6x6": "BuildingRubble6x6"}
 
@@ -131,7 +134,8 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
                             bones=[b for b in bone_names if b != chimney_bone],
                             chimney_bone=chimney_bone if chimney_bone in bone_names else None,
                             lowpoly=refs.get("lowpoly"), damaged=refs.get("damaged"),
-                            death_anim=refs.get("death"))
+                            death_anim=refs.get("death"),
+                            simskeleton=DAMAGE_SKELETON if "damaged" in refs else None)
     with open(os.path.join(art_dir, low + ".xml"), "w", encoding="utf-8", newline="\r\n") as f:
         f.write(anim)
     display = display_name or name

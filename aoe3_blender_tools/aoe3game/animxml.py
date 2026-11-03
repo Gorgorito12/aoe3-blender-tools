@@ -50,23 +50,24 @@ def _decal(tab, texture, width, height, selection=64):
             f"{tab}</decal>\n")
 
 
-def _asset(tab, model):
-    return (f"{tab}<assetreference type=\"GrannyModel\">\n"
+def _asset(tab, model, shape=None):
+    attr = f" shape=\"{escape(shape)}\"" if shape else ""
+    return (f"{tab}<assetreference type=\"GrannyModel\"{attr}>\n"
             f"{tab}\t<file>{escape(art_path(model))}</file>\n"
             f"{tab}</assetreference>\n")
 
 
-def _model_block(tab, model, lowpoly=None, damaged=None):
+def _model_block(tab, model, lowpoly=None, damaged=None, shape=None):
     """The finished model as the stock buildings write it: a Destruction logic (p1 the damaged
     model, p99 the intact one) when there is a damaged model, inside a LowPoly logic (normal /
     lowpoly) when there is a low-poly model; a plain asset reference otherwise."""
     if damaged:
         normal = (f"{tab}<logic type=\"Destruction\">\n"
-                  f"{tab}\t<p1>\n{_asset(tab + chr(9) * 2, damaged)}{tab}\t</p1>\n"
-                  f"{tab}\t<p99>\n{_asset(tab + chr(9) * 2, model)}{tab}\t</p99>\n"
+                  f"{tab}\t<p1>\n{_asset(tab + chr(9) * 2, damaged, shape)}{tab}\t</p1>\n"
+                  f"{tab}\t<p99>\n{_asset(tab + chr(9) * 2, model, shape)}{tab}\t</p99>\n"
                   f"{tab}</logic>\n")
     else:
-        normal = _asset(tab, model)
+        normal = _asset(tab, model, shape)
     if not lowpoly:
         return normal
     inner = "".join(tab + "\t\t" + line[len(tab):] + "\n" for line in normal.splitlines())
@@ -78,7 +79,7 @@ def _model_block(tab, model, lowpoly=None, damaged=None):
 
 def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUND_DECAL,
              bones=("bone_flag_civ",), chimney_bone=None, lowpoly=None, damaged=None,
-             death_anim=None):
+             death_anim=None, simskeleton=None):
     """The text of a building's anim file.
 
     name: the building's name (submodel and component names).
@@ -93,6 +94,9 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
         once the building is below 99 % (to verify in game).
     death_anim: a Granny animation the building plays when it is destroyed (with the stock
         collapse dust), or None (the building then just goes).
+    simskeleton: (damaged model, damage template) of a stock building whose damage system
+        this one borrows, as the mod's own buildings do (e.g. the stock outpost's), or None.
+        The model references then carry that model's name as their `shape`.
     """
     model = art_path(model)
     sw, sh = stage_decal or decal
@@ -132,14 +136,23 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
             out.append(f"\t\t\t<anim>\n\t\t\t\tIdle\n\t\t\t\t<component>{component}</component>\n")
             out.append("\t\t\t</anim>\n\t\t</attachment>\n")
     out.append(f"\t\t<component>\n\t\t\t{escape(main)}\n")
-    out.append(_model_block("\t\t\t", model, lowpoly=lowpoly, damaged=damaged))
+    shape = None
+    if simskeleton:
+        shape = art_path(simskeleton[0]).split("\\")[-1]
+        if shape.lower().endswith("_damaged"):
+            shape = shape[:-len("_damaged")]
+    out.append(_model_block("\t\t\t", model, lowpoly=lowpoly, damaged=damaged, shape=shape))
     out.append(_decal("\t\t\t", ground, decal[0], decal[1], sel))
     if chimney_bone:
         out.append(f"\t\t\t<attach a=\"chimney smoke\" frombone=\"{escape(chimney_bone)}\" "
                    f"tobone=\"{escape(chimney_bone)}\" syncanims=\"0\"/>\n")
     out.append("\t\t</component>\n")
-    out.append(f"\t\t<anim>\n\t\t\tIdle\n\t\t\t<component>{escape(main)}</component>\n"
-               "\t\t</anim>\n")
+    out.append(f"\t\t<anim>\n\t\t\tIdle\n\t\t\t<component>{escape(main)}</component>\n")
+    if simskeleton:
+        out.append(f"\t\t\t<simskeleton>\n\t\t\t\t<model>{escape(art_path(simskeleton[0]))}</model>\n"
+                   f"\t\t\t\t<damagetemplate>{escape(simskeleton[1])}</damagetemplate>\n"
+                   "\t\t\t</simskeleton>\n")
+    out.append("\t\t</anim>\n")
     if death_anim:
         out.append("\t\t<anim>\n\t\t\tDeath\n\t\t\t<assetreference type=\"GrannyAnim\">\n")
         out.append(f"\t\t\t\t<file>{escape(art_path(death_anim))}</file>\n")

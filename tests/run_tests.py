@@ -289,6 +289,43 @@ def game_variants_lowpoly_and_damaged():
     assert blender_io.game_variants(obj, lowpoly=False, damaged=False) == {}
 
 
+@test
+def deploy_from_blender_and_undo():
+    import hashlib
+    s = bpy.context.scene.aoe3_building
+    s.preset = "MANSION"
+    assert bpy.ops.aoe3.load_preset() == {"FINISHED"}
+    assert bpy.ops.aoe3.generate_building() == {"FINISHED"}
+    with tempfile.TemporaryDirectory() as tmp:
+        inst = os.path.join(tmp, "Game")
+        os.makedirs(os.path.join(inst, "art"))
+        os.makedirs(os.path.join(inst, "data"))
+        proto = ("<Proto>\r\n\t<Unit id=\"1\" name=\"House\">\r\n\t\t<DBID>15</DBID>\r\n"
+                 "\t\t<UnitType>Building</UnitType>\r\n\t</Unit>\r\n"
+                 "\t<Unit id=\"2\" name=\"Settler\">\r\n\t\t<DBID>16</DBID>\r\n\t</Unit>\r\n</Proto>\r\n")
+        with open(os.path.join(inst, "data", "protoy.xml"), "w", encoding="utf-8", newline="") as f:
+            f.write(proto)
+        with open(os.path.join(inst, "data", "stringtabley.xml"), "wb") as f:
+            f.write("<StringTable><Language name='English'>\r\n</Language></StringTable>".encode("utf-16"))
+        before = hashlib.sha256(open(os.path.join(inst, "data", "protoy.xml"), "rb").read()).hexdigest()
+        s.game_dir, s.game_install, s.use_profile = os.path.join(tmp, "bundle"), inst, False
+        s.game_icons = False
+        assert bpy.ops.aoe3.export_game() == {"FINISHED"}
+        assert bpy.ops.aoe3.deploy_game() == {"FINISHED"}
+        text = open(os.path.join(inst, "data", "protoy.xml"), encoding="utf-8").read()
+        assert 'name="Mansion"' in text and ">Mansion</Train>" in text, text[-400:]
+        assert bpy.ops.aoe3.undo_deploy() == {"FINISHED"}
+        after = hashlib.sha256(open(os.path.join(inst, "data", "protoy.xml"), "rb").read()).hexdigest()
+        assert after == before
+        s.game_install = r"C:\Program Files (x86)\Steam\steamapps\common\Game"
+        try:
+            bpy.ops.aoe3.deploy_game()
+            refused = False
+        except RuntimeError:
+            refused = True
+        assert refused or not os.path.exists(s.game_install)
+
+
 def main():
     addon.register()
     try:
@@ -297,7 +334,7 @@ def main():
                   regenerating_replaces_the_object, export_and_reimport, checks_catch_known_problems,
                   atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget,
                   player_colour_marks_the_string_courses, icon_and_portrait_render,
-                  game_variants_lowpoly_and_damaged):
+                  game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo):
             t()
     finally:
         addon.unregister()
