@@ -28,9 +28,13 @@ that the real site shows on the south is left out.
 
 ![White House 1914](examples/whitehouse1914/preview_sheet.jpg)
 
-Status: version 0.1. The survey and the first building generator are done; nothing has been
-tested in the game yet (see [Getting a building into the game](#getting-a-building-into-the-game)),
-and the survey has only run on synthetic files so far.
+Status: version 0.2. The add-on writes the game's own formats (Granny model, `.ddt` texture,
+anim file, proto entry and strings), and a deployment script puts them into a test copy of the
+game. The game loads a generated building and draws it in the world: the White House stands at
+the right size among the villagers, lit like the stock objects, with the civilization flag on its
+cupola. Construction, destruction and the player colour are still to be seen in game
+([docs/game-test.md](docs/game-test.md)). The survey has run on the game and a mod, and
+its measurements calibrate the sizes and budgets.
 
 ## Why
 
@@ -55,7 +59,17 @@ logic types, anim names, texture sizes and formats from the `.ddt` headers, and 
 the anim files. The reports hold measurements and paths, never file contents, but they name the
 mod's files: keep them out of public repositories.
 
-Not read yet: the meshes inside `.gr2` files (triangle and bone counts need a Granny reader).
+With `--proto <data\protoy.xml>` it joins every building to its anim file and finished model and
+measures the model (triangles, vertex layout, size, basis, bones, texture, shader). Uncompressed
+models are read directly; compressed ones (almost all) need `--granny <tool> --cache <folder>`,
+an external tool that loads the game's own Granny runtime and rewrites a model uncompressed
+(`<tool> rebake --install <game> --file <in> --out <out> --noop`). `--profile-out` writes the
+calibration profile (measurements only): `aoe3_blender_tools/profiles/buildings.json` is the
+target mod's.
+
+```
+python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\protoy.xml" --granny <tool> --cache <folder> --out survey/mod --profile-out aoe3_blender_tools/profiles/buildings.json
+```
 
 ## Features
 
@@ -80,15 +94,24 @@ Not read yet: the meshes inside `.gr2` files (triangle and bone counts need a Gr
   degenerate faces, hidden bottom faces, and overlapping coplanar faces (they flicker in game).
 - **Export**: GLB and FBX with the texture embedded, OBJ + MTL, the texture as PNG, and a stats
   file. Attach points (`flag_attach` on the cupola) are exported as empties.
+- **Game export**: the model as a Granny file (`.gr2`, in the stock buildings' basis, with a
+  `bone_flag_civ` bone for the flag), the texture as `.ddt`, the anim file (stock construction
+  stages of the footprint class, ground decal) and `bundle.json` with the proto fields and
+  strings. Sizes come from the calibration profile.
+- **Deployment** (`tools/game_deploy.py`): copies a bundle into a test copy of the game, adds
+  the unit and its strings, runs the mod's own validators, and undoes it all on request. It
+  refuses any Steam folder.
+- **Calibrated checks**: with the profile, the triangle budget is the one measured for buildings
+  of the same footprint.
 
 ## Install
 
 Download or build the zip (`python tools/build_zip.py` writes `dist/`), then:
 
 - **Blender 4.2 or later:** Edit > Preferences > Get Extensions > Install from Disk, and pick
-  `aoe3_blender_tools-0.1.0.zip`.
+  `aoe3_blender_tools-0.2.0.zip`.
 - **Blender 3.6 to 4.1:** Edit > Preferences > Add-ons > Install, and pick
-  `aoe3_blender_tools-0.1.0-legacy.zip`.
+  `aoe3_blender_tools-0.2.0-legacy.zip`.
 
 Tested with Blender 5.2 (as the `bpy` module, headless): install from the zip, generate, check and
 export all work. The Blender 3.6 to 4.1 path is untested.
@@ -102,6 +125,8 @@ export all work. The Blender 3.6 to 4.1 path is untested.
    built (for example more columns than the front allows), it is reduced and a warning says so.
 2. **Check and Export**: **Check** lists the problems of the active object; **Export** writes the
    files to the chosen folder (default `//aoe3_export`, next to the .blend).
+3. **Game Export**: writes the bundle for the game (mod folder, name shown in game, proto
+   template, player colour) to the chosen folder (default `//aoe3_game`).
 
 Conventions: 1 unit = 1 m, Z up, the front (portico) faces −Y, the origin is the centre of the
 footprint (steps included) on the ground. GLB, FBX and OBJ are written Y-up.
@@ -119,43 +144,43 @@ venv/bin/python scripts/generate.py --preset WHITE_HOUSE --detail MEDIUM
 venv/bin/python scripts/generate.py --preset WHITE_HOUSE_1914 --views front,back,front34,back34
 venv/bin/python scripts/sweep.py --count 200                # random options through the checks
 venv/bin/python scripts/generate.py --preset CAPITOL --out out --no-render
+venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
+python -I tests/test_game_formats.py                   # game formats, plain Python
 ```
+
+On Windows the venv's interpreter is `venv\Scripts\python`.
 
 With a Blender install: `blender -b --factory-startup -P scripts/generate.py -- --preset ALL`.
 
 ## Getting a building into the game
 
-None of these steps is done or tested yet. Each one copies from a stock building rather than
-guessing.
+Never write into the game's Steam folder: work in a copy of the game (or of the mod's folder).
+The steps, the checks and what is still to see in game are in
+[docs/game-test.md](docs/game-test.md); the formats are in [docs/game-formats.md](docs/game-formats.md).
 
-1. **Scale and orientation.** Import a stock building of similar size with a Granny (`.gr2`)
-   importer for Blender, and match this model's scale and facing to it. 1 unit = 1 m is an
-   assumption.
-2. **Export** the mesh to `.gr2` with the same community add-on.
-3. **Texture**: convert the PNG to `.ddt`. Stock textures may carry a player-colour mask in their
-   alpha; the generated one has none yet.
-4. **Anim XML**: copy the anim file of a stock building of similar size and swap only the model.
-   It keeps its construction stages, damage states and destruction. Rename `flag_attach` to the
-   attach point name that file uses.
-5. **Proto**: give the unit its entry in `protoy.xml` (and its compiled `.xmb`), with an
-   obstruction matching the footprint after scaling.
+```
+venv\Scripts\python scripts\game_export.py --out out\wh --preset WHITE_HOUSE --detail MEDIUM --prefix <mod folder> --display "White House"
+python -I -X utf8 tools\game_deploy.py --install <test copy> --bundle out\wh --validate
+python -I tools\game_deploy.py --install <test copy> --undo
+```
 
-`tools/bar.py` lists and extracts the game's `.bar` archives, and `tools/xmbedit.py` reads and
-writes its compiled XML (`.xmb`): see [tools/README.md](tools/README.md).
+Then start the copy's game, open the scenario editor and place the building.
+
+`tools/bar.py` lists and extracts the game's `.bar` archives, `tools/xmbedit.py` reads and
+writes its compiled XML (`.xmb`), and `tools/gr2_tree.py` reads an uncompressed Granny model:
+see [tools/README.md](tools/README.md).
 
 ## Roadmap
 
-1. **Survey** (tool done): run it on the game and on the target mod, and turn the report into
-   per-category profiles: triangle and texture budgets, scale, facing, attach point names, anim
-   file templates, and the stock parts most reused.
-2. **Calibration and game formats:** fit the generators to those profiles; read `.gr2` meshes for
-   the budgets; call the community `.gr2` exporter when it is installed; write `.ddt`; write anim
-   files and proto entries from templates.
+1. **Survey** (done): run on the game and a mod; the profile of the target mod ships with the
+   add-on.
+2. **Calibration and game formats** (done, in-game check in progress): sizes and budgets from
+   the profile; `.gr2`, `.ddt`, anim file, proto and strings written and deployed. Next: see the
+   building placed, built and destroyed in game; player colour; DXT textures.
 3. **Buildings:** a kit of parts per architectural style found in the survey (colonial, European,
-   Asian, native, forts, walls and gates), and baking the texture of a detailed model onto a clean
-   mesh. The neoclassical generator here is the first one (phase 1, done).
-   Textures: relief baking, material swatches, Stable Diffusion with ControlNet and the other
-   options in [docs/texture-plan.md](docs/texture-plan.md).
+   Asian, native, forts, walls and gates), damage and death models, and baking the texture of a
+   detailed model onto a clean mesh. Textures: relief baking, material swatches, Stable
+   Diffusion with ControlNet and the other options in [docs/texture-plan.md](docs/texture-plan.md).
 4. **Units:** reuse the stock skeletons and animations; build the body from parts or fit a
    detailed mesh to a stock skeleton; textures with the player-colour mask.
 

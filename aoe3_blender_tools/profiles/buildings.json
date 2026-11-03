@@ -1,0 +1,2607 @@
+{
+ "schema": 1,
+ "source": "target mod",
+ "buildings_measured": 621,
+ "units_per_meter_game": 0.615157485,
+ "classes": {
+  "8x8": {
+   "count": 205,
+   "tris": {
+    "min": 20,
+    "median": 1102,
+    "p90": 2221,
+    "max": 10020
+   },
+   "verts": {
+    "min": 38,
+    "median": 1964,
+    "p90": 5659,
+    "max": 181537
+   },
+   "side_units": {
+    "min": 5.66,
+    "median": 8.835,
+    "p90": 11.77,
+    "max": 20.14
+   },
+   "height_m": {
+    "min": 1.98,
+    "median": 10.64,
+    "p90": 19.41,
+    "max": 81.89
+   },
+   "obstruction_over_half_side": {
+    "min": 0.397,
+    "median": 0.9055,
+    "p90": 1.06,
+    "max": 1.414
+   },
+   "decal_over_side": {
+    "min": 0.0,
+    "median": 1.119,
+    "p90": 1.289,
+    "max": 2.067
+   },
+   "stages": [
+    [
+     "4x4",
+     35
+    ],
+    [
+     "3x3",
+     10
+    ],
+    [
+     "2x2",
+     6
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     77
+    ],
+    [
+     "BuildingRubble5x5",
+     7
+    ],
+    [
+     "BuildingRubble3x3",
+     1
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     62
+    ],
+    [
+     "buildingsmall.xml",
+     18
+    ]
+   ]
+  },
+  "2x2": {
+   "count": 76,
+   "tris": {
+    "min": 43,
+    "median": 268.0,
+    "p90": 969,
+    "max": 5558
+   },
+   "verts": {
+    "min": 54,
+    "median": 583.0,
+    "p90": 2396,
+    "max": 74605
+   },
+   "side_units": {
+    "min": 0.77,
+    "median": 4.28,
+    "p90": 6.98,
+    "max": 7.57
+   },
+   "height_m": {
+    "min": 1.09,
+    "median": 4.94,
+    "p90": 11.56,
+    "max": 18.96
+   },
+   "obstruction_over_half_side": {
+    "min": 0.25,
+    "median": 0.468,
+    "p90": 0.861,
+    "max": 2.333
+   },
+   "decal_over_side": {
+    "min": 0.528,
+    "median": 1.37,
+    "p90": 2.104,
+    "max": 5.371
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble2x2",
+     3
+    ]
+   ],
+   "placement": [
+    [
+     "buildingsmall.xml",
+     5
+    ]
+   ]
+  },
+  "4x4": {
+   "count": 69,
+   "tris": {
+    "min": 176,
+    "median": 571,
+    "p90": 1613,
+    "max": 4642
+   },
+   "verts": {
+    "min": 175,
+    "median": 1416,
+    "p90": 3014,
+    "max": 7894
+   },
+   "side_units": {
+    "min": 3.76,
+    "median": 5.539999999999999,
+    "p90": 8.4,
+    "max": 11.9
+   },
+   "height_m": {
+    "min": 1.99,
+    "median": 8.165,
+    "p90": 16.23,
+    "max": 25.83
+   },
+   "obstruction_over_half_side": {
+    "min": 0.336,
+    "median": 0.722,
+    "p90": 0.916,
+    "max": 1.063
+   },
+   "decal_over_side": {
+    "min": 0.15,
+    "median": 1.293,
+    "p90": 1.478,
+    "max": 2.381
+   },
+   "stages": [
+    [
+     "2x2",
+     38
+    ],
+    [
+     "3x3",
+     3
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble2x2",
+     37
+    ],
+    [
+     "BuildingRubble3x3",
+     2
+    ]
+   ],
+   "placement": [
+    [
+     "buildingsmall.xml",
+     34
+    ]
+   ]
+  },
+  "6x6": {
+   "count": 59,
+   "tris": {
+    "min": 1,
+    "median": 491,
+    "p90": 1024,
+    "max": 2772
+   },
+   "verts": {
+    "min": 3,
+    "median": 1099,
+    "p90": 2503,
+    "max": 4743
+   },
+   "side_units": {
+    "min": 2.32,
+    "median": 7.33,
+    "p90": 10.07,
+    "max": 16.3
+   },
+   "height_m": {
+    "min": 0.32,
+    "median": 10.83,
+    "p90": 18.96,
+    "max": 20.17
+   },
+   "obstruction_over_half_side": {
+    "min": 0.368,
+    "median": 0.818,
+    "p90": 1.144,
+    "max": 2.583
+   },
+   "decal_over_side": {
+    "min": 0.586,
+    "median": 1.382,
+    "p90": 2.181,
+    "max": 3.981
+   },
+   "stages": [
+    [
+     "3x3",
+     10
+    ],
+    [
+     "2x2",
+     5
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble3x3",
+     13
+    ],
+    [
+     "BuildingRubble4x4",
+     3
+    ],
+    [
+     "BuildingRubble2x2",
+     2
+    ]
+   ],
+   "placement": [
+    [
+     "buildingsmall.xml",
+     8
+    ],
+    [
+     "buildinglarge.xml",
+     6
+    ]
+   ]
+  },
+  "1x1": {
+   "count": 26,
+   "tris": {
+    "min": 223,
+    "median": 223.0,
+    "p90": 223,
+    "max": 3050
+   },
+   "verts": {
+    "min": 291,
+    "median": 291.0,
+    "p90": 291,
+    "max": 2396
+   },
+   "side_units": {
+    "min": 0.47,
+    "median": 0.75,
+    "p90": 0.75,
+    "max": 2.94
+   },
+   "height_m": {
+    "min": 0.66,
+    "median": 2.52,
+    "p90": 2.52,
+    "max": 4.73
+   },
+   "obstruction_over_half_side": {
+    "min": 0.333,
+    "median": 0.8,
+    "p90": 0.8,
+    "max": 1.283
+   },
+   "decal_over_side": {
+    "min": 3.467,
+    "median": 3.467,
+    "p90": 3.467,
+    "max": 5.561
+   },
+   "stages": [],
+   "rubble": [],
+   "placement": []
+  },
+  "16x16": {
+   "count": 17,
+   "tris": {
+    "min": 1683,
+    "median": 4237,
+    "p90": 4806,
+    "max": 5936
+   },
+   "verts": {
+    "min": 3676,
+    "median": 6961,
+    "p90": 10737,
+    "max": 10737
+   },
+   "side_units": {
+    "min": 15.6,
+    "median": 16.3,
+    "p90": 16.84,
+    "max": 16.84
+   },
+   "height_m": {
+    "min": 13.51,
+    "median": 14.73,
+    "p90": 23.07,
+    "max": 23.07
+   },
+   "obstruction_over_half_side": {
+    "min": 0.95,
+    "median": 0.982,
+    "p90": 1.026,
+    "max": 1.026
+   },
+   "decal_over_side": {
+    "min": 0.95,
+    "median": 1.026,
+    "p90": 1.026,
+    "max": 1.104
+   },
+   "stages": [
+    [
+     "4x4",
+     4
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     9
+    ],
+    [
+     "BuildingRubble6x6",
+     5
+    ],
+    [
+     "BuildingRubble2x2",
+     3
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     13
+    ]
+   ]
+  },
+  "12x12": {
+   "count": 15,
+   "tris": {
+    "min": 1029,
+    "median": 1809,
+    "p90": 6397,
+    "max": 8154
+   },
+   "verts": {
+    "min": 2498,
+    "median": 4626,
+    "p90": 10045,
+    "max": 11418
+   },
+   "side_units": {
+    "min": 8.72,
+    "median": 11.89,
+    "p90": 14.3,
+    "max": 14.65
+   },
+   "height_m": {
+    "min": 7.7,
+    "median": 18.02,
+    "p90": 29.05,
+    "max": 32.93
+   },
+   "obstruction_over_half_side": {
+    "min": 0.819,
+    "median": 1.009,
+    "p90": 1.326,
+    "max": 1.376
+   },
+   "decal_over_side": {
+    "min": 0.752,
+    "median": 1.16,
+    "p90": 1.313,
+    "max": 1.854
+   },
+   "stages": [
+    [
+     "6x6",
+     4
+    ],
+    [
+     "2x2",
+     4
+    ],
+    [
+     "5x5",
+     2
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     5
+    ],
+    [
+     "BuildingRubble6x6",
+     4
+    ],
+    [
+     "BuildingRubble3x3",
+     1
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     7
+    ],
+    [
+     "buildingsmall.xml",
+     5
+    ]
+   ]
+  },
+  "10x10": {
+   "count": 15,
+   "tris": {
+    "min": 380,
+    "median": 1886,
+    "p90": 2638,
+    "max": 3426
+   },
+   "verts": {
+    "min": 736,
+    "median": 4006,
+    "p90": 7022,
+    "max": 80073
+   },
+   "side_units": {
+    "min": 9.47,
+    "median": 11.08,
+    "p90": 12.49,
+    "max": 12.49
+   },
+   "height_m": {
+    "min": 8.26,
+    "median": 16.0,
+    "p90": 26.84,
+    "max": 26.84
+   },
+   "obstruction_over_half_side": {
+    "min": 0.801,
+    "median": 0.903,
+    "p90": 1.036,
+    "max": 1.056
+   },
+   "decal_over_side": {
+    "min": 0.961,
+    "median": 1.1075,
+    "p90": 1.219,
+    "max": 1.268
+   },
+   "stages": [
+    [
+     "5x5",
+     5
+    ],
+    [
+     "4x4",
+     3
+    ],
+    [
+     "2x2",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble5x5",
+     10
+    ],
+    [
+     "BuildingRubble4x4",
+     2
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     11
+    ]
+   ]
+  },
+  "12x10": {
+   "count": 13,
+   "tris": {
+    "min": 1102,
+    "median": 1568,
+    "p90": 1603,
+    "max": 1603
+   },
+   "verts": {
+    "min": 2252,
+    "median": 3522,
+    "p90": 3697,
+    "max": 3697
+   },
+   "side_units": {
+    "min": 10.36,
+    "median": 11.28,
+    "p90": 12.73,
+    "max": 12.73
+   },
+   "height_m": {
+    "min": 14.27,
+    "median": 14.71,
+    "p90": 20.56,
+    "max": 20.56
+   },
+   "obstruction_over_half_side": {
+    "min": 0.943,
+    "median": 1.064,
+    "p90": 1.158,
+    "max": 1.158
+   },
+   "decal_over_side": {
+    "min": 1.139,
+    "median": 1.153,
+    "p90": 1.737,
+    "max": 1.737
+   },
+   "stages": [
+    [
+     "3x7",
+     4
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     8
+    ],
+    [
+     "BuildingRubble6x6",
+     5
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     13
+    ]
+   ]
+  },
+  "6x8": {
+   "count": 11,
+   "tris": {
+    "min": 544,
+    "median": 992,
+    "p90": 2285,
+    "max": 4768
+   },
+   "verts": {
+    "min": 1289,
+    "median": 1943,
+    "p90": 4299,
+    "max": 6373
+   },
+   "side_units": {
+    "min": 7.64,
+    "median": 13.99,
+    "p90": 13.99,
+    "max": 13.99
+   },
+   "height_m": {
+    "min": 3.37,
+    "median": 11.38,
+    "p90": 11.38,
+    "max": 11.38
+   },
+   "obstruction_over_half_side": {
+    "min": 0.572,
+    "median": 0.572,
+    "p90": 1.047,
+    "max": 1.047
+   },
+   "decal_over_side": {
+    "min": 1.18,
+    "median": 1.18,
+    "p90": 1.374,
+    "max": 1.374
+   },
+   "stages": [
+    [
+     "4x4",
+     6
+    ],
+    [
+     "3x3",
+     3
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble2x2",
+     8
+    ]
+   ],
+   "placement": []
+  },
+  "12x8": {
+   "count": 10,
+   "tris": {
+    "min": 1207,
+    "median": 1322.0,
+    "p90": 1322,
+    "max": 1656
+   },
+   "verts": {
+    "min": 2477,
+    "median": 2826.0,
+    "p90": 2826,
+    "max": 4110
+   },
+   "side_units": {
+    "min": 9.86,
+    "median": 12.94,
+    "p90": 13.43,
+    "max": 13.43
+   },
+   "height_m": {
+    "min": 12.71,
+    "median": 19.66,
+    "p90": 19.66,
+    "max": 30.69
+   },
+   "obstruction_over_half_side": {
+    "min": 0.893,
+    "median": 0.9285,
+    "p90": 0.964,
+    "max": 1.217
+   },
+   "decal_over_side": {
+    "min": 1.166,
+    "median": 1.254,
+    "p90": 1.303,
+    "max": 1.303
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     10
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     10
+    ]
+   ]
+  },
+  "0x0": {
+   "count": 8,
+   "tris": {
+    "min": 7,
+    "median": 362.5,
+    "p90": 482,
+    "max": 720
+   },
+   "verts": {
+    "min": 15,
+    "median": 406.5,
+    "p90": 1184,
+    "max": 7342
+   },
+   "side_units": null,
+   "height_m": null,
+   "obstruction_over_half_side": null,
+   "decal_over_side": null,
+   "stages": [],
+   "rubble": [],
+   "placement": []
+  },
+  "10x8": {
+   "count": 8,
+   "tris": {
+    "min": 1322,
+    "median": 1375.0,
+    "p90": 1687,
+    "max": 1687
+   },
+   "verts": {
+    "min": 2409,
+    "median": 3206.5,
+    "p90": 3628,
+    "max": 3628
+   },
+   "side_units": {
+    "min": 9.38,
+    "median": 10.815000000000001,
+    "p90": 12.25,
+    "max": 12.48
+   },
+   "height_m": {
+    "min": 15.77,
+    "median": 21.945,
+    "p90": 26.21,
+    "max": 26.21
+   },
+   "obstruction_over_half_side": {
+    "min": 0.801,
+    "median": 0.942,
+    "p90": 1.067,
+    "max": 1.067
+   },
+   "decal_over_side": {
+    "min": 1.121,
+    "median": 1.185,
+    "p90": 1.227,
+    "max": 1.227
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble6x6",
+     4
+    ],
+    [
+     "BuildingRubble5x3",
+     3
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     7
+    ]
+   ]
+  },
+  "9x9": {
+   "count": 7,
+   "tris": {
+    "min": 1235,
+    "median": 1235,
+    "p90": 3627,
+    "max": 4529
+   },
+   "verts": {
+    "min": 4051,
+    "median": 4051,
+    "p90": 8074,
+    "max": 161302
+   },
+   "side_units": {
+    "min": 9.25,
+    "median": 9.25,
+    "p90": 10.15,
+    "max": 10.16
+   },
+   "height_m": {
+    "min": 2.28,
+    "median": 28.32,
+    "p90": 28.32,
+    "max": 28.32
+   },
+   "obstruction_over_half_side": {
+    "min": 0.885,
+    "median": 0.973,
+    "p90": 0.973,
+    "max": 0.973
+   },
+   "decal_over_side": {
+    "min": 1.181,
+    "median": 1.189,
+    "p90": 1.246,
+    "max": 1.576
+   },
+   "stages": [
+    [
+     "4x4",
+     2
+    ],
+    [
+     "2x2",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     4
+    ],
+    [
+     "BuildingRubble3x3",
+     1
+    ],
+    [
+     "BuildingRubble5x5",
+     1
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     6
+    ],
+    [
+     "buildingsmall.xml",
+     1
+    ]
+   ]
+  },
+  "18x14": {
+   "count": 6,
+   "tris": {
+    "min": 1394,
+    "median": 1710.0,
+    "p90": 1710,
+    "max": 1764
+   },
+   "verts": {
+    "min": 3484,
+    "median": 4282.0,
+    "p90": 4282,
+    "max": 6861
+   },
+   "side_units": {
+    "min": 13.98,
+    "median": 16.66,
+    "p90": 16.66,
+    "max": 16.66
+   },
+   "height_m": {
+    "min": 19.82,
+    "median": 19.82,
+    "p90": 19.99,
+    "max": 23.4
+   },
+   "obstruction_over_half_side": {
+    "min": 1.08,
+    "median": 1.08,
+    "p90": 1.258,
+    "max": 1.288
+   },
+   "decal_over_side": {
+    "min": 1.08,
+    "median": 1.08,
+    "p90": 1.258,
+    "max": 1.288
+   },
+   "stages": [
+    [
+     "6x6",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble6x6",
+     6
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     2
+    ]
+   ]
+  },
+  "6x4": {
+   "count": 5,
+   "tris": {
+    "min": 860,
+    "median": 1073,
+    "p90": 2402,
+    "max": 2402
+   },
+   "verts": {
+    "min": 2653,
+    "median": 2943,
+    "p90": 5127,
+    "max": 5127
+   },
+   "side_units": {
+    "min": 7.7,
+    "median": 7.7,
+    "p90": 11.18,
+    "max": 11.18
+   },
+   "height_m": {
+    "min": 7.43,
+    "median": 10.79,
+    "p90": 11.28,
+    "max": 11.28
+   },
+   "obstruction_over_half_side": {
+    "min": 0.537,
+    "median": 0.779,
+    "p90": 0.78,
+    "max": 0.78
+   },
+   "decal_over_side": {
+    "min": 0.805,
+    "median": 1.169,
+    "p90": 1.169,
+    "max": 1.169
+   },
+   "stages": [],
+   "rubble": [],
+   "placement": []
+  },
+  "8x10": {
+   "count": 5,
+   "tris": {
+    "min": 675,
+    "median": 984,
+    "p90": 1171,
+    "max": 1171
+   },
+   "verts": {
+    "min": 1712,
+    "median": 2560,
+    "p90": 2728,
+    "max": 2728
+   },
+   "side_units": {
+    "min": 10.19,
+    "median": 10.61,
+    "p90": 11.39,
+    "max": 11.39
+   },
+   "height_m": {
+    "min": 11.37,
+    "median": 16.22,
+    "p90": 17.53,
+    "max": 17.53
+   },
+   "obstruction_over_half_side": {
+    "min": 0.878,
+    "median": 0.943,
+    "p90": 0.982,
+    "max": 0.982
+   },
+   "decal_over_side": {
+    "min": 1.054,
+    "median": 1.131,
+    "p90": 1.473,
+    "max": 1.473
+   },
+   "stages": [
+    [
+     "5x5",
+     2
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     5
+    ]
+   ],
+   "placement": [
+    [
+     "buildingsmall.xml",
+     5
+    ]
+   ]
+  },
+  "14x9": {
+   "count": 5,
+   "tris": {
+    "min": 1186,
+    "median": 1186,
+    "p90": 1186,
+    "max": 1186
+   },
+   "verts": {
+    "min": 2002,
+    "median": 2002,
+    "p90": 2002,
+    "max": 2002
+   },
+   "side_units": {
+    "min": 13.05,
+    "median": 13.05,
+    "p90": 13.05,
+    "max": 13.05
+   },
+   "height_m": {
+    "min": 25.2,
+    "median": 25.2,
+    "p90": 25.2,
+    "max": 25.2
+   },
+   "obstruction_over_half_side": {
+    "min": 1.073,
+    "median": 1.073,
+    "p90": 1.073,
+    "max": 1.073
+   },
+   "decal_over_side": {
+    "min": 1.341,
+    "median": 1.341,
+    "p90": 1.341,
+    "max": 1.341
+   },
+   "stages": [],
+   "rubble": [],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     5
+    ]
+   ]
+  },
+  "7x7": {
+   "count": 5,
+   "tris": {
+    "min": 417,
+    "median": 417,
+    "p90": 1978,
+    "max": 1978
+   },
+   "verts": {
+    "min": 735,
+    "median": 735,
+    "p90": 2475,
+    "max": 2475
+   },
+   "side_units": {
+    "min": 6.57,
+    "median": 7.99,
+    "p90": 13.74,
+    "max": 13.74
+   },
+   "height_m": {
+    "min": 6.58,
+    "median": 11.85,
+    "p90": 18.75,
+    "max": 18.75
+   },
+   "obstruction_over_half_side": {
+    "min": 0.51,
+    "median": 0.876,
+    "p90": 1.066,
+    "max": 1.066
+   },
+   "decal_over_side": {
+    "min": 1.019,
+    "median": 1.251,
+    "p90": 2.437,
+    "max": 2.437
+   },
+   "stages": [
+    [
+     "3x3",
+     3
+    ],
+    [
+     "5x5",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble3x3",
+     2
+    ],
+    [
+     "BuildingRubble4x4",
+     1
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     3
+    ]
+   ]
+  },
+  "6x10": {
+   "count": 4,
+   "tris": {
+    "min": 851,
+    "median": 2469.5,
+    "p90": 3394,
+    "max": 3394
+   },
+   "verts": {
+    "min": 987,
+    "median": 2791.5,
+    "p90": 2907,
+    "max": 2907
+   },
+   "side_units": {
+    "min": 10.06,
+    "median": 10.41,
+    "p90": 14.42,
+    "max": 14.42
+   },
+   "height_m": {
+    "min": 8.09,
+    "median": 15.75,
+    "p90": 22.46,
+    "max": 22.46
+   },
+   "obstruction_over_half_side": {
+    "min": 0.693,
+    "median": 0.96,
+    "p90": 0.994,
+    "max": 0.994
+   },
+   "decal_over_side": {
+    "min": 0.971,
+    "median": 1.104,
+    "p90": 1.144,
+    "max": 1.144
+   },
+   "stages": [
+    [
+     "3x5",
+     2
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble5x3",
+     3
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     3
+    ]
+   ]
+  },
+  "14x6": {
+   "count": 4,
+   "tris": {
+    "min": 1088,
+    "median": 1433.0,
+    "p90": 1778,
+    "max": 1778
+   },
+   "verts": {
+    "min": 2381,
+    "median": 3635.0,
+    "p90": 4889,
+    "max": 4889
+   },
+   "side_units": {
+    "min": 12.29,
+    "median": 12.52,
+    "p90": 12.75,
+    "max": 12.75
+   },
+   "height_m": {
+    "min": 17.28,
+    "median": 21.175,
+    "p90": 25.07,
+    "max": 25.07
+   },
+   "obstruction_over_half_side": {
+    "min": 1.098,
+    "median": 1.1185,
+    "p90": 1.139,
+    "max": 1.139
+   },
+   "decal_over_side": {
+    "min": 1.412,
+    "median": 1.438,
+    "p90": 1.464,
+    "max": 1.464
+   },
+   "stages": [
+    [
+     "3x7",
+     4
+    ],
+    [
+     "5x5",
+     2
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble3x3",
+     1
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     3
+    ]
+   ]
+  },
+  "14x14": {
+   "count": 4,
+   "tris": {
+    "min": 894,
+    "median": 894.0,
+    "p90": 10026,
+    "max": 10026
+   },
+   "verts": {
+    "min": 2269,
+    "median": 2269.0,
+    "p90": 13624,
+    "max": 13624
+   },
+   "side_units": {
+    "min": 15.31,
+    "median": 15.31,
+    "p90": 20.2,
+    "max": 20.2
+   },
+   "height_m": {
+    "min": 13.0,
+    "median": 17.86,
+    "p90": 17.86,
+    "max": 17.86
+   },
+   "obstruction_over_half_side": {
+    "min": 0.693,
+    "median": 0.914,
+    "p90": 0.914,
+    "max": 0.914
+   },
+   "decal_over_side": {
+    "min": 0.891,
+    "median": 0.947,
+    "p90": 0.947,
+    "max": 0.947
+   },
+   "stages": [
+    [
+     "2x2",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble3x3",
+     1
+    ],
+    [
+     "BuildingRubble4x4",
+     1
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     1
+    ]
+   ]
+  },
+  "14x10": {
+   "count": 4,
+   "tris": {
+    "min": 990,
+    "median": 990.0,
+    "p90": 990,
+    "max": 990
+   },
+   "verts": {
+    "min": 2627,
+    "median": 2627.0,
+    "p90": 2627,
+    "max": 2627
+   },
+   "side_units": {
+    "min": 12.07,
+    "median": 12.07,
+    "p90": 12.07,
+    "max": 12.07
+   },
+   "height_m": {
+    "min": 24.97,
+    "median": 24.97,
+    "p90": 24.97,
+    "max": 24.97
+   },
+   "obstruction_over_half_side": {
+    "min": 1.16,
+    "median": 1.16,
+    "p90": 1.16,
+    "max": 1.16
+   },
+   "decal_over_side": {
+    "min": 1.491,
+    "median": 1.491,
+    "p90": 1.491,
+    "max": 1.491
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     4
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     4
+    ]
+   ]
+  },
+  "10x12": {
+   "count": 4,
+   "tris": {
+    "min": 1349,
+    "median": 1349.0,
+    "p90": 1349,
+    "max": 1349
+   },
+   "verts": {
+    "min": 2814,
+    "median": 2814.0,
+    "p90": 2814,
+    "max": 2814
+   },
+   "side_units": {
+    "min": 11.13,
+    "median": 11.13,
+    "p90": 11.13,
+    "max": 11.13
+   },
+   "height_m": {
+    "min": 20.91,
+    "median": 20.91,
+    "p90": 20.91,
+    "max": 20.91
+   },
+   "obstruction_over_half_side": {
+    "min": 1.078,
+    "median": 1.078,
+    "p90": 1.078,
+    "max": 1.078
+   },
+   "decal_over_side": {
+    "min": 1.258,
+    "median": 1.258,
+    "p90": 1.258,
+    "max": 1.258
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     4
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     4
+    ]
+   ]
+  },
+  "14x16": {
+   "count": 4,
+   "tris": {
+    "min": 1608,
+    "median": 1608.0,
+    "p90": 1608,
+    "max": 1608
+   },
+   "verts": {
+    "min": 4464,
+    "median": 4464.0,
+    "p90": 4464,
+    "max": 4464
+   },
+   "side_units": {
+    "min": 15.52,
+    "median": 15.52,
+    "p90": 15.52,
+    "max": 15.52
+   },
+   "height_m": {
+    "min": 22.03,
+    "median": 22.03,
+    "p90": 22.03,
+    "max": 22.03
+   },
+   "obstruction_over_half_side": {
+    "min": 1.031,
+    "median": 1.031,
+    "p90": 1.031,
+    "max": 1.031
+   },
+   "decal_over_side": {
+    "min": 1.063,
+    "median": 1.063,
+    "p90": 1.063,
+    "max": 1.063
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     4
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     4
+    ]
+   ]
+  },
+  "8x16": {
+   "count": 4,
+   "tris": {
+    "min": 2500,
+    "median": 2500.0,
+    "p90": 2500,
+    "max": 2500
+   },
+   "verts": {
+    "min": 4262,
+    "median": 4262.0,
+    "p90": 4262,
+    "max": 4262
+   },
+   "side_units": null,
+   "height_m": null,
+   "obstruction_over_half_side": null,
+   "decal_over_side": null,
+   "stages": [
+    [
+     "4x4",
+     4
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble2x2",
+     4
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     4
+    ]
+   ]
+  },
+  "18x18": {
+   "count": 4,
+   "tris": {
+    "min": 1262,
+    "median": 1262.0,
+    "p90": 1262,
+    "max": 1262
+   },
+   "verts": {
+    "min": 2565,
+    "median": 2565.0,
+    "p90": 2565,
+    "max": 2565
+   },
+   "side_units": null,
+   "height_m": null,
+   "obstruction_over_half_side": null,
+   "decal_over_side": null,
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     4
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     4
+    ]
+   ]
+  },
+  "4x16": {
+   "count": 3,
+   "tris": {
+    "min": 943,
+    "median": 943,
+    "p90": 943,
+    "max": 943
+   },
+   "verts": {
+    "min": 2193,
+    "median": 2193,
+    "p90": 2193,
+    "max": 2193
+   },
+   "side_units": {
+    "min": 15.94,
+    "median": 15.94,
+    "p90": 15.94,
+    "max": 15.94
+   },
+   "height_m": {
+    "min": 8.68,
+    "median": 8.68,
+    "p90": 8.68,
+    "max": 8.68
+   },
+   "obstruction_over_half_side": {
+    "min": 1.004,
+    "median": 1.004,
+    "p90": 1.004,
+    "max": 1.004
+   },
+   "decal_over_side": {
+    "min": 1.004,
+    "median": 1.004,
+    "p90": 1.004,
+    "max": 1.004
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble3x3",
+     3
+    ]
+   ],
+   "placement": []
+  },
+  "3x3": {
+   "count": 3,
+   "tris": {
+    "min": 216,
+    "median": 805,
+    "p90": 7994,
+    "max": 7994
+   },
+   "verts": {
+    "min": 164,
+    "median": 1677,
+    "p90": 12714,
+    "max": 12714
+   },
+   "side_units": {
+    "min": 2.09,
+    "median": 3.1799999999999997,
+    "p90": 4.27,
+    "max": 4.27
+   },
+   "height_m": {
+    "min": 4.47,
+    "median": 4.975,
+    "p90": 5.48,
+    "max": 5.48
+   },
+   "obstruction_over_half_side": {
+    "min": 0.702,
+    "median": 1.068,
+    "p90": 1.434,
+    "max": 1.434
+   },
+   "decal_over_side": {
+    "min": 1.17,
+    "median": 1.7805,
+    "p90": 2.391,
+    "max": 2.391
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble2x2",
+     1
+    ],
+    [
+     "BuildingRubble3x3",
+     1
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     2
+    ]
+   ]
+  },
+  "8x6": {
+   "count": 2,
+   "tris": {
+    "min": 415,
+    "median": 415.0,
+    "p90": 415,
+    "max": 415
+   },
+   "verts": {
+    "min": 1184,
+    "median": 1184.0,
+    "p90": 1184,
+    "max": 1184
+   },
+   "side_units": {
+    "min": 8.5,
+    "median": 8.5,
+    "p90": 8.5,
+    "max": 8.5
+   },
+   "height_m": {
+    "min": 30.56,
+    "median": 30.56,
+    "p90": 30.56,
+    "max": 30.56
+   },
+   "obstruction_over_half_side": {
+    "min": 0.941,
+    "median": 0.941,
+    "p90": 0.941,
+    "max": 0.941
+   },
+   "decal_over_side": {
+    "min": 1.0,
+    "median": 1.0,
+    "p90": 1.0,
+    "max": 1.0
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble2x2",
+     2
+    ]
+   ],
+   "placement": [
+    [
+     "buildingsmall.xml",
+     2
+    ]
+   ]
+  },
+  "5x5": {
+   "count": 2,
+   "tris": {
+    "min": 79,
+    "median": 325.0,
+    "p90": 571,
+    "max": 571
+   },
+   "verts": {
+    "min": 93,
+    "median": 754.5,
+    "p90": 1416,
+    "max": 1416
+   },
+   "side_units": {
+    "min": 3.49,
+    "median": 4.18,
+    "p90": 4.87,
+    "max": 4.87
+   },
+   "height_m": {
+    "min": 3.69,
+    "median": 5.82,
+    "p90": 7.95,
+    "max": 7.95
+   },
+   "obstruction_over_half_side": {
+    "min": 1.026,
+    "median": 1.229,
+    "p90": 1.432,
+    "max": 1.432
+   },
+   "decal_over_side": {
+    "min": 1.437,
+    "median": 2.2935,
+    "p90": 3.15,
+    "max": 3.15
+   },
+   "stages": [
+    [
+     "2x2",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble2x2",
+     2
+    ]
+   ],
+   "placement": []
+  },
+  "19x19": {
+   "count": 1,
+   "tris": {
+    "min": 2109,
+    "median": 2109,
+    "p90": 2109,
+    "max": 2109
+   },
+   "verts": {
+    "min": 5559,
+    "median": 5559,
+    "p90": 5559,
+    "max": 5559
+   },
+   "side_units": {
+    "min": 28.44,
+    "median": 28.44,
+    "p90": 28.44,
+    "max": 28.44
+   },
+   "height_m": {
+    "min": 28.42,
+    "median": 28.42,
+    "p90": 28.42,
+    "max": 28.42
+   },
+   "obstruction_over_half_side": {
+    "min": 0.668,
+    "median": 0.668,
+    "p90": 0.668,
+    "max": 0.668
+   },
+   "decal_over_side": {
+    "min": 0.703,
+    "median": 0.703,
+    "p90": 0.703,
+    "max": 0.703
+   },
+   "stages": [],
+   "rubble": [],
+   "placement": []
+  },
+  "10x6": {
+   "count": 1,
+   "tris": {
+    "min": 1171,
+    "median": 1171,
+    "p90": 1171,
+    "max": 1171
+   },
+   "verts": {
+    "min": 2112,
+    "median": 2112,
+    "p90": 2112,
+    "max": 2112
+   },
+   "side_units": {
+    "min": 11.68,
+    "median": 11.68,
+    "p90": 11.68,
+    "max": 11.68
+   },
+   "height_m": {
+    "min": 12.73,
+    "median": 12.73,
+    "p90": 12.73,
+    "max": 12.73
+   },
+   "obstruction_over_half_side": {
+    "min": 0.856,
+    "median": 0.856,
+    "p90": 0.856,
+    "max": 0.856
+   },
+   "decal_over_side": {
+    "min": 0.985,
+    "median": 0.985,
+    "p90": 0.985,
+    "max": 0.985
+   },
+   "stages": [
+    [
+     "5x3",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     1
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     1
+    ]
+   ]
+  },
+  "4x2": {
+   "count": 1,
+   "tris": {
+    "min": 654,
+    "median": 654,
+    "p90": 654,
+    "max": 654
+   },
+   "verts": {
+    "min": 1555,
+    "median": 1555,
+    "p90": 1555,
+    "max": 1555
+   },
+   "side_units": {
+    "min": 4.0,
+    "median": 4.0,
+    "p90": 4.0,
+    "max": 4.0
+   },
+   "height_m": {
+    "min": 10.04,
+    "median": 10.04,
+    "p90": 10.04,
+    "max": 10.04
+   },
+   "obstruction_over_half_side": {
+    "min": 1.0,
+    "median": 1.0,
+    "p90": 1.0,
+    "max": 1.0
+   },
+   "decal_over_side": {
+    "min": 1.75,
+    "median": 1.75,
+    "p90": 1.75,
+    "max": 1.75
+   },
+   "stages": [],
+   "rubble": [],
+   "placement": []
+  },
+  "6x2": {
+   "count": 1,
+   "tris": {
+    "min": 112,
+    "median": 112,
+    "p90": 112,
+    "max": 112
+   },
+   "verts": {
+    "min": 272,
+    "median": 272,
+    "p90": 272,
+    "max": 272
+   },
+   "side_units": {
+    "min": 6.08,
+    "median": 6.08,
+    "p90": 6.08,
+    "max": 6.08
+   },
+   "height_m": {
+    "min": 8.06,
+    "median": 8.06,
+    "p90": 8.06,
+    "max": 8.06
+   },
+   "obstruction_over_half_side": {
+    "min": 0.986,
+    "median": 0.986,
+    "p90": 0.986,
+    "max": 0.986
+   },
+   "decal_over_side": {
+    "min": 1.381,
+    "median": 1.381,
+    "p90": 1.381,
+    "max": 1.381
+   },
+   "stages": [],
+   "rubble": [],
+   "placement": []
+  },
+  "8x2": {
+   "count": 1,
+   "tris": {
+    "min": 134,
+    "median": 134,
+    "p90": 134,
+    "max": 134
+   },
+   "verts": {
+    "min": 234,
+    "median": 234,
+    "p90": 234,
+    "max": 234
+   },
+   "side_units": {
+    "min": 8.55,
+    "median": 8.55,
+    "p90": 8.55,
+    "max": 8.55
+   },
+   "height_m": {
+    "min": 68.97,
+    "median": 68.97,
+    "p90": 68.97,
+    "max": 68.97
+   },
+   "obstruction_over_half_side": {
+    "min": 0.936,
+    "median": 0.936,
+    "p90": 0.936,
+    "max": 0.936
+   },
+   "decal_over_side": {
+    "min": 1.287,
+    "median": 1.287,
+    "p90": 1.287,
+    "max": 1.287
+   },
+   "stages": [],
+   "rubble": [],
+   "placement": []
+  },
+  "10x2": {
+   "count": 1,
+   "tris": {
+    "min": 154,
+    "median": 154,
+    "p90": 154,
+    "max": 154
+   },
+   "verts": {
+    "min": 259,
+    "median": 259,
+    "p90": 259,
+    "max": 259
+   },
+   "side_units": {
+    "min": 10.45,
+    "median": 10.45,
+    "p90": 10.45,
+    "max": 10.45
+   },
+   "height_m": {
+    "min": 68.97,
+    "median": 68.97,
+    "p90": 68.97,
+    "max": 68.97
+   },
+   "obstruction_over_half_side": {
+    "min": 0.957,
+    "median": 0.957,
+    "p90": 0.957,
+    "max": 0.957
+   },
+   "decal_over_side": {
+    "min": 1.34,
+    "median": 1.34,
+    "p90": 1.34,
+    "max": 1.34
+   },
+   "stages": [],
+   "rubble": [],
+   "placement": []
+  },
+  "8x12": {
+   "count": 1,
+   "tris": {
+    "min": 803,
+    "median": 803,
+    "p90": 803,
+    "max": 803
+   },
+   "verts": {
+    "min": 1631,
+    "median": 1631,
+    "p90": 1631,
+    "max": 1631
+   },
+   "side_units": null,
+   "height_m": null,
+   "obstruction_over_half_side": null,
+   "decal_over_side": null,
+   "stages": [
+    [
+     "3x5",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble5x3",
+     1
+    ]
+   ],
+   "placement": []
+  },
+  "12x18": {
+   "count": 1,
+   "tris": {
+    "min": 16026,
+    "median": 16026,
+    "p90": 16026,
+    "max": 16026
+   },
+   "verts": {
+    "min": 11140,
+    "median": 11140,
+    "p90": 11140,
+    "max": 11140
+   },
+   "side_units": {
+    "min": 21.04,
+    "median": 21.04,
+    "p90": 21.04,
+    "max": 21.04
+   },
+   "height_m": {
+    "min": 17.77,
+    "median": 17.77,
+    "p90": 17.77,
+    "max": 17.77
+   },
+   "obstruction_over_half_side": {
+    "min": 0.855,
+    "median": 0.855,
+    "p90": 0.855,
+    "max": 0.855
+   },
+   "decal_over_side": {
+    "min": 0.808,
+    "median": 0.808,
+    "p90": 0.808,
+    "max": 0.808
+   },
+   "stages": [
+    [
+     "2x2",
+     1
+    ],
+    [
+     "5x5",
+     1
+    ],
+    [
+     "6x6",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble6x6",
+     1
+    ]
+   ],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     1
+    ]
+   ]
+  },
+  "30x30": {
+   "count": 1,
+   "tris": {
+    "min": 2839,
+    "median": 2839,
+    "p90": 2839,
+    "max": 2839
+   },
+   "verts": {
+    "min": 3599,
+    "median": 3599,
+    "p90": 3599,
+    "max": 3599
+   },
+   "side_units": {
+    "min": 30.95,
+    "median": 30.95,
+    "p90": 30.95,
+    "max": 30.95
+   },
+   "height_m": {
+    "min": 8.26,
+    "median": 8.26,
+    "p90": 8.26,
+    "max": 8.26
+   },
+   "obstruction_over_half_side": {
+    "min": 0.969,
+    "median": 0.969,
+    "p90": 0.969,
+    "max": 0.969
+   },
+   "decal_over_side": {
+    "min": 1.163,
+    "median": 1.163,
+    "p90": 1.163,
+    "max": 1.163
+   },
+   "stages": [],
+   "rubble": [
+    [
+     "BuildingRubble5x5",
+     1
+    ]
+   ],
+   "placement": []
+  },
+  "20x20": {
+   "count": 1,
+   "tris": {
+    "min": 3511,
+    "median": 3511,
+    "p90": 3511,
+    "max": 3511
+   },
+   "verts": {
+    "min": 6350,
+    "median": 6350,
+    "p90": 6350,
+    "max": 6350
+   },
+   "side_units": null,
+   "height_m": null,
+   "obstruction_over_half_side": null,
+   "decal_over_side": null,
+   "stages": [],
+   "rubble": [],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     1
+    ]
+   ]
+  },
+  "8x11": {
+   "count": 1,
+   "tris": {
+    "min": 412,
+    "median": 412,
+    "p90": 412,
+    "max": 412
+   },
+   "verts": {
+    "min": 714,
+    "median": 714,
+    "p90": 714,
+    "max": 714
+   },
+   "side_units": {
+    "min": 11.6,
+    "median": 11.6,
+    "p90": 11.6,
+    "max": 11.6
+   },
+   "height_m": {
+    "min": 9.57,
+    "median": 9.57,
+    "p90": 9.57,
+    "max": 9.57
+   },
+   "obstruction_over_half_side": {
+    "min": 0.948,
+    "median": 0.948,
+    "p90": 0.948,
+    "max": 0.948
+   },
+   "decal_over_side": {
+    "min": 1.206,
+    "median": 1.206,
+    "p90": 1.206,
+    "max": 1.206
+   },
+   "stages": [
+    [
+     "3x5",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble4x4",
+     1
+    ]
+   ],
+   "placement": []
+  },
+  "11x11": {
+   "count": 1,
+   "tris": {
+    "min": 5613,
+    "median": 5613,
+    "p90": 5613,
+    "max": 5613
+   },
+   "verts": {
+    "min": 220525,
+    "median": 220525,
+    "p90": 220525,
+    "max": 220525
+   },
+   "side_units": {
+    "min": 11.19,
+    "median": 11.19,
+    "p90": 11.19,
+    "max": 11.19
+   },
+   "height_m": {
+    "min": 1.98,
+    "median": 1.98,
+    "p90": 1.98,
+    "max": 1.98
+   },
+   "obstruction_over_half_side": {
+    "min": 0.983,
+    "median": 0.983,
+    "p90": 0.983,
+    "max": 0.983
+   },
+   "decal_over_side": {
+    "min": 1.206,
+    "median": 1.206,
+    "p90": 1.206,
+    "max": 1.206
+   },
+   "stages": [
+    [
+     "5x5",
+     1
+    ]
+   ],
+   "rubble": [
+    [
+     "BuildingRubble5x5",
+     1
+    ]
+   ],
+   "placement": []
+  },
+  "6x22": {
+   "count": 1,
+   "tris": {
+    "min": 1704,
+    "median": 1704,
+    "p90": 1704,
+    "max": 1704
+   },
+   "verts": {
+    "min": 55650,
+    "median": 55650,
+    "p90": 55650,
+    "max": 55650
+   },
+   "side_units": {
+    "min": 17.52,
+    "median": 17.52,
+    "p90": 17.52,
+    "max": 17.52
+   },
+   "height_m": {
+    "min": 3.05,
+    "median": 3.05,
+    "p90": 3.05,
+    "max": 3.05
+   },
+   "obstruction_over_half_side": {
+    "min": 1.256,
+    "median": 1.256,
+    "p90": 1.256,
+    "max": 1.256
+   },
+   "decal_over_side": {
+    "min": 1.713,
+    "median": 1.713,
+    "p90": 1.713,
+    "max": 1.713
+   },
+   "stages": [],
+   "rubble": [],
+   "placement": []
+  },
+  "6x14": {
+   "count": 1,
+   "tris": {
+    "min": 2023,
+    "median": 2023,
+    "p90": 2023,
+    "max": 2023
+   },
+   "verts": {
+    "min": 2844,
+    "median": 2844,
+    "p90": 2844,
+    "max": 2844
+   },
+   "side_units": {
+    "min": 10.93,
+    "median": 10.93,
+    "p90": 10.93,
+    "max": 10.93
+   },
+   "height_m": {
+    "min": 17.85,
+    "median": 17.85,
+    "p90": 17.85,
+    "max": 17.85
+   },
+   "obstruction_over_half_side": {
+    "min": 1.281,
+    "median": 1.281,
+    "p90": 1.281,
+    "max": 1.281
+   },
+   "decal_over_side": {
+    "min": 1.281,
+    "median": 1.281,
+    "p90": 1.281,
+    "max": 1.281
+   },
+   "stages": [
+    [
+     "3x5",
+     1
+    ]
+   ],
+   "rubble": [],
+   "placement": [
+    [
+     "buildinglarge.xml",
+     1
+    ]
+   ]
+  }
+ },
+ "size_outliers": [
+  [
+   "3D Studio MAX 1000 up Z",
+   27
+  ],
+  [
+   "ESPostExport 0.615157 up Y",
+   15
+  ],
+  [
+   "3D Studio MAX 39.3701 up Z",
+   3
+  ],
+  [
+   "3D Studio MAX 1 up Z",
+   1
+  ]
+ ],
+ "tris_all": {
+  "min": 1,
+  "median": 1016,
+  "p90": 2420,
+  "max": 16026
+ },
+ "bases": [
+  [
+   "ESPostExport 0.615157 up Y",
+   521
+  ],
+  [
+   "3D Studio MAX 39.3701 up Z",
+   72
+  ],
+  [
+   "3D Studio MAX 1000 up Z",
+   27
+  ],
+  [
+   "3D Studio MAX 1 up Z",
+   1
+  ]
+ ],
+ "vertex_layouts": [
+  [
+   "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+   1405
+  ],
+  [
+   "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+   886
+  ],
+  [
+   "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+   27
+  ],
+  [
+   "FD:u81 (1 B)",
+   21
+  ],
+  [
+   "Position:f3,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (48 B)",
+   11
+  ],
+  [
+   "Position:f3,Normal:f3,DiffuseColor:u84,TextureCoordinates0:f2 (36 B)",
+   1
+  ]
+ ],
+ "index_bits": [
+  [
+   "[16]",
+   497
+  ],
+  [
+   "[32]",
+   124
+  ]
+ ],
+ "effects": [
+  [
+   "bumpspec_mask_alphatest",
+   663
+  ],
+  [
+   "bumpspec_mask_pixelxform",
+   348
+  ],
+  [
+   "bumpspec_mask",
+   328
+  ],
+  [
+   "alphatest",
+   73
+  ],
+  [
+   "tree",
+   15
+  ],
+  [
+   "bumpspec_alphatest",
+   14
+  ],
+  [
+   "water_nocolor",
+   13
+  ],
+  [
+   "pixelxform",
+   8
+  ],
+  [
+   "alphablend",
+   5
+  ],
+  [
+   "bumpspec_mask_alphatest_ambientocclusion",
+   3
+  ]
+ ],
+ "bones": [
+  [
+   "bone_main",
+   445
+  ],
+  [
+   "bone_hitpointbar",
+   139
+  ],
+  [
+   "bone_flag_civ",
+   113
+  ],
+  [
+   "bone_master",
+   59
+  ],
+  [
+   "bone_garrisonflag",
+   33
+  ],
+  [
+   "bone_launchpoint01",
+   30
+  ],
+  [
+   "bone_chimney",
+   29
+  ],
+  [
+   "bone_launchpoint02",
+   29
+  ],
+  [
+   "bone_launchpoint03",
+   28
+  ],
+  [
+   "bone_skirt02",
+   24
+  ],
+  [
+   "bone_skirt04",
+   24
+  ],
+  [
+   "bone_skirt06",
+   24
+  ],
+  [
+   "bone_skirt08",
+   24
+  ],
+  [
+   "bone_skirt07",
+   24
+  ],
+  [
+   "bone_skirt05",
+   24
+  ],
+  [
+   "bone_skirt01",
+   24
+  ],
+  [
+   "bone_skirt03",
+   24
+  ],
+  [
+   "bone_campfire",
+   21
+  ],
+  [
+   "bone_launchpoint04",
+   21
+  ],
+  [
+   "bone_smoke",
+   18
+  ]
+ ],
+ "textures": [
+  [
+   "256x256 format 8 alpha 1",
+   190
+  ],
+  [
+   "256x256 format 8 alpha 4",
+   104
+  ],
+  [
+   "128x128 format 8 alpha 1",
+   33
+  ],
+  [
+   "128x128 format 4 alpha 0",
+   32
+  ],
+  [
+   "512x256 format 8 alpha 1",
+   30
+  ],
+  [
+   "64x64 format 8 alpha 1",
+   27
+  ],
+  [
+   "256x256 format 4 alpha 0",
+   24
+  ],
+  [
+   "512x512 format 8 alpha 1",
+   10
+  ],
+  [
+   "128x128 format 8 alpha 4",
+   7
+  ],
+  [
+   "64x128 format 8 alpha 1",
+   6
+  ]
+ ]
+}

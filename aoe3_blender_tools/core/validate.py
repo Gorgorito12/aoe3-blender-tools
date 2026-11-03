@@ -88,7 +88,10 @@ def coplanar_overlaps(mesh, min_area=0.005):
     return found
 
 
-def check(obj, tri_budget=6000):
+def check(obj, tri_budget=6000, profile=None):
+    """Problems of a building object, as (level, message). With a calibration profile
+    (core.profile) and the object's footprint, the budget is the one measured for buildings of
+    its footprint class: a warning above their 90th percentile, an error above their maximum."""
     res = []
     if obj is None or obj.type != "MESH":
         return [(ERROR, "Select the building's mesh object.")]
@@ -100,12 +103,26 @@ def check(obj, tri_budget=6000):
 
     # budget and index limits
     res.append((INFO, f"{tris} triangles, {verts} vertices."))
-    if tris > tri_budget:
+    budget = None
+    if profile is not None and "aoe3_footprint" in obj:
+        w, d = obj["aoe3_footprint"][0], obj["aoe3_footprint"][1]
+        cls = profile.footprint_class(w, d)
+        budget = profile.tri_budget(cls) if cls else None
+    if budget:
+        p90, top = budget
+        res.append((INFO, f"Footprint class {cls}: the measured buildings have up to {p90} triangles "
+                          f"(90th percentile), {top} at most."))
+        if tris > top:
+            res.append((ERROR, f"{tris} triangles is above every measured building of class {cls} ({top})."))
+        elif tris > p90:
+            res.append((WARNING, f"{tris} triangles is above 90% of the measured buildings of class {cls} ({p90})."))
+    elif tris > tri_budget:
         res.append((WARNING, f"{tris} triangles is above the budget of {tri_budget}."))
     corner_verts = len({(l.vertex_index, tuple(round(c, 4) for c in m.uv_layers.active.data[l.index].uv))
                         for l in m.loops}) if m.uv_layers.active else verts
     if corner_verts > 65535:
-        res.append((ERROR, f"About {corner_verts} vertices once split by UV: above the 16-bit index limit (65,535)."))
+        res.append((WARNING, f"About {corner_verts} vertices once split by UV: above 65,535, so the model "
+                             "needs 32-bit indices (the game exporter writes them; few stock models use them)."))
     elif corner_verts > 30000:
         res.append((WARNING, f"About {corner_verts} vertices once split by UV: heavy for a building."))
 
