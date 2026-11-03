@@ -197,6 +197,16 @@ class ProtoTest(unittest.TestCase):
         with self.assertRaises(proto.ProtoError):
             proto.insert_unit(text, block)
 
+    def test_add_train(self):
+        text = proto.add_train(PROTO, "House", "Tower")
+        house = proto.unit_text(text, "House")
+        self.assertIn('\t\t<Train column="1" page="6" row="0">Tower</Train>\r\n\t</Unit>', house)
+        self.assertEqual(proto.add_train(text, "House", "Tower"), text)        # only once
+        again = proto.add_train(text, "House", "Keep")
+        self.assertLess(again.find(">Tower</Train>"), again.find(">Keep</Train>"))
+        with self.assertRaises(proto.ProtoError):
+            proto.add_train(PROTO, "Nobody", "Tower")
+
     def test_strings(self):
         ids = proto.free_locids(STRINGS, 2)
         self.assertEqual(ids, [9000001, 9000002])
@@ -261,6 +271,19 @@ class DeployTest(unittest.TestCase):
             d.undo(log=lambda s: None)
             self.assertEqual(self.digest(inst), before)
 
+    def test_show_as(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inst, b = self.make_copy(tmp)
+            before = self.digest(inst)
+            d = deploy.Deployment(inst)
+            d.apply(b, log=lambda s: None, show_as="House")
+            text, _ = proto.read_text(os.path.join(inst, "data", "protoy.xml"))
+            house = proto.unit_text(text, "House")
+            self.assertIn(r"<AnimFile>mod\buildings\tower\tower.xml</AnimFile>", house)
+            self.assertIn("<DBID>15</DBID>", house)                       # the rest is untouched
+            d.undo(log=lambda s: None)
+            self.assertEqual(self.digest(inst), before)
+
     def test_refusals(self):
         with self.assertRaises(deploy.RefusedPath):
             deploy.Deployment(r"C:\Program Files (x86)\Steam\steamapps\common\Game")
@@ -293,6 +316,58 @@ class DdtTest(unittest.TestCase):
         data = b"RTS3" + bytes([0, 0, 4, 1]) + struct.pack("<IIII", 4, 4, 24, 8) + block
         px = ddt.decode(data)
         self.assertEqual(tuple(px[0, 0]), (0, 0, 255, 255))
+
+    def test_dxt_round_trip(self):
+        rng = np.random.default_rng(3)
+        img = np.zeros((64, 64, 4), np.uint8)
+        img[..., :3] = rng.integers(0, 256, 3)                      # flat blocks first
+        img[:32, :, :3] = (200, 30, 40)
+        img[:, 40:, :3] = np.linspace(0, 255, 24)[None, :, None].astype(np.uint8)
+        img[..., 3] = 255
+        img[8:12, 8:24, 3] = 0                                        # a player-colour band
+        for fmt in (ddt.DXT1, ddt.DXT3):
+            data = ddt.write_dxt(img, fmt)
+            h = ddt.read_header(data)
+            self.assertEqual((h.format, h.width, h.height, h.mips), (fmt, 64, 64, 5))
+            self.assertEqual(h.levels[0][1], 64 * 64 // (2 if fmt == ddt.DXT1 else 1))
+            back = ddt.decode(data).astype(int)
+            self.assertLess(np.abs(back[..., :3] - img[..., :3]).mean(), 3.0)
+            self.assertTrue((np.abs(back[:32, :32, :3] - (200, 30, 40)) <= 6).all())   # flat stays flat
+        back = ddt.decode(ddt.write_dxt(img, ddt.DXT3))
+        self.assertTrue((back[8:12, 8:24, 3] == 0).all())
+        self.assertTrue((back[20:, :, 3] == 255).all())
+        self.assertEqual(ddt.decode(ddt.write_dxt(img, ddt.DXT3), 4).shape, (4, 4, 4))
+
+    def test_bundle_picks_the_player_colour_shader(self):
+        P, N, UV, T = box()
+        with tempfile.TemporaryDirectory() as tmp:
+            for masked in (False, True):
+                tex = np.full((32, 32, 4), 255, np.uint8)
+                if masked:
+                    tex[4:6, :, 3] = 0
+                out = os.path.join(tmp, str(masked))
+                desc = bundle.write(out, name="Box", prefix="mod", positions=P, normals=N, uvs=UV,
+                                    triangles=T, texture_rgba=tex, footprint_m=(4, 3))
+                base = os.path.join(out, "art", "mod", "buildings", "box", "box")
+                effect = gr2.load(base + ".gr2").stats()["materials"][2]["effect"]
+                with open(base + ".ddt", "rb") as f:
+                    h = ddt.read_header(f.read())
+                self.assertEqual(desc["texture"], {"format": "DXT3", "player_colour": masked})
+                self.assertEqual(h.format, ddt.DXT3)
+                self.assertEqual(effect, "bumpspec_mask_pixelxform" if masked else "bumpspec_mask_alphatest")
+            with self.assertRaises(ValueError):
+                bundle.write(os.path.join(tmp, "x"), name="Box", prefix="mod", positions=P, normals=N,
+                             uvs=UV, triangles=T, texture_rgba=tex, footprint_m=(4, 3), texture_format="DXT1")
+
+    def test_icon_compose(self):
+        from aoe3game import icons
+        shot = np.zeros((256, 256, 4), np.uint8)
+        shot[64:192, 64:192] = (250, 250, 250, 255)                  # an opaque white square
+        icon = icons.compose(shot, 64)
+        self.assertEqual(icon.shape, (64, 64, 3))
+        self.assertTrue((icon[32, 32] > 240).all())                  # the building
+        self.assertTrue((icon[0, 0] == icons.FRAME_DARK).all())      # the frame
+        self.assertLess(int(icon[10, 10].sum()), 300)                # the dark background
 
     def test_bundle_sizes(self):
         s = bundle.game_size((14.6, 14.6))

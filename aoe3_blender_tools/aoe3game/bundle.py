@@ -44,8 +44,21 @@ def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None):
 
 def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba, bones=(),
           footprint_m, icon_rgba=None, portrait_rgba=None, display_name=None, rollover="",
-          template="House", v_flip=True, player_colour=False, chimney_bone=None, profile=None):
-    """Writes the bundle into `out` and returns the bundle description."""
+          template="House", v_flip=True, player_colour=None, chimney_bone=None, profile=None,
+          texture_format="DXT3"):
+    """Writes the bundle into `out` and returns the bundle description.
+
+    player_colour: None decides from the texture: an alpha below 255 anywhere means the
+    player-colour shader (the low alpha shows the owner's colour). texture_format: "DXT3" (the
+    game's usual building format, keeps the alpha), "DXT1" (no alpha) or "BGRA" (uncompressed).
+    """
+    import numpy as np
+    rgba = np.asarray(texture_rgba)
+    if player_colour is None:
+        player_colour = rgba.shape[2] == 4 and int(rgba[:, :, 3].min()) < 250
+    fmt = {"DXT3": ddt.DXT3, "DXT1": ddt.DXT1, "BGRA": ddt.BGRA}[texture_format.upper()]
+    if player_colour and fmt == ddt.DXT1:
+        raise ValueError("DXT1 has no alpha: the player-colour mask needs DXT3 or BGRA")
     low = name.lower()
     rel_dir = f"{prefix}\\buildings\\{low}"
     art_dir = os.path.join(out, "art", prefix, "buildings", low)
@@ -59,18 +72,18 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
     with open(os.path.join(art_dir, low + ".gr2"), "wb") as f:
         f.write(model)
     with open(os.path.join(art_dir, low + ".ddt"), "wb") as f:
-        f.write(ddt.write_bgra(texture_rgba, alpha=1, usage=0, mips=True))
+        f.write(ddt.write(rgba, fmt, alpha=1, usage=0, mips=True))
     unit = {"AnimFile": f"{rel_dir}\\{low}.xml",
             "ObstructionRadiusX": "%.4f" % size["radius"][0],
             "ObstructionRadiusZ": "%.4f" % size["radius"][1],
             "DeadReplacement": size["rubble"], "PlacementFile": size["placement"]}
     if icon_rgba is not None:
         with open(os.path.join(art_dir, low + "_icon.ddt"), "wb") as f:
-            f.write(ddt.write_bgra(icon_rgba, alpha=1, usage=1, mips=False))
+            f.write(ddt.write(icon_rgba, ddt.DXT1, alpha=0, usage=0, mips=False))
         unit["Icon"] = f"{rel_dir}\\{low}_icon"
     if portrait_rgba is not None:
         with open(os.path.join(art_dir, low + "_portrait.ddt"), "wb") as f:
-            f.write(ddt.write_bgra(portrait_rgba, alpha=1, usage=0, mips=False))
+            f.write(ddt.write(portrait_rgba, ddt.DXT1, alpha=0, usage=0, mips=True))
         unit["PortraitIcon"] = f"{rel_dir}\\{low}_portrait"
     bone_names = [b for b, _ in bones]
     anim = animxml.building(name, f"{rel_dir}\\{low}", decal=size["decal"],
@@ -81,6 +94,7 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
         f.write(anim)
     display = display_name or name
     desc = {"name": name, "template": template, "unit": unit, "size": size,
+            "texture": {"format": texture_format.upper(), "player_colour": bool(player_colour)},
             "strings": {"DisplayNameID": display, "EditorNameID": display,
                         "RolloverTextID": rollover or display,
                         "ShortRolloverTextID": rollover or display},

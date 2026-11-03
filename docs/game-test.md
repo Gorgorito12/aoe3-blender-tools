@@ -53,22 +53,46 @@ Check, in this order:
 | Obstruction | the selection square and the ground decal fit the walls | the profile's ratios |
 | Construction | stages 1 to 3 of the 4x4 set, then the building | the anim file |
 | Destruction | rubble (`BuildingRubble4x4`) | the proto's DeadReplacement |
+| Player colour | the string courses (and shutters) in the owner's colour | the alpha mask or the shader |
 
-## Status (2026-11-02)
+## Status (2026-11-03)
 
-Seen in game, in a copy of the target mod:
+Seen in game, in a copy of the target mod (White House, medium detail, DXT3 texture with the
+player-colour mask, rendered icon and portrait):
 
-- The scenario editor lists the White House and its preview draws the model with its texture.
-- In a skirmish, with the copy's Town Center temporarily pointed at the White House's anim file
-  (restored afterwards by deploying again): the building stands at the start position, lit like
-  the stock objects around it; walls, windows, roof, chimney, cupola and portico textured the
-  right way up; the civilization's flag flies from the `bone_flag_civ` bone; the ground decal
-  shows; its size next to the villagers is right (a villager is about half a storey).
+- The scenario editor lists it and its preview draws the model.
+- On the map it stands at the right size next to a stock house and the villagers, lit like the
+  stock objects, textured the right way up, the civilization flag on `bone_flag_civ`, the ground
+  decal under it.
+- Player colour: its string courses show blue for player 1 and red for player 2.
+- Selected, the interface shows its own icon, portrait and name.
+- Built by a villager (cost paid, +10 population): the stock 4x4 construction stages, then the
+  finished building.
+- Damaged to 40 % and killed by triggers: it goes, and `BuildingRubble4x4` takes its place.
 
-Not yet seen: construction stages, destruction and rubble, the player colour, and the
-obstruction ring next to a placed stock house (placing objects in the editor needs a real
-mouse click; posted clicks do not reach the map).
+Not yet checked: the obstruction ring against neighbouring buildings and walking units.
 
-A way to look without the editor, for a test copy only: point the `TownCenter` unit's
-`<AnimFile>` at the new anim file, start a skirmish, then deploy again (or `--undo`) to restore
-the copy.
+## Driving a test without clicks
+
+The game's own triggers can place and drive everything:
+
+- a test map script places the building, a stock house and villagers for each player;
+- trigger effects at given seconds: `Grant Resources` (the build cost), `Unforbid and Enable Unit`
+  (a new building is not enabled for any player until something enables it, as the
+  civilization techs do for stock buildings), `Unit Build Building` (a villager builds it at a
+  point), `Damage Unit Percent` and `Kill`.
+
+The villager must have the building in its build list: deploy with `--builder Settler` (test copy
+only). Selection calls typed on the console (`trUnitSelectByID`, `trUnitBuildUnit`) did nothing
+outside a trigger. An engine extension DLL with a console command file option lets a script run
+the console commands that load the map and point the camera, and one with a multiple-instances
+option lets the test copy run beside another copy of the game.
+
+A way to look without the editor, for a test copy only: deploy with `--show-as TownCenter`.
+The copy's Town Center then takes the new building's model, icon and portrait, so the building
+stands at the start of any skirmish (press T to select it and see the portrait, Delete to
+destroy it). Deploy again without the option, or `--undo`, to restore the copy.
+
+```
+python -I -X utf8 tools\game_deploy.py --install C:\AoE3-BT-Test --bundle out\wh --show-as TownCenter
+```

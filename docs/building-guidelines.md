@@ -66,9 +66,8 @@ Measured since 0.1 (see [game-formats.md](game-formats.md)): the scale of one un
 point names (`bone_flag_civ`, `bone_chimney`), how construction and destruction are set up, the
 `.ddt` format and the alpha channel, the budgets per footprint class, and that the game loads a
 generated model and draws it in the world at the right size and lighting, with the civilization
-flag on `bone_flag_civ`. Still to see in game ([game-test.md](game-test.md)):
+flag on `bone_flag_civ`. Also seen since: player colour, the building's own icon and portrait,
+the construction stages and the rubble. Still to see in game ([game-test.md](game-test.md)):
 
-1. The obstruction ring next to a placed stock house.
-2. The construction stages and the rubble.
-3. The player colour (texture alpha below 255 with the `pixelxform` shader).
-4. Why 27 of the mod's models declare 1,000 units per metre yet measure about 0.5 m.
+1. The obstruction ring against neighbouring buildings and walking units.
+2. Why 27 of the mod's models declare 1,000 units per metre yet measure about 0.5 m.

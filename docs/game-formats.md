@@ -40,7 +40,8 @@ first8 fields. Checks passed (**measured**):
 3. the runtime's rebuild of it reports it identical;
 4. **in game**: the scenario editor loads and draws it, and in a skirmish it stands in the world
    at the right size, lit like the stock objects, textured the right way up, with the
-   civilization flag on its `bone_flag_civ` bone.
+   civilization flag on its `bone_flag_civ` bone; the player colour, the construction stages and
+   the rubble work too (see game-test.md).
 
 What a static building model holds (as the stock files):
 
@@ -87,7 +88,26 @@ agree with them (**measured**). Uncompressed BGRA with one level is common (1,12
 512 x 512 in the mod). Rows are stored top first. Alpha: with the `alphatest` shaders a low
 alpha cuts a hole (cresting, arches); with `pixelxform` it shows the player colour; textures
 keep 255 where they show (88 to 100 % of the surface of the measured player-colour textures).
-The writer makes BGRA with mip levels and alpha 255 unless asked otherwise.
+The writer makes DXT3 by default (the game's usual building format, a quarter of the size of
+BGRA), DXT1 without alpha, or BGRA, each with mip levels down to 4 x 4. Its DXT encoder fits the
+inset bounding box of each 4 x 4 block and picks the nearest of the four palette colours; on a
+mod's 1024 x 1024 texture the decoded result differs from the source by 1.7 levels out of 255 on
+average, and the file has the size of the game's own (**measured**).
+
+**Player colour** (**measured** on the stock textures that use the `pixelxform` shader): about 2 %
+of their pixels, in thin bands (trim strips under the windows), have alpha below 128, and those
+pixels are light and nearly grey (the shader tints them). The generator's player-colour option
+does the same: the string courses between storeys and the shutters are painted light grey and
+get alpha 0 (about 1 % of the White House's texture). The bundle then switches the model to the
+`pixelxform` shader by itself, whenever the texture's alpha drops below 255.
+
+## Icons and portraits
+
+The stock house has a 64 x 64 icon and a 128 x 128 portrait, both DXT1: the building in three
+quarters view on a dark, warm background inside a bevelled frame. The export renders the
+building the same way (Blender's Workbench, textured, transparent background, composed onto that
+background and frame) and writes both as DXT1; the files have the stock ones' sizes (2,072 and
+10,984 bytes).
 
 ## Anim files
 

@@ -63,9 +63,12 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
-  `ddt.py` (header, BGRA writer, BGRA/DXT decoder; numpy), `animxml.py`, `proto.py` (unit list
+  `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
+  portrait framing; numpy), `animxml.py`, `proto.py` (unit list
   and string table at the text level), `bundle.py` (the files for one building), `deploy.py`
   (test copy: Steam refused, backups, manifest, undo, validators).
+- `aoe3_blender_tools/core/render.py`: Workbench render of a building for its icon and portrait
+  (restores the scene's settings).
 - `aoe3_blender_tools/core/profile.py`: loads the calibration profile; `validate.check(...,
   profile)` and `bundle.game_size(..., profile)` use it.
 - `scripts/generate.py`: headless generation with renders. `scripts/game_export.py`: headless game

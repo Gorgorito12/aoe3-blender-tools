@@ -161,3 +161,91 @@ def decode(data, level=0):
     px = np.concatenate([rgb, alpha[:, :, None]], axis=-1)       # N x 16 x 4
     px = px.reshape(bh, bw, 4, 4, 4).transpose(0, 2, 1, 3, 4).reshape(bh * 4, bw * 4, 4)
     return np.clip(px[:h, :w] + 0.5, 0, 255).astype(np.uint8)
+
+
+# --------------------------------------------------------------------------------------------------
+# Block compression (DXT1, DXT3)
+
+def _blocks(rgba):
+    """N x 16 x 4 float32 pixel blocks of an H x W x 4 image (edges repeated to a multiple of 4)."""
+    np = _np()
+    h, w = rgba.shape[:2]
+    ph, pw = -(-h // 4) * 4, -(-w // 4) * 4
+    a = np.pad(rgba, ((0, ph - h), (0, pw - w), (0, 0)), mode="edge").astype(np.float32)
+    bh, bw = ph // 4, pw // 4
+    return a.reshape(bh, 4, bw, 4, 4).transpose(0, 2, 1, 3, 4).reshape(bh * bw, 16, 4)
+
+
+def _to565(c):
+    np = _np()
+    q = np.clip(np.rint(c * np.array([31, 63, 31]) / 255.0), 0, [31, 63, 31]).astype(np.uint32)
+    return (q[:, 0] << 11) | (q[:, 1] << 5) | q[:, 2]
+
+
+def _colour_encode(px):
+    """8-byte colour blocks (always the 4-colour mode) for N x 16 x 3 float pixels."""
+    np = _np()
+    lo, hi = px.min(axis=1), px.max(axis=1)
+    inset = (hi - lo) / 16.0
+    lo, hi = np.clip(lo + inset, 0, 255), np.clip(hi - inset, 0, 255)
+    c0, c1 = _to565(hi), _to565(lo)
+    swap = c0 < c1
+    c0, c1 = np.where(swap, c1, c0), np.where(swap, c0, c1)
+    p0, p1 = _rgb565(c0.astype(np.uint16)), _rgb565(c1.astype(np.uint16))
+    pal = np.stack([p0, p1, (2 * p0 + p1) / 3, (p0 + 2 * p1) / 3], axis=1)        # N x 4 x 3
+    d = ((px[:, :, None, :] - pal[:, None, :, :]) ** 2).sum(-1)                     # N x 16 x 4
+    idx = d.argmin(-1).astype(np.uint32)
+    idx[c0 == c1] = 0                       # one colour: index 0 everywhere (no 3-colour mode)
+    bits = (idx << (2 * np.arange(16, dtype=np.uint32))).sum(axis=1).astype(np.uint32)
+    out = np.zeros((len(px), 8), np.uint8)
+    out[:, 0], out[:, 1] = c0 & 255, c0 >> 8
+    out[:, 2], out[:, 3] = c1 & 255, c1 >> 8
+    for k in range(4):
+        out[:, 4 + k] = (bits >> (8 * k)) & 255
+    return out
+
+
+def compress(rgba, fmt):
+    """The block-compressed bytes of one level: DXT1 (8 bytes a block, alpha dropped) or DXT3
+    (16 bytes: explicit 4-bit alpha, then the colour block)."""
+    np = _np()
+    b = _blocks(rgba)
+    colour = _colour_encode(b[:, :, :3])
+    if fmt == DXT1:
+        return colour.tobytes()
+    if fmt != DXT3:
+        raise DdtError(f"format {fmt} is not encoded")
+    a4 = np.clip(np.rint(b[:, :, 3] / 17.0), 0, 15).astype(np.uint8)              # N x 16
+    alpha = (a4[:, 0::2] | (a4[:, 1::2] << 4)).astype(np.uint8)                   # N x 8
+    return np.concatenate([alpha, colour], axis=1).tobytes()
+
+
+def write_dxt(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True):
+    """Bytes of a DXT1 or DXT3 texture (with its mip levels down to 4 x 4) from an H x W x 3 or 4
+    uint8 array, top row first. DXT3 keeps the alpha (player-colour mask); DXT1 drops it."""
+    np = _np()
+    a = np.asarray(rgba)
+    if a.ndim != 3 or a.shape[2] not in (3, 4):
+        raise DdtError("expected an H x W x 3 or 4 array")
+    if a.shape[2] == 3:
+        a = np.concatenate([a, np.full(a.shape[:2] + (1,), 255, a.dtype)], axis=2)
+    a = a.astype(np.uint8)
+    h, w = a.shape[:2]
+    levels = mip_chain(a) if mips else [a]
+    blobs = [compress(lv, fmt) for lv in levels]
+    out = bytearray(MAGIC + bytes([usage, alpha if fmt == DXT3 else 0, fmt, len(blobs)])
+                    + struct.pack("<II", w, h))
+    off = 16 + 8 * len(blobs)
+    for b in blobs:
+        out += struct.pack("<II", off, len(b))
+        off += len(b)
+    for b in blobs:
+        out += b
+    return bytes(out)
+
+
+def write(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True):
+    """A texture in the given format: BGRA (uncompressed), DXT1 or DXT3."""
+    if fmt == BGRA:
+        return write_bgra(rgba, alpha=alpha, usage=usage, mips=mips)
+    return write_dxt(rgba, fmt, alpha=alpha, usage=usage, mips=mips)

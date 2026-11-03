@@ -5,6 +5,7 @@ fields and strings) for `tools/game_deploy.py`.
     python scripts/game_export.py --out DIR [--preset WHITE_HOUSE] [--detail LOW|MEDIUM]
                                   [--prefix mod] [--name NAME] [--display "Shown name"]
                                   [--template House] [--no-v-flip] [--player-colour]
+                                  [--texture DXT3|DXT1|BGRA] [--no-icons]
                                   [--profile <profile.json> | --no-profile]
 
 The calibration profile (default: the one shipped in aoe3_blender_tools/profiles/) sets the
@@ -25,6 +26,7 @@ sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
 
 from aoe3_blender_tools.core import blender_io, building, paint  # noqa: E402
 from aoe3_blender_tools.core import profile as calibration  # noqa: E402
+from aoe3_blender_tools.core import render  # noqa: E402
 from aoe3game import bundle  # noqa: E402
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
@@ -45,20 +47,27 @@ def main():
         p = dataclasses.replace(p, detail=opt("--detail"))
     if opt("--name"):
         p = dataclasses.replace(p, name=opt("--name"))
+    if "--player-colour" in argv:
+        p = dataclasses.replace(p, player_colour=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     model = building.build(p)
-    obj = blender_io.create_object(model, paint.paint(model))
+    obj = blender_io.create_object(model, paint.paint_rgba(model) if p.player_colour else paint.paint(model))
     positions, normals, uvs, tris = blender_io.game_mesh(obj)
+    icon = portrait = None
+    if "--no-icons" not in argv:
+        icon, portrait = render.icon_and_portrait(obj)
     desc = bundle.write(
         out, name=p.name, prefix=opt("--prefix", "mod"), positions=positions, normals=normals,
         uvs=uvs, triangles=tris, texture_rgba=blender_io.texture_rgba(obj),
         bones=blender_io.game_bones(obj), footprint_m=tuple(obj["aoe3_footprint"]),
+        icon_rgba=icon, portrait_rgba=portrait,
         display_name=opt("--display"), template=opt("--template", "House"),
-        v_flip="--no-v-flip" not in argv, player_colour="--player-colour" in argv,
+        v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"),
         profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
     print(f"{p.name}: {len(tris)} triangles, {len(positions)} vertices; "
           f"obstruction {desc['size']['radius']}, decal {desc['size']['decal']}, "
-          f"stages {desc['size']['stages']}, class {desc['size'].get('class')}")
+          f"stages {desc['size']['stages']}, class {desc['size'].get('class')}; texture "
+          f"{desc['texture']['format']}, player colour {desc['texture']['player_colour']}")
     for f in desc["files"]:
         print("  ", f)
     return 0

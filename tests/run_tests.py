@@ -232,13 +232,30 @@ def check_uses_profile_budget():
     assert not any("class 8x8" in m for lv, m in validate.check(obj) if lv != validate.INFO)
 
 
+@test
+def player_colour_marks_the_string_courses():
+    import dataclasses
+    p = dataclasses.replace(building.PRESETS["WHITE_HOUSE"], texture_size=512)
+    plain = paint.paint_rgba(building.build(p))
+    assert plain.shape == (512, 512, 4) and plain[..., 3].min() == 255
+    p = dataclasses.replace(p, player_colour=True, shutters=True)
+    model = building.build(p)
+    rgba = paint.paint_rgba(model)
+    share = (rgba[..., 3] < 128).mean()
+    assert 0.005 < share < 0.06, share          # thin bands, as the game's own textures
+    assert (rgba[..., :3] == paint.paint(model)).all()
+    obj = blender_io.create_object(model, rgba)
+    assert blender_io.texture_rgba(obj)[..., 3].min() < 128     # the mask survives in Blender
+
+
 def main():
     addon.register()
     try:
         for t in (presets_generate_and_pass_checks, parameter_sweep_has_no_overlaps_or_errors,
                   medium_detail_presets_pass_checks, wall_triangulation_covers_the_wall_exactly,
                   regenerating_replaces_the_object, export_and_reimport, checks_catch_known_problems,
-                  atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget):
+                  atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget,
+                  player_colour_marks_the_string_courses):
             t()
     finally:
         addon.unregister()

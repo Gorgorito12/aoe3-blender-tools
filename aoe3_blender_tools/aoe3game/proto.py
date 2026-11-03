@@ -131,6 +131,42 @@ def insert_unit(text, block):
     return text[:end] + "\t" + block.strip() + nl + text[end:]
 
 
+def show_as(text, name, fields, tags=("AnimFile", "Icon", "PortraitIcon")):
+    """The text with unit `name`'s model, icon and portrait replaced by the given fields (the
+    ones present in `fields`), for looking at a new building in place of an existing one."""
+    index = Index(text)
+    span = index.spans.get(name.lower())
+    if span is None:
+        raise ProtoError(f"no unit named {name}")
+    s, e = span
+    block = text[s:e]
+    for tag in tags:
+        if fields.get(tag) and re.search(rf"<{tag}>", block, re.I):
+            block = _set(block, tag, fields[tag])
+    return text[:s] + block + text[e:]
+
+
+def add_train(text, unit, proto_name, column=1, page=6, row=0):
+    """The text with `proto_name` added to what `unit` can build or train (a <Train> line after
+    its last one; villagers list their buildings this way)."""
+    index = Index(text)
+    span = index.spans.get(unit.lower())
+    if span is None:
+        raise ProtoError(f"no unit named {unit}")
+    s, e = span
+    block = text[s:e]
+    if re.search(rf"<Train[^>]*>\s*{re.escape(proto_name)}\s*</Train>", block, re.I):
+        return text
+    nl = "\r\n" if "\r\n" in block else "\n"
+    line = f'\t\t<Train column="{column}" page="{page}" row="{row}">{escape(proto_name)}</Train>{nl}'
+    last = block.rfind("</Train>")
+    if last >= 0:
+        at = block.find("\n", last) + 1
+    else:
+        at = block.rfind("\n", 0, block.rfind("</Unit>")) + 1
+    return text[:s] + block[:at] + line + block[at:] + text[e:]
+
+
 def remove_unit(text, name):
     index = Index(text)
     span = index.spans.get(name.lower())

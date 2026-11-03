@@ -24,13 +24,15 @@ def _remove_previous(name):
 
 
 def _image_from_array(name, arr):
-    h, w, _ = arr.shape
+    """A packed image from an RGB or RGBA uint8 array (top row first); the alpha, if any, is the
+    player-colour mask the game export writes into the texture."""
+    h, w, c = arr.shape
     old = bpy.data.images.get(name)
     if old is not None:
         bpy.data.images.remove(old)
-    img = bpy.data.images.new(name, w, h, alpha=False)
+    img = bpy.data.images.new(name, w, h, alpha=c == 4)
     rgba = np.ones((h, w, 4), dtype=np.float32)
-    rgba[..., :3] = arr[::-1].astype(np.float32) / 255.0      # Blender rows go bottom-up
+    rgba[..., :c] = arr[::-1].astype(np.float32) / 255.0      # Blender rows go bottom-up
     img.pixels.foreach_set(rgba.ravel())
     img.update()
     img.pack()

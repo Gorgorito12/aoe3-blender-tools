@@ -4,6 +4,10 @@
 Windows, doors, stone courses, slate, dentils and the rest are drawn from the real facade
 measurements, so they line up with the geometry. Flat, even colour: no baked lighting, which the
 game adds itself. Returns a uint8 RGB array of `texture_size` squared (top-left origin).
+
+With `params.player_colour`, the parts the game tints with the owner's colour (string courses
+between storeys and shutters, as the stock buildings mark thin bands) are painted light grey and
+`paint_rgba` lowers their alpha to 0; everything else keeps alpha 255.
 """
 import numpy as np
 
@@ -15,7 +19,21 @@ def _shade(c, k):
     return tuple(max(0, min(255, int(v * k))) for v in c)
 
 
+PLAYER_GREY = (206, 206, 206)       # what the stock textures hold under their player-colour mask
+
+
 def paint(model):
+    """The RGB texture."""
+    return _paint(model)[0]
+
+
+def paint_rgba(model):
+    """The texture with its alpha: 0 where the player colour shows, 255 elsewhere."""
+    rgb, alpha = _paint(model)
+    return np.concatenate([rgb, alpha[:, :, None]], axis=2)
+
+
+def _paint(model):
     p = model.params
     at = model.atlas
     cv = Canvas(at.size, (128, 128, 128))
@@ -42,6 +60,15 @@ def paint(model):
         (x, y0), (_, y1) = P(region, u, v0), P(region, u, v1)
         cv.line(x, y0, x, y1, color, width)
 
+    pc = getattr(p, "player_colour", False)
+    mk = Canvas(at.size, (255, 255, 255)) if pc else None
+
+    def mark(region, u0, v0, u1, v1):
+        """A player-colour part: black on the mask."""
+        if mk is not None:
+            (x0, y0), (x1, y1) = P(region, u0, v1), P(region, u1, v0)
+            mk.rect(x0, y0, x1, y1, (0, 0, 0))
+
     def fill(region, color):
         r = at[region]
         cv.rect(r.x, r.y, r.x + r.w, r.y + r.h, color)
@@ -50,7 +77,7 @@ def paint(model):
     lw = max(1, int(round(px_per_m * 0.035)))      # thick line ~3.5 cm
 
     # --- facades -----------------------------------------------------------------------------------
-    SHUT = (46, 72, 52)
+    SHUT = PLAYER_GREY if pc else (46, 72, 52)
 
     def shutters(region, uc, v0, h, w, room):
         sw = min(0.42, room)
@@ -58,6 +85,7 @@ def paint(model):
             return
         for a in (uc - w / 2 - 0.12 - sw, uc + w / 2 + 0.12):
             rect(region, a, v0 - 0.04, a + sw, v0 + h + 0.04, SHUT, _shade(SHUT, 0.7))
+            mark(region, a, v0 - 0.04, a + sw, v0 + h + 0.04)
             vv = v0 + 0.12
             while vv < v0 + h - 0.05:
                 hline(region, vv, a + 0.04, a + sw - 0.04, _shade(SHUT, 0.75))
@@ -121,7 +149,8 @@ def paint(model):
                 k += 1
         for s in range(1, storeys):                          # string courses, frieze
             vs = s * STOREY_H
-            rect(region, 0, vs - 0.05, sw, vs + 0.2, BAND, WALL_LINE)
+            rect(region, 0, vs - 0.05, sw, vs + 0.2, PLAYER_GREY if pc else BAND, WALL_LINE)
+            mark(region, 0, vs - 0.03, sw, vs + 0.18)
         rect(region, 0, sh - 0.4, sw, sh, BAND, WALL_LINE)
         bays = spec["bays"]
         gaps = [b - a for a, b in zip(bays, bays[1:])]
@@ -251,7 +280,10 @@ def paint(model):
         vline("lead", uu, 0, 2.5, _shade(LE, 0.83), lw)
 
     cv.noise(5, seed=p.seed)
-    return cv.downsample(at.size // p.texture_size)
+    k = at.size // p.texture_size
+    rgb = cv.downsample(k)
+    alpha = mk.downsample(k)[:, :, 0] if mk is not None else np.full(rgb.shape[:2], 255, np.uint8)
+    return rgb, alpha
 
 
 def save_png(array, path):

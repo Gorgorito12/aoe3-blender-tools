@@ -30,11 +30,11 @@ that the real site shows on the south is left out.
 
 Status: version 0.2. The add-on writes the game's own formats (Granny model, `.ddt` texture,
 anim file, proto entry and strings), and a deployment script puts them into a test copy of the
-game. The game loads a generated building and draws it in the world: the White House stands at
-the right size among the villagers, lit like the stock objects, with the civilization flag on its
-cupola. Construction, destruction and the player colour are still to be seen in game
-([docs/game-test.md](docs/game-test.md)). The survey has run on the game and a mod, and
-its measurements calibrate the sizes and budgets.
+game. In the game the generated White House stands at the right size among stock buildings,
+shows the owner's colour, has its own icon and portrait, is built by villagers through the stock
+construction stages and leaves stock rubble when destroyed
+([docs/game-test.md](docs/game-test.md)). The survey has run on the game and a mod, and its
+measurements calibrate the sizes and budgets.
 
 ## Why
 
@@ -95,9 +95,14 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 - **Export**: GLB and FBX with the texture embedded, OBJ + MTL, the texture as PNG, and a stats
   file. Attach points (`flag_attach` on the cupola) are exported as empties.
 - **Game export**: the model as a Granny file (`.gr2`, in the stock buildings' basis, with a
-  `bone_flag_civ` bone for the flag), the texture as `.ddt`, the anim file (stock construction
-  stages of the footprint class, ground decal) and `bundle.json` with the proto fields and
-  strings. Sizes come from the calibration profile.
+  `bone_flag_civ` bone for the flag), the texture as `.ddt` (DXT3 by default, DXT1 or BGRA), the
+  anim file (stock construction stages of the footprint class, ground decal) and `bundle.json`
+  with the proto fields and strings. Sizes come from the calibration profile.
+- **Icon and portrait**: rendered from the building, framed like the game's own (64 x 64 and
+  128 x 128, DXT1).
+- **Player colour**: an option paints the string courses and shutters for the owner's colour
+  (texture alpha 0 there, as the stock textures mark it); the export then uses the game's
+  player-colour shader.
 - **Deployment** (`tools/game_deploy.py`): copies a bundle into a test copy of the game, adds
   the unit and its strings, runs the mod's own validators, and undoes it all on request. It
   refuses any Steam folder.
