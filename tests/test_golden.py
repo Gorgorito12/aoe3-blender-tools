@@ -30,8 +30,8 @@ TRIANGLES = {"MANSION": 92, "WHITE_HOUSE": 355, "COURTHOUSE": 373, "CAPITOL": 41
 
 
 def cases():
-    """Preset key -> params: the presets plus the White House at medium detail."""
-    out = dict(building.PRESETS)
+    """Preset key -> params: the neoclassical presets plus the White House at medium detail."""
+    out = {k: p for k, p in building.PRESETS.items() if p.style == "NEOCLASSICAL"}
     out["WHITE_HOUSE_MEDIUM"] = dataclasses.replace(building.PRESETS["WHITE_HOUSE"],
                                                     detail="MEDIUM", name="WhiteHouseMedium")
     # the player-colour mask (string courses and shutters) and its grey under the mask

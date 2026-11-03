@@ -93,6 +93,42 @@ means; nothing more to do here. Frames from the recording:
 
 The low-poly model needs the game's low model detail setting (not tried).
 
+Colonial house (2026-11-03): exported at medium detail with the player-colour mask (362
+triangles, footprint class 4x4, the stock 2x2 construction stages and rubble), deployed with
+`--builder Settler` (the three validators of the mod: 0 errors) and placed for two players beside
+a stock house: the right size, lit like the stock buildings, the flag on the ridge, shutters and
+door in each owner's colour, its own icon and portrait
+(`examples/colonialhouse/ingame_player_colour.jpg`). A deployment replaces the previous one in
+the copy (the White House was taken out).
+
+Timber house (2026-11-03): medium detail with the material swatches and the player-colour mask
+(426 triangles, class 4x4, stages 2x2), deployed the same way (validators: 0 errors) and placed
+for two players beside a stock house: the right size, the flag on the ridge, shutters and door in
+each owner's colour (`examples/timberhouse/ingame_player_colour.jpg`). The swatches' grain
+showed no glitter in a still at the default zoom; to watch while the camera moves.
+
+Several buildings at once (2026-11-03): `tools/game_deploy.py` takes several `--bundle`; the
+four new presets went in together (ids 25000 to 25003, validators 0 errors;
+`examples/ingame_styles.jpg`). Units of the player seen through a building show as their
+silhouette in the player's colour: the game's own behaviour.
+
+Material grain while the camera moves (2026-11-03): the four presets with swatches, the camera
+panned by posted arrow keys (`pan.py` in the cache's scripts: key-down messages to the window, no
+real input) and recorded at 10 frames a second. Each pair of frames was aligned on its shift and
+compared: what is left on the buildings (median 7.6 grey levels, 90th percentile 10.1) is what is
+left on the game's own terrain (7.4, 10.1). The swatches do not glitter more than the stock
+textures.
+
+Low model detail (2026-11-03): seen. The option is `optiongrfxhighmodels` ("High Poly Models", a
+check box in `data/options.xml`), a `<Setting>` in the player profile (`Users3/<name>.xml` in
+My Games, shared by every copy of the game); the profile here already had it off. With the
+low-poly texture tinted magenta (in the copy only) the building still showed its normal model:
+the low-poly reference lacked the `shape` attribute that every stock model reference carries.
+With it the house turned magenta (`examples/colonialhouse/ingame_lowpoly_test.jpg`). The writer
+now gives the low-poly reference the same shape, and a bundle with a low-poly model borrows the
+damage skeleton that provides it even without a damaged model. The console command
+`setGraphicDetail(0)` closes the game (the log ends on it): do not use it.
+
 Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds
 while the stock collapse dust rises, then the rubble takes its place.
 

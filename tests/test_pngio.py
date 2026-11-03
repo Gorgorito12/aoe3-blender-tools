@@ -71,6 +71,18 @@ class PngRead(unittest.TestCase):
             with open(path, "rb") as f:
                 self.assertTrue((pngio.read_png(f.read()) == self.img).all())
 
+    def test_palette(self):
+        idx = np.random.default_rng(3).integers(0, 4, (6, 7, 1), dtype=np.uint8)
+        pal = np.array([[10, 20, 30], [200, 100, 0], [0, 255, 0], [9, 9, 9]], np.uint8)
+        png = bytearray(encode(idx, [1, 4]))
+        png[25] = 3                                     # colour type: palette
+        ihdr = bytes(png[12:29])
+        png[29:33] = struct.pack(">I", zlib.crc32(ihdr))
+        plte = pal.tobytes()
+        chunk = struct.pack(">I", len(plte)) + b"PLTE" + plte + struct.pack(">I", zlib.crc32(b"PLTE" + plte))
+        png = bytes(png[:33]) + chunk + bytes(png[33:])
+        self.assertTrue((pngio.read_png(png) == pal[idx[:, :, 0]]).all())
+
     def test_rejects_other_files(self):
         with self.assertRaises(ValueError):
             pngio.read_png(b"GIF89a....")

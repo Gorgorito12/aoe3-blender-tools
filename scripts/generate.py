@@ -4,6 +4,7 @@
     python scripts/generate.py [--preset WHITE_HOUSE|COURTHOUSE|CAPITOL|MANSION|ALL]
                                [--detail LOW|MEDIUM] [--out DIR]
                                [--views front34,back34,wire,front,back | --no-render]
+                               [--materials]     (photo swatches under the painting)
 Presets: WHITE_HOUSE, COURTHOUSE, CAPITOL, MANSION, WHITE_HOUSE_1914 (or ALL).
 
 or with Blender: blender -b --factory-startup -P scripts/generate.py -- [same options]
@@ -127,6 +128,8 @@ def generate(key, out, views, detail):
     if detail and detail != params.detail:      # --detail overrides the preset's own level
         params = dataclasses.replace(params, detail=detail,
                                      name=params.name + ("Medium" if detail == "MEDIUM" else "Low"))
+    if "--materials" in argv:
+        params = dataclasses.replace(params, materials=True)
     model = building.build(params)
     obj = blender_io.create_object(model, paint.paint(model))
     suffix = "" if not detail or detail == building.PRESETS[key].detail else "_" + detail.lower()

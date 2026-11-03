@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Reads PNG files with the standard library and numpy: 8-bit greyscale, RGB and RGBA, not
-interlaced, all five row filters. Enough for the generator's own textures and the material
-swatches; anything else raises ValueError."""
+"""Reads PNG files with the standard library and numpy: 8-bit greyscale, RGB, RGBA and palette
+(returned as RGB), not interlaced, all five row filters. Enough for the generator's own textures
+and the material swatches; anything else raises ValueError."""
 import struct
 import zlib
 
 import numpy as np
 
 SIGNATURE = b"\x89PNG\r\n\x1a\n"
-CHANNELS = {0: 1, 2: 3, 4: 2, 6: 4}       # colour type -> channels
+CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}       # colour type -> channels (3: palette indices)
 
 
 def _paeth(a, b, c):
@@ -23,13 +23,15 @@ def read_png(data):
     """The image as a uint8 array (height, width, channels)."""
     if data[:8] != SIGNATURE:
         raise ValueError("not a PNG file")
-    pos, idat, ihdr = 8, [], None
+    pos, idat, ihdr, plte = 8, [], None, None
     while pos < len(data):
         length, tag = struct.unpack(">I4s", data[pos:pos + 8])
         body = data[pos + 8:pos + 8 + length]
         pos += 12 + length
         if tag == b"IHDR":
             ihdr = struct.unpack(">IIBBBBB", body)
+        elif tag == b"PLTE":
+            plte = np.frombuffer(body, np.uint8).reshape(-1, 3)
         elif tag == b"IDAT":
             idat.append(body)
         elif tag == b"IEND":
@@ -74,4 +76,9 @@ def read_png(data):
             raise ValueError(f"bad PNG filter {f}")
         out[y] = cur
         prev = cur
-    return out.reshape(h, w, n)
+    img = out.reshape(h, w, n)
+    if ctype == 3:
+        if plte is None:
+            raise ValueError("palette PNG without PLTE")
+        return plte[img[:, :, 0]]
+    return img

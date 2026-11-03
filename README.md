@@ -8,7 +8,8 @@ the art a mod already has. It has two parts:
   anim file structure, and which stock parts the mod reuses. The generators are calibrated on it.
 - **A Blender add-on**: generators that build models from exact primitives (flat walls, straight
   edges), lay out one UV atlas, paint the texture from the real measurements, check that the
-  result is game-ready, and export it. The first generator makes neoclassical buildings.
+  result is game-ready, and export it. Three styles so far: neoclassical, Spanish colonial and
+  European timber framing.
 
 | White House | Courthouse |
 |---|---|
@@ -17,9 +18,15 @@ the art a mod already has. It has two parts:
 | ![Capitol](examples/capitol/preview_front34.jpg) | ![Mansion](examples/mansion/preview_front34.jpg) |
 | **White House, medium detail** | **The same, geometry only** |
 | ![White House medium](examples/whitehouse_medium/preview_front34.jpg) | ![White House medium, clay](examples/whitehouse_medium/preview_wire.jpg) |
+| **Colonial house** | **Colonial trading house** |
+| ![Colonial house](examples/colonialhouse/preview_front34.jpg) | ![Colonial trading house](examples/colonialtradinghouse/preview_front34.jpg) |
+| **Timber house** | **Timber inn** |
+| ![Timber house](examples/timberhouse/preview_front34.jpg) | ![Timber inn](examples/timberinn/preview_front34.jpg) |
 
 The four presets at low detail have 92 to 413 triangles; the White House at medium detail has
-1,235. Each has one 1024 × 1024 texture.
+1,235. The colonial house has 362 triangles at medium detail, the trading house (a portal of
+arches, a balcony, a bell gable and a wing) 646; the timber house 426, the inn (three storeys,
+two dormers, a sign) 725. Each has one 1024 × 1024 texture.
 
 **White House, 1914** (preset `WHITE_HOUSE_1914`, built from a reference picture): north and south
 elevations, then views from the south-west and the north-east. 3,035 triangles at medium detail,
@@ -45,6 +52,20 @@ stock construction stages; destroyed, leaving the stock rubble.
 ![Construction](examples/whitehouse_medium/ingame_construction.jpg)
 
 ![Rubble](examples/whitehouse_medium/ingame_rubble.jpg)
+
+The colonial house in the same copy, for two players (shutters and door in the owner's colour),
+beside a stock house:
+
+![Colonial house in game](examples/colonialhouse/ingame_player_colour.jpg)
+
+The timber house with its material swatches, for two players (shutters and door):
+
+![Timber house in game](examples/timberhouse/ingame_player_colour.jpg)
+
+The four new presets deployed together (colonial house, colonial trading house, timber house,
+timber inn):
+
+![The new styles in game](examples/ingame_styles.jpg)
 
 ## Why
 
@@ -83,7 +104,17 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 
 ## Features
 
-- **Building generator** (neoclassical for now): width, depth, 1 to 4 storeys, plinth, window
+- **Spanish colonial style**: whitewashed walls on a low plinth with a coloured dado, small
+  windows with iron grilles, shutters and a plank door in the owner's colour, a clay tile roof
+  (two slopes along or across, or hipped) with a wide eave, and as options a wooden balcony, a
+  portal along the front (wooden posts, or masonry piers with flat arches) under a lean-to roof,
+  a bell gable that carries the flag, and an L plan with a one-storey wing. Presets: Colonial
+  House, Colonial Trading House.
+- **European timber-framed style**: a ground floor of rubble stone, brick or timber, upper floors
+  of timber framing (posts, rails, cross or curved braces) over plaster or brick infill jutting out
+  on joists, a steep tiled roof with framed gables, dormers on the front slope, brick chimneys and
+  a hanging sign in the owner's colour. Presets: Timber House, Timber Inn.
+- **Neoclassical style**: width, depth, 1 to 4 storeys, plinth, window
   spacing and side windows, a portico with 2 to 8 columns and a pediment, a hipped roof of any
   pitch, a cupola or a flagpole, up to 8 chimneys, a semicircular back portico (columns on an arc
   around a bowed bay, with a balustraded flat roof), wings (one-storey pavilions joined by
@@ -99,6 +130,13 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 - **Painted texture**: stone courses, quoins, windows with sash bars and caps, the door with its
   fanlight, slate rows, dentils, brick, all aligned with the geometry. Colours are settings. Flat
   colour, no baked lighting. Painted with numpy only, so nothing extra is installed in Blender.
+- **Material swatches** (option, off by default; `--materials` on the command line): small
+  tileable CC0 photos under the painting give the walls their grain while every drawn detail
+  and the colours stay; the swatch's lighting is removed and its grain scaled to a measured
+  target (less on tiles and slates). Five swatches: plaster and ashlar for walls, rough stone for
+  plinths and slate, clay for tiles, wood grain for timber. The bump map is made from the
+  finished texture, so it carries the grain too. Credits in
+  [aoe3_blender_tools/materials/MATERIALS.md](aoe3_blender_tools/materials/MATERIALS.md).
 - **Game-ready check**: triangle budget, the 16-bit vertex limit, one UV map inside 0..1,
   power-of-two textures, material count, origin at the footprint centre and base on the ground,
   degenerate faces, hidden bottom faces, and overlapping coplanar faces (they flicker in game).
@@ -108,8 +146,8 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
   `bone_flag_civ` bone for the flag), the texture as `.ddt` (DXT3 by default, DXT1 or BGRA), the
   anim file (stock construction stages of the footprint class, ground decal) and `bundle.json`
   with the proto fields and strings. Sizes come from the calibration profile.
-- **Low-poly and damaged models**: the LOW detail as the model for the game's low model detail
-  setting, and a damaged texture (soot, missing slates, cracks) for a building that has lost hit
+- **Low-poly and damaged models**: the LOW detail as the model for the game's "High Poly Models"
+  option turned off (seen in game), and a damaged texture (soot, missing slates, cracks) for a building that has lost hit
   points (written; like the stock houses, the building looks intact with flames until it
   is destroyed, see docs/game-test.md).
 - **Death animation**: the building sinks into the ground with the stock collapse dust before
@@ -144,14 +182,18 @@ export all work. The Blender 3.6 to 4.1 path is untested.
 
 3D Viewport > Sidebar (N) > **AoE3**.
 
-1. **Building Generator**: pick a preset and load it, change the settings, then **Generate
-   Building**. Generating again replaces the object of the same name. When a setting cannot be
-   built (for example more columns than the front allows), it is reduced and a warning says so.
+1. **Building Generator**: pick a preset and load it (or pick a **Style**: neoclassical,
+   colonial or timber; the panel then shows that style's settings), change the settings, then
+   **Generate Building**. Generating again replaces the object of the same name. When a setting
+   cannot be built (for example more columns than the front allows), it is reduced and a warning
+   says so. **Material swatches** lays the CC0 photos under the painting.
 2. **Check and Export**: **Check** lists the problems of the active object; **Export** writes the
    files to the chosen folder (default `//aoe3_export`, next to the .blend).
 3. **Game Export**: writes the bundle for the game (mod folder, name shown in game, proto
    template, texture format, icon, low-poly and damaged models) to the chosen folder (default
    `//aoe3_game`); **Deploy to Test Copy** puts it into a copy of the game, **Undo** takes it out.
+
+![The panel in Blender 5.2](examples/blender_panel.jpg)
 
 Conventions: 1 unit = 1 m, Z up, the front (portico) faces −Y, the origin is the centre of the
 footprint (steps included) on the ground. GLB, FBX and OBJ are written Y-up.
@@ -172,6 +214,7 @@ venv/bin/python scripts/generate.py --preset CAPITOL --out out --no-render
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
 python -I tests/test_game_formats.py                   # game formats, plain Python
 venv/bin/python -I tests/test_golden.py               # presets byte for byte (--update-golden)
+venv/bin/python -I tests/test_materials.py            # material swatches and their layer
 ```
 
 On Windows the venv's interpreter is `venv\Scripts\python`.
@@ -203,14 +246,16 @@ see [tools/README.md](tools/README.md).
 2. **Calibration and game formats** (done, in-game check in progress): sizes and budgets from
    the profile; `.gr2`, `.ddt`, anim file, proto and strings written and deployed. Next: see the
    building placed, built and destroyed in game; player colour; DXT textures.
-3. **Buildings:** a kit of parts per architectural style found in the survey (colonial, European,
-   Asian, native, forts, walls and gates), damage and death models, and baking the texture of a
-   detailed model onto a clean mesh. Textures: relief baking, material swatches, Stable
-   Diffusion with ControlNet and the other options in [docs/texture-plan.md](docs/texture-plan.md).
+3. **Buildings** (in progress): the kit of parts (done), the Spanish colonial and European timber
+   styles (done, seen in game), material swatches (done) and death models (done). Next: Asian and
+   native styles, forts, walls and gates, baking a detailed model's texture onto a clean mesh,
+   and the other texture options in [docs/texture-plan.md](docs/texture-plan.md).
 4. **Units:** reuse the stock skeletons and animations; build the body from parts or fit a
    detailed mesh to a stock skeleton; textures with the player-colour mask.
 
 ## License
 
-GPL-3.0-or-later ([LICENSE](LICENSE)), as Blender requires for add-ons. Age of Empires is a
-trademark of Microsoft; this project is not affiliated with Microsoft.
+GPL-3.0-or-later ([LICENSE](LICENSE)), as Blender requires for add-ons. The material swatches in
+`aoe3_blender_tools/materials/` are CC0 1.0 (public domain) photos from the sources listed in
+their `MATERIALS.md`. Age of Empires is a trademark of Microsoft; this project is not affiliated
+with Microsoft.

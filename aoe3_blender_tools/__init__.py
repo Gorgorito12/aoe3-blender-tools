@@ -23,8 +23,11 @@ from .core import blender_io, building, paint, validate  # noqa: E402
 from .core import profile as calibration  # noqa: E402
 from .core import render  # noqa: E402
 
-COLOR_KEYS = ("wall", "trim", "roof", "glass", "door", "brick", "lead", "stone", "plinth")
+COLOR_KEYS = building.COLOR_KEYS
 PRESET_ITEMS = [(k, k.replace("_", " ").title(), "") for k in building.PRESETS]
+STYLE_ITEMS = [(k, k.title(), "") for k in building.STYLES]
+# BuildingParams fields the panel holds under another name (the colours have one property each)
+PROP_NAMES = {"player_colour": "game_player_colour"}
 
 
 def _color_prop(key):
@@ -41,6 +44,38 @@ class AOE3_PG_result(bpy.types.PropertyGroup):
 class AOE3_PG_building(bpy.types.PropertyGroup):
     preset: EnumProperty(name="Preset", items=PRESET_ITEMS, default="WHITE_HOUSE")
     name: StringProperty(name="Name", default="WhiteHouse")
+    style: EnumProperty(name="Style", items=STYLE_ITEMS, default="NEOCLASSICAL")
+    roof_type: EnumProperty(name="Roof", items=[("GABLE", "Gable", "Two slopes"),
+                                                ("HIPPED", "Hipped", "Four slopes")], default="GABLE")
+    ridge: EnumProperty(name="Ridge", items=[("ALONG", "Along", "The ridge along the width (eaves front and back)"),
+                                             ("ACROSS", "Across", "The ridge along the depth (a gable on the front)")],
+                        default="ALONG")
+    arcade: EnumProperty(name="Portal", items=[("NONE", "None", ""),
+                                               ("FRONT", "Front", "An arcade along the front under a lean-to roof")],
+                         default="NONE")
+    arcade_posts: EnumProperty(name="Posts", items=[("WOOD", "Wood", "Posts and a beam"),
+                                                           ("MASONRY", "Masonry", "Piers and arches")],
+                               default="WOOD")
+    arcade_depth: FloatProperty(name="Portal depth", default=2.4, min=1.6, max=3.5, unit="LENGTH")
+    balcony: BoolProperty(name="Balcony", default=False, description="A wooden balcony on the upper floor")
+    bell_gable: BoolProperty(name="Bell gable", default=False, description="A bell gable over the front")
+    plan: EnumProperty(name="Plan", items=[("BLOCK", "Block", ""),
+                                           ("L", "L", "A one-storey wing at the back")], default="BLOCK")
+    rejas: BoolProperty(name="Window grilles", default=True, description="Iron grilles on the ground floor windows")
+    jetty: BoolProperty(name="Jetty", default=True, description="The upper floors jut out over the front and back")
+    jetty_depth: FloatProperty(name="Jetty depth", default=0.4, min=0.2, max=0.8, unit="LENGTH")
+    dormers: IntProperty(name="Dormers", default=1, min=0, max=4)
+    ground_floor: EnumProperty(name="Ground", items=[("STONE", "Stone", "Rubble stone"),
+                                                           ("BRICK", "Brick", ""),
+                                                           ("TIMBER", "Timber", "Framed like the upper floors")],
+                               default="STONE")
+    infill: EnumProperty(name="Infill", items=[("PLASTER", "Plaster", ""), ("BRICK", "Brick", "")],
+                         default="PLASTER")
+    bracing: EnumProperty(name="Braces", items=[("CROSS", "Cross", ""), ("CURVED", "Curved", ""),
+                                                ("PLAIN", "Plain", "Posts and rails only")], default="CROSS")
+    signboard: BoolProperty(name="Sign", default=False, description="A sign hanging from the front wall")
+    materials: BoolProperty(name="Material swatches", default=False,
+                            description="Photo swatches (CC0) under the painting give the walls their grain")
     width: FloatProperty(name="Width", default=14.0, min=4.0, max=60.0, unit="LENGTH")
     depth: FloatProperty(name="Depth", default=9.0, min=4.0, max=60.0, unit="LENGTH")
     storeys: IntProperty(name="Storeys", default=2, min=1, max=4)
@@ -125,6 +160,10 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     color_lead: _color_prop("lead")
     color_stone: _color_prop("stone")
     color_plinth: _color_prop("plinth")
+    color_plaster: _color_prop("plaster")
+    color_tile: _color_prop("tile")
+    color_timber: _color_prop("timber")
+    color_iron: _color_prop("iron")
 
 
 
@@ -137,7 +176,12 @@ def params_from_props(s):
         cupola=s.cupola, chimneys=s.chimneys, texture_size=int(s.texture_size), seed=s.seed,
         flagpole=s.flagpole, back_portico=s.back_portico, bow_radius=s.bow_radius, bow_columns=s.bow_columns,
         wings=s.wings, wing_gap=s.wing_gap, wing_width=s.wing_width, wing_depth=s.wing_depth, shutters=s.shutters,
-        window_caps=s.window_caps, player_colour=s.game_player_colour)
+        window_caps=s.window_caps, player_colour=s.game_player_colour, style=s.style,
+        roof_type=s.roof_type, ridge=s.ridge, arcade=s.arcade, arcade_posts=s.arcade_posts,
+        arcade_depth=s.arcade_depth, balcony=s.balcony, bell_gable=s.bell_gable, plan=s.plan,
+        rejas=s.rejas, materials=s.materials, jetty=s.jetty, jetty_depth=s.jetty_depth,
+        dormers=s.dormers, ground_floor=s.ground_floor, infill=s.infill, bracing=s.bracing,
+        signboard=s.signboard)
     p.colors = {k: tuple(int(round(c * 255)) for c in getattr(s, "color_" + k)) for k in COLOR_KEYS}
     return p
 
@@ -147,12 +191,15 @@ def props_from_params(s, p):
                  "detail", "portico",
                  "columns", "column_spacing", "portico_depth", "cupola", "chimneys", "seed", "flagpole",
                  "back_portico", "bow_radius", "bow_columns", "wings", "wing_gap", "wing_width", "wing_depth",
-                 "shutters", "window_caps"):
+                 "shutters", "window_caps", "style", "roof_type", "ridge", "arcade", "arcade_posts",
+                 "arcade_depth", "balcony", "bell_gable", "plan", "rejas", "materials", "jetty",
+                 "jetty_depth", "dormers", "ground_floor", "infill", "bracing", "signboard"):
         setattr(s, attr, getattr(p, attr))
     s.game_player_colour = p.player_colour
     s.texture_size = str(p.texture_size)
+    colors = {**building.DEFAULT_COLORS, **p.colors}
     for k in COLOR_KEYS:
-        setattr(s, "color_" + k, tuple(c / 255.0 for c in p.colors[k]))
+        setattr(s, "color_" + k, tuple(c / 255.0 for c in colors[k]))
 
 
 class AOE3_OT_load_preset(bpy.types.Operator):
@@ -279,6 +326,7 @@ class AOE3_PT_building(bpy.types.Panel):
         row.prop(s, "preset", text="")
         row.operator("aoe3.load_preset", text="", icon="IMPORT")
         lay.prop(s, "name")
+        lay.prop(s, "style")
         lay.prop(s, "detail", expand=True)
         col = lay.column(align=True)
         col.prop(s, "width")
@@ -286,7 +334,63 @@ class AOE3_PT_building(bpy.types.Panel):
         col.prop(s, "storeys")
         col.prop(s, "plinth")
         col.prop(s, "bay_spacing")
-        col.prop(s, "side_bays")
+        if s.style == "COLONIAL":
+            self.draw_colonial(s, lay)
+        elif s.style == "TIMBER":
+            self.draw_timber(s, lay)
+        else:
+            self.draw_neoclassical(s, lay)
+        row = lay.row(align=True)
+        row.prop(s, "texture_size")
+        row.prop(s, "seed")
+        lay.prop(s, "game_player_colour")
+        lay.prop(s, "materials")
+        lay.prop(s, "show_colors", icon="TRIA_DOWN" if s.show_colors else "TRIA_RIGHT", emboss=False)
+        if s.show_colors:
+            grid = lay.grid_flow(columns=3, align=True)
+            for k in COLOR_KEYS:
+                grid.prop(s, "color_" + k, text=k.title())
+        lay.operator("aoe3.generate_building", icon="HOME")
+
+    @staticmethod
+    def draw_timber(s, lay):
+        col = lay.column(align=True)
+        col.prop(s, "roof_pitch")
+        col.prop(s, "dormers")
+        col.prop(s, "chimneys")
+        col.prop(s, "ground_floor")
+        col.prop(s, "infill")
+        col.prop(s, "bracing")
+        col.prop(s, "signboard")
+        lay.prop(s, "jetty")
+        if s.jetty:
+            lay.prop(s, "jetty_depth")
+
+    @staticmethod
+    def draw_colonial(s, lay):
+        col = lay.column(align=True)
+        col.prop(s, "roof_pitch")
+        col.prop(s, "roof_type")
+        if s.roof_type == "GABLE":
+            col.prop(s, "ridge")
+        col.prop(s, "chimneys")
+        col.prop(s, "rejas")
+        col.prop(s, "balcony")
+        col.prop(s, "bell_gable")
+        lay.prop(s, "arcade")
+        if s.arcade != "NONE":
+            col = lay.column(align=True)
+            col.prop(s, "arcade_posts")
+            col.prop(s, "arcade_depth")
+        lay.prop(s, "plan")
+        if s.plan == "L":
+            col = lay.column(align=True)
+            col.prop(s, "wing_width")
+            col.prop(s, "wing_depth")
+
+    @staticmethod
+    def draw_neoclassical(s, lay):
+        lay.prop(s, "side_bays")
         col = lay.column(align=True)
         col.prop(s, "roof_pitch")
         col.prop(s, "cupola")
@@ -311,16 +415,6 @@ class AOE3_PT_building(bpy.types.Panel):
             col.prop(s, "wing_gap")
             col.prop(s, "wing_width")
             col.prop(s, "wing_depth")
-        row = lay.row(align=True)
-        row.prop(s, "texture_size")
-        row.prop(s, "seed")
-        lay.prop(s, "game_player_colour")
-        lay.prop(s, "show_colors", icon="TRIA_DOWN" if s.show_colors else "TRIA_RIGHT", emboss=False)
-        if s.show_colors:
-            grid = lay.grid_flow(columns=3, align=True)
-            for k in COLOR_KEYS:
-                grid.prop(s, "color_" + k, text=k.title())
-        lay.operator("aoe3.generate_building", icon="HOME")
 
 
 class AOE3_PT_check_export(bpy.types.Panel):

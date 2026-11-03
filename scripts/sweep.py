@@ -3,7 +3,7 @@
 on each. It found the edge cases the fixed tests missed (overlapping posts, chimneys, windows and
 column bases on small or narrow buildings).
 
-    python scripts/sweep.py [--count N] [--seeds 2026,7,99]
+    python scripts/sweep.py [--count N] [--seeds 2026,7,99] [--style NEOCLASSICAL|COLONIAL|TIMBER|ALL]
 
 Prints the failing cases (at most 10) and exits with status 1 when any fails. About 0.25 s a case.
 """
@@ -21,10 +21,11 @@ from aoe3_blender_tools.core import blender_io, building, paint, validate  # noq
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
 count = int(argv[argv.index("--count") + 1]) if "--count" in argv else 200
 seeds = [int(x) for x in argv[argv.index("--seeds") + 1].split(",")] if "--seeds" in argv else [2026, 7, 99]
+style = (argv[argv.index("--style") + 1] if "--style" in argv else "ALL").upper()
 
 
 def random_params(rng, i):
-    return building.BuildingParams(
+    p = building.BuildingParams(
         name=f"Sweep{i}", width=rng.uniform(5, 30), depth=rng.uniform(4, 18), storeys=rng.randint(1, 4),
         plinth=rng.choice([0.3, 0.8, 1.5]), roof_pitch=rng.uniform(0.2, 1.2), bay_spacing=rng.uniform(1.4, 3.0),
         portico=rng.random() < 0.6, columns=rng.choice([2, 4, 6, 8]), column_spacing=rng.uniform(1.2, 3.0),
@@ -34,6 +35,10 @@ def random_params(rng, i):
         wings=rng.random() < 0.4, wing_gap=rng.uniform(2, 9), wing_width=rng.uniform(3, 10),
         wing_depth=rng.uniform(3, 10), flagpole=rng.random() < 0.4, shutters=rng.random() < 0.5,
         window_caps=rng.choice(["PEDIMENT", "ALTERNATE"]))
+    if rng.random() < 0.1:           # square plans: the hipped roofs become pyramids
+        p.depth, p.wing_depth = p.width, p.wing_width
+    p.materials = rng.random() < 0.3      # swatches under the painting
+    return p
 
 
 def main():
@@ -42,7 +47,11 @@ def main():
     for seed in seeds:
         rng = random.Random(seed)
         for i in range(count):
-            p = random_params(rng, i)
+            pick = style if style != "ALL" else ("NEOCLASSICAL", "TIMBER", "COLONIAL")[i % 3]
+            if pick in ("COLONIAL", "TIMBER"):
+                p = building.STYLES[pick].random_params(rng, i, building.BuildingParams)
+            else:
+                p = random_params(rng, i)
             total += 1
             try:
                 bpy.ops.wm.read_factory_settings(use_empty=True)

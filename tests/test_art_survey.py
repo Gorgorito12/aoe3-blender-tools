@@ -18,6 +18,7 @@ import xmbedit  # noqa: E402
 
 sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
 from aoe3game import gr2_write  # noqa: E402
+from core import profile  # noqa: E402
 
 ANIM = b"""<?xml version="1.0" encoding="utf-8"?>
 <animfile>
@@ -63,6 +64,24 @@ def make_bar(path, files):
         table += struct.pack("<I", len(name)) + name.encode("utf-16-le")
     struct.pack_into("<II", head, 0x118, len(entries), 0x124 + len(body))
     write(path, bytes(head) + body + table)
+
+
+class FootprintClassTest(unittest.TestCase):
+    def test_model_size_wins_over_an_odd_class(self):
+        def cls(count, ratio, side):
+            return {"count": count, "obstruction_over_half_side": {"median": ratio},
+                    "side_units": {"median": side}}
+        pr = profile.Profile({"classes": {"4x4": cls(60, 0.72, 5.5), "6x6": cls(50, 0.82, 7.3),
+                                          "8x8": cls(200, 0.9, 8.8), "6x8": cls(11, 0.57, 14.0),
+                                          "6x4": cls(5, 0.8, 7.0)}})
+        upm = profile.UNITS_PER_METER
+        self.assertEqual(pr.footprint_class(9.9, 8.8), "4x4")
+        self.assertEqual(pr.footprint_class(11.9, 12.6), "6x6")     # not the 5-building 6x4
+        self.assertEqual(pr.footprint_class(14.6, 14.6), "8x8")
+        self.assertEqual(pr.footprint_class(44.5, 23.6), "8x8")     # not the long-wall 6x8
+        # without model sizes: the old rule, by the obstruction side
+        old = profile.Profile({"classes": {"8x8": {"count": 5, "obstruction_over_half_side": {"median": 0.9}}}})
+        self.assertEqual(old.footprint_class(14.6 * upm / upm, 14.6), "8x8")
 
 
 class SurveyTest(unittest.TestCase):

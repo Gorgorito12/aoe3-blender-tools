@@ -42,8 +42,15 @@ def main():
     with zipfile.ZipFile(legacy, "w", zipfile.ZIP_DEFLATED) as z:
         for full, rel in files():
             z.write(full, os.path.join("aoe3_blender_tools", rel))
+    mats = os.path.join(PKG, "materials")
+    if os.path.isdir(mats):
+        n = sum(os.path.getsize(os.path.join(mats, f)) for f in os.listdir(mats))
+        print(f"materials/: {len(os.listdir(mats))} files, {n} bytes")
     for path in (ext, legacy):
-        print(f"{path} ({os.path.getsize(path)} bytes)")
+        size = os.path.getsize(path)
+        print(f"{path} ({size} bytes)")
+        if size > 6 * 1024 * 1024:
+            raise SystemExit(f"{path} is above 6 MB: keep the material swatches small")
 
 
 main()

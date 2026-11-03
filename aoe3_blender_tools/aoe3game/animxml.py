@@ -60,7 +60,9 @@ def _asset(tab, model, shape=None):
 def _model_block(tab, model, lowpoly=None, damaged=None, shape=None):
     """The finished model as the stock buildings write it: a Destruction logic (p1 the damaged
     model, p99 the intact one) when there is a damaged model, inside a LowPoly logic (normal /
-    lowpoly) when there is a low-poly model; a plain asset reference otherwise."""
+    lowpoly) when there is a low-poly model; a plain asset reference otherwise. The low-poly
+    reference carries the same `shape` as the others, as the stock houses write it: without it
+    the game never draws the low-poly model (seen in game, 2026-11-03)."""
     if damaged:
         normal = (f"{tab}<logic type=\"Destruction\">\n"
                   f"{tab}\t<p1>\n{_asset(tab + chr(9) * 2, damaged, shape)}{tab}\t</p1>\n"
@@ -73,7 +75,7 @@ def _model_block(tab, model, lowpoly=None, damaged=None, shape=None):
     inner = "".join(tab + "\t\t" + line[len(tab):] + "\n" for line in normal.splitlines())
     return (f"{tab}<logic type=\"LowPoly\">\n"
             f"{tab}\t<normal>\n{inner}{tab}\t</normal>\n"
-            f"{tab}\t<lowpoly>\n{_asset(tab + chr(9) * 2, lowpoly)}{tab}\t</lowpoly>\n"
+            f"{tab}\t<lowpoly>\n{_asset(tab + chr(9) * 2, lowpoly, shape)}{tab}\t</lowpoly>\n"
             f"{tab}</logic>\n")
 
 

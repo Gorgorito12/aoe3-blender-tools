@@ -1,0 +1,1 @@
+TimberHouse: 426 triangles, 299 vertices; footprint 9.7 x 8.5 m; texture 1024 x 1024

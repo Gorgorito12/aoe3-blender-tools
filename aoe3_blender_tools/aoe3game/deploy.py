@@ -78,15 +78,24 @@ class Deployment:
         return proto.xmb_twins(os.path.join(self.install, "data"))
 
     # -- apply / undo --
-    def apply(self, bundle_dir, log=print, show_as=None, builder=None):
+    def apply_many(self, bundle_dirs, log=print, show_as=None, builder=None):
+        """Deploys several bundles together (an earlier deployment is undone first); `show_as`
+        uses the first one. `undo` takes them all out."""
+        m = None
+        for i, d in enumerate(bundle_dirs):
+            m = self.apply(d, log=log, show_as=show_as if i == 0 else None, builder=builder, keep=i > 0)
+        return m
+
+    def apply(self, bundle_dir, log=print, show_as=None, builder=None, keep=False):
         """Copies the bundle's art, adds its unit and strings. Undoes an earlier deployment
-        first, so applying again replaces it.
+        first, so applying again replaces it; with `keep`, adds to it instead (the backups stay
+        the original files, so `undo` restores the copy as it was before any of them).
 
         show_as: the name of an existing unit (e.g. "TownCenter") whose model, icon and portrait
         are pointed at the new building's too, so it shows at the start of any skirmish. For
         looking at a building in a test copy only; `undo` restores that unit with the rest.
         builder: a unit (e.g. "Settler") that gets the new building in its build list."""
-        if os.path.exists(self.manifest_path):
+        if os.path.exists(self.manifest_path) and not keep:
             self.undo(log=log)
         with open(os.path.join(bundle_dir, "bundle.json"), encoding="utf-8") as f:
             b = json.load(f)
@@ -95,6 +104,7 @@ class Deployment:
             raise RefusedPath("compiled data files would shadow the edits: " + ", ".join(twins))
         m = self.manifest()
         m["bundle"] = os.path.abspath(bundle_dir)
+        m["bundles"] = m.get("bundles", []) + [os.path.abspath(bundle_dir)]
         try:
             for dp, _dn, fn in os.walk(os.path.join(bundle_dir, "art")):
                 for f in fn:
@@ -120,7 +130,7 @@ class Deployment:
             self._backup(m, spath)
             proto.write_text(spath, proto.add_strings(stext, dict(zip(ids, b["strings"].values()))),
                              senc)
-            m["strings"] = ids
+            m["strings"] = m.get("strings", []) + ids
             log(f"data  stringtabley.xml: strings {ids}")
             ppath = os.path.join(data, "protoy.xml")
             ptext, penc = proto.read_text(ppath)
@@ -139,8 +149,9 @@ class Deployment:
                 m["shown_as"] = show_as
                 log(f"data  protoy.xml: {show_as} shows the new building (test only)")
             proto.write_text(ppath, ptext, penc)
-            m["units"] = [b["name"]]
+            m["units"] = m.get("units", []) + [b["name"]]
             m["unit_id"] = uid
+            m["unit_ids"] = m.get("unit_ids", []) + [uid]
             log(f"data  protoy.xml: unit {b['name']} id = DBID = {uid}")
         finally:
             self.save_manifest(m)

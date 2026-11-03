@@ -271,6 +271,32 @@ class DeployTest(unittest.TestCase):
             d.undo(log=lambda s: None)
             self.assertEqual(self.digest(inst), before)
 
+    def test_apply_many_and_undo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inst, b = self.make_copy(tmp)
+            b2 = os.path.join(tmp, "bundle2")
+            os.makedirs(os.path.join(b2, "art", "mod", "buildings", "inn"))
+            with open(os.path.join(b2, "art", "mod", "buildings", "inn", "inn.gr2"), "wb") as f:
+                f.write(b"model2")
+            with open(os.path.join(b2, "bundle.json"), "w", encoding="utf-8") as f:
+                json.dump({"name": "Inn", "template": "House", "unit": {"AnimFile": "mod\\buildings\\inn\\inn.xml"},
+                           "strings": {"DisplayNameID": "Inn"}}, f)
+            before = self.digest(inst)
+            d = deploy.Deployment(inst)
+            m = d.apply_many([b, b2], log=lambda s: None)
+            self.assertEqual(m["units"], ["Tower", "Inn"])
+            self.assertEqual(len(set(m["unit_ids"])), 2)
+            self.assertEqual(len(set(m["strings"])), 3)
+            text, _ = proto.read_text(os.path.join(inst, "data", "protoy.xml"))
+            self.assertIn('name="Tower"', text)
+            self.assertIn('name="Inn"', text)
+            d.apply_many([b2], log=lambda s: None)         # again: replaces both
+            text, _ = proto.read_text(os.path.join(inst, "data", "protoy.xml"))
+            self.assertNotIn('name="Tower"', text)
+            self.assertEqual(text.count('name="Inn"'), 1)
+            d.undo(log=lambda s: None)
+            self.assertEqual(self.digest(inst), before)
+
     def test_show_as(self):
         with tempfile.TemporaryDirectory() as tmp:
             inst, b = self.make_copy(tmp)
@@ -400,6 +426,9 @@ class DdtTest(unittest.TestCase):
             self.assertIn(r"mod\buildings\box\box_damaged", files)
             logic = [l.get("type") for l in root.iter("logic")]
             self.assertEqual(logic[:2], ["LowPoly", "Destruction"])
+            # every model reference has the shape, the low-poly one too (else the game ignores it)
+            lp_ref = next(a for a in root.iter("assetreference") if a.findtext("file", "").endswith("box_lp"))
+            self.assertTrue(lp_ref.get("shape"))
             self.assertIn(r"mod\buildings\box\box_death", files)
             anims = [a.text.split()[0] for a in root.iter("anim")]
             self.assertIn("Death", anims)
@@ -413,6 +442,15 @@ class DdtTest(unittest.TestCase):
             with open(os.path.join(tmp, "proto_fields.xml"), encoding="utf-8") as f:
                 fields = f.read()
             self.assertIn(r"<AnimFile>mod\buildings\box\box.xml</AnimFile>", fields)
+        # a low-poly model alone still borrows the skeleton that gives the shape
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle.write(tmp, name="Box", prefix="mod", positions=P, normals=N, uvs=UV, triangles=T,
+                         texture_rgba=tex, footprint_m=(4, 3), variants={"lowpoly": variants["lowpoly"]})
+            root = ET.parse(os.path.join(tmp, "art", "mod", "buildings", "box", "box.xml")).getroot()
+            refs = [a for a in root.iter("assetreference")
+                    if a.get("type") == "GrannyModel" and a.findtext("file", "").startswith("mod")]
+            self.assertTrue(refs and all(a.get("shape") for a in refs), [a.attrib for a in refs])
+            self.assertTrue(list(root.iter("simskeleton")))
 
     def test_sink_animation(self):
         data = gr2_write.sink_animation("Tower", [("bone_flag_civ", (0.0, 0.0, 5.0))], 6.0,
