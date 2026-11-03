@@ -110,7 +110,11 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
   with the proto fields and strings. Sizes come from the calibration profile.
 - **Low-poly and damaged models**: the LOW detail as the model for the game's low model detail
   setting, and a damaged texture (soot, missing slates, cracks) for a building that has lost hit
-  points.
+  points (written; the game does not show it yet, see docs/game-test.md).
+- **Death animation**: the building sinks into the ground with the stock collapse dust before
+  the rubble appears.
+- **Notes for the mod's team**: `README.txt` and `proto_fields.xml` in each bundle say where every
+  file goes and what the mod's own data still needs.
 - **Icon and portrait**: rendered from the building, framed like the game's own (64 x 64 and
   128 x 128, DXT1).
 - **Player colour**: an option paints the string courses and shutters for the owner's colour

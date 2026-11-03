@@ -14,6 +14,9 @@ GROUND_DECAL = r"buildings\market\market_ground_generic"
 SELECTION = r"shadows_selections\selection_square_{0}x{0}"
 FLAT_BUMP = r"shadows_selections\flat_normal_black_spec"
 CHIMNEY_SMOKE = r"effects\smoke\white_smoke_a.particle"
+# The dust a stock house throws when it collapses, attached at the model's origin.
+COLLAPSE_SMOKE = (("base smoke", "smoke base", r"effects\smoke\collapsesmoke01.particle"),
+                  ("collapse_smoke", "collapse_smoke", r"effects\smoke\collapse_smoke_a.particle"))
 STAGE_CLASSES = ("2x2", "3x3", "4x4", "5x5", "6x6")
 
 
@@ -74,7 +77,8 @@ def _model_block(tab, model, lowpoly=None, damaged=None):
 
 
 def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUND_DECAL,
-             bones=("bone_flag_civ",), chimney_bone=None, lowpoly=None, damaged=None):
+             bones=("bone_flag_civ",), chimney_bone=None, lowpoly=None, damaged=None,
+             death_anim=None):
     """The text of a building's anim file.
 
     name: the building's name (submodel and component names).
@@ -87,6 +91,8 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
     damaged: a damaged model, or None. The stock files put it under p1 and the intact model
         under p99 of a Destruction logic: read as hit point percentages, the damaged one shows
         once the building is below 99 % (to verify in game).
+    death_anim: a Granny animation the building plays when it is destroyed (with the stock
+        collapse dust), or None (the building then just goes).
     """
     model = art_path(model)
     sw, sh = stage_decal or decal
@@ -117,6 +123,14 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
         out.append("\t\t\t\t</assetreference>\n\t\t\t</component>\n")
         out.append("\t\t\t<anim>\n\t\t\t\tIdle\n\t\t\t\t<component>smoke</component>\n")
         out.append("\t\t\t</anim>\n\t\t</attachment>\n")
+    if death_anim:
+        for attachment, component, particle in COLLAPSE_SMOKE:
+            out.append(f"\t\t<attachment>\n\t\t\t{attachment}\n\t\t\t<component>\n\t\t\t\t{component}\n")
+            out.append("\t\t\t\t<assetreference type=\"ParticleSystem\">\n")
+            out.append(f"\t\t\t\t\t<file>{particle}</file>\n")
+            out.append("\t\t\t\t</assetreference>\n\t\t\t</component>\n")
+            out.append(f"\t\t\t<anim>\n\t\t\t\tIdle\n\t\t\t\t<component>{component}</component>\n")
+            out.append("\t\t\t</anim>\n\t\t</attachment>\n")
     out.append(f"\t\t<component>\n\t\t\t{escape(main)}\n")
     out.append(_model_block("\t\t\t", model, lowpoly=lowpoly, damaged=damaged))
     out.append(_decal("\t\t\t", ground, decal[0], decal[1], sel))
@@ -126,6 +140,15 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
     out.append("\t\t</component>\n")
     out.append(f"\t\t<anim>\n\t\t\tIdle\n\t\t\t<component>{escape(main)}</component>\n"
                "\t\t</anim>\n")
+    if death_anim:
+        out.append("\t\t<anim>\n\t\t\tDeath\n\t\t\t<assetreference type=\"GrannyAnim\">\n")
+        out.append(f"\t\t\t\t<file>{escape(art_path(death_anim))}</file>\n")
+        out.append("\t\t\t</assetreference>\n")
+        out.append(f"\t\t\t<component>{escape(main)}</component>\n")
+        for attachment, _component, _particle in COLLAPSE_SMOKE:
+            out.append(f"\t\t\t<attach a=\"{attachment}\" frombone=\"ATTACHPOINT\" "
+                       "tobone=\"ATTACHPOINT\" syncanims=\"0\"/>\n")
+        out.append("\t\t</anim>\n")
     out.append("\t</submodel>\n")
     out.append(f"\t<component>\n\t\t{escape(name)}\n")
     out.append("\t\t<logic type=\"Variation\">\n\t\t\t<none>\n")

@@ -378,3 +378,57 @@ def static_model(name, positions, normals, uvs, triangles, *, texture, bump,
              Skeletons=[skeleton], VertexDatas=[vdata], TriTopologies=[topo], Meshes=[mesh],
              Models=[model], TrackGroups=[], Animations=[])
     return serialize(root)
+
+
+def _curve(S, degree, knots, controls):
+    return {"Degree": degree,
+            "Knots": Flat(S["Real32"], struct.pack(f"<{len(knots)}f", *knots), len(knots)),
+            "Controls": Flat(S["Real32"], struct.pack(f"<{len(controls)}f", *controls),
+                             len(controls))}
+
+
+def sink_animation(name, bones, height_m, *, duration=4.0, tilt_deg=4.0, steps=8,
+                   units_per_meter=STOCK_BASIS["units_per_meter"], source=""):
+    """Bytes of a .gr2 animation that sinks a static building into the ground: the mesh bone
+    (named like the building, as `static_model` writes it) and every attach bone go down by
+    `height_m` metres, faster and faster, while the building leans a few degrees. The tracks
+    are named after those bones, children of "bone_main", as in the game's building death
+    animations (one track group named after the model, curves of degree 1)."""
+    S = schema()
+    drop = height_m * units_per_meter
+    times = [duration * k / steps for k in range(steps + 1)]
+    ease = [(t / duration) ** 2 for t in times]
+    lean = math.radians(tilt_deg)
+    tracks = []
+    for bone_name, pos in [(name, (0.0, 0.0, 0.0))] + list(bones):
+        x, y, z = to_file(pos, units_per_meter)
+        position = []
+        for e in ease:
+            position += [x, y - drop * e, z]
+        orientation = []
+        for e in ease:                   # a turn about the file's X axis (the building's side)
+            a = lean * e / 2
+            orientation += [math.sin(a), 0.0, 0.0, math.cos(a)]
+        tracks.append(W(S["TransformTrack"], Name=bone_name,
+                        PositionCurve=_curve(S, 1, times, position),
+                        OrientationCurve=_curve(S, 1, times, orientation),
+                        ScaleShearCurve=_curve(S, 0, [0.0],
+                                               [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0])))
+    group = W(S["TrackGroup"], Name="bone_main", VectorTracks=[], TransformTracks=tracks,
+              TransformLODErrors=[], TextTracks=[], InitialPlacement=IDENTITY_TRANSFORM,
+              AccumulationFlags=0, LoopTranslation=(0.0, 0.0, 0.0))
+    anim = W(S["Animation"], Name=source or f"{name}_death", Duration=duration,
+             TimeStep=1.0 / 60, Oversampling=0.0, TrackGroups=[group])
+    b = STOCK_BASIS
+    root = W(S["FileInfo"],
+             ArtToolInfo=W(S["ArtToolInfo"], FromArtToolName=b["name"],
+                           ArtToolMajorRevision=b["major"], ArtToolMinorRevision=b["minor"],
+                           UnitsPerMeter=units_per_meter, Origin=(0.0, 0.0, 0.0),
+                           RightVector=b["right"], UpVector=b["up"], BackVector=b["back"]),
+             ExporterInfo=W(S["ExporterInfo"], ExporterName=EXPORTER, ExporterMajorRevision=2,
+                            ExporterMinorRevision=5, ExporterCustomization=0,
+                            ExporterBuildNumber=1),
+             FromFileName=source or f"{name}_death", Textures=[], Materials=[], Skeletons=[],
+             VertexDatas=[], TriTopologies=[], Meshes=[], Models=[], TrackGroups=[group],
+             Animations=[anim])
+    return serialize(root)

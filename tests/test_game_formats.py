@@ -381,6 +381,36 @@ class DdtTest(unittest.TestCase):
             self.assertIn(r"mod\buildings\box\box_damaged", files)
             logic = [l.get("type") for l in root.iter("logic")]
             self.assertEqual(logic[:2], ["LowPoly", "Destruction"])
+            self.assertIn(r"mod\buildings\box\box_death", files)
+            anims = [a.text.split()[0] for a in root.iter("anim")]
+            self.assertIn("Death", anims)
+            death = gr2.load(base + "_death.gr2").root()
+            group = death.get("Animations")[0].get("TrackGroups")[0]
+            self.assertEqual([t.get("Name") for t in group.get("TransformTracks")], ["Box"])
+            with open(os.path.join(tmp, "README.txt"), encoding="utf-8") as f:
+                readme = f.read()
+            self.assertIn("box_lp.gr2", readme)
+            self.assertIn("<Train>", readme)
+            with open(os.path.join(tmp, "proto_fields.xml"), encoding="utf-8") as f:
+                fields = f.read()
+            self.assertIn(r"<AnimFile>mod\buildings\box\box.xml</AnimFile>", fields)
+
+    def test_sink_animation(self):
+        data = gr2_write.sink_animation("Tower", [("bone_flag_civ", (0.0, 0.0, 5.0))], 6.0,
+                                        duration=3.0, steps=4)
+        self.assertTrue(gr2.crc_ok(data))
+        r = gr2.load(data).root()
+        anim = r.get("Animations")[0]
+        self.assertAlmostEqual(anim.get("Duration"), 3.0)
+        track = anim.get("TrackGroups")[0].get("TransformTracks")[1]
+        pc = track.get("PositionCurve")
+        knots = struct.unpack("<5f", pc.get("Knots").raw)
+        ys = struct.unpack("<15f", pc.get("Controls").raw)[1::3]
+        u = gr2_write.STOCK_BASIS["units_per_meter"]
+        self.assertEqual(knots, (0.0, 0.75, 1.5, 2.25, 3.0))
+        self.assertAlmostEqual(ys[0], 5.0 * u, places=5)               # the flag starts in place
+        self.assertAlmostEqual(ys[-1], (5.0 - 6.0) * u, places=5)       # and sinks the height
+        self.assertTrue(all(a > b for a, b in zip(ys, ys[1:])))
 
     def test_icon_compose(self):
         from aoe3game import icons

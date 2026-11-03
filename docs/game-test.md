@@ -74,10 +74,14 @@ Obstruction (2026-11-03): a stock house fits 2 units from it, and musketeers sen
 across walked round its south side, 0.3 to 2 units outside the obstruction square, and reached the target. Three of the six never moved in two runs: to look into, not tied to the building so far.
 
 Low-poly and damaged variants (2026-11-03): the game loads the anim file with the `LowPoly` and
-`Destruction` logic and the three models without an error, and the damage trigger takes the
-building to 70 %. Not seen yet: the damaged texture on screen (the camera of the test copy put
-the building at the corner of the view, see below) and the low-poly model (it needs the game's
-low model detail setting).
+`Destruction` logic and the three models without an error. The damaged model did not show, at
+70 % nor at 2 % of the hit points: the `Destruction` logic is not driven by the hit points alone.
+The stock houses pair their damaged model with a damage template (`.dmg`, impact points and
+debris bones) in the Idle anim's `simskeleton`; that is the next thing to try. The low-poly
+model needs the game's low model detail setting (not tried).
+
+Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds
+while the stock collapse dust rises, then the rubble takes its place.
 
 ## Driving a test without clicks
 
@@ -91,7 +95,9 @@ The game's own triggers can place and drive everything:
 
 The villager must have the building in its build list: deploy with `--builder Settler` (test copy
 only). Selection calls typed on the console (`trUnitSelectByID`, `trUnitBuildUnit`) did nothing
-outside a trigger. The game draws only while its window has the foreground: a screenshot of a copy that runs behind another game's window shows an old frame (the simulation goes on, so unit positions stay right). An engine extension DLL with a console command file option lets a script run
+outside a trigger. The console camera commands (`uiLookAtUnit`,
+`uiLookAtAndSelectUnit`) centre the view only when the game window sits at the top-left corner of
+the screen (0, 0); elsewhere the unit ends up off centre by the window's offset. The game draws only while its window has the foreground: a screenshot of a copy that runs behind another game's window shows an old frame (the simulation goes on, so unit positions stay right). An engine extension DLL with a console command file option lets a script run
 the console commands that load the map and point the camera, and one with a multiple-instances
 option lets the test copy run beside another copy of the game.
 
