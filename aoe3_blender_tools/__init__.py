@@ -62,6 +62,18 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     plan: EnumProperty(name="Plan", items=[("BLOCK", "Block", ""),
                                            ("L", "L", "A one-storey wing at the back")], default="BLOCK")
     rejas: BoolProperty(name="Window grilles", default=True, description="Iron grilles on the ground floor windows")
+    jetty: BoolProperty(name="Jetty", default=True, description="The upper floors jut out over the front and back")
+    jetty_depth: FloatProperty(name="Jetty depth", default=0.4, min=0.2, max=0.8, unit="LENGTH")
+    dormers: IntProperty(name="Dormers", default=1, min=0, max=4)
+    ground_floor: EnumProperty(name="Ground floor", items=[("STONE", "Stone", "Rubble stone"),
+                                                           ("BRICK", "Brick", ""),
+                                                           ("TIMBER", "Timber", "Framed like the upper floors")],
+                               default="STONE")
+    infill: EnumProperty(name="Infill", items=[("PLASTER", "Plaster", ""), ("BRICK", "Brick", "")],
+                         default="PLASTER")
+    bracing: EnumProperty(name="Braces", items=[("CROSS", "Cross", ""), ("CURVED", "Curved", ""),
+                                                ("PLAIN", "Plain", "Posts and rails only")], default="CROSS")
+    signboard: BoolProperty(name="Sign", default=False, description="A sign hanging from the front wall")
     materials: BoolProperty(name="Material swatches", default=False,
                             description="Photo swatches (CC0) under the painting give the walls their grain")
     width: FloatProperty(name="Width", default=14.0, min=4.0, max=60.0, unit="LENGTH")
@@ -167,7 +179,9 @@ def params_from_props(s):
         window_caps=s.window_caps, player_colour=s.game_player_colour, style=s.style,
         roof_type=s.roof_type, ridge=s.ridge, arcade=s.arcade, arcade_posts=s.arcade_posts,
         arcade_depth=s.arcade_depth, balcony=s.balcony, bell_gable=s.bell_gable, plan=s.plan,
-        rejas=s.rejas, materials=s.materials)
+        rejas=s.rejas, materials=s.materials, jetty=s.jetty, jetty_depth=s.jetty_depth,
+        dormers=s.dormers, ground_floor=s.ground_floor, infill=s.infill, bracing=s.bracing,
+        signboard=s.signboard)
     p.colors = {k: tuple(int(round(c * 255)) for c in getattr(s, "color_" + k)) for k in COLOR_KEYS}
     return p
 
@@ -178,7 +192,8 @@ def props_from_params(s, p):
                  "columns", "column_spacing", "portico_depth", "cupola", "chimneys", "seed", "flagpole",
                  "back_portico", "bow_radius", "bow_columns", "wings", "wing_gap", "wing_width", "wing_depth",
                  "shutters", "window_caps", "style", "roof_type", "ridge", "arcade", "arcade_posts",
-                 "arcade_depth", "balcony", "bell_gable", "plan", "rejas", "materials"):
+                 "arcade_depth", "balcony", "bell_gable", "plan", "rejas", "materials", "jetty",
+                 "jetty_depth", "dormers", "ground_floor", "infill", "bracing", "signboard"):
         setattr(s, attr, getattr(p, attr))
     s.game_player_colour = p.player_colour
     s.texture_size = str(p.texture_size)
@@ -321,6 +336,8 @@ class AOE3_PT_building(bpy.types.Panel):
         col.prop(s, "bay_spacing")
         if s.style == "COLONIAL":
             self.draw_colonial(s, lay)
+        elif s.style == "TIMBER":
+            self.draw_timber(s, lay)
         else:
             self.draw_neoclassical(s, lay)
         row = lay.row(align=True)
@@ -334,6 +351,20 @@ class AOE3_PT_building(bpy.types.Panel):
             for k in COLOR_KEYS:
                 grid.prop(s, "color_" + k, text=k.title())
         lay.operator("aoe3.generate_building", icon="HOME")
+
+    @staticmethod
+    def draw_timber(s, lay):
+        col = lay.column(align=True)
+        col.prop(s, "roof_pitch")
+        col.prop(s, "dormers")
+        col.prop(s, "chimneys")
+        col.prop(s, "ground_floor")
+        col.prop(s, "infill")
+        col.prop(s, "bracing")
+        col.prop(s, "signboard")
+        lay.prop(s, "jetty")
+        if s.jetty:
+            lay.prop(s, "jetty_depth")
 
     @staticmethod
     def draw_colonial(s, lay):

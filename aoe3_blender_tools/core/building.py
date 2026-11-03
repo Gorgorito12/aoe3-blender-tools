@@ -71,6 +71,14 @@ class BuildingParams:
     bell_gable: bool = False        # a bell gable (espadana) over the front; the flag goes on top
     plan: str = "BLOCK"             # BLOCK, or L: a one-storey wing at the back (wing_width, wing_depth)
     rejas: bool = True              # iron grilles on the ground floor windows
+    # timber-framed style
+    jetty: bool = True              # the upper floors jut out over the front and back
+    jetty_depth: float = 0.4
+    dormers: int = 1                # on the front slope, 0..4
+    ground_floor: str = "STONE"     # STONE, BRICK or TIMBER
+    infill: str = "PLASTER"         # PLASTER or BRICK between the timbers
+    bracing: str = "CROSS"          # CROSS, CURVED or PLAIN braces (painted)
+    signboard: bool = False         # a sign hanging from the front wall (player colour)
     colors: dict = field(default_factory=lambda: dict(DEFAULT_COLORS))
 
 
@@ -94,7 +102,19 @@ PRESETS = {
 COLONIAL_COLORS = {**DEFAULT_COLORS, "plaster": (238, 231, 214), "plinth": (176, 112, 70),
                    "tile": (170, 84, 52), "timber": (98, 66, 42), "door": (84, 58, 38),
                    "iron": (40, 38, 36), "glass": (46, 54, 60)}
+TIMBER_COLORS = {**DEFAULT_COLORS, "timber": (62, 44, 32), "plaster": (230, 220, 194),
+                 "stone": (172, 164, 150), "brick": (146, 66, 48), "tile": (154, 72, 50),
+                 "door": (92, 60, 38), "glass": (52, 62, 66), "lead": (70, 72, 74)}
 PRESETS.update({
+    "TIMBER_HOUSE": BuildingParams(
+        name="TimberHouse", style="TIMBER", width=9.0, depth=7.0, storeys=2, plinth=0.3, roof_pitch=1.1,
+        bay_spacing=2.0, jetty=True, jetty_depth=0.4, dormers=1, ground_floor="STONE", infill="PLASTER",
+        bracing="CROSS", chimneys=1, portico=False, cupola=False, detail="MEDIUM", colors=dict(TIMBER_COLORS)),
+    "TIMBER_INN": BuildingParams(
+        name="TimberInn", style="TIMBER", width=12.0, depth=8.5, storeys=3, plinth=0.3, roof_pitch=1.0,
+        bay_spacing=2.1, jetty=True, jetty_depth=0.45, dormers=2, ground_floor="BRICK", infill="PLASTER",
+        bracing="CURVED", signboard=True, chimneys=2, portico=False, cupola=False, detail="MEDIUM",
+        colors=dict(TIMBER_COLORS)),
     "COLONIAL_HOUSE": BuildingParams(
         name="ColonialHouse", style="COLONIAL", width=9.0, depth=7.5, storeys=2, plinth=0.3,
         roof_pitch=0.45, bay_spacing=2.4, roof_type="GABLE", ridge="ALONG", balcony=True, rejas=True,

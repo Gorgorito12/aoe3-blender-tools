@@ -8,7 +8,8 @@ the art a mod already has. It has two parts:
   anim file structure, and which stock parts the mod reuses. The generators are calibrated on it.
 - **A Blender add-on**: generators that build models from exact primitives (flat walls, straight
   edges), lay out one UV atlas, paint the texture from the real measurements, check that the
-  result is game-ready, and export it. Two styles so far: neoclassical and Spanish colonial.
+  result is game-ready, and export it. Three styles so far: neoclassical, Spanish colonial and
+  European timber framing.
 
 | White House | Courthouse |
 |---|---|
@@ -19,10 +20,13 @@ the art a mod already has. It has two parts:
 | ![White House medium](examples/whitehouse_medium/preview_front34.jpg) | ![White House medium, clay](examples/whitehouse_medium/preview_wire.jpg) |
 | **Colonial house** | **Colonial trading house** |
 | ![Colonial house](examples/colonialhouse/preview_front34.jpg) | ![Colonial trading house](examples/colonialtradinghouse/preview_front34.jpg) |
+| **Timber house** | **Timber inn** |
+| ![Timber house](examples/timberhouse/preview_front34.jpg) | ![Timber inn](examples/timberinn/preview_front34.jpg) |
 
 The four presets at low detail have 92 to 413 triangles; the White House at medium detail has
 1,235. The colonial house has 362 triangles at medium detail, the trading house (a portal of
-arches, a balcony, a bell gable and a wing) 794. Each has one 1024 × 1024 texture.
+arches, a balcony, a bell gable and a wing) 794; the timber house 426, the inn (three storeys,
+two dormers, a sign) 725. Each has one 1024 × 1024 texture.
 
 **White House, 1914** (preset `WHITE_HOUSE_1914`, built from a reference picture): north and south
 elevations, then views from the south-west and the north-east. 3,035 triangles at medium detail,
@@ -53,6 +57,10 @@ The colonial house in the same copy, for two players (shutters and door in the o
 beside a stock house:
 
 ![Colonial house in game](examples/colonialhouse/ingame_player_colour.jpg)
+
+The timber house with its material swatches, for two players (shutters and door):
+
+![Timber house in game](examples/timberhouse/ingame_player_colour.jpg)
 
 ## Why
 
@@ -97,6 +105,10 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
   portal along the front (wooden posts, or masonry piers with flat arches) under a lean-to roof,
   a bell gable that carries the flag, and an L plan with a one-storey wing. Presets: Colonial
   House, Colonial Trading House.
+- **European timber-framed style**: a ground floor of rubble stone, brick or timber, upper floors
+  of timber framing (posts, rails, cross or curved braces) over plaster or brick infill jutting out
+  on joists, a steep tiled roof with framed gables, dormers on the front slope, brick chimneys and
+  a hanging sign in the owner's colour. Presets: Timber House, Timber Inn.
 - **Neoclassical style**: width, depth, 1 to 4 storeys, plinth, window
   spacing and side windows, a portico with 2 to 8 columns and a pediment, a hipped roof of any
   pitch, a cupola or a flagpole, up to 8 chimneys, a semicircular back portico (columns on an arc

@@ -67,6 +67,7 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
 | Style | Presets (medium detail) | Footprint class | Storey | Roof | Player colour |
 |---|---|---|---|---|---|
 | Neoclassical | White House 1,235 tris; the others 92 to 413 at low detail | 6x4 (Mansion) to 18x18 (White House 1914) | 3.1 m | hipped, slate | string courses, shutters |
+| Timber framing | Timber House 426 (low 63), Timber Inn 725 (low 108) | 4x4 (house) | 2.7 m, ground floor of stone or brick 3.0 m | gable, plain tiles, pitch 0.7 to 1.6, dormers | shutters, door, sign |
 | Spanish colonial | Colonial House 362 (low 56), Colonial Trading House 794 (low 167) | 4x4 (house); 8x10 (trading house: the portal and the wing make it 17 m deep) | 2.9 m | gable or hipped, clay tiles, 0.45 m eave | shutters, door leaf |
 
 Measured class budgets (the survey): 4x4 median 571 triangles, 90th percentile 1,613; 6x6 median
@@ -76,6 +77,12 @@ the bell gable are geometry; windows, grilles, shutters, the door, beam ends und
 the dado, tiles, bells and the railing's balusters are painted. At medium detail the openings are
 recessed; an upper window is never wider than the one below it, so each wall stays one polygon
 with holes (a wider one above sends the wall to the grid fallback and doubles its triangles).
+
+In the timber style the walls, the jetty's soffit and joist ends (front only), roof, framed
+gables, dormers, chimneys and the sign are geometry; posts, rails, braces, infill, windows with
+leaded panes, shutters, the door, rubble stone and bricks are painted. The framing is laid out
+from the openings (a post beside every window, an extra one in wide panels), so it always meets
+the windows.
 
 Every style builds with `core/kit.py`: the regions first, then `pack()`, then the faces. The order
 of both is part of the output, so a refactor keeps them; the neoclassical presets are held byte

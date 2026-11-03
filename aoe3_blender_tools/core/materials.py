@@ -31,6 +31,8 @@ MATERIALS = {
                      "plinth": ("stone_rough", 2.0, "plinth"), "stone": ("stone_rough", 2.0, "stone")},
     "COLONIAL": {"wall": ("plaster", 2.0, "plaster"), "roof": ("clay", 1.5, "tile", 0.025),
                  "plinth": ("stone_rough", 2.0, "plinth"), "timber": ("timber", 1.0, "timber")},
+    "TIMBER": {"stone": ("stone_rough", 2.0, "stone"), "infill": ("plaster", 2.0, "plaster"),
+               "roof": ("clay", 1.5, "tile", 0.025), "timber": ("timber", 1.0, "timber")},
 }
 
 _cache = {}

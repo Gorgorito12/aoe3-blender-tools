@@ -8,6 +8,6 @@
     paint(pr, model)  draws the texture on a `core.painter.Painter`
 
 and builds with `core.kit.Builder`. Pure Python: no Blender import."""
-from . import colonial, neoclassical
+from . import colonial, neoclassical, timber
 
-STYLES = {neoclassical.NAME: neoclassical, colonial.NAME: colonial}
+STYLES = {neoclassical.NAME: neoclassical, colonial.NAME: colonial, timber.NAME: timber}

@@ -3,7 +3,7 @@
 on each. It found the edge cases the fixed tests missed (overlapping posts, chimneys, windows and
 column bases on small or narrow buildings).
 
-    python scripts/sweep.py [--count N] [--seeds 2026,7,99] [--style NEOCLASSICAL|COLONIAL|ALL]
+    python scripts/sweep.py [--count N] [--seeds 2026,7,99] [--style NEOCLASSICAL|COLONIAL|TIMBER|ALL]
 
 Prints the failing cases (at most 10) and exits with status 1 when any fails. About 0.25 s a case.
 """
@@ -47,8 +47,9 @@ def main():
     for seed in seeds:
         rng = random.Random(seed)
         for i in range(count):
-            if style == "COLONIAL" or (style == "ALL" and i % 3 == 2):
-                p = building.STYLES["COLONIAL"].random_params(rng, i, building.BuildingParams)
+            pick = style if style != "ALL" else ("NEOCLASSICAL", "TIMBER", "COLONIAL")[i % 3]
+            if pick in ("COLONIAL", "TIMBER"):
+                p = building.STYLES[pick].random_params(rng, i, building.BuildingParams)
             else:
                 p = random_params(rng, i)
             total += 1

@@ -601,17 +601,23 @@ class Builder:
             self.face_out([(xx, yf + i, z), (xx, y_wall - 0.02, z), (xx, y_wall - 0.02, z + rail_h),
                            (xx, yf + i, z + rail_h)], rail_region, (nx, 0.0, 0.0))
 
-    def jetty(self, x0, x1, y_wall, z, overhang, soffit_region, end_region, n_ends=0):
-        """An upper floor jutting out `overhang` beyond a wall facing -Y at y_wall, from x0 to x1,
-        its floor at z: the soffit under it and, at medium detail, `n_ends` joist ends."""
-        yf = y_wall - overhang
-        self.face_out([(x0, yf, z), (x1, yf, z), (x1, y_wall, z), (x0, y_wall, z)], soffit_region,
+    def jetty(self, x0, x1, y_wall, z, overhang, soffit_region, end_region, n_ends=0, side=-1):
+        """An upper floor jutting out `overhang` beyond a wall at y_wall facing -Y (side -1) or +Y
+        (side +1), from x0 to x1, its floor at z: the soffit under it and, at medium detail,
+        `n_ends` joist ends."""
+        yf = y_wall + side * overhang
+        ya, yb = min(yf, y_wall), max(yf, y_wall)
+        self.face_out([(x0, ya, z), (x1, ya, z), (x1, yb, z), (x0, yb, z)], soffit_region,
                       (0.0, 0.0, -1.0))
         if self.medium and n_ends:
             for k in range(n_ends):
                 cx = x0 + (x1 - x0) * (k + 0.5) / n_ends
-                self.box(cx - 0.08, cx + 0.08, yf + 0.02, y_wall, z - 0.18, z - 0.01, end_region, end_region,
-                         skip=("+y",))
+                if side < 0:
+                    self.box(cx - 0.08, cx + 0.08, yf + 0.02, y_wall, z - 0.18, z - 0.01, end_region, end_region,
+                             skip=("+y",))
+                else:
+                    self.box(cx - 0.08, cx + 0.08, y_wall, yf - 0.02, z - 0.18, z - 0.01, end_region, end_region,
+                             skip=("-y",))
 
 
 # --------------------------------------------------------------------------------------------------

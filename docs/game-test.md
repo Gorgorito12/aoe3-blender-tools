@@ -101,6 +101,12 @@ door in each owner's colour, its own icon and portrait
 (`examples/colonialhouse/ingame_player_colour.jpg`). A deployment replaces the previous one in
 the copy (the White House was taken out).
 
+Timber house (2026-11-03): medium detail with the material swatches and the player-colour mask
+(426 triangles, class 4x4, stages 2x2), deployed the same way (validators: 0 errors) and placed
+for two players beside a stock house: the right size, the flag on the ridge, shutters and door in
+each owner's colour (`examples/timberhouse/ingame_player_colour.jpg`). The swatches' grain
+showed no glitter in a still at the default zoom; to watch while the camera moves.
+
 Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds
 while the stock collapse dust rises, then the rubble takes its place.
 
