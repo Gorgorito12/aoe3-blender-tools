@@ -232,13 +232,109 @@ def check_uses_profile_budget():
     assert not any("class 8x8" in m for lv, m in validate.check(obj) if lv != validate.INFO)
 
 
+@test
+def player_colour_marks_the_string_courses():
+    import dataclasses
+    p = dataclasses.replace(building.PRESETS["WHITE_HOUSE"], texture_size=512)
+    plain = paint.paint_rgba(building.build(p))
+    assert plain.shape == (512, 512, 4) and plain[..., 3].min() == 255
+    p = dataclasses.replace(p, player_colour=True, shutters=True)
+    model = building.build(p)
+    rgba = paint.paint_rgba(model)
+    share = (rgba[..., 3] < 128).mean()
+    assert 0.005 < share < 0.06, share          # thin bands, as the game's own textures
+    assert (rgba[..., :3] == paint.paint(model)).all()
+    obj = blender_io.create_object(model, rgba)
+    assert blender_io.texture_rgba(obj)[..., 3].min() < 128     # the mask survives in Blender
+
+
+@test
+def icon_and_portrait_render():
+    from aoe3_blender_tools.aoe3game import icons
+    from aoe3_blender_tools.core import render
+    s = bpy.context.scene.aoe3_building
+    s.preset = "MANSION"
+    assert bpy.ops.aoe3.load_preset() == {"FINISHED"}
+    assert bpy.ops.aoe3.generate_building() == {"FINISHED"}
+    obj = bpy.context.view_layer.objects.active
+    engine = bpy.context.scene.render.engine
+    icon, portrait = render.icon_and_portrait(obj)
+    assert icon.shape == (64, 64, 3) and portrait.shape == (128, 128, 3)
+    assert tuple(icon[0, 0]) == icons.FRAME_DARK
+    centre = portrait[40:88, 40:88].astype(int)
+    away = abs(centre - icons.BACK_CENTRE).mean()
+    assert away > 15, away                               # the building, not the empty background
+    assert bpy.context.scene.render.engine == engine     # the scene's settings are restored
+    assert not any(o.name.startswith("aoe3_icon_camera") for o in bpy.data.objects)
+
+
+@test
+def game_variants_lowpoly_and_damaged():
+    import dataclasses
+    p = dataclasses.replace(building.PRESETS["WHITE_HOUSE"], detail="MEDIUM", texture_size=512,
+                            player_colour=True)
+    model = building.build(p)
+    obj = blender_io.create_object(model, paint.paint_rgba(model))
+    before = {o.name for o in bpy.data.objects}
+    v = blender_io.game_variants(obj)
+    assert {o.name for o in bpy.data.objects} == before          # the temporary object is gone
+    tris, _ = blender_io.triangle_count(obj)
+    assert len(v["damaged"]["triangles"]) == tris
+    assert 200 < len(v["lowpoly"]["triangles"]) < tris / 2, len(v["lowpoly"]["triangles"])
+    intact = blender_io.texture_rgba(obj)
+    dmg = v["damaged"]["texture_rgba"]
+    assert (dmg[..., 3] == intact[..., 3]).all()                 # the player colour mask is kept
+    assert (dmg[..., :3] < intact[..., :3]).mean() > 0.02        # soot, slates, cracks
+    assert v["lowpoly"]["texture_rgba"][..., 3].min() < 128      # the LOW model keeps its mask
+    assert blender_io.game_variants(obj, lowpoly=False, damaged=False) == {}
+
+
+@test
+def deploy_from_blender_and_undo():
+    import hashlib
+    s = bpy.context.scene.aoe3_building
+    s.preset = "MANSION"
+    assert bpy.ops.aoe3.load_preset() == {"FINISHED"}
+    assert bpy.ops.aoe3.generate_building() == {"FINISHED"}
+    with tempfile.TemporaryDirectory() as tmp:
+        inst = os.path.join(tmp, "Game")
+        os.makedirs(os.path.join(inst, "art"))
+        os.makedirs(os.path.join(inst, "data"))
+        proto = ("<Proto>\r\n\t<Unit id=\"1\" name=\"House\">\r\n\t\t<DBID>15</DBID>\r\n"
+                 "\t\t<UnitType>Building</UnitType>\r\n\t</Unit>\r\n"
+                 "\t<Unit id=\"2\" name=\"Settler\">\r\n\t\t<DBID>16</DBID>\r\n\t</Unit>\r\n</Proto>\r\n")
+        with open(os.path.join(inst, "data", "protoy.xml"), "w", encoding="utf-8", newline="") as f:
+            f.write(proto)
+        with open(os.path.join(inst, "data", "stringtabley.xml"), "wb") as f:
+            f.write("<StringTable><Language name='English'>\r\n</Language></StringTable>".encode("utf-16"))
+        before = hashlib.sha256(open(os.path.join(inst, "data", "protoy.xml"), "rb").read()).hexdigest()
+        s.game_dir, s.game_install, s.use_profile = os.path.join(tmp, "bundle"), inst, False
+        s.game_icons = False
+        assert bpy.ops.aoe3.export_game() == {"FINISHED"}
+        assert bpy.ops.aoe3.deploy_game() == {"FINISHED"}
+        text = open(os.path.join(inst, "data", "protoy.xml"), encoding="utf-8").read()
+        assert 'name="Mansion"' in text and ">Mansion</Train>" in text, text[-400:]
+        assert bpy.ops.aoe3.undo_deploy() == {"FINISHED"}
+        after = hashlib.sha256(open(os.path.join(inst, "data", "protoy.xml"), "rb").read()).hexdigest()
+        assert after == before
+        s.game_install = r"C:\Program Files (x86)\Steam\steamapps\common\Game"
+        try:
+            bpy.ops.aoe3.deploy_game()
+            refused = False
+        except RuntimeError:
+            refused = True
+        assert refused or not os.path.exists(s.game_install)
+
+
 def main():
     addon.register()
     try:
         for t in (presets_generate_and_pass_checks, parameter_sweep_has_no_overlaps_or_errors,
                   medium_detail_presets_pass_checks, wall_triangulation_covers_the_wall_exactly,
                   regenerating_replaces_the_object, export_and_reimport, checks_catch_known_problems,
-                  atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget):
+                  atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget,
+                  player_colour_marks_the_string_courses, icon_and_portrait_render,
+                  game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo):
             t()
     finally:
         addon.unregister()

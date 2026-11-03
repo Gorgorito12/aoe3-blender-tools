@@ -78,9 +78,14 @@ class Deployment:
         return proto.xmb_twins(os.path.join(self.install, "data"))
 
     # -- apply / undo --
-    def apply(self, bundle_dir, log=print):
+    def apply(self, bundle_dir, log=print, show_as=None, builder=None):
         """Copies the bundle's art, adds its unit and strings. Undoes an earlier deployment
-        first, so applying again replaces it."""
+        first, so applying again replaces it.
+
+        show_as: the name of an existing unit (e.g. "TownCenter") whose model, icon and portrait
+        are pointed at the new building's too, so it shows at the start of any skirmish. For
+        looking at a building in a test copy only; `undo` restores that unit with the rest.
+        builder: a unit (e.g. "Settler") that gets the new building in its build list."""
         if os.path.exists(self.manifest_path):
             self.undo(log=log)
         with open(os.path.join(bundle_dir, "bundle.json"), encoding="utf-8") as f:
@@ -124,7 +129,16 @@ class Deployment:
             block = proto.clone_unit(proto.unit_text(ptext, b.get("template", "House"), index),
                                      name=b["name"], uid=uid, fields=fields)
             self._backup(m, ppath)
-            proto.write_text(ppath, proto.insert_unit(ptext, block), penc)
+            ptext = proto.insert_unit(ptext, block)
+            if builder:
+                ptext = proto.add_train(ptext, builder, b["name"])
+                m["builder"] = builder
+                log(f"data  protoy.xml: {builder} can build {b['name']}")
+            if show_as:
+                ptext = proto.show_as(ptext, show_as, b["unit"])
+                m["shown_as"] = show_as
+                log(f"data  protoy.xml: {show_as} shows the new building (test only)")
+            proto.write_text(ppath, ptext, penc)
             m["units"] = [b["name"]]
             m["unit_id"] = uid
             log(f"data  protoy.xml: unit {b['name']} id = DBID = {uid}")

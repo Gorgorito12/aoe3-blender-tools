@@ -12,6 +12,8 @@ bl_info = {      # read only by Blender versions without extensions; 4.2+ reads 
     "category": "Object",
 }
 
+import os  # noqa: E402
+
 import bpy  # noqa: E402
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,  # noqa: E402
                        FloatVectorProperty, IntProperty, PointerProperty, StringProperty)
@@ -19,6 +21,7 @@ from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProp
 from .aoe3game import bundle  # noqa: E402
 from .core import blender_io, building, paint, validate  # noqa: E402
 from .core import profile as calibration  # noqa: E402
+from .core import render  # noqa: E402
 
 COLOR_KEYS = ("wall", "trim", "roof", "glass", "door", "brick", "lead", "stone", "plinth")
 PRESET_ITEMS = [(k, k.replace("_", " ").title(), "") for k in building.PRESETS]
@@ -85,11 +88,29 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
                                             "art/<mod folder>/buildings/<name>/)")
     game_display: StringProperty(name="Name in game", default="",
                                  description="The name players see (empty: the object's name)")
+    game_texture: EnumProperty(name="Texture format", items=[
+        ("DXT3", "DXT3", "Compressed with alpha, as most of the game's buildings (a quarter of BGRA)"),
+        ("DXT1", "DXT1", "Compressed, no alpha (no player colour)"),
+        ("BGRA", "BGRA", "Uncompressed")], default="DXT3")
+    game_icons: BoolProperty(name="Icon and portrait", default=True,
+                             description="Render the building's icon (64 x 64) and portrait (128 x 128)")
+    game_lowpoly: BoolProperty(name="Low-poly model", default=True,
+                               description="Also write the LOW detail version, which the game draws at "
+                                           "its low model detail setting")
+    game_damaged: BoolProperty(name="Damaged model", default=True,
+                               description="Also write a damaged texture (soot, missing slates, cracks) "
+                                           "that the game shows once the building has lost hit points")
+    game_install: StringProperty(name="Test copy", subtype="DIR_PATH", default="",
+                                 description="A copy of the game (or of the mod's folder) to deploy into; "
+                                             "a Steam folder is refused")
+    game_builder: StringProperty(name="Builder", default="Settler",
+                                 description="The unit that gets the building in its build list (empty: none)")
     game_template: StringProperty(name="Proto template", default="House",
                                   description="The unit whose proto entry the new building copies")
     game_player_colour: BoolProperty(name="Player colour", default=False,
-                                     description="Use the player-colour shader (texture alpha below 255 "
-                                                 "shows the player's colour)")
+                                     description="Paint the string courses and shutters for the owner's "
+                                                 "colour (texture alpha 0 there); the game export then "
+                                                 "uses the player-colour shader")
     export_dir: StringProperty(name="Folder", subtype="DIR_PATH", default="//aoe3_export")
     export_glb: BoolProperty(name="GLB", default=True)
     export_fbx: BoolProperty(name="FBX", default=True)
@@ -116,7 +137,7 @@ def params_from_props(s):
         cupola=s.cupola, chimneys=s.chimneys, texture_size=int(s.texture_size), seed=s.seed,
         flagpole=s.flagpole, back_portico=s.back_portico, bow_radius=s.bow_radius, bow_columns=s.bow_columns,
         wings=s.wings, wing_gap=s.wing_gap, wing_width=s.wing_width, wing_depth=s.wing_depth, shutters=s.shutters,
-        window_caps=s.window_caps)
+        window_caps=s.window_caps, player_colour=s.game_player_colour)
     p.colors = {k: tuple(int(round(c * 255)) for c in getattr(s, "color_" + k)) for k in COLOR_KEYS}
     return p
 
@@ -128,6 +149,7 @@ def props_from_params(s, p):
                  "back_portico", "bow_radius", "bow_columns", "wings", "wing_gap", "wing_width", "wing_depth",
                  "shutters", "window_caps"):
         setattr(s, attr, getattr(p, attr))
+    s.game_player_colour = p.player_colour
     s.texture_size = str(p.texture_size)
     for k in COLOR_KEYS:
         setattr(s, "color_" + k, tuple(c / 255.0 for c in p.colors[k]))
@@ -154,7 +176,7 @@ class AOE3_OT_generate_building(bpy.types.Operator):
     def execute(self, context):
         s = context.scene.aoe3_building
         model = building.build(params_from_props(s))
-        texture = paint.paint(model)
+        texture = paint.paint_rgba(model) if model.params.player_colour else paint.paint(model)
         for o in context.view_layer.objects:     # before create_object removes the previous one
             o.select_set(False)
         obj = blender_io.create_object(model, texture, context.collection)
@@ -225,12 +247,15 @@ class AOE3_OT_export_game(bpy.types.Operator):
             footprint = (obj.dimensions.x, obj.dimensions.y)
         try:
             positions, normals, uvs, tris = blender_io.game_mesh(obj)
+            icon, portrait = render.icon_and_portrait(obj) if s.game_icons else (None, None)
+            variants = blender_io.game_variants(obj, lowpoly=s.game_lowpoly, damaged=s.game_damaged)
             desc = bundle.write(
                 bpy.path.abspath(s.game_dir), name=obj.name, prefix=s.game_prefix or "mod",
                 positions=positions, normals=normals, uvs=uvs, triangles=tris,
                 texture_rgba=blender_io.texture_rgba(obj), bones=blender_io.game_bones(obj),
                 footprint_m=footprint, display_name=s.game_display or None,
-                template=s.game_template or "House", player_colour=s.game_player_colour,
+                icon_rgba=icon, portrait_rgba=portrait, variants=variants,
+                template=s.game_template or "House", texture_format=s.game_texture,
                 profile=calibration.load() if s.use_profile else None)
         except (ValueError, OSError) as exc:
             self.report({"ERROR"}, str(exc))
@@ -289,6 +314,7 @@ class AOE3_PT_building(bpy.types.Panel):
         row = lay.row(align=True)
         row.prop(s, "texture_size")
         row.prop(s, "seed")
+        lay.prop(s, "game_player_colour")
         lay.prop(s, "show_colors", icon="TRIA_DOWN" if s.show_colors else "TRIA_RIGHT", emboss=False)
         if s.show_colors:
             grid = lay.grid_flow(columns=3, align=True)
@@ -335,13 +361,65 @@ class AOE3_PT_game_export(bpy.types.Panel):
         lay.prop(s, "game_prefix")
         lay.prop(s, "game_display")
         lay.prop(s, "game_template")
-        lay.prop(s, "game_player_colour")
+        lay.prop(s, "game_texture")
+        lay.prop(s, "game_icons")
+        row = lay.row(align=True)
+        row.prop(s, "game_lowpoly", toggle=True)
+        row.prop(s, "game_damaged", toggle=True)
         lay.operator("aoe3.export_game", icon="EXPORT")
+        lay.separator()
+        lay.prop(s, "game_install")
+        lay.prop(s, "game_builder")
+        row = lay.row(align=True)
+        row.operator("aoe3.deploy_game", icon="PLAY")
+        row.operator("aoe3.undo_deploy", icon="LOOP_BACK")
+
+
+class AOE3_OT_deploy_game(bpy.types.Operator):
+    bl_idname = "aoe3.deploy_game"
+    bl_label = "Deploy to Test Copy"
+    bl_description = ("Put the exported bundle into a test copy of the game (never a Steam folder): "
+                      "art files, the unit and its strings; backups are kept for Undo")
+
+    def execute(self, context):
+        from .aoe3game import deploy
+        s = context.scene.aoe3_building
+        folder = bpy.path.abspath(s.game_dir)
+        if not os.path.exists(os.path.join(folder, "bundle.json")):
+            self.report({"ERROR"}, "No bundle there: run Export for the Game first")
+            return {"CANCELLED"}
+        try:
+            d = deploy.Deployment(bpy.path.abspath(s.game_install))
+            lines = []
+            m = d.apply(folder, log=lines.append, builder=s.game_builder.strip() or None)
+        except (deploy.RefusedPath, ValueError, OSError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Deployed {m.get('units')} as unit {m.get('unit_id')}; restart the game")
+        return {"FINISHED"}
+
+
+class AOE3_OT_undo_deploy(bpy.types.Operator):
+    bl_idname = "aoe3.undo_deploy"
+    bl_label = "Undo"
+    bl_description = "Take the deployed building out of the test copy and restore its files"
+
+    def execute(self, context):
+        from .aoe3game import deploy
+        s = context.scene.aoe3_building
+        try:
+            deploy.Deployment(bpy.path.abspath(s.game_install)).undo(log=lambda line: None)
+        except (deploy.RefusedPath, OSError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, "Test copy restored")
+        return {"FINISHED"}
 
 
 CLASSES = (AOE3_PG_result, AOE3_PG_building, AOE3_OT_load_preset, AOE3_OT_generate_building,
-           AOE3_OT_check_building, AOE3_OT_export_building, AOE3_OT_export_game, AOE3_PT_building,
-           AOE3_PT_check_export, AOE3_PT_game_export)
+           AOE3_OT_check_building, AOE3_OT_export_building, AOE3_OT_export_game,
+           AOE3_OT_deploy_game, AOE3_OT_undo_deploy, AOE3_PT_building, AOE3_PT_check_export,
+           AOE3_PT_game_export)
 
 
 def register():

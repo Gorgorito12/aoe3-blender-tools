@@ -53,22 +53,72 @@ Check, in this order:
 | Obstruction | the selection square and the ground decal fit the walls | the profile's ratios |
 | Construction | stages 1 to 3 of the 4x4 set, then the building | the anim file |
 | Destruction | rubble (`BuildingRubble4x4`) | the proto's DeadReplacement |
+| Player colour | the string courses (and shutters) in the owner's colour | the alpha mask or the shader |
 
-## Status (2026-11-02)
+## Status (2026-11-03)
 
-Seen in game, in a copy of the target mod:
+Seen in game, in a copy of the target mod (White House, medium detail, DXT3 texture with the
+player-colour mask, rendered icon and portrait):
 
-- The scenario editor lists the White House and its preview draws the model with its texture.
-- In a skirmish, with the copy's Town Center temporarily pointed at the White House's anim file
-  (restored afterwards by deploying again): the building stands at the start position, lit like
-  the stock objects around it; walls, windows, roof, chimney, cupola and portico textured the
-  right way up; the civilization's flag flies from the `bone_flag_civ` bone; the ground decal
-  shows; its size next to the villagers is right (a villager is about half a storey).
+- The scenario editor lists it and its preview draws the model.
+- On the map it stands at the right size next to a stock house and the villagers, lit like the
+  stock objects, textured the right way up, the civilization flag on `bone_flag_civ`, the ground
+  decal under it.
+- Player colour: its string courses show blue for player 1 and red for player 2.
+- Selected, the interface shows its own icon, portrait and name.
+- Built by a villager (cost paid, +10 population): the stock 4x4 construction stages, then the
+  finished building.
+- Damaged to 40 % and killed by triggers: it goes, and `BuildingRubble4x4` takes its place.
 
-Not yet seen: construction stages, destruction and rubble, the player colour, and the
-obstruction ring next to a placed stock house (placing objects in the editor needs a real
-mouse click; posted clicks do not reach the map).
+Obstruction (2026-11-03): a stock house fits 2 units from it, and musketeers sent straight
+across walked round its south side, 0.3 to 2 units outside the obstruction square, and reached the target. Three of the six never moved in two runs: to look into, not tied to the building so far.
 
-A way to look without the editor, for a test copy only: point the `TownCenter` unit's
-`<AnimFile>` at the new anim file, start a skirmish, then deploy again (or `--undo`) to restore
-the copy.
+Low-poly and damaged variants (2026-11-03): the game loads the anim file with the `LowPoly` and
+`Destruction` logic and the three models without an error. The damaged model did not show, at
+70 % nor at 2 % of the hit points: the `Destruction` logic is not driven by the hit points alone.
+Borrowing the stock outpost's damage system, as the mod's own large buildings do (`simskeleton`
+with `outpost_generic_damaged` and its `.dmg`, and `shape="outpost_generic"` on the model
+references), did not change that at 60 %.
+
+Real hits (2026-11-03): three falconets and four musketeers (torches) took it from 1,200 hit
+points to nothing in about 35 seconds of game time. It kept the intact model down to 80 hit
+points (7 %), with flames on the roof; when it died it caught fire, faded while sinking, and
+a pile of burnt debris and the rubble took its place. A stock `House` under the same attack
+does the same: intact model with flames while it loses hit points, burnt debris when it dies.
+So the `Destruction` logic is not a state between full health and death: in this game a
+building looks intact until it is destroyed, and the damaged model only belongs to the
+destruction. The damaged texture is kept for that and for mods that switch models by other
+means; nothing more to do here. Frames from the recording:
+`examples/whitehouse_medium/ingame_destruction.jpg`.
+
+The low-poly model needs the game's low model detail setting (not tried).
+
+Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds
+while the stock collapse dust rises, then the rubble takes its place.
+
+## Driving a test without clicks
+
+The game's own triggers can place and drive everything:
+
+- a test map script places the building, a stock house and villagers for each player;
+- trigger effects at given seconds: `Grant Resources` (the build cost), `Unforbid and Enable Unit`
+  (a new building is not enabled for any player until something enables it, as the
+  civilization techs do for stock buildings), `Unit Build Building` (a villager builds it at a
+  point), `Damage Unit Percent` and `Kill`.
+
+The villager must have the building in its build list: deploy with `--builder Settler` (test copy
+only). Selection calls typed on the console (`trUnitSelectByID`, `trUnitBuildUnit`) did nothing
+outside a trigger. The console camera commands (`uiLookAtUnit`,
+`uiLookAtAndSelectUnit`) centre the view only when the game window sits at the top-left corner of
+the screen (0, 0); elsewhere the unit ends up off centre by the window's offset. The game draws only while its window has the foreground: a screenshot of a copy that runs behind another game's window shows an old frame (the simulation goes on, so unit positions stay right). An engine extension DLL with a console command file option lets a script run
+the console commands that load the map and point the camera, and one with a multiple-instances
+option lets the test copy run beside another copy of the game.
+
+A way to look without the editor, for a test copy only: deploy with `--show-as TownCenter`.
+The copy's Town Center then takes the new building's model, icon and portrait, so the building
+stands at the start of any skirmish (press T to select it and see the portrait, Delete to
+destroy it). Deploy again without the option, or `--undo`, to restore the copy.
+
+```
+python -I -X utf8 tools\game_deploy.py --install C:\AoE3-BT-Test --bundle out\wh --show-as TownCenter
+```

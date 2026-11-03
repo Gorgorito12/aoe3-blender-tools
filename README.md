@@ -30,11 +30,21 @@ that the real site shows on the south is left out.
 
 Status: version 0.2. The add-on writes the game's own formats (Granny model, `.ddt` texture,
 anim file, proto entry and strings), and a deployment script puts them into a test copy of the
-game. The game loads a generated building and draws it in the world: the White House stands at
-the right size among the villagers, lit like the stock objects, with the civilization flag on its
-cupola. Construction, destruction and the player colour are still to be seen in game
-([docs/game-test.md](docs/game-test.md)). The survey has run on the game and a mod, and
-its measurements calibrate the sizes and budgets.
+game. In the game the generated White House stands at the right size among stock buildings,
+shows the owner's colour, has its own icon and portrait, is built by villagers through the stock
+construction stages and leaves stock rubble when destroyed
+([docs/game-test.md](docs/game-test.md)). The survey has run on the game and a mod, and its
+measurements calibrate the sizes and budgets.
+
+**In the game** (the White House at medium detail, in a test copy of a mod): the same building for
+two players, with the string courses in each owner's colour; built by a villager through the
+stock construction stages; destroyed, leaving the stock rubble.
+
+![Player colour](examples/whitehouse_medium/ingame_player_colour.jpg)
+
+![Construction](examples/whitehouse_medium/ingame_construction.jpg)
+
+![Rubble](examples/whitehouse_medium/ingame_rubble.jpg)
 
 ## Why
 
@@ -95,12 +105,26 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 - **Export**: GLB and FBX with the texture embedded, OBJ + MTL, the texture as PNG, and a stats
   file. Attach points (`flag_attach` on the cupola) are exported as empties.
 - **Game export**: the model as a Granny file (`.gr2`, in the stock buildings' basis, with a
-  `bone_flag_civ` bone for the flag), the texture as `.ddt`, the anim file (stock construction
-  stages of the footprint class, ground decal) and `bundle.json` with the proto fields and
-  strings. Sizes come from the calibration profile.
-- **Deployment** (`tools/game_deploy.py`): copies a bundle into a test copy of the game, adds
-  the unit and its strings, runs the mod's own validators, and undoes it all on request. It
-  refuses any Steam folder.
+  `bone_flag_civ` bone for the flag), the texture as `.ddt` (DXT3 by default, DXT1 or BGRA), the
+  anim file (stock construction stages of the footprint class, ground decal) and `bundle.json`
+  with the proto fields and strings. Sizes come from the calibration profile.
+- **Low-poly and damaged models**: the LOW detail as the model for the game's low model detail
+  setting, and a damaged texture (soot, missing slates, cracks) for a building that has lost hit
+  points (written; like the stock houses, the building looks intact with flames until it
+  is destroyed, see docs/game-test.md).
+- **Death animation**: the building sinks into the ground with the stock collapse dust before
+  the rubble appears.
+- **Notes for the mod's team**: `README.txt` and `proto_fields.xml` in each bundle say where every
+  file goes and what the mod's own data still needs.
+- **Icon and portrait**: rendered from the building, framed like the game's own (64 x 64 and
+  128 x 128, DXT1).
+- **Player colour**: an option paints the string courses and shutters for the owner's colour
+  (texture alpha 0 there, as the stock textures mark it); the export then uses the game's
+  player-colour shader.
+- **Deployment** (`tools/game_deploy.py`, or Deploy to Test Copy and Undo in the add-on):
+  copies a bundle into a test copy of the game, adds the unit and its strings and a builder for
+  it, runs the mod's own validators, and undoes it all on request. It refuses any Steam folder.
+- **Relief**: a bump map for each texture, made from its drawing (DXT5, as the game's own).
 - **Calibrated checks**: with the profile, the triangle budget is the one measured for buildings
   of the same footprint.
 
@@ -126,7 +150,8 @@ export all work. The Blender 3.6 to 4.1 path is untested.
 2. **Check and Export**: **Check** lists the problems of the active object; **Export** writes the
    files to the chosen folder (default `//aoe3_export`, next to the .blend).
 3. **Game Export**: writes the bundle for the game (mod folder, name shown in game, proto
-   template, player colour) to the chosen folder (default `//aoe3_game`).
+   template, texture format, icon, low-poly and damaged models) to the chosen folder (default
+   `//aoe3_game`); **Deploy to Test Copy** puts it into a copy of the game, **Undo** takes it out.
 
 Conventions: 1 unit = 1 m, Z up, the front (portico) faces −Y, the origin is the centre of the
 footprint (steps included) on the ground. GLB, FBX and OBJ are written Y-up.
@@ -146,6 +171,7 @@ venv/bin/python scripts/sweep.py --count 200                # random options thr
 venv/bin/python scripts/generate.py --preset CAPITOL --out out --no-render
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
 python -I tests/test_game_formats.py                   # game formats, plain Python
+venv/bin/python -I tests/test_golden.py               # presets byte for byte (--update-golden)
 ```
 
 On Windows the venv's interpreter is `venv\Scripts\python`.
@@ -183,11 +209,6 @@ see [tools/README.md](tools/README.md).
    Diffusion with ControlNet and the other options in [docs/texture-plan.md](docs/texture-plan.md).
 4. **Units:** reuse the stock skeletons and animations; build the body from parts or fit a
    detailed mesh to a stock skeleton; textures with the player-colour mask.
-
-## Game files and other mods
-
-Do not commit files from the game or from other mods to this repository: models, textures and
-data belong to their owners. Calibration profiles keep measurements only.
 
 ## License
 

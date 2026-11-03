@@ -207,6 +207,7 @@ _RAW = {
         (STRING, "Name", None, 0),
         (REAL32, "Duration", None, 0),
         (REAL32, "TimeStep", None, 0),
+        (REAL32, "Oversampling", None, 0),          # as the game's 2.5 animation files
         (ARRAY_OF_REFS, "TrackGroups", "TrackGroup", 0),
     ],
     # Variant types (named by the objects that use them).

@@ -14,6 +14,9 @@ GROUND_DECAL = r"buildings\market\market_ground_generic"
 SELECTION = r"shadows_selections\selection_square_{0}x{0}"
 FLAT_BUMP = r"shadows_selections\flat_normal_black_spec"
 CHIMNEY_SMOKE = r"effects\smoke\white_smoke_a.particle"
+# The dust a stock house throws when it collapses, attached at the model's origin.
+COLLAPSE_SMOKE = (("base smoke", "smoke base", r"effects\smoke\collapsesmoke01.particle"),
+                  ("collapse_smoke", "collapse_smoke", r"effects\smoke\collapse_smoke_a.particle"))
 STAGE_CLASSES = ("2x2", "3x3", "4x4", "5x5", "6x6")
 
 
@@ -47,8 +50,36 @@ def _decal(tab, texture, width, height, selection=64):
             f"{tab}</decal>\n")
 
 
+def _asset(tab, model, shape=None):
+    attr = f" shape=\"{escape(shape)}\"" if shape else ""
+    return (f"{tab}<assetreference type=\"GrannyModel\"{attr}>\n"
+            f"{tab}\t<file>{escape(art_path(model))}</file>\n"
+            f"{tab}</assetreference>\n")
+
+
+def _model_block(tab, model, lowpoly=None, damaged=None, shape=None):
+    """The finished model as the stock buildings write it: a Destruction logic (p1 the damaged
+    model, p99 the intact one) when there is a damaged model, inside a LowPoly logic (normal /
+    lowpoly) when there is a low-poly model; a plain asset reference otherwise."""
+    if damaged:
+        normal = (f"{tab}<logic type=\"Destruction\">\n"
+                  f"{tab}\t<p1>\n{_asset(tab + chr(9) * 2, damaged, shape)}{tab}\t</p1>\n"
+                  f"{tab}\t<p99>\n{_asset(tab + chr(9) * 2, model, shape)}{tab}\t</p99>\n"
+                  f"{tab}</logic>\n")
+    else:
+        normal = _asset(tab, model, shape)
+    if not lowpoly:
+        return normal
+    inner = "".join(tab + "\t\t" + line[len(tab):] + "\n" for line in normal.splitlines())
+    return (f"{tab}<logic type=\"LowPoly\">\n"
+            f"{tab}\t<normal>\n{inner}{tab}\t</normal>\n"
+            f"{tab}\t<lowpoly>\n{_asset(tab + chr(9) * 2, lowpoly)}{tab}\t</lowpoly>\n"
+            f"{tab}</logic>\n")
+
+
 def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUND_DECAL,
-             bones=("bone_flag_civ",), chimney_bone=None):
+             bones=("bone_flag_civ",), chimney_bone=None, lowpoly=None, damaged=None,
+             death_anim=None, simskeleton=None):
     """The text of a building's anim file.
 
     name: the building's name (submodel and component names).
@@ -57,6 +88,16 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
     stages: the stock construction stage set ("2x2" ... "6x6").
     bones: bones the model carries that the game uses (the civilization flag).
     chimney_bone: a bone of the model to put chimney smoke on, or None.
+    lowpoly: a simpler model for the game's low model detail setting, or None.
+    damaged: a damaged model, or None. The stock files put it under p1 and the intact model
+        under p99 of a Destruction logic. Seen in game: it is not a state between full
+        health and death (the stock houses also look intact until they are destroyed, with
+        flames); it only belongs to the destruction.
+    death_anim: a Granny animation the building plays when it is destroyed (with the stock
+        collapse dust), or None (the building then just goes).
+    simskeleton: (damaged model, damage template) of a stock building whose damage system
+        this one borrows, as the mod's own buildings do (e.g. the stock outpost's), or None.
+        The model references then carry that model's name as their `shape`.
     """
     model = art_path(model)
     sw, sh = stage_decal or decal
@@ -87,17 +128,41 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
         out.append("\t\t\t\t</assetreference>\n\t\t\t</component>\n")
         out.append("\t\t\t<anim>\n\t\t\t\tIdle\n\t\t\t\t<component>smoke</component>\n")
         out.append("\t\t\t</anim>\n\t\t</attachment>\n")
+    if death_anim:
+        for attachment, component, particle in COLLAPSE_SMOKE:
+            out.append(f"\t\t<attachment>\n\t\t\t{attachment}\n\t\t\t<component>\n\t\t\t\t{component}\n")
+            out.append("\t\t\t\t<assetreference type=\"ParticleSystem\">\n")
+            out.append(f"\t\t\t\t\t<file>{particle}</file>\n")
+            out.append("\t\t\t\t</assetreference>\n\t\t\t</component>\n")
+            out.append(f"\t\t\t<anim>\n\t\t\t\tIdle\n\t\t\t\t<component>{component}</component>\n")
+            out.append("\t\t\t</anim>\n\t\t</attachment>\n")
     out.append(f"\t\t<component>\n\t\t\t{escape(main)}\n")
-    out.append("\t\t\t<assetreference type=\"GrannyModel\">\n")
-    out.append(f"\t\t\t\t<file>{escape(model)}</file>\n")
-    out.append("\t\t\t</assetreference>\n")
+    shape = None
+    if simskeleton:
+        shape = art_path(simskeleton[0]).split("\\")[-1]
+        if shape.lower().endswith("_damaged"):
+            shape = shape[:-len("_damaged")]
+    out.append(_model_block("\t\t\t", model, lowpoly=lowpoly, damaged=damaged, shape=shape))
     out.append(_decal("\t\t\t", ground, decal[0], decal[1], sel))
     if chimney_bone:
         out.append(f"\t\t\t<attach a=\"chimney smoke\" frombone=\"{escape(chimney_bone)}\" "
                    f"tobone=\"{escape(chimney_bone)}\" syncanims=\"0\"/>\n")
     out.append("\t\t</component>\n")
-    out.append(f"\t\t<anim>\n\t\t\tIdle\n\t\t\t<component>{escape(main)}</component>\n"
-               "\t\t</anim>\n")
+    out.append(f"\t\t<anim>\n\t\t\tIdle\n\t\t\t<component>{escape(main)}</component>\n")
+    if simskeleton:
+        out.append(f"\t\t\t<simskeleton>\n\t\t\t\t<model>{escape(art_path(simskeleton[0]))}</model>\n"
+                   f"\t\t\t\t<damagetemplate>{escape(simskeleton[1])}</damagetemplate>\n"
+                   "\t\t\t</simskeleton>\n")
+    out.append("\t\t</anim>\n")
+    if death_anim:
+        out.append("\t\t<anim>\n\t\t\tDeath\n\t\t\t<assetreference type=\"GrannyAnim\">\n")
+        out.append(f"\t\t\t\t<file>{escape(art_path(death_anim))}</file>\n")
+        out.append("\t\t\t</assetreference>\n")
+        out.append(f"\t\t\t<component>{escape(main)}</component>\n")
+        for attachment, _component, _particle in COLLAPSE_SMOKE:
+            out.append(f"\t\t\t<attach a=\"{attachment}\" frombone=\"ATTACHPOINT\" "
+                       "tobone=\"ATTACHPOINT\" syncanims=\"0\"/>\n")
+        out.append("\t\t</anim>\n")
     out.append("\t</submodel>\n")
     out.append(f"\t<component>\n\t\t{escape(name)}\n")
     out.append("\t\t<logic type=\"Variation\">\n\t\t\t<none>\n")

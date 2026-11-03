@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Deploy a game bundle into a TEST COPY of the game, or take it out again.
 
-    python -I tools/game_deploy.py --install <copy> --bundle <folder> [--validate]
+    python -I tools/game_deploy.py --install <copy> --bundle <folder> [--validate] [--show-as <Unit>]
+                                   [--builder <Unit>]
     python -I tools/game_deploy.py --install <copy> --undo
     python -I tools/game_deploy.py --install <copy> --validate
 
 Refuses any folder inside a Steam library. Backups are kept as <file>.aoe3bt-orig and the
-changes are listed in <copy>/aoe3bt-manifest.json, which --undo reads.
+changes are listed in <copy>/aoe3bt-manifest.json, which --undo reads. --show-as TownCenter also
+points that unit's model, icon and portrait at the new building, so it stands at the start of
+any skirmish (to look at it without placing it in the editor; the copy only). --builder Settler
+adds the building to that unit's build list.
 """
 import os
 import sys
@@ -33,7 +37,7 @@ def main(argv):
         d.undo()
         print("undone")
     if opt("--bundle"):
-        m = d.apply(opt("--bundle"))
+        m = d.apply(opt("--bundle"), show_as=opt("--show-as"), builder=opt("--builder"))
         print(f"deployed: unit {m.get('units')} id {m.get('unit_id')}, strings {m.get('strings')}")
     if "--validate" in argv:
         bad = 0

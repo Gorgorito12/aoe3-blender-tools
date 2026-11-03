@@ -17,8 +17,6 @@ and destroyed in game (`docs/game-test.md`), then more styles and units (README,
 
 - The repository is **public**. Keep every text neutral: do not name other mods, their teams, or
   the private projects this tool came from, and do not link private documents.
-- Never commit game or mod assets (models, textures, data, extracted files). Calibration profiles
-  keep measurements only.
 - Never commit survey reports (`report.json`, `summary.md`) of a mod: they name its files. They
   belong to the user's private repository.
 - License: GPL-3.0-or-later (Blender's requirement for add-ons). New source files start with
@@ -32,6 +30,8 @@ outside the repository or in an ignored folder (`venv/`).
 ```
 venv/bin/python tests/run_tests.py                 # must print "all tests passed"
 python -I tests/test_art_survey.py                 # survey tests, plain Python
+venv/bin/python -I tests/test_golden.py            # neoclassical output byte for byte (numpy)
+venv/bin/python -I tests/test_pngio.py             # PNG reader
 venv/bin/python scripts/generate.py --preset ALL   # regenerates examples/ (about 40 s per view)
 venv/bin/python scripts/sweep.py --count 200       # random option sets through the checks: 0 failures
 python tools/build_zip.py                          # dist/ zips (extension and legacy)
@@ -57,24 +57,37 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   panels. `blender_manifest.toml` is the extension manifest (Blender 4.2+); `bl_info` serves older
   versions.
 - `aoe3_blender_tools/core/`: `atlas.py`, `canvas.py`, `building.py` (parameters, presets,
-  geometry as pure data) and `paint.py` are pure Python; `blender_io.py` (object creation, export)
+  dispatch to the style), `kit.py` (the `Builder`: regions, then `pack()`, then faces from the
+  pieces: boxes, rings, walls with recessed openings, hipped roofs, arcs, chimneys; `Face`,
+  `Model`, the wall triangulation), `styles/` (one module per style: `NAME`, `clamp`, `build`,
+  `opening_tops`, `paint(pr, model)`; `neoclassical.py` is the original generator), `painter.py`
+  (the `Painter`: canvas, mask, seeded generator, drawing in region metres; `base()` is the
+  material hook), `pngio.py` (PNG reader) and `paint.py` (dispatch, damaged texture) are pure
+  Python; `blender_io.py` (object creation, export)
   and `validate.py` (checks) need Blender.
 - `aoe3_blender_tools/aoe3game/`: the game formats, pure Python, never importing `core` or bpy
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
-  `ddt.py` (header, BGRA writer, BGRA/DXT decoder; numpy), `animxml.py`, `proto.py` (unit list
+  `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
+  portrait framing; numpy), `animxml.py`, `proto.py` (unit list
   and string table at the text level), `bundle.py` (the files for one building), `deploy.py`
   (test copy: Steam refused, backups, manifest, undo, validators).
+- `aoe3_blender_tools/core/render.py`: Workbench render of a building for its icon and portrait
+  (restores the scene's settings).
 - `aoe3_blender_tools/core/profile.py`: loads the calibration profile; `validate.check(...,
   profile)` and `bundle.game_size(..., profile)` use it.
 - `scripts/generate.py`: headless generation with renders. `scripts/game_export.py`: headless game
   bundle. `tests/run_tests.py`: headless tests. `tests/test_game_formats.py`: format tests.
+  `tests/test_golden.py` with `tests/golden/neoclassical.json`: the recorded output of every
+  neoclassical preset (faces, atlas, texture, attach points, sizes, facade layout) and their
+  triangle counts.
 - `tools/`: `art_survey.py` (uses `bar.py` and `xmbedit.py`; standard library only, it runs on the
   user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`.
 - `examples/`: generated presets. `whitehouse/`, `whitehouse_medium/` and `whitehouse1914/` keep
   every export and the .blend (`whitehouse1914/preview_sheet.jpg` is a 2 x 2 sheet of its views);
-  the others keep the GLB, a preview and the stats. `generate.py` writes every export: delete the
+  the others keep the GLB, a preview and the stats. `whitehouse_medium/ingame_*.jpg` are
+  captures from the game (README gallery). `generate.py` writes every export: delete the
   extra files when regenerating the trimmed presets.
 - `docs/building-guidelines.md`: requirements, pitfalls, what is still to verify in game.
 - `docs/texture-plan.md`: the options to improve the textures without losing their alignment, their
@@ -84,6 +97,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 
 ## Working rules
 
+- The neoclassical presets are golden: a refactor must keep `tests/test_golden.py` green as
+  is. Run `--update-golden` only for a deliberate change to that style's output, and say so in
+  the commit (then regenerate `examples/`).
 - Every geometry change must keep the test suite green; the parameter sweep (both detail levels)
   catches overlapping coplanar faces, faces with repeated corners and UVs outside their regions.
 - Count triangles per region after a detail change (`building.build(...)`, then sum per
