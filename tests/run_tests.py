@@ -18,7 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import aoe3_blender_tools as addon  # noqa: E402
-from aoe3_blender_tools.core import blender_io, building, paint, validate  # noqa: E402
+from aoe3_blender_tools.core import blender_io, building, comfy, paint, validate  # noqa: E402
 
 FAILED = []
 
@@ -381,6 +381,31 @@ def kit_model(medium):
     return b.finish(building.BuildingParams(name="Kit" + ("Medium" if medium else "Low")), {})
 
 
+@test
+def round_roofs_export_smooth_normals():
+    """The thatch cones and round walls are smooth: the game mesh shares their normals across
+    the sides (fewer split vertices than flat shading) and the flat tops stay flat."""
+    import dataclasses
+    import numpy as np
+    for det in ("LOW", "MEDIUM"):
+        p = dataclasses.replace(building.PRESETS["AFRICAN_HOUSE_SUBSAHARAN"], detail=det)
+        counts, normals = {}, {}
+        for mode in ("smooth", "flat"):
+            m = building.build(p)
+            assert any(f.smooth for f in m.faces if f.region == "thatch"), det
+            if mode == "flat":
+                for f in m.faces:
+                    f.smooth = False
+            obj = blender_io.create_object(m, paint.paint(m))
+            pos, nor, _, tris = blender_io.game_mesh(obj)
+            counts[mode] = len(pos)
+            normals[mode] = np.asarray(nor)
+            bpy.data.objects.remove(obj)
+        assert counts["smooth"] < counts["flat"] * 0.9, (det, counts)
+        up = (np.abs(normals["smooth"][:, 2]) > 0.999).sum()
+        assert up > 0, det                                 # flat tops (discs, slabs) still face up
+
+
 def round_kit_model(medium):
     """A free Builder with every round and earthen piece of the kit, on separate plots."""
     import math
@@ -504,6 +529,29 @@ def ai_repaint_and_revert():
     assert bpy.ops.aoe3.ai_revert() == {"FINISHED"}
     assert (blender_io.texture_rgba(obj) == before).all()
     assert "aoe3_ai" not in obj and "aoe3_ai_orig" not in obj
+    # one region with the user's own prompt: only that region changes, the prompt reaches ComfyUI
+    a = bpy.context.scene.aoe3_ai
+    a.regions, a.prompt = "ONE", "red mud wall with white zigzags"
+    a.region = "roof"
+    model = building.build(blender_io.params_of(obj))
+    with FakeComfy(transform=tint) as fake:
+        a.url = fake.url
+        assert bpy.ops.aoe3.ai_repaint() == {"FINISHED"}
+        texts = [v["inputs"].get("text", "") for wf in fake.prompts for v in wf.values()]
+        assert any("red mud wall with white zigzags" in t for t in texts), texts
+    from aoe3_blender_tools.core import airepaint
+    after = blender_io.texture_rgba(obj)
+    x0, y0, x1, y1 = airepaint.region_rect(model, after, "roof")
+    changed = (after[:, :, :3] != before[:, :, :3]).any(axis=2)
+    assert changed[y0:y1, x0:x1].mean() > 0.5 and changed.sum() == changed[y0:y1, x0:x1].sum()
+    assert bpy.ops.aoe3.ai_revert() == {"FINISHED"}
+    a.regions, a.prompt = "ALL", ""
+    # the live preview: a texture after every region
+    seen = []
+    with FakeComfy(transform=tint) as fake:
+        airepaint.repaint(before, model, comfy.Client(fake.url), regions=["roof", "front"],
+                          on_region=lambda t: seen.append(t))
+    assert len(seen) == 2 and (seen[0] != seen[1]).any()
 
 
 def main():
@@ -517,7 +565,7 @@ def main():
                   game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo,
                   square_hipped_roof_builds, roof_kit_parts_have_no_overlaps,
                   ui_has_a_property_for_every_param_field, ai_repaint_and_revert,
-                  round_kit_parts_have_no_overlaps):
+                  round_kit_parts_have_no_overlaps, round_roofs_export_smooth_normals):
             t()
     finally:
         addon.unregister()

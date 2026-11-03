@@ -99,7 +99,9 @@ thatch cones (in tiers at medium), adobe blocks, parapets and merlons, projectin
 buttresses, palisade logs, posts, decks on piles, ridges of a field and the props are geometry;
 mud smears, thatch courses, trowel marks, the openings' reveals, doors, cloth stripes and stone
 joints are painted. Pieces that touch never share a face: palisade panels stop short of the
-corner logs, stone walls end in piers, and the palace's walls sink into its towers. The Dock
+corner logs, stone walls end in piers, and the palace's walls sink into its towers. Round walls, thatch cones, domes, pots and the round props are smooth-shaded (their normals shared
+across the sides, also in the game mesh): they light as one surface instead of facets, with no
+extra triangles; flat tops and bottoms stay flat. The Dock
 template only places on water.
 
 The footprint class is the measured class (10 buildings or more) whose median model side is

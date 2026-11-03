@@ -228,9 +228,13 @@ def repaint_region(rgb, client, *, prompt, negative=NEGATIVE, strength, seed, na
 
 
 def repaint(texture, model, client, *, strength=0.45, seed=1, regions=None, extra="", blend=1.0,
-            on_progress=None, workflow_args=None, guard=True):
+            on_progress=None, workflow_args=None, guard=True, prompt=None, on_region=None):
     """(new texture, report): every region with a prompt repainted (or only `regions`), the alpha
     and the pixels under the player colour kept, blended with the original by `blend`.
+
+    prompt: the user's own description of the material, in place of the built-in one (then a
+    region without a built-in prompt is repainted too). on_region(texture): called with the
+    texture so far after each region, for a live preview.
 
     guard: a region whose edges moved (`edge_shift` not (0, 0): SDXL redrew a window or the tile
     rows) is repainted again at GUARD_FACTOR of the strength, and kept as it was if they still
@@ -243,7 +247,7 @@ def repaint(texture, model, client, *, strength=0.45, seed=1, regions=None, extr
     todo = [n for n in model.atlas.regions if (regions is None or n in regions)]
     report = []
     for idx, name in enumerate(todo):
-        material = material_of(name, p)
+        material = prompt.strip() if prompt and prompt.strip() else material_of(name, p)
         x0, y0, x1, y1 = region_rect(model, tex, name)
         w, h = x1 - x0, y1 - y0
         if material is None:
@@ -277,6 +281,8 @@ def repaint(texture, model, client, *, strength=0.45, seed=1, regions=None, extr
         if note:
             entry["note"] = note
         report.append(entry)
+        if on_region:
+            on_region(out.copy())
     return out, report
 
 
