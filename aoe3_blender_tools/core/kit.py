@@ -620,6 +620,209 @@ class Builder:
                              skip=("-y",))
 
 
+    # ----------------------------------------------------------------------------------------------
+    # Round and earthen pieces: thatched cones, domes, flat roofs with parapets, beam ends, fences
+    # and palisades, round towers, canopies.
+
+    def cone_roof(self, cx, cy, r, z, height, sides, region, overhang=0.4, finial=0.0, phase=0.0,
+                  finial_region=None):
+        """A conical roof on a round wall of radius r whose top is at z: the cone meets the wall top
+        at r, rises `height` to its apex and reaches `overhang` beyond the wall (lower there).
+        One triangle per side to a single apex (no degenerate faces); u runs round the eave, v up
+        the slope. `finial`: a post of that height on the apex. Returns the apex height."""
+        slope = height / r
+        R = r + overhang
+        ze = z - slope * overhang
+        apex = (cx, cy, z + height)
+        reg = self.atlas[region]
+        L = math.hypot(R, z + height - ze)
+        seg = 2 * R * math.sin(math.pi / sides)
+        k = min(1.0, reg.world_w / (seg * sides), reg.world_h / L)
+        for i in range(sides):
+            a0 = phase + 2 * math.pi * i / sides
+            a1 = phase + 2 * math.pi * (i + 1) / sides
+            p0 = (cx + R * math.cos(a0), cy + R * math.sin(a0), ze)
+            p1 = (cx + R * math.cos(a1), cy + R * math.sin(a1), ze)
+            uvs = [(i * seg * k, 0.0), ((i + 1) * seg * k, 0.0), ((i + 0.5) * seg * k, L * k)]
+            am = (a0 + a1) / 2
+            self.facing([p0, p1, apex], uvs, region, (math.cos(am), math.sin(am), R / max(height, 1e-6)))
+        if finial > 0:
+            fr = finial_region or region
+            self.box(cx - 0.06, cx + 0.06, cy - 0.06, cy + 0.06, z + height - 0.15, z + height + finial, fr, fr)
+        return z + height
+
+    def dome(self, cx, cy, r, z, height, sides, region, rings=3, phase=0.0):
+        """A dome of radius r standing on z, `height` high: `rings` bands of quads and a fan of
+        triangles to the top. u round, v up the curve. Returns the top."""
+        reg = self.atlas[region]
+        pts = [(r * math.cos(math.pi / 2 * j / rings), z + height * math.sin(math.pi / 2 * j / rings))
+               for j in range(rings)] + [(0.0, z + height)]
+        seg = 2 * r * math.sin(math.pi / sides)
+        arc = sum(math.hypot(a[0] - b[0], a[1] - b[1]) for a, b in zip(pts, pts[1:]))
+        k = min(1.0, reg.world_w / (seg * sides), reg.world_h / max(arc, 1e-6))
+        v = 0.0
+        for j in range(rings):
+            (r0, z0), (r1, z1) = pts[j], pts[j + 1]
+            dv = math.hypot(r1 - r0, z1 - z0)
+            for i in range(sides):
+                a0 = phase + 2 * math.pi * i / sides
+                a1 = phase + 2 * math.pi * (i + 1) / sides
+                am = (a0 + a1) / 2
+                if r1 <= 1e-9:
+                    q = [(cx + r0 * math.cos(a0), cy + r0 * math.sin(a0), z0),
+                         (cx + r0 * math.cos(a1), cy + r0 * math.sin(a1), z0), (cx, cy, z1)]
+                    uvs = [(i * seg * k, v * k), ((i + 1) * seg * k, v * k), ((i + 0.5) * seg * k, (v + dv) * k)]
+                else:
+                    q = [(cx + r0 * math.cos(a0), cy + r0 * math.sin(a0), z0),
+                         (cx + r0 * math.cos(a1), cy + r0 * math.sin(a1), z0),
+                         (cx + r1 * math.cos(a1), cy + r1 * math.sin(a1), z1),
+                         (cx + r1 * math.cos(a0), cy + r1 * math.sin(a0), z1)]
+                    uvs = [(i * seg * k, v * k), ((i + 1) * seg * k, v * k),
+                           ((i + 1) * seg * k, (v + dv) * k), (i * seg * k, (v + dv) * k)]
+                self.facing(q, uvs, region, (math.cos(am), math.sin(am), (z1 - z) / max(height, 1e-6) + 0.2))
+            v += dv
+        return z + height
+
+    def disc(self, cx, cy, r, z, sides, region, phase=0.0, down=False):
+        """A flat round top (or bottom) at z."""
+        pts = [(cx + r * math.cos(phase + 2 * math.pi * i / sides), cy + r * math.sin(phase + 2 * math.pi * i / sides), z)
+               for i in range(sides)]
+        self.face_out(pts, region, (0.0, 0.0, -1.0 if down else 1.0))
+
+    def flat_roof(self, x0, x1, y0, y1, z, region, parapet_h=0.0, parapet_t=0.25, parapet_region=None,
+                  merlons=0, merlon_h=0.3):
+        """A flat roof over walls x0..x1, y0..y1 whose tops are at z: the roof surface and, with
+        parapet_h, a parapet round it flush with the walls (four boxes that never overlap at the
+        corners) and optionally `merlons` per metre... per side (small boxes on the parapet)."""
+        pr = parapet_region or region
+        t = parapet_t if parapet_h > 0 else 0.0
+        self.face_out([(x0 + t, y0 + t, z), (x1 - t, y0 + t, z), (x1 - t, y1 - t, z), (x0 + t, y1 - t, z)],
+                      region, (0.0, 0.0, 1.0))
+        if parapet_h <= 0:
+            return z
+        zt = z + parapet_h
+        self.box(x0, x1, y0, y0 + t, z, zt, pr, pr)                        # front and back: full length
+        self.box(x0, x1, y1 - t, y1, z, zt, pr, pr)
+        self.box(x0, x0 + t, y0 + t, y1 - t, z, zt, pr, pr, skip=("-y", "+y"))   # sides between them
+        self.box(x1 - t, x1, y0 + t, y1 - t, z, zt, pr, pr, skip=("-y", "+y"))
+        if merlons:
+            w = 0.35
+            for (ax, ay, bx, by) in ((x0, y0, x1, y0 + t), (x0, y1 - t, x1, y1)):
+                n = max(2, int((bx - ax) * merlons))
+                for k in range(n):
+                    mx = ax + (bx - ax) * (k + 0.5) / n
+                    self.box(mx - w / 2, mx + w / 2, ay, by, zt, zt + merlon_h, pr, pr)
+        return zt
+
+    def beam_ends(self, side, plane, a0, a1, z, n, length, region, size=0.14):
+        """`n` beam ends (toron) sticking out `length` from a wall: side "-y"/"+y"/"-x"/"+x" is the
+        way the wall faces, `plane` its coordinate, a0..a1 the span along it, z their height."""
+        h = size / 2
+        for k in range(n):
+            a = a0 + (a1 - a0) * (k + 0.5) / n
+            if side == "-y":
+                self.box(a - h, a + h, plane - length, plane, z - h, z + h, region, region, skip=("+y",))
+            elif side == "+y":
+                self.box(a - h, a + h, plane, plane + length, z - h, z + h, region, region, skip=("-y",))
+            elif side == "-x":
+                self.box(plane - length, plane, a - h, a + h, z - h, z + h, region, region, skip=("+x",))
+            else:
+                self.box(plane, plane + length, a - h, a + h, z - h, z + h, region, region, skip=("-x",))
+
+    def _panel(self, a, b, z0, z1, thick, region, tips=0, tip_h=0.0):
+        """A wall panel between the ground points a and b, `thick` thick, as an oriented box; with
+        `tips`, its top is cut into that many points (a palisade). Returns nothing."""
+        (ax, ay), (bx, by) = a, b
+        dx, dy = bx - ax, by - ay
+        L = math.hypot(dx, dy) or 1.0
+        ux, uy = dx / L, dy / L
+        nx, ny = uy, -ux                                   # the outside (right of a -> b)
+        o = thick / 2
+
+        def P(t, s, z):
+            return (ax + ux * t + nx * s, ay + uy * t + ny * s, z)
+        if tips:
+            top = []
+            for k in range(tips):
+                t0, t1 = L * k / tips, L * (k + 1) / tips
+                top += [(t0, z1), ((t0 + t1) / 2, z1 + tip_h)]
+            top.append((L, z1))
+        else:
+            top = [(0.0, z1), (L, z1)]
+        for s, sign in ((o, 1.0), (-o, -1.0)):               # the two faces, the top cut to points
+            poly = [P(0.0, s, z0), P(L, s, z0)] + [P(t, s, z) for t, z in reversed(top)]
+            self.face_out(poly, region, (nx * sign, ny * sign, 0.0))
+        for t0, t1 in ((0.0, 0.0), (L, L)):                    # the ends
+            n = -1.0 if t0 == 0.0 else 1.0
+            self.face_out([P(t0, -o, z0), P(t0, o, z0), P(t0, o, z1), P(t0, -o, z1)], region, (ux * n, uy * n, 0.0))
+        for (t0, za), (t1, zb) in zip(top, top[1:]):           # the top, flat or along the points
+            ex, ey = (t1 - t0), (zb - za)
+            self.face_out([P(t0, -o, za), P(t1, -o, zb), P(t1, o, zb), P(t0, o, za)], region,
+                          (-ux * ey, -uy * ey, ex))
+
+    def fence(self, points, height, region, kind="RAILS", closed=False, gap=None, thick=0.12, post_region=None):
+        """A fence through the ground points: "PALISADE" (panels of logs with pointed tops) or
+        "RAILS" (posts and two rails). `closed` joins the last point to the first; `gap`: the index
+        of a segment left open (the entrance)."""
+        segs = list(zip(points, points[1:] + ([points[0]] if closed else [])))
+        pr = post_region or region
+        for i, (a, b) in enumerate(segs):
+            if gap is not None and i == gap:
+                continue
+            L = math.hypot(b[0] - a[0], b[1] - a[1])
+            if kind == "PALISADE":
+                self._panel(a, b, 0.0, height, max(thick, 0.18), region, tips=max(1, int(L / 0.28)),
+                            tip_h=0.25)
+            else:
+                for zr in (height * 0.45, height * 0.85):
+                    self._panel(a, b, zr - 0.05, zr + 0.05, 0.06, region)
+        if kind != "PALISADE":
+            for px, py in points:
+                h = thick / 2 + 0.03
+                self.box(px - h, px + h, py - h, py + h, 0.0, height, pr, pr)
+
+    def round_tower(self, cx, cy, r, z0, z1, sides, region, roof="CONE", roof_region=None, roof_h=None,
+                    top_region=None):
+        """A round tower from z0 to z1: its wall and a cone (roof_h high) or a flat top with a
+        parapet ring ("CRENEL"). Returns the top height."""
+        self.ring(cx, cy, r, z0, z1, sides, region)
+        if roof == "CONE":
+            return self.cone_roof(cx, cy, r, z1, roof_h or r * 1.2, sides, roof_region or region, overhang=0.25)
+        t = 0.25
+        tr = top_region or region
+        self.ring(cx, cy, r, z1, z1 + 0.6, sides, region)                       # the parapet, outside
+        inner = [(cx + (r - t) * math.cos(2 * math.pi * i / sides), cy + (r - t) * math.sin(2 * math.pi * i / sides))
+                 for i in range(sides + 1)]
+        for (ax, ay), (bx, by) in zip(inner, inner[1:]):                       # its inside face
+            self.facing([(ax, ay, z1), (bx, by, z1), (bx, by, z1 + 0.6), (ax, ay, z1 + 0.6)],
+                        [(0, 0), (0.5, 0), (0.5, 0.6), (0, 0.6)], region, (cx - (ax + bx) / 2, cy - (ay + by) / 2, 0.0))
+        outer = [(cx + r * math.cos(2 * math.pi * i / sides), cy + r * math.sin(2 * math.pi * i / sides))
+                 for i in range(sides + 1)]
+        for (ax, ay), (bx, by), (cx2, cy2), (dx2, dy2) in zip(outer, outer[1:], inner[1:], inner):
+            self.face_out([(ax, ay, z1 + 0.6), (bx, by, z1 + 0.6), (cx2, cy2, z1 + 0.6), (dx2, dy2, z1 + 0.6)],
+                          tr, (0.0, 0.0, 1.0))
+        self.disc(cx, cy, r - t, z1, sides, tr)
+        return z1 + 0.6
+
+    def canopy(self, x0, x1, y0, y1, z_hi, z_lo, region, post_region, slope="-y", post=0.07):
+        """A sloping canopy (a stall's awning, a shed) on four posts: high at one side, low at the
+        side `slope` points to. Returns nothing."""
+        if slope == "-y":
+            pts = [(x0, y0, z_lo), (x1, y0, z_lo), (x1, y1, z_hi), (x0, y1, z_hi)]
+        elif slope == "+y":
+            pts = [(x1, y1, z_lo), (x0, y1, z_lo), (x0, y0, z_hi), (x1, y0, z_hi)]
+        elif slope == "-x":
+            pts = [(x0, y1, z_lo), (x0, y0, z_lo), (x1, y0, z_hi), (x1, y1, z_hi)]
+        else:
+            pts = [(x1, y0, z_lo), (x1, y1, z_lo), (x0, y1, z_hi), (x0, y0, z_hi)]
+        self.face_out(pts, region, (0.0, 0.0, 1.0))
+        i = post + 0.02
+        for (px, py, pz) in pts:
+            qx = min(max(px, x0 + i), x1 - i)
+            qy = min(max(py, y0 + i), y1 - i)
+            self.box(qx - post, qx + post, qy - post, qy + post, 0.0, pz - 0.03, post_region, post_region,
+                     skip=("top",))
+
 # --------------------------------------------------------------------------------------------------
 # Region sizes for the pieces (declare them before pack())
 
@@ -654,3 +857,24 @@ def arcade_front_h(height, n_bays, x0, x1, post_half, kind, medium, lintel_h=0.5
 
 def shed_roof_size(length, depth, pitch):
     return length + 0.1, math.hypot(depth, pitch * depth) + 0.1
+
+
+def cone_roof_size(r, height, sides, overhang=0.4):
+    """(world_w, world_h) of a `Builder.cone_roof` region: the eave's girth by the slope."""
+    R = r + overhang
+    slope = height / r
+    seg = 2 * R * math.sin(math.pi / sides)
+    return seg * sides + 0.1, math.hypot(R, height + slope * overhang) + 0.1
+
+
+def dome_size(r, height, sides, rings=3):
+    seg = 2 * r * math.sin(math.pi / sides)
+    pts = [(r * math.cos(math.pi / 2 * j / rings), height * math.sin(math.pi / 2 * j / rings)) for j in range(rings)]
+    pts.append((0.0, height))
+    arc = sum(math.hypot(a[0] - b[0], a[1] - b[1]) for a, b in zip(pts, pts[1:]))
+    return seg * sides + 0.1, arc + 0.1
+
+
+def ring_size(r, height, sides):
+    """(world_w, world_h) of a `Builder.ring` region with continuous u (the girth)."""
+    return 2 * r * math.sin(math.pi / sides) * sides + 0.1, height + 0.05

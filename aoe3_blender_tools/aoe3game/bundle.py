@@ -30,15 +30,25 @@ RUBBLE = {"2x2": "BuildingRubble2x2", "3x3": "BuildingRubble3x3", "4x4": "Buildi
           "5x5": "BuildingRubble5x5", "6x6": "BuildingRubble6x6"}
 
 
-def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None):
+def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None, obstruction=None):
     """Obstruction radii, decal size, stage set and rubble for a footprint in metres. With a
     calibration profile (an object with footprint_class, obstruction_ratio, decal_ratio,
-    stages and rubble, as core.profile.Profile), its measured ratios replace the defaults."""
+    stages and rubble, as core.profile.Profile), its measured ratios replace the defaults.
+
+    obstruction: (rx, rz) in game units, the exact radii of a reference building (a style guide's
+    "the same size as ..."); the class is then the profile's NxN class of that size when it has
+    one."""
     w, d = (footprint_m[0] * units_per_meter, footprint_m[1] * units_per_meter)
     cls = profile.footprint_class(*footprint_m) if profile is not None else None
+    if obstruction is not None and profile is not None:
+        key = f"{2 * obstruction[0]:g}x{2 * obstruction[1]:g}"
+        if key in getattr(profile, "classes", {}):
+            cls = key
     ratio = (profile.obstruction_ratio(cls) if cls else None) or OBSTRUCTION_RATIO
     dratio = (profile.decal_ratio(cls) if cls else None) or DECAL_RATIO
     rx, rz = round(w / 2 * ratio, 2), round(d / 2 * ratio, 2)
+    if obstruction is not None:
+        rx, rz = float(obstruction[0]), float(obstruction[1])
     stages = (profile.stages(cls) if cls else None) or animxml.stage_class(2 * rx, 2 * rz)
     rubble = (profile.rubble(cls) if cls else None) or RUBBLE.get(stages, "BuildingRubble4x4")
     return {"radius": (rx, rz), "decal": (round(w * dratio, 2), round(d * dratio, 2)),
@@ -49,7 +59,7 @@ def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None):
 def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba, bones=(),
           footprint_m, icon_rgba=None, portrait_rgba=None, display_name=None, rollover="",
           template="House", v_flip=True, player_colour=None, chimney_bone=None, profile=None,
-          texture_format="DXT3", variants=None, death_animation=True, relief=True):
+          texture_format="DXT3", variants=None, death_animation=True, relief=True, obstruction=None):
     """Writes the bundle into `out` and returns the bundle description.
 
     variants: {"lowpoly": {...}, "damaged": {...}}, each with positions, normals, uvs and
@@ -59,6 +69,8 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
 
     death_animation: also write `<name>_death.gr2`, the building sinking into the ground with
     the stock collapse dust, played when it is destroyed.
+
+    obstruction: (rx, rz) game units, the exact obstruction of a reference building (see game_size).
 
     relief: also write a bump map for each texture (`<texture>_b.ddt`, DXT5 as the game's own),
     made from the texture's brightness; without it the models use the stock flat normal map.
@@ -78,7 +90,7 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
     rel_dir = f"{prefix}\\buildings\\{low}"
     art_dir = os.path.join(out, "art", prefix, "buildings", low)
     os.makedirs(art_dir, exist_ok=True)
-    size = game_size(footprint_m, profile=profile)
+    size = game_size(footprint_m, profile=profile, obstruction=obstruction)
     def model_file(base, mesh, textures):
         texture, bump = textures
         model = gr2_write.static_model(name, mesh["positions"], mesh["normals"], mesh["uvs"],

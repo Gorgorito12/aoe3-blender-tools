@@ -64,6 +64,10 @@ def main():
         print("AI repaint:", ", ".join(r["region"] for r in report if "skipped" not in r))
     positions, normals, uvs, tris = blender_io.game_mesh(obj)
     icon = portrait = None
+    ref = building.reference(p)          # a style guide's reference size and proto template
+    obstruction = (ref[0], ref[0]) if ref else None
+    if ref and not opt("--template"):
+        argv.extend(["--template", ref[1]])
     if "--no-icons" not in argv:
         icon, portrait = render.icon_and_portrait(obj)
     variants = blender_io.game_variants(obj, lowpoly="--no-lowpoly" not in argv,
@@ -74,7 +78,7 @@ def main():
         bones=blender_io.game_bones(obj), footprint_m=tuple(obj["aoe3_footprint"]),
         icon_rgba=icon, portrait_rgba=portrait, variants=variants,
         display_name=opt("--display"), template=opt("--template", "House"),
-        v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"),
+        v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"), obstruction=obstruction,
         profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
     print(f"{p.name}: {len(tris)} triangles, {len(positions)} vertices; "
           f"obstruction {desc['size']['radius']}, decal {desc['size']['decal']}, "

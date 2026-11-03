@@ -375,6 +375,52 @@ def kit_model(medium):
     return b.finish(building.BuildingParams(name="Kit" + ("Medium" if medium else "Low")), {})
 
 
+def round_kit_model(medium):
+    """A free Builder with every round and earthen piece of the kit, on separate plots."""
+    import math
+    from aoe3_blender_tools.core import kit
+    b = kit.Builder(256, medium)
+    for name, (w, h) in (("mud", kit.ring_size(2.6, 2.4, 12)), ("thatch", kit.cone_roof_size(2.6, 3.0, 12, 0.5)),
+                         ("dome", kit.dome_size(1.4, 1.6, 10)), ("adobe", (8.0, 3.5)), ("roof", (6.0, 5.0)),
+                         ("wood", (4.0, 3.0)), ("cloth", (3.0, 2.0)), ("stone", (10.0, 3.0))):
+        b.region(name, w, h)
+    b.pack()
+    # a round hut with a thatched cone and its finial
+    b.ring(0.0, 0.0, 2.6, 0.0, 2.4, 12, "mud")
+    b.cone_roof(0.0, 0.0, 2.6, 2.4, 3.0, 12, "thatch", overhang=0.5, finial=0.6, finial_region="wood")
+    # a domed granary on a round wall
+    b.ring(8.0, 0.0, 1.4, 0.0, 1.2, 10, "mud")
+    b.dome(8.0, 0.0, 1.4, 1.2, 1.6, 10, "dome")
+    # an adobe block with a parapet, merlons and beam ends
+    for origin, ua, length in (((12.0, -2.0, 0.0), (1.0, 0.0, 0.0), 6.0), ((18.0, 2.0, 0.0), (-1.0, 0.0, 0.0), 6.0),
+                               ((12.0, 2.0, 0.0), (0.0, -1.0, 0.0), 4.0), ((18.0, -2.0, 0.0), (0.0, 1.0, 0.0), 4.0)):
+        b.flat_wall(origin, ua, length, 3.0, "adobe")
+    b.flat_roof(12.0, 18.0, -2.0, 2.0, 3.0, "roof", parapet_h=0.5, parapet_region="adobe", merlons=1.0)
+    b.beam_ends("-y", -2.0, 12.0, 18.0, 2.5, 7, 0.4, "wood")
+    # a palisade ring with an entrance and a rail fence
+    pts = [(30.0 + 4.0 * math.cos(2 * math.pi * i / 10), 4.0 * math.sin(2 * math.pi * i / 10)) for i in range(10)]
+    b.fence(pts, 2.2, "wood", kind="PALISADE", closed=True, gap=7)
+    b.fence([(38.0, -2.0), (42.0, -2.0), (42.0, 2.0)], 1.1, "wood", kind="RAILS")
+    # round towers, coned and crenellated, and a stall's canopy
+    b.round_tower(48.0, 0.0, 1.5, 0.0, 5.0, 10, "stone", roof="CONE", roof_region="thatch")
+    b.round_tower(54.0, 0.0, 1.5, 0.0, 5.0, 10, "stone", roof="CRENEL", top_region="roof")
+    b.canopy(58.0, 61.0, -1.5, 1.5, 2.4, 1.9, "cloth", "wood")
+    b.attach["flag_attach"] = (0.0, 0.0, 6.0)
+    return b.finish(building.BuildingParams(name="RoundKit" + ("Medium" if medium else "Low")), {})
+
+
+@test
+def round_kit_parts_have_no_overlaps():
+    import numpy as np
+    for medium in (False, True):
+        model = round_kit_model(medium)
+        obj = blender_io.create_object(model, np.full((256, 256, 3), 128, np.uint8))
+        res = validate.check(obj)
+        assert not problems(res), (medium, problems(res))
+        tris, _ = blender_io.triangle_count(obj)
+        assert tris == sum(len(f.pts) - 2 for f in model.faces), tris
+
+
 @test
 def roof_kit_parts_have_no_overlaps():
     import numpy as np
@@ -464,7 +510,8 @@ def main():
                   player_colour_marks_the_string_courses, icon_and_portrait_render,
                   game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo,
                   square_hipped_roof_builds, roof_kit_parts_have_no_overlaps,
-                  ui_has_a_property_for_every_param_field, ai_repaint_and_revert):
+                  ui_has_a_property_for_every_param_field, ai_repaint_and_revert,
+                  round_kit_parts_have_no_overlaps):
             t()
     finally:
         addon.unregister()

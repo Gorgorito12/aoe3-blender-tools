@@ -24,6 +24,7 @@ DEFAULT_COLORS = {
     "glass": (52, 66, 82), "door": (64, 50, 40), "brick": (150, 64, 48),
     "lead": (96, 106, 114), "stone": (206, 202, 192), "plinth": (192, 188, 177),
     "plaster": (236, 230, 214), "tile": (172, 84, 52), "timber": (104, 70, 44), "iron": (44, 42, 40),
+    "mud": (132, 96, 66), "thatch": (150, 126, 84), "adobe": (192, 156, 110), "cloth": (176, 62, 44),
 }
 COLOR_KEYS = tuple(DEFAULT_COLORS)
 
@@ -79,6 +80,11 @@ class BuildingParams:
     infill: str = "PLASTER"         # PLASTER or BRICK between the timbers
     bracing: str = "CROSS"          # CROSS, CURVED or PLAIN braces (painted)
     signboard: bool = False         # a sign hanging from the front wall (player colour)
+    # African style (the shared African buildings' style guide)
+    building_type: str = "HOUSE"    # HOUSE, TOWN_CENTER, MARKET, DOCK, WAR_CAMP, DEPOT, STOCKADE, ARMORY,
+                                    # GRANARY, PLOT, QUARRY, CUSTOMS, PALACE
+    architecture: str = "SUBSAHARAN"  # SUBSAHARAN (round, thatched) or SAHEL (adobe, flat roofs)
+    wall_upgrade: str = "WOOD"      # the stockade's fence: WOOD, or STONE once upgraded
     colors: dict = field(default_factory=lambda: dict(DEFAULT_COLORS))
 
 
@@ -105,6 +111,21 @@ COLONIAL_COLORS = {**DEFAULT_COLORS, "plaster": (238, 231, 214), "plinth": (176,
 TIMBER_COLORS = {**DEFAULT_COLORS, "timber": (62, 44, 32), "plaster": (230, 220, 194),
                  "stone": (172, 164, 150), "brick": (146, 66, 48), "tile": (154, 72, 50),
                  "door": (92, 60, 38), "glass": (52, 62, 66), "lead": (70, 72, 74)}
+AFRICAN_COLORS = {**DEFAULT_COLORS, "timber": (92, 64, 40), "stone": (168, 156, 136), "tile": (160, 84, 52)}
+
+
+def african(building_type, architecture, **kw):
+    words = "".join(w.title() for w in building_type.split("_"))
+    arch = "Sahel" if architecture == "SAHEL" else "SubSaharan"
+    return BuildingParams(name=f"African{words}{arch}", style="AFRICAN", building_type=building_type,
+                          architecture=architecture, portico=False, cupola=False, detail="MEDIUM",
+                          colors=dict(AFRICAN_COLORS), **kw)
+
+
+PRESETS.update({
+    "AFRICAN_HOUSE_SUBSAHARAN": african("HOUSE", "SUBSAHARAN"),
+    "AFRICAN_HOUSE_SAHEL": african("HOUSE", "SAHEL"),
+})
 PRESETS.update({
     "TIMBER_HOUSE": BuildingParams(
         name="TimberHouse", style="TIMBER", width=9.0, depth=7.0, storeys=2, plinth=0.3, roof_pitch=1.1,
@@ -134,6 +155,14 @@ def clamp_params(p):
     p = style.clamp(replace(p, colors={**DEFAULT_COLORS, **p.colors}))
     p.style = style.NAME
     return p
+
+
+def reference(params):
+    """(obstruction radius in game units, proto template) of the building a style guide gives as
+    this one's size, or None (the size then comes from the footprint)."""
+    p = clamp_params(params)
+    fn = getattr(STYLES[p.style], "reference", None)
+    return fn(p) if fn else None
 
 
 def build(params):
