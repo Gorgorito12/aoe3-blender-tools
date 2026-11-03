@@ -70,7 +70,8 @@ player-colour mask, rendered icon and portrait):
   finished building.
 - Damaged to 40 % and killed by triggers: it goes, and `BuildingRubble4x4` takes its place.
 
-Not yet checked: the obstruction ring against neighbouring buildings and walking units.
+Obstruction (2026-11-03): a stock house fits 2 units from it, and musketeers sent straight
+across walked round its south side, 0.3 to 2 units outside the obstruction square, and reached the target. Three of the six never moved in two runs: to look into, not tied to the building so far.
 
 ## Driving a test without clicks
 
@@ -84,7 +85,7 @@ The game's own triggers can place and drive everything:
 
 The villager must have the building in its build list: deploy with `--builder Settler` (test copy
 only). Selection calls typed on the console (`trUnitSelectByID`, `trUnitBuildUnit`) did nothing
-outside a trigger. An engine extension DLL with a console command file option lets a script run
+outside a trigger. The game draws only while its window has the foreground: a screenshot of a copy that runs behind another game's window shows an old frame (the simulation goes on, so unit positions stay right). An engine extension DLL with a console command file option lets a script run
 the console commands that load the map and point the camera, and one with a multiple-instances
 option lets the test copy run beside another copy of the game.
 

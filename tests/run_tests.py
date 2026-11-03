@@ -248,6 +248,26 @@ def player_colour_marks_the_string_courses():
     assert blender_io.texture_rgba(obj)[..., 3].min() < 128     # the mask survives in Blender
 
 
+@test
+def icon_and_portrait_render():
+    from aoe3_blender_tools.aoe3game import icons
+    from aoe3_blender_tools.core import render
+    s = bpy.context.scene.aoe3_building
+    s.preset = "MANSION"
+    assert bpy.ops.aoe3.load_preset() == {"FINISHED"}
+    assert bpy.ops.aoe3.generate_building() == {"FINISHED"}
+    obj = bpy.context.view_layer.objects.active
+    engine = bpy.context.scene.render.engine
+    icon, portrait = render.icon_and_portrait(obj)
+    assert icon.shape == (64, 64, 3) and portrait.shape == (128, 128, 3)
+    assert tuple(icon[0, 0]) == icons.FRAME_DARK
+    centre = portrait[40:88, 40:88].astype(int)
+    away = abs(centre - icons.BACK_CENTRE).mean()
+    assert away > 15, away                               # the building, not the empty background
+    assert bpy.context.scene.render.engine == engine     # the scene's settings are restored
+    assert not any(o.name.startswith("aoe3_icon_camera") for o in bpy.data.objects)
+
+
 def main():
     addon.register()
     try:
@@ -255,7 +275,7 @@ def main():
                   medium_detail_presets_pass_checks, wall_triangulation_covers_the_wall_exactly,
                   regenerating_replaces_the_object, export_and_reimport, checks_catch_known_problems,
                   atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget,
-                  player_colour_marks_the_string_courses):
+                  player_colour_marks_the_string_courses, icon_and_portrait_render):
             t()
     finally:
         addon.unregister()

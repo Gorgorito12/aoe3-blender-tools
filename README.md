@@ -36,6 +36,16 @@ construction stages and leaves stock rubble when destroyed
 ([docs/game-test.md](docs/game-test.md)). The survey has run on the game and a mod, and its
 measurements calibrate the sizes and budgets.
 
+**In the game** (the White House at medium detail, in a test copy of a mod): the same building for
+two players, with the string courses in each owner's colour; built by a villager through the
+stock construction stages; destroyed, leaving the stock rubble.
+
+![Player colour](examples/whitehouse_medium/ingame_player_colour.jpg)
+
+![Construction](examples/whitehouse_medium/ingame_construction.jpg)
+
+![Rubble](examples/whitehouse_medium/ingame_rubble.jpg)
+
 ## Why
 
 AI 3D generators make a building as a sculpted surface: decimated to a game budget, its walls come
@@ -188,11 +198,6 @@ see [tools/README.md](tools/README.md).
    Diffusion with ControlNet and the other options in [docs/texture-plan.md](docs/texture-plan.md).
 4. **Units:** reuse the stock skeletons and animations; build the body from parts or fit a
    detailed mesh to a stock skeleton; textures with the player-colour mask.
-
-## Game files and other mods
-
-Do not commit files from the game or from other mods to this repository: models, textures and
-data belong to their owners. Calibration profiles keep measurements only.
 
 ## License
 

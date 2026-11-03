@@ -11,5 +11,3 @@ root.
 | `build_zip.py` | Builds the installable add-on zips into `dist/`. |
 | `game_deploy.py` | Puts a game bundle (`scripts/game_export.py` or the add-on's Game Export) into a test copy of the game, runs the mod's validators, or undoes it: `python -I -X utf8 tools/game_deploy.py --install <copy> --bundle <folder> [--validate]`, `--undo`. Refuses any Steam folder. |
 | `gr2_tree.py` | Reads an uncompressed Granny model: the data tree, `--stats`, `--types` or `--shape`. |
-
-Extracted game files are for reference on your machine only: never commit them.

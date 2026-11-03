@@ -17,8 +17,6 @@ and destroyed in game (`docs/game-test.md`), then more styles and units (README,
 
 - The repository is **public**. Keep every text neutral: do not name other mods, their teams, or
   the private projects this tool came from, and do not link private documents.
-- Never commit game or mod assets (models, textures, data, extracted files). Calibration profiles
-  keep measurements only.
 - Never commit survey reports (`report.json`, `summary.md`) of a mod: they name its files. They
   belong to the user's private repository.
 - License: GPL-3.0-or-later (Blender's requirement for add-ons). New source files start with
@@ -77,7 +75,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`.
 - `examples/`: generated presets. `whitehouse/`, `whitehouse_medium/` and `whitehouse1914/` keep
   every export and the .blend (`whitehouse1914/preview_sheet.jpg` is a 2 x 2 sheet of its views);
-  the others keep the GLB, a preview and the stats. `generate.py` writes every export: delete the
+  the others keep the GLB, a preview and the stats. `whitehouse_medium/ingame_*.jpg` are
+  captures from the game (README gallery). `generate.py` writes every export: delete the
   extra files when regenerating the trimmed presets.
 - `docs/building-guidelines.md`: requirements, pitfalls, what is still to verify in game.
 - `docs/texture-plan.md`: the options to improve the textures without losing their alignment, their
