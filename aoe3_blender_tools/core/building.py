@@ -49,6 +49,7 @@ class BuildingParams:
     texture_size: int = 1024        # final size; painted at twice that and filtered down
     seed: int = 1870
     player_colour: bool = False     # string courses and shutters show the owner's colour in game
+    materials: bool = False         # photo swatches under the painting (core/materials.py)
     colors: dict = field(default_factory=lambda: {
         "wall": (232, 225, 204), "trim": (243, 240, 231), "roof": (70, 78, 90),
         "glass": (52, 66, 82), "door": (64, 50, 40), "brick": (150, 64, 48),

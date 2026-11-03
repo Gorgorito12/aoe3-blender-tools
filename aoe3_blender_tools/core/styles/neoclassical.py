@@ -530,7 +530,7 @@ def paint(pr, model):
     def facade(region, spec):
         r = pr.at[region]
         sw, sh = r.world_w, r.world_h
-        pr.fill(region, WALL)
+        pr.base(region, WALL, role="wall")
         course, joint, n, v = 0.42, 1.15, 0, 0.42
         while v < sh - 0.4:                                  # stone courses
             pr.hline(region, v, 0, sw, WALL_LINE)

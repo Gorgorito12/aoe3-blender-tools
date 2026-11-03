@@ -36,6 +36,7 @@ def random_params(rng, i):
         window_caps=rng.choice(["PEDIMENT", "ALTERNATE"]))
     if rng.random() < 0.1:           # square plans: the hipped roofs become pyramids
         p.depth, p.wing_depth = p.width, p.wing_width
+    p.materials = rng.random() < 0.3      # swatches under the painting
     return p
 
 

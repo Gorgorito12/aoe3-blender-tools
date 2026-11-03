@@ -83,7 +83,12 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   neoclassical preset (faces, atlas, texture, attach points, sizes, facade layout) and their
   triangle counts.
 - `tools/`: `art_survey.py` (uses `bar.py` and `xmbedit.py`; standard library only, it runs on the
-  user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`.
+  user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`;
+  `fetch_materials.py` (CC0 swatches into `aoe3_blender_tools/materials/` with `MATERIALS.md`)
+  and `palette_survey.py` (stock texture colour and grain), both with numpy.
+- `aoe3_blender_tools/core/materials.py`: swatches under the painting (`MATERIALS[style][role]`,
+  `normalise`, `resample`, `tile`); the Painter's `base(region, colour, role)` lays them when
+  `params.materials` is on. `aoe3_blender_tools/materials/`: the prepared PNGs and their credits.
 - `examples/`: generated presets. `whitehouse/`, `whitehouse_medium/` and `whitehouse1914/` keep
   every export and the .blend (`whitehouse1914/preview_sheet.jpg` is a 2 x 2 sheet of its views);
   the others keep the GLB, a preview and the stats. `whitehouse_medium/ingame_*.jpg` are
@@ -97,6 +102,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 
 ## Working rules
 
+- Material swatches come only through `tools/fetch_materials.py`, from a source whose licence page
+  states CC0 (it checks before writing); never a texture from the game or a mod. Keep each
+  swatch small (256 px; the zip stays under 6 MB, `build_zip.py` checks).
 - The neoclassical presets are golden: a refactor must keep `tests/test_golden.py` green as
   is. Run `--update-golden` only for a deliberate change to that style's output, and say so in
   the commit (then regenerate `examples/`).

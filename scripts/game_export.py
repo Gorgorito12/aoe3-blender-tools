@@ -6,6 +6,7 @@ fields and strings) for `tools/game_deploy.py`.
                                   [--prefix mod] [--name NAME] [--display "Shown name"]
                                   [--template House] [--no-v-flip] [--player-colour]
                                   [--texture DXT3|DXT1|BGRA] [--no-icons] [--no-lowpoly] [--no-damaged]
+                                  [--materials]
                                   [--profile <profile.json> | --no-profile]
 
 The calibration profile (default: the one shipped in aoe3_blender_tools/profiles/) sets the
@@ -49,6 +50,8 @@ def main():
         p = dataclasses.replace(p, name=opt("--name"))
     if "--player-colour" in argv:
         p = dataclasses.replace(p, player_colour=True)
+    if "--materials" in argv:
+        p = dataclasses.replace(p, materials=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     model = building.build(p)
     obj = blender_io.create_object(model, paint.paint_rgba(model) if p.player_colour else paint.paint(model))

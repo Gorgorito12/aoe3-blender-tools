@@ -23,8 +23,15 @@ def paint(model):
 
 def paint_rgba(model):
     """The texture with its alpha: 0 where the player colour shows, 255 elsewhere."""
-    rgb, alpha = _paint(model)
+    rgb, alpha, _ = _paint(model)
     return np.concatenate([rgb, alpha[:, :, None]], axis=2)
+
+
+def paint_layers(model):
+    """(rgba, coverage): the texture and where a material swatch shows in it (0..255), for the
+    relief."""
+    rgb, alpha, cov = _paint(model)
+    return np.concatenate([rgb, alpha[:, :, None]], axis=2), cov
 
 
 def _paint(model):

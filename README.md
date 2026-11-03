@@ -99,6 +99,10 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 - **Painted texture**: stone courses, quoins, windows with sash bars and caps, the door with its
   fanlight, slate rows, dentils, brick, all aligned with the geometry. Colours are settings. Flat
   colour, no baked lighting. Painted with numpy only, so nothing extra is installed in Blender.
+- **Material swatches** (option, off by default; `--materials` on the command line): small
+  tileable CC0 photos under the painting give the walls their grain while every drawn detail
+  and the colours stay; the swatch's lighting is removed and its grain scaled to a measured
+  target. Credits in [aoe3_blender_tools/materials/MATERIALS.md](aoe3_blender_tools/materials/MATERIALS.md).
 - **Game-ready check**: triangle budget, the 16-bit vertex limit, one UV map inside 0..1,
   power-of-two textures, material count, origin at the footprint centre and base on the ground,
   degenerate faces, hidden bottom faces, and overlapping coplanar faces (they flicker in game).
@@ -172,6 +176,7 @@ venv/bin/python scripts/generate.py --preset CAPITOL --out out --no-render
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
 python -I tests/test_game_formats.py                   # game formats, plain Python
 venv/bin/python -I tests/test_golden.py               # presets byte for byte (--update-golden)
+venv/bin/python -I tests/test_materials.py            # material swatches and their layer
 ```
 
 On Windows the venv's interpreter is `venv\Scripts\python`.
@@ -212,5 +217,7 @@ see [tools/README.md](tools/README.md).
 
 ## License
 
-GPL-3.0-or-later ([LICENSE](LICENSE)), as Blender requires for add-ons. Age of Empires is a
-trademark of Microsoft; this project is not affiliated with Microsoft.
+GPL-3.0-or-later ([LICENSE](LICENSE)), as Blender requires for add-ons. The material swatches in
+`aoe3_blender_tools/materials/` are CC0 1.0 (public domain) photos from the sources listed in
+their `MATERIALS.md`. Age of Empires is a trademark of Microsoft; this project is not affiliated
+with Microsoft.
