@@ -326,6 +326,68 @@ def deploy_from_blender_and_undo():
         assert refused or not os.path.exists(s.game_install)
 
 
+@test
+def square_hipped_roof_builds():
+    # a square block and square wings: the hipped roofs become pyramids (no ridge of length 0)
+    for detail in ("LOW", "MEDIUM"):
+        p = building.BuildingParams(name="Square", width=10.0, depth=10.0, portico=False, cupola=False,
+                                    chimneys=2, wings=True, wing_width=5.0, wing_depth=5.0, detail=detail,
+                                    texture_size=512)
+        model = building.build(p)
+        obj = blender_io.create_object(model, paint.paint(model))
+        res = validate.check(obj)
+        assert not problems(res), (detail, problems(res))
+
+
+def kit_model(medium):
+    """A free Builder with every new piece of the kit, on separate plots."""
+    from aoe3_blender_tools.core import kit
+    b = kit.Builder(256, medium)
+    (rw, rh), (gw, gh) = kit.gable_roof_size(4.0, 3.0, 0.6, "X", overhang=0.3)
+    for name, w, h in (("wall", 8.0, 4.0), ("roof", max(rw, 7.0), max(rh, 3.0)), ("gable", gw, gh),
+                       ("dormer", 1.2, 1.0), ("brick", 4.0, 3.0), ("white", 2.2, 1.6), ("post", 2.0, 3.0),
+                       ("arch", 6.0, kit.arcade_front_h(3.0, 3, 10.0, 16.0, 0.25, "ARCH", medium)),
+                       ("slab", 2.0, 0.8), ("rail", 2.0, 0.9), ("soffit", 4.0, 0.4), ("ends", 0.4, 0.4),
+                       ("bell", 2.0, 2.7)):
+        b.region(name, w, h)
+    b.pack()
+    # a house: four walls, a gable roof with a ridge cap, a dormer on each slope, a chimney, a balcony
+    for origin, ua, length in (((-4.0, -3.0, 0.0), (1.0, 0.0, 0.0), 8.0), ((4.0, 3.0, 0.0), (-1.0, 0.0, 0.0), 8.0),
+                               ((-4.0, 3.0, 0.0), (0.0, -1.0, 0.0), 6.0), ((4.0, -3.0, 0.0), (0.0, 1.0, 0.0), 6.0)):
+        b.flat_wall(origin, ua, length, 3.0, "wall")
+    rz = b.gable_roof(0.0, 0.0, 4.0, 3.0, 3.0, 0.6, "X", "roof", gable_region="gable", overhang=0.3)
+    b.ridge_cap((-4.3, 0.0), (4.3, 0.0), rz, "roof")
+    for side, x in ((-1, -1.5), (1, 1.5)):
+        b.dormer(x, 0.0, 3.0, 3.0, 0.6, side, 0.8, 1.2, 1.0, wall_region="dormer", roof_region="roof",
+                 cheek_region="white")
+    foot = kit.gable_roof_z(3.0, 1.2, 0.0, 0.0, 4.0, 3.0, 3.0, 0.6) - 0.4
+    b.chimney(3.0, 1.2, foot, rz + 0.8)
+    b.balcony(-1.0, 1.0, -3.0, 1.5, 0.8, "slab", "rail")
+    # an arcade under a lean-to roof against a wall
+    b.flat_wall((10.0, -3.0, 0.0), (1.0, 0.0, 0.0), 6.0, 4.0, "wall")
+    b.arcade(10.0, 16.0, -5.4, 0.0, 3.0, 3, 0.4, 0.25, "post", "arch")
+    b.shed_roof((10.0, -3.0, 0.0), (1.0, 0.0, 0.0), 6.0, 2.6, 3.6, 0.2, "roof")
+    # a bell gable, and a jetty on a wall
+    apex = b.bell_gable(20.0, 0.0, 0.0, 2.0, 2.0, 0.3, "bell", side_region="white")
+    b.attach["flag_attach"] = apex
+    b.flat_wall((24.0, 0.0, 0.0), (1.0, 0.0, 0.0), 4.0, 3.0, "wall")
+    b.jetty(24.0, 28.0, 0.0, 3.0, 0.4, "soffit", "ends", n_ends=5)
+    return b.finish(building.BuildingParams(name="Kit" + ("Medium" if medium else "Low")), {})
+
+
+@test
+def roof_kit_parts_have_no_overlaps():
+    import numpy as np
+    for medium in (False, True):
+        model = kit_model(medium)
+        assert model.dims["footprint"][0] > 20, model.dims
+        obj = blender_io.create_object(model, np.full((256, 256, 3), 128, np.uint8))
+        res = validate.check(obj)
+        assert not problems(res), (medium, problems(res))
+        tris, _ = blender_io.triangle_count(obj)
+        assert tris == sum(len(f.pts) - 2 for f in model.faces), tris
+
+
 def main():
     addon.register()
     try:
@@ -334,7 +396,8 @@ def main():
                   regenerating_replaces_the_object, export_and_reimport, checks_catch_known_problems,
                   atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget,
                   player_colour_marks_the_string_courses, icon_and_portrait_render,
-                  game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo):
+                  game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo,
+                  square_hipped_roof_builds, roof_kit_parts_have_no_overlaps):
             t()
     finally:
         addon.unregister()

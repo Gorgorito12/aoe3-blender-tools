@@ -325,7 +325,13 @@ class Builder:
     def hipped_roof(self, cx, cy, hx, hy, z, rp, region="roof"):
         """A hipped roof over the rectangle cx +- hx, cy +- hy at height z (a pyramid if square)."""
         rz = z + rp * min(hx, hy)
-        if hx >= hy:
+        if abs(hx - hy) < 1e-9:          # square: four triangles to the apex (a ridge of length 0
+            apex = (cx, cy, rz)          # would repeat a corner)
+            self.face_auto([(cx - hx, cy - hy, z), (cx + hx, cy - hy, z), apex], region)
+            self.face_auto([(cx + hx, cy + hy, z), (cx - hx, cy + hy, z), apex], region)
+            self.face_auto([(cx - hx, cy + hy, z), (cx - hx, cy - hy, z), apex], region)
+            self.face_auto([(cx + hx, cy - hy, z), (cx + hx, cy + hy, z), apex], region)
+        elif hx >= hy:
             rh = hx - hy
             a, b = (cx - rh, cy, rz), (cx + rh, cy, rz)
             self.face_auto([(cx - hx, cy - hy, z), (cx + hx, cy - hy, z), b, a], region)
@@ -390,3 +396,244 @@ class Builder:
                 "height": max(q[2] for f in faces for q in f.pts)}
         dims.update(dims_extra or {})
         return Model(params, faces, self.attach, self.atlas, facades, dims, list(notes or []))
+
+    # ----------------------------------------------------------------------------------------------
+    # Pieces for the other styles: gable and shed roofs, ridge caps, dormers, bell gables,
+    # arcades, balconies and jetties. Each face is turned to face its outside.
+
+    def face_out(self, pts, region, normal, anchor=None, smooth=False):
+        """face_auto, reversing the corners first when they do not face `normal`."""
+        if _dot(newell(pts), normal) < 0:
+            pts = pts[::-1]
+        self.face_auto(list(pts), region, anchor=anchor, smooth=smooth)
+
+    def gable_roof(self, cx, cy, hx, hy, z, pitch, axis="X", region="roof", gable_region=None,
+                   overhang=0.0):
+        """A roof with two slopes over the walls cx +- hx, cy +- hy whose tops are at z, the ridge
+        along `axis` ("X" or "Y"). The slopes reach `overhang` beyond the walls on every side
+        (eaves and verges, lower by pitch x overhang at the eaves); with `gable_region`, the two
+        gable triangles close the ends in the wall planes. Returns the ridge height."""
+        if axis == "X":
+            run = hy
+        else:
+            run = hx
+        rz = z + pitch * run
+        ze = z - pitch * overhang
+        o = overhang
+        if axis == "X":
+            x0, x1 = cx - hx - o, cx + hx + o
+            self.face_out([(x0, cy - hy - o, ze), (x1, cy - hy - o, ze), (x1, cy, rz), (x0, cy, rz)],
+                          region, (0.0, -1.0, 1.0))
+            self.face_out([(x1, cy + hy + o, ze), (x0, cy + hy + o, ze), (x0, cy, rz), (x1, cy, rz)],
+                          region, (0.0, 1.0, 1.0))
+            if gable_region:
+                for sx in (-1, 1):
+                    x = cx + sx * hx
+                    self.face_out([(x, cy - hy, z), (x, cy + hy, z), (x, cy, rz)], gable_region,
+                                  (float(sx), 0.0, 0.0), anchor=(x, cy - sx * hy, z))
+        else:
+            y0, y1 = cy - hy - o, cy + hy + o
+            self.face_out([(cx - hx - o, y1, ze), (cx - hx - o, y0, ze), (cx, y0, rz), (cx, y1, rz)],
+                          region, (-1.0, 0.0, 1.0))
+            self.face_out([(cx + hx + o, y0, ze), (cx + hx + o, y1, ze), (cx, y1, rz), (cx, y0, rz)],
+                          region, (1.0, 0.0, 1.0))
+            if gable_region:
+                for sy in (-1, 1):
+                    y = cy + sy * hy
+                    self.face_out([(cx - hx, y, z), (cx + hx, y, z), (cx, y, rz)], gable_region,
+                                  (0.0, float(sy), 0.0), anchor=(cx + sy * hx, y, z))
+        return rz
+
+    def shed_roof(self, origin, ua, length, depth, z_top, pitch, region="roof"):
+        """A lean-to roof against a wall: from the wall line (origin, along the unit vector ua,
+        `length` long) at z_top, sloping down outward (the wall's outside, as for `wall`) over
+        `depth`. Returns the height of its low edge."""
+        out = _cross(ua, (0.0, 0.0, 1.0))
+        zl = z_top - pitch * depth
+
+        def P(u, d, zz):
+            return (origin[0] + ua[0] * u + out[0] * d, origin[1] + ua[1] * u + out[1] * d, zz)
+
+        self.face_out([P(0, 0, z_top), P(0, depth, zl), P(length, depth, zl), P(length, 0, z_top)],
+                      region, (out[0] * pitch, out[1] * pitch, 1.0))
+        return zl
+
+    def ridge_cap(self, a, b, z, region, width=0.2, height=0.12):
+        """A capping along a ridge from a to b ((x, y) at the ridge height z, along X or Y): a low
+        box whose foot is inside the roof."""
+        (ax, ay), (bx, by) = a, b
+        w = width / 2
+        if abs(ay - by) < 1e-9:
+            self.box(min(ax, bx), max(ax, bx), ay - w, ay + w, z - 0.08, z + height, region, region)
+        else:
+            self.box(ax - w, ax + w, min(ay, by), max(ay, by), z - 0.08, z + height, region, region)
+
+    def dormer(self, x, cy, hy, z, pitch, side, inset, w, h, dpitch=0.8, wall_region="dormer",
+               roof_region="roof", cheek_region=None):
+        """A gabled dormer on a gable roof whose ridge runs along X at y = cy (the walls at
+        cy +- hy, tops at z, slope `pitch`): on the slope facing `side` (-1: -Y, +1: +Y), its front
+        wall `inset` metres in from the eave line, `w` wide and `h` high above the roof, centred
+        on x. Front wall (the `wall_region`, `w` x `h`, for a painted window), its gable, two
+        cheeks and a small roof whose ridge meets the main roof. Returns the dormer's top."""
+        s = float(side)
+        cheek_region = cheek_region or roof_region
+        r_f = hy - inset                               # distance of the front from the ridge line
+        zb = z + pitch * inset                         # the main roof at the front
+        zt = zb + h
+        rz = zt + dpitch * w / 2
+        r_b = r_f - h / pitch                          # where the main roof reaches zt
+        r_r = r_f - (rz - zb) / pitch                  # where it reaches the dormer's ridge
+
+        def Q(xx, r, zz):
+            return (xx, cy + s * r, zz)
+
+        xl, xr = x - w / 2, x + w / 2
+        out = (0.0, s, 0.0)
+        self.face_out([Q(xl, r_f, zb), Q(xr, r_f, zb), Q(xr, r_f, zt), Q(xl, r_f, zt)], wall_region, out,
+                      anchor=Q(xl if s < 0 else xr, r_f, zb))
+        self.face_out([Q(xl, r_f, zt), Q(xr, r_f, zt), Q(x, r_f, rz)], cheek_region, out)
+        for xx, nx in ((xl, -1.0), (xr, 1.0)):
+            self.face_out([Q(xx, r_f, zb), Q(xx, r_f, zt), Q(xx, r_b, zt)], cheek_region, (nx, 0.0, 0.0))
+            self.face_out([Q(xx, r_f, zt), Q(x, r_f, rz), Q(x, r_r, rz), Q(xx, r_b, zt)], roof_region,
+                          (nx, 0.0, 1.0))
+        return rz
+
+    def bell_gable(self, cx, y, z0, w, h, thickness, region, peak=None, side_region=None):
+        """A bell gable (espadana): a slab `w` wide and `thickness` thick standing on z0, its front
+        in the plane y (facing -Y), `h` high at the sides and `peak` more at the centre. The bells
+        and their arches are painted on the front (`region`, w x h + peak). Returns the apex."""
+        peak = w * 0.35 if peak is None else peak
+        side_region = side_region or region
+        x0, x1 = cx - w / 2, cx + w / 2
+        yb = y + thickness
+        zh, za = z0 + h, z0 + h + peak
+        front = [(x0, y, z0), (x1, y, z0), (x1, y, zh), (cx, y, za), (x0, y, zh)]
+        self.face_out(front, region, (0.0, -1.0, 0.0), anchor=(x0, y, z0))
+        self.face_out([(q[0], yb, q[2]) for q in front], side_region, (0.0, 1.0, 0.0))
+        self.face_out([(x0, y, z0), (x0, y, zh), (x0, yb, zh), (x0, yb, z0)], side_region, (-1.0, 0.0, 0.0))
+        self.face_out([(x1, y, z0), (x1, yb, z0), (x1, yb, zh), (x1, y, zh)], side_region, (1.0, 0.0, 0.0))
+        self.face_out([(x0, y, zh), (cx, y, za), (cx, yb, za), (x0, yb, zh)], side_region, (-peak, 0.0, w / 2))
+        self.face_out([(cx, y, za), (x1, y, zh), (x1, yb, zh), (cx, yb, za)], side_region, (peak, 0.0, w / 2))
+        return (cx, y + thickness / 2, za)
+
+    def arcade(self, x0, x1, y, z0, height, n_bays, depth, post_half, post_region, arch_region,
+               kind="ARCH", lintel_h=0.5, arch_rise=None, segments=6):
+        """An arcade along X from x0 to x1, its front in the plane y (facing -Y), `depth` deep
+        toward +Y, standing on z0 and `height` high: n_bays + 1 piers (boxes 2 post_half wide)
+        under a band. kind "ARCH" at medium detail: each bay a round arch (a spandrel fanned from
+        its upper corners, the intrados under it), the band `lintel_h` above the crowns;
+        "POST", or low detail: square openings under a lintel `lintel_h` high, the arches only
+        painted. The front of the band and spandrels is one face of `arch_region`, from the
+        springing (see arcade_front_h). Returns the top height."""
+        top = z0 + height
+        span = (x1 - x0 - 2 * post_half * (n_bays + 1)) / n_bays
+        arched = kind == "ARCH" and self.medium
+        yb = y + depth
+        piers = [x0 + post_half + i * (span + 2 * post_half) for i in range(n_bays + 1)]
+        if not arched:
+            spring = top - lintel_h
+            for px in piers:
+                self.box(px - post_half, px + post_half, y, yb, z0, spring, post_region, post_region,
+                         skip=("top",))
+            self.box(x0, x1, y, yb, spring, top, arch_region, post_region)
+            return top
+        segments = max(2, segments // 2 * 2)          # even: the crown is a corner
+        rise = min(span / 2, height - lintel_h - 0.3) if arch_rise is None else arch_rise
+        crown = top - lintel_h
+        spring = crown - rise
+        last = len(piers) - 1
+        for i, px in enumerate(piers):
+            self.box(px - post_half, px + post_half, y, yb, z0, spring, post_region, post_region,
+                     skip=("top",))
+            # above the springing the pier is inside the arcade's solid: only its outer ends show
+            inner = tuple(k for k, keep in (("-x", i == 0), ("+x", i == last)) if not keep)
+            self.box(px - post_half, px + post_half, y, yb, spring, crown, post_region, post_region,
+                     skip=("top", "-y") + inner)
+        front = (0.0, -1.0, 0.0)
+        anchor = (x0, y, spring)
+        # the band: its front from the springing's origin, so the painting runs on
+        self.box(x0, x1, y, yb, crown, top, arch_region, post_region, skip=("-y",))
+        # its lower edge carries every corner on the crown line (pier corners, crowns): no T-junctions
+        xs = sorted({x0, x1, *[px - post_half for px in piers], *[px + post_half for px in piers],
+                     *[(piers[i] + piers[i + 1]) / 2 for i in range(n_bays)]})
+        self.face_out([(xx, y, crown) for xx in xs] + [(x1, y, top), (x0, y, top)], arch_region, front,
+                      anchor=anchor)
+        for px in piers:                               # the piers' fronts above the springing
+            self.face_out([(px - post_half, y, spring), (px + post_half, y, spring),
+                           (px + post_half, y, crown), (px - post_half, y, crown)], arch_region, front,
+                          anchor=anchor)
+        for i in range(n_bays):
+            a, b = piers[i] + post_half, piers[i + 1] - post_half
+            mx, r = (a + b) / 2, (b - a) / 2
+            arc = [(mx - r * math.cos(math.pi * k / segments), spring + rise * math.sin(math.pi * k / segments))
+                   for k in range(segments + 1)]                  # from (a, spring) over to (b, spring)
+            half = segments // 2
+            for corner, part in (((a, crown), arc[:half + 1]), ((b, crown), arc[half:])):
+                for (ua, va), (ub, vb) in zip(part, part[1:]):
+                    self.face_out([(corner[0], y, corner[1]), (ua, y, va), (ub, y, vb)], arch_region, front,
+                                  anchor=anchor)
+            for (ua, va), (ub, vb) in zip(arc, arc[1:]):              # the intrados, facing down-in
+                nx, nz = -((ua + ub) / 2 - mx), -((va + vb) / 2 - spring)
+                self.face_out([(ua, y, va), (ub, y, vb), (ub, yb, vb), (ua, yb, va)], post_region,
+                              (nx, 0.0, nz))
+        return top
+
+    def balcony(self, x0, x1, y_wall, z, depth, slab_region, rail_region, rail_h=0.9, slab_h=0.12):
+        """A balcony on a wall facing -Y at y_wall: a slab from x0 to x1, `depth` out, its top at
+        z, and a railing band round its three open sides (`rail_region`, painted)."""
+        yf = y_wall - depth
+        self.box(x0, x1, yf, y_wall, z - slab_h, z, slab_region, slab_region, skip=("+y",))
+        i = 0.04                                         # the railing stands just inside the edge
+        self.face_out([(x0 + i, yf + i, z), (x1 - i, yf + i, z), (x1 - i, yf + i, z + rail_h),
+                       (x0 + i, yf + i, z + rail_h)], rail_region, (0.0, -1.0, 0.0), anchor=(x0 + i, yf + i, z))
+        for xx, nx in ((x0 + i, -1.0), (x1 - i, 1.0)):
+            self.face_out([(xx, yf + i, z), (xx, y_wall - 0.02, z), (xx, y_wall - 0.02, z + rail_h),
+                           (xx, yf + i, z + rail_h)], rail_region, (nx, 0.0, 0.0))
+
+    def jetty(self, x0, x1, y_wall, z, overhang, soffit_region, end_region, n_ends=0):
+        """An upper floor jutting out `overhang` beyond a wall facing -Y at y_wall, from x0 to x1,
+        its floor at z: the soffit under it and, at medium detail, `n_ends` joist ends."""
+        yf = y_wall - overhang
+        self.face_out([(x0, yf, z), (x1, yf, z), (x1, y_wall, z), (x0, y_wall, z)], soffit_region,
+                      (0.0, 0.0, -1.0))
+        if self.medium and n_ends:
+            for k in range(n_ends):
+                cx = x0 + (x1 - x0) * (k + 0.5) / n_ends
+                self.box(cx - 0.08, cx + 0.08, yf + 0.02, y_wall, z - 0.18, z - 0.01, end_region, end_region,
+                         skip=("+y",))
+
+
+# --------------------------------------------------------------------------------------------------
+# Region sizes for the pieces (declare them before pack())
+
+def hipped_roof_size(hx, hy, pitch):
+    """(world_w, world_h) a hipped roof over cx +- hx, cy +- hy needs."""
+    return max(2 * hx, 2 * hy) + 0.2, math.hypot(min(hx, hy), pitch * min(hx, hy)) + 0.2
+
+
+def gable_roof_size(hx, hy, pitch, axis="X", overhang=0.0):
+    """(roof, gable): the region sizes of `Builder.gable_roof`."""
+    along, run = (hx, hy) if axis == "X" else (hy, hx)
+    roof = (2 * (along + overhang) + 0.2, math.hypot(run + overhang, pitch * (run + overhang)) + 0.2)
+    return roof, (2 * run + 0.1, pitch * run + 0.1)
+
+
+def gable_roof_z(x, y, cx, cy, hx, hy, z, pitch, axis="X"):
+    """The height of a `gable_roof` surface above (x, y)."""
+    if axis == "X":
+        return z + pitch * (hy - abs(y - cy))
+    return z + pitch * (hx - abs(x - cx))
+
+
+def arcade_front_h(height, n_bays, x0, x1, post_half, kind, medium, lintel_h=0.5, arch_rise=None):
+    """The height of an arcade's front region (`arch_region`): the lintel, or with arches the
+    band plus the rise."""
+    if not (kind == "ARCH" and medium):
+        return lintel_h
+    span = (x1 - x0 - 2 * post_half * (n_bays + 1)) / n_bays
+    rise = min(span / 2, height - lintel_h - 0.3) if arch_rise is None else arch_rise
+    return lintel_h + rise
+
+
+def shed_roof_size(length, depth, pitch):
+    return length + 0.1, math.hypot(depth, pitch * depth) + 0.1

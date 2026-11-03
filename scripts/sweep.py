@@ -24,7 +24,7 @@ seeds = [int(x) for x in argv[argv.index("--seeds") + 1].split(",")] if "--seeds
 
 
 def random_params(rng, i):
-    return building.BuildingParams(
+    p = building.BuildingParams(
         name=f"Sweep{i}", width=rng.uniform(5, 30), depth=rng.uniform(4, 18), storeys=rng.randint(1, 4),
         plinth=rng.choice([0.3, 0.8, 1.5]), roof_pitch=rng.uniform(0.2, 1.2), bay_spacing=rng.uniform(1.4, 3.0),
         portico=rng.random() < 0.6, columns=rng.choice([2, 4, 6, 8]), column_spacing=rng.uniform(1.2, 3.0),
@@ -34,6 +34,9 @@ def random_params(rng, i):
         wings=rng.random() < 0.4, wing_gap=rng.uniform(2, 9), wing_width=rng.uniform(3, 10),
         wing_depth=rng.uniform(3, 10), flagpole=rng.random() < 0.4, shutters=rng.random() < 0.5,
         window_caps=rng.choice(["PEDIMENT", "ALTERNATE"]))
+    if rng.random() < 0.1:           # square plans: the hipped roofs become pyramids
+        p.depth, p.wing_depth = p.width, p.wing_width
+    return p
 
 
 def main():
