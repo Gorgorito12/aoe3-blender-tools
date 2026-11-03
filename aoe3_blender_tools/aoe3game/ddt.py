@@ -249,3 +249,71 @@ def write(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True):
     if fmt == BGRA:
         return write_bgra(rgba, alpha=alpha, usage=usage, mips=mips)
     return write_dxt(rgba, fmt, alpha=alpha, usage=usage, mips=mips)
+
+
+def _alpha_encode(a):
+    """8-byte DXT5 alpha blocks for N x 16 float alpha values (the 8-value mode, a0 > a1)."""
+    np = _np()
+    a0 = np.clip(np.rint(a.max(axis=1)), 0, 255).astype(np.int32)
+    a1 = np.clip(np.rint(a.min(axis=1)), 0, 255).astype(np.int32)
+    flat = a0 == a1
+    a0 = np.where(flat & (a0 < 255), a0 + 1, a0)       # keep a0 > a1 (the 8-value mode)
+    a1 = np.where(flat & (a0 == 255) & (a1 == 255), 254, a1)
+    f0, f1 = a0.astype(np.float32), a1.astype(np.float32)
+    pal = np.stack([f0, f1] + [((7 - k) * f0 + k * f1) / 7 for k in range(1, 7)], axis=1)
+    idx = np.abs(a[:, :, None] - pal[:, None, :]).argmin(-1).astype(np.uint64)   # N x 16
+    bits = (idx << (3 * np.arange(16, dtype=np.uint64))).sum(axis=1).astype(np.uint64)
+    out = np.zeros((len(a), 8), np.uint8)
+    out[:, 0], out[:, 1] = a0, a1
+    for k in range(6):
+        out[:, 2 + k] = ((bits >> np.uint64(8 * k)) & np.uint64(255)).astype(np.uint8)
+    return out
+
+
+def compress_dxt5(rgba):
+    """DXT5 bytes of one level: interpolated alpha, then the colour block."""
+    np = _np()
+    b = _blocks(rgba)
+    return np.concatenate([_alpha_encode(b[:, :, 3]), _colour_encode(b[:, :, :3])],
+                          axis=1).tobytes()
+
+
+def write_normal_map(rgba, *, mips=False):
+    """Bytes of a bump texture as the game's own (DXT5, usage 6 = low detail + bump, alpha 0)
+    from an H x W x 4 array packed like them: R specular (0 = none), G the normal's Y, B its Z,
+    A its X, each 128 for 0."""
+    np = _np()
+    a = np.asarray(rgba).astype(np.uint8)
+    h, w = a.shape[:2]
+    levels = mip_chain(a) if mips else [a]
+    blobs = [compress_dxt5(lv) for lv in levels]
+    out = bytearray(MAGIC + bytes([6, 0, DXT5, len(blobs)]) + struct.pack("<II", w, h))
+    off = 16 + 8 * len(blobs)
+    for b in blobs:
+        out += struct.pack("<II", off, len(b))
+        off += len(b)
+    for b in blobs:
+        out += b
+    return bytes(out)
+
+
+def normal_from_texture(rgba, strength=6.0, blur=1):
+    """A bump map from the diffuse texture: its brightness taken as height (joints, frames and
+    openings are darker, so they come out sunk), packed as `write_normal_map` expects."""
+    np = _np()
+    lum = np.asarray(rgba)[..., :3].astype(np.float32).mean(axis=2) / 255.0
+    for _ in range(blur):                                  # a light 3 x 3 box blur
+        p = np.pad(lum, 1, mode="edge")
+        lum = sum(p[dy:dy + lum.shape[0], dx:dx + lum.shape[1]]
+                  for dy in range(3) for dx in range(3)) / 9.0
+    p = np.pad(lum, 1, mode="edge")
+    dx = (p[1:-1, 2:] - p[1:-1, :-2]) / 2
+    dy = (p[2:, 1:-1] - p[:-2, 1:-1]) / 2
+    nx, ny, nz = -dx * strength, dy * strength, np.ones_like(lum)   # rows go down, V goes up
+    n = np.sqrt(nx * nx + ny * ny + nz * nz)
+    nx, ny, nz = nx / n, ny / n, nz / n
+    out = np.zeros(lum.shape + (4,), np.uint8)
+    out[..., 1] = np.clip(ny * 127.5 + 127.5, 0, 255)
+    out[..., 2] = np.clip(nz * 127.5 + 127.5, 0, 255)
+    out[..., 3] = np.clip(nx * 127.5 + 127.5, 0, 255)
+    return out

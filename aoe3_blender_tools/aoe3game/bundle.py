@@ -45,7 +45,7 @@ def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None):
 def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba, bones=(),
           footprint_m, icon_rgba=None, portrait_rgba=None, display_name=None, rollover="",
           template="House", v_flip=True, player_colour=None, chimney_bone=None, profile=None,
-          texture_format="DXT3", variants=None, death_animation=True):
+          texture_format="DXT3", variants=None, death_animation=True, relief=True):
     """Writes the bundle into `out` and returns the bundle description.
 
     variants: {"lowpoly": {...}, "damaged": {...}}, each with positions, normals, uvs and
@@ -55,6 +55,9 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
 
     death_animation: also write `<name>_death.gr2`, the building sinking into the ground with
     the stock collapse dust, played when it is destroyed.
+
+    relief: also write a bump map for each texture (`<texture>_b.ddt`, DXT5 as the game's own),
+    made from the texture's brightness; without it the models use the stock flat normal map.
 
     player_colour: None decides from the texture: an alpha below 255 anywhere means the
     player-colour shader (the low alpha shows the owner's colour). texture_format: "DXT3" (the
@@ -72,30 +75,37 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
     art_dir = os.path.join(out, "art", prefix, "buildings", low)
     os.makedirs(art_dir, exist_ok=True)
     size = game_size(footprint_m, profile=profile)
-    texture_name = f"C:\\aoe3bt\\art\\{rel_dir}\\{low}.ddt"
-    def model_file(base, mesh, texture):
+    def model_file(base, mesh, textures):
+        texture, bump = textures
         model = gr2_write.static_model(name, mesh["positions"], mesh["normals"], mesh["uvs"],
-                                       mesh["triangles"], texture=texture,
-                                       bump=FLAT_BUMP_TEXTURE, bones=bones, v_flip=v_flip,
+                                       mesh["triangles"], texture=texture, bump=bump,
+                                       bones=bones, v_flip=v_flip,
                                        player_colour=player_colour, source=f"{base}.blend")
         with open(os.path.join(art_dir, base + ".gr2"), "wb") as f:
             f.write(model)
 
     def texture_file(base, pixels):
+        """Writes the texture and, with `relief`, its bump map; returns both stored names."""
         with open(os.path.join(art_dir, base + ".ddt"), "wb") as f:
             f.write(ddt.write(np.asarray(pixels), fmt, alpha=1, usage=0, mips=True))
-        return f"C:\\aoe3bt\\art\\{rel_dir}\\{base}.ddt"
+        bump = FLAT_BUMP_TEXTURE
+        if relief:
+            with open(os.path.join(art_dir, base + "_b.ddt"), "wb") as f:
+                f.write(ddt.write_normal_map(ddt.normal_from_texture(pixels)))
+            bump = f"C:\\aoe3bt\\art\\{rel_dir}\\{base}_b.ddt"
+        return f"C:\\aoe3bt\\art\\{rel_dir}\\{base}.ddt", bump
 
+    main_textures = texture_file(low, rgba)
     model_file(low, {"positions": positions, "normals": normals, "uvs": uvs,
-                     "triangles": triangles}, texture_file(low, rgba))
+                     "triangles": triangles}, main_textures)
     refs = {}
     for kind, suffix in (("lowpoly", "_lp"), ("damaged", "_damaged")):
         v = (variants or {}).get(kind)
         if not v:
             continue
         own = v.get("texture_rgba")
-        tex = texture_file(low + suffix, own) if own is not None else texture_name
-        model_file(low + suffix, v, tex)
+        textures = texture_file(low + suffix, own) if own is not None else main_textures
+        model_file(low + suffix, v, textures)
         refs[kind] = f"{rel_dir}\\{low}{suffix}"
     if death_animation:
         height = max(p[2] for p in positions) if len(positions) else 1.0
@@ -144,6 +154,7 @@ README_TEXT = """{name}: files for the game
 art\\{rel_dir}\\
   {low}.gr2            the model (Granny 2, stock building basis)
   {low}.ddt            its texture{pc}
+  {low}_b.ddt          its bump map (if written)
 {extra}  {low}.xml            the anim file: construction stages ({stages}), ground decal,
                        Idle{death_line}
 

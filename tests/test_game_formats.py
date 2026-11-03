@@ -359,6 +359,21 @@ class DdtTest(unittest.TestCase):
                 bundle.write(os.path.join(tmp, "x"), name="Box", prefix="mod", positions=P, normals=N,
                              uvs=UV, triangles=T, texture_rgba=tex, footprint_m=(4, 3), texture_format="DXT1")
 
+    def test_normal_map(self):
+        img = np.full((32, 32, 3), 200, np.uint8)
+        img[:, 16:] = 60                                   # a dark band: lower ground
+        nm = ddt.normal_from_texture(img, blur=0)
+        self.assertEqual(nm.shape, (32, 32, 4))
+        self.assertTrue((nm[..., 0] == 0).all())           # no specular
+        self.assertTrue((abs(nm[2:-2, 2:12, 3].astype(int) - 128) <= 1).all())   # flat: X 0
+        self.assertGreater(nm[10, 15, 3], 160)             # the edge leans toward +X (downhill)
+        data = ddt.write_normal_map(nm)
+        h = ddt.read_header(data)
+        self.assertEqual((h.format, h.usage, h.alpha, h.mips), (ddt.DXT5, 6, 0, 1))
+        back = ddt.decode(data).astype(int)
+        for c in (1, 2, 3):
+            self.assertLess(abs(back[..., c] - nm[..., c]).mean(), 3.0)
+
     def test_bundle_variants(self):
         P, N, UV, T = box()
         tex = np.full((32, 32, 4), 255, np.uint8)
@@ -375,6 +390,10 @@ class DdtTest(unittest.TestCase):
             self.assertTrue(lp["textures"][1].endswith("box_lp.ddt"))      # its own texture
             self.assertTrue(dmg["textures"][1].endswith("box.ddt"))        # the main one
             self.assertFalse(os.path.exists(base + "_damaged.ddt"))
+            self.assertTrue(lp["textures"][0].endswith("box_lp_b.ddt"))    # each texture's relief
+            self.assertTrue(dmg["textures"][0].endswith("box_b.ddt"))
+            with open(base + "_b.ddt", "rb") as f:
+                self.assertEqual(ddt.read_header(f.read()).format, ddt.DXT5)
             root = ET.parse(base + ".xml").getroot()
             files = [f.text for f in root.iter("file")]
             self.assertIn(r"mod\buildings\box\box_lp", files)
