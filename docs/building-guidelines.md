@@ -39,9 +39,11 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
 
 ## How the generator works
 
-- Geometry is pure data (`core/building.py`): faces with their corner points, the atlas region
-  each uses, and UVs in metres inside that region. Nothing there imports Blender, so it can be
-  tested alone.
+- Geometry is pure data (`core/building.py` dispatches to a style in `core/styles/`, which
+  builds with the pieces of `core/kit.py`): faces with their corner points, the atlas region
+  each uses, and UVs in metres inside that region. A style declares every region first, packs
+  the atlas, then adds the faces (they read their region's size); the order of both is part of
+  the output. Nothing there imports Blender, so it can be tested alone.
 - `core/atlas.py` shelf-packs the regions (facades, roof, trims, columns, brick, …) into one
   square texture at the largest uniform texel density that fits.
 - `core/paint.py` paints each region at twice the final size and filters it down. Facade regions

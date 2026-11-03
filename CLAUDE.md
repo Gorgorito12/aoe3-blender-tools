@@ -57,7 +57,11 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   panels. `blender_manifest.toml` is the extension manifest (Blender 4.2+); `bl_info` serves older
   versions.
 - `aoe3_blender_tools/core/`: `atlas.py`, `canvas.py`, `building.py` (parameters, presets,
-  geometry as pure data) and `paint.py` are pure Python; `blender_io.py` (object creation, export)
+  dispatch to the style), `kit.py` (the `Builder`: regions, then `pack()`, then faces from the
+  pieces: boxes, rings, walls with recessed openings, hipped roofs, arcs, chimneys; `Face`,
+  `Model`, the wall triangulation), `styles/` (one module per style: `NAME`, `clamp`, `build`;
+  `neoclassical.py` is the original generator), `pngio.py` (PNG reader) and `paint.py` are pure
+  Python; `blender_io.py` (object creation, export)
   and `validate.py` (checks) need Blender.
 - `aoe3_blender_tools/aoe3game/`: the game formats, pure Python, never importing `core` or bpy
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
