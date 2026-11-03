@@ -241,11 +241,37 @@ def texture_rgba(obj):
     img = _object_image(obj)
     if img is None:
         raise ValueError(f"{obj.name} has no image texture")
+    return image_rgba(img)
+
+
+def image_rgba(img):
+    """A Blender image as an H x W x 4 uint8 array, top row first."""
     w, h = img.size
     px = np.empty(w * h * 4, dtype=np.float32)
     img.pixels.foreach_get(px)
     arr = (np.clip(px.reshape(h, w, 4), 0, 1) * 255 + 0.5).astype(np.uint8)
     return arr[::-1].copy()                    # Blender rows go bottom-up
+
+
+def set_texture_rgba(obj, rgba):
+    """Writes an H x W x 4 uint8 array (top row first) into the object's image, in place (the
+    material keeps pointing at it), and packs it."""
+    img = _object_image(obj)
+    if img is None:
+        raise ValueError(f"{obj.name} has no image texture")
+    h, w = rgba.shape[:2]
+    if tuple(img.size) != (w, h):
+        img.scale(w, h)
+    px = (np.asarray(rgba)[::-1].astype(np.float32) / 255.0).ravel()
+    img.pixels.foreach_set(px)
+    img.update()
+    img.pack()
+    return img
+
+
+def image_copy(obj, name):
+    """A packed copy of the object's image under `name` (replacing one of that name)."""
+    return _image_from_array(name, texture_rgba(obj))
 
 
 def params_of(obj):

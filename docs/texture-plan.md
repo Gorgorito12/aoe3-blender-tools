@@ -7,7 +7,8 @@ hand-painted look without losing that alignment, what each costs, and the order 
 Status (2026-11-03): relief baking is done (a bump map from each finished texture) and material
 swatches are done (five CC0 photos from ambientCG under the painting, `core/materials.py`, credits
 in `aoe3_blender_tools/materials/MATERIALS.md`; their grain is fitted to a contrast measured on
-the stock textures by `tools/palette_survey.py`). The rest is not tried yet. Licence and price
+the stock textures by `tools/palette_survey.py`). Stable Diffusion + ControlNet is done, local,
+with a button in the add-on: [ai-textures.md](ai-textures.md). The rest is not tried yet. Licence and price
 facts are as known on 2026-11-02 and are marked **to verify**: check each model's or service's
 page before publishing anything made with it.
 

@@ -415,6 +415,45 @@ def ui_has_a_property_for_every_param_field():
                 assert a == b, (key, f.name, a, b)
 
 
+@test
+def ai_repaint_and_revert():
+    import numpy as np
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    from fake_comfy import FakeComfy
+
+    def tint(rgb):
+        return np.clip(rgb.astype(np.int32) + 30, 0, 255).astype(np.uint8)
+
+    s = bpy.context.scene.aoe3_building
+    s.preset = "COLONIAL_HOUSE"
+    bpy.ops.aoe3.load_preset()
+    s.texture_size, s.detail, s.game_player_colour = "512", "LOW", True
+    assert bpy.ops.aoe3.generate_building() == {"FINISHED"}
+    obj = bpy.context.active_object
+    before = blender_io.texture_rgba(obj)
+    with FakeComfy(transform=tint) as fake:
+        bpy.context.scene.aoe3_ai.url = fake.url
+        assert bpy.ops.aoe3.ai_check() == {"FINISHED"}
+        assert bpy.ops.aoe3.ai_repaint() == {"FINISHED"}
+        after = blender_io.texture_rgba(obj)
+        assert "aoe3_ai" in obj and obj.get("aoe3_ai_orig")
+        assert (after[:, :, 3] == before[:, :, 3]).all()                       # alpha kept
+        assert (after[:, :, :3] != before[:, :, :3]).any(axis=2).mean() > 0.2  # walls and roof changed
+        # again: starts from the original, does not stack on the first repaint
+        assert bpy.ops.aoe3.ai_repaint() == {"FINISHED"}
+        assert (blender_io.texture_rgba(obj) == after).all()
+    with tempfile.TemporaryDirectory() as d:          # the game export takes the repainted texture
+        s.game_dir, s.game_icons, s.game_lowpoly, s.game_damaged = d, False, False, False
+        assert bpy.ops.aoe3.export_game() == {"FINISHED"}
+        from aoe3_blender_tools.aoe3game import ddt
+        with open(os.path.join(d, "art", "mod", "buildings", obj.name.lower(), obj.name.lower() + ".ddt"), "rb") as f:
+            exported = ddt.decode(f.read())
+        assert abs(exported[:, :, :3].astype(int) - after[:, :, :3]).mean() < abs(exported[:, :, :3].astype(int) - before[:, :, :3]).mean()
+    assert bpy.ops.aoe3.ai_revert() == {"FINISHED"}
+    assert (blender_io.texture_rgba(obj) == before).all()
+    assert "aoe3_ai" not in obj and "aoe3_ai_orig" not in obj
+
+
 def main():
     addon.register()
     try:
@@ -425,7 +464,7 @@ def main():
                   player_colour_marks_the_string_courses, icon_and_portrait_render,
                   game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo,
                   square_hipped_roof_builds, roof_kit_parts_have_no_overlaps,
-                  ui_has_a_property_for_every_param_field):
+                  ui_has_a_property_for_every_param_field, ai_repaint_and_revert):
             t()
     finally:
         addon.unregister()

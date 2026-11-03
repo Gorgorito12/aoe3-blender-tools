@@ -104,6 +104,11 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 
 ## Features
 
+- **AI repaint** (optional, local): a button repaints the texture with Stable Diffusion XL and a
+  ControlNet in a local ComfyUI, region by region, for a hand-painted look; the edges, the
+  player colour and the alpha stay where they were (a guard keeps any region whose edges move).
+  See [docs/ai-textures.md](docs/ai-textures.md) for the install, the licences and the settings.
+  ![AI repaint, before and after](examples/ai_before_after.jpg)
 - **Spanish colonial style**: whitewashed walls on a low plinth with a coloured dado, small
   windows with iron grilles, shutters and a plank door in the owner's colour, a clay tile roof
   (two slopes along or across, or hipped) with a wide eave, and as options a wooden balcony, a
@@ -215,6 +220,8 @@ venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detai
 python -I tests/test_game_formats.py                   # game formats, plain Python
 venv/bin/python -I tests/test_golden.py               # presets byte for byte (--update-golden)
 venv/bin/python -I tests/test_materials.py            # material swatches and their layer
+venv/bin/python -I tests/test_comfy.py                # ComfyUI client (a stand-in server, no GPU)
+venv/bin/python -I tests/test_airepaint.py            # AI repaint by regions (no GPU)
 ```
 
 On Windows the venv's interpreter is `venv\Scripts\python`.
