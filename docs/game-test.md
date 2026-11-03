@@ -120,9 +120,13 @@ left on the game's own terrain (7.4, 10.1). The swatches do not glitter more tha
 textures.
 
 Low model detail (2026-11-03): not seen yet. The console command `setGraphicDetail(0)` closes the
-game (the log ends on it). The graphics options are not in the player profile; the game keeps
-them in the Windows registry, shared with the real install, so changing them waits for the
-user's word.
+game (the log ends on it). The option is `OptionGrfxHighModels` ("High Poly Models", a check box
+in `data/options.xml`), stored as a `<Setting>` in the player profile (`Users3/<name>.xml` in
+My Games, shared by every copy of the game). Set to false only in the copy's
+`Users/DefaultProfile3.xml` it changed nothing: a test with the low-poly texture tinted magenta
+showed the normal model. The profile was byte-identical afterwards. Next: the same test with
+the option off in the player profile, which needs the user's word (it is the real game's
+profile too).
 
 Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds
 while the stock collapse dust rises, then the rubble takes its place.
