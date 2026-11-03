@@ -381,6 +381,31 @@ def kit_model(medium):
     return b.finish(building.BuildingParams(name="Kit" + ("Medium" if medium else "Low")), {})
 
 
+@test
+def round_roofs_export_smooth_normals():
+    """The thatch cones and round walls are smooth: the game mesh shares their normals across
+    the sides (fewer split vertices than flat shading) and the flat tops stay flat."""
+    import dataclasses
+    import numpy as np
+    for det in ("LOW", "MEDIUM"):
+        p = dataclasses.replace(building.PRESETS["AFRICAN_HOUSE_SUBSAHARAN"], detail=det)
+        counts, normals = {}, {}
+        for mode in ("smooth", "flat"):
+            m = building.build(p)
+            assert any(f.smooth for f in m.faces if f.region == "thatch"), det
+            if mode == "flat":
+                for f in m.faces:
+                    f.smooth = False
+            obj = blender_io.create_object(m, paint.paint(m))
+            pos, nor, _, tris = blender_io.game_mesh(obj)
+            counts[mode] = len(pos)
+            normals[mode] = np.asarray(nor)
+            bpy.data.objects.remove(obj)
+        assert counts["smooth"] < counts["flat"] * 0.9, (det, counts)
+        up = (np.abs(normals["smooth"][:, 2]) > 0.999).sum()
+        assert up > 0, det                                 # flat tops (discs, slabs) still face up
+
+
 def round_kit_model(medium):
     """A free Builder with every round and earthen piece of the kit, on separate plots."""
     import math
@@ -540,7 +565,7 @@ def main():
                   game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo,
                   square_hipped_roof_builds, roof_kit_parts_have_no_overlaps,
                   ui_has_a_property_for_every_param_field, ai_repaint_and_revert,
-                  round_kit_parts_have_no_overlaps):
+                  round_kit_parts_have_no_overlaps, round_roofs_export_smooth_normals):
             t()
     finally:
         addon.unregister()

@@ -162,10 +162,12 @@ def emit(b, layout, medium):
                 continue
             x, y, r, h, z = piece["x"], piece["y"], piece["r"], piece["h"], piece.get("z", 0.0)
             n = 12
+            start = len(b.faces)
             b.frustum(x, y, r * 0.75, r, z, z + h * 0.45, n, "pot")
             b.frustum(x, y, r, r * 0.55, z + h * 0.45, z + h * 0.8, n, "pot")
             b.frustum(x, y, r * 0.55, r * 0.6, z + h * 0.8, z + h, n, "pot")
             b.disc(x, y, r * 0.6, z + h, n, "pot")
+            _smooth(b, start)
             at = (piece["x"], piece["y"], piece["h"])
         elif k == "fence":
             if piece.get("medium_only") and not medium:
@@ -200,6 +202,8 @@ def emit(b, layout, medium):
                 continue
             start = len(b.faces)
             _prop(b, piece)
+            if k in ("basket", "sack", "drum", "well"):
+                _smooth(b, start)
             dz = piece.get("z", 0.0) if k != "balcony" else 0.0
             if dz:                                         # standing on a deck or a plinth
                 for f in b.faces[start:]:
@@ -210,6 +214,19 @@ def emit(b, layout, medium):
         if at[2] > top[2]:
             top = at
     return top
+
+
+def _smooth(b, start):
+    """Smooth shading on the faces added since `start` that are not flat tops or bottoms: round
+    walls and roofs light as one surface instead of facets (no extra triangles; the flat faces
+    keep their edges sharp)."""
+    for f in b.faces[start:]:
+        (ax, ay, az), (bx, by, bz), (cx, cy, cz) = f.pts[0], f.pts[1], f.pts[2]
+        ux, uy, uz, vx, vy, vz = bx - ax, by - ay, bz - az, cx - ax, cy - ay, cz - az
+        nx, ny, nz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx
+        ln = (nx * nx + ny * ny + nz * nz) ** 0.5
+        if ln > 1e-12 and abs(nz) / ln < 0.995:
+            f.smooth = True
 
 
 def _round(b, p, medium):
@@ -234,8 +251,11 @@ def _round(b, p, medium):
             b.face_out([(ax, ay, zb), (bx, by, zb), (cx, cy, zb), (dx, dy, zb)], "plinth", (0.0, 0.0, 1.0))
         z0 = zb
     z1 = z0 + p["wall_h"]
+    start = len(b.faces)
     b.ring(x, y, r, z0, z1, n, p["wall_region"])
+    _smooth(b, start)
     roof = p.get("roof", "cone" if p["kind"] != "granary" else "dome")
+    start = len(b.faces)
     if roof == "cone":
         fin = p.get("finial", 0.0) if medium else 0.0
         if medium:
@@ -244,6 +264,7 @@ def _round(b, p, medium):
                                 tiers=tiers, lip=0.1 + 0.03 * r, finial=fin, finial_region="wood")
         else:
             top = b.cone_roof(x, y, r, z1, p["roof_h"], n, "thatch", overhang=p.get("overhang", 0.4))
+        _smooth(b, start)
         top += fin
         ov = p.get("overhang", 0.4)
         if medium and p["kind"] == "hut" and ov >= 0.4:     # posts holding the eave (a veranda)
@@ -260,6 +281,7 @@ def _round(b, p, medium):
                       skip=("top",))
     elif roof == "dome":
         top = b.dome(x, y, r, z1, p["roof_h"], n, "dome", rings=3 if medium else 2)
+        _smooth(b, start)
     else:
         top = _crenel(b, x, y, r, z1, n, p["wall_region"])
     if medium and p.get("door"):                           # the door's frame: jambs and lintel
