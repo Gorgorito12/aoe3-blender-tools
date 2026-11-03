@@ -95,12 +95,12 @@ def paint(pr, model):
             f = 1 + float(rng.uniform(-k, k))
             pr.paint_on(region, u, v, min(w, u + ln), min(h, v + th), _shade(base, f))
 
-    def stains(region, w, h, n, k=0.12):
+    def stains(region, w, h, n, k=0.12, size=1.0):
         """Soft broad patches a little darker or lighter (weathering): nested rects, each
-        multiplying what is there, so the grain stays."""
+        multiplying what is there, so the grain stays. `size` scales them."""
         for _ in range(n):
             cu, cv = float(rng.uniform(0, w)), float(rng.uniform(0, h))
-            sw, sh = float(rng.uniform(0.4, 1.6)), float(rng.uniform(0.3, 1.0))
+            sw, sh = float(rng.uniform(0.4, 1.6)) * size, float(rng.uniform(0.3, 1.0)) * size
             f = 1 + float(rng.uniform(-k, k * 0.5))
             for j in range(4):
                 t = 1 - j / 4
@@ -156,17 +156,22 @@ def paint(pr, model):
                 pr.cracks(region, 0.3, 0.22, keep=0.4)                         # plastered: a few
             else:
                 pr.cracks(region, 0.15, 0.5)
-            stains(region, w, h, int(w * h * 0.3) + 1, 0.06)
+            if spec.get("sahel", True):                                       # seen from afar:
+                stains(region, w, h, int(w * h * 0.35) + 2, 0.15, 1.6)             # broad weathering
+            else:
+                stains(region, w, h, int(w * h * 0.3) + 1, 0.06)
             if not spec.get("sahel", True):
                 shade_band(region, w, h, h - 0.6, 0.75)                         # under the thatch's eave
             if spec.get("sahel", True):
-                for _ in range(int(w * 1.5)):                                   # rain runs from the top
-                    u = float(rng.uniform(0, w))
-                    pr.paint_on(region, u, h * float(rng.uniform(0.3, 0.7)), u + 0.05, h, _shade(earth, 0.9))
+                for _ in range(int(w * 1.2)):                                   # rain runs from the top
+                    u, rw_ = float(rng.uniform(0, w)), float(rng.uniform(0.06, 0.22))
+                    v0 = h * float(rng.uniform(0.2, 0.7))
+                    for j in range(3):                                          # fading downwards
+                        pr.tone(region, u, v0 + (h - v0) * j / 3, min(w, u + rw_), h, 0.95)
                 band(region, h - 0.32, h - 0.18, w)
             else:
                 band(region, 0.28, 0.42, w)
-            shade_band(region, w, 0, 0.5, 0.74)                                 # the splashed foot
+            shade_band(region, w, 0, 0.9, 0.62)                                 # the splashed foot
             for (u0, v0, u1, v1) in spec["openings"]:
                 if v0 == 0.0:
                     pr.rect(region, u0 - 0.1, 0, u1 + 0.1, v1 + 0.14, WOOD, _shade(WOOD, 0.7))

@@ -112,7 +112,7 @@ TIMBER_COLORS = {**DEFAULT_COLORS, "timber": (62, 44, 32), "plaster": (230, 220,
                  "stone": (172, 164, 150), "brick": (146, 66, 48), "tile": (154, 72, 50),
                  "door": (92, 60, 38), "glass": (52, 62, 66), "lead": (70, 72, 74)}
 # the means of the target mod's own African textures per material (measured 2026-11-03)
-AFRICAN_COLORS = {**DEFAULT_COLORS, "mud": (140, 110, 74), "adobe": (178, 142, 100), "thatch": (112, 92, 64),
+AFRICAN_COLORS = {**DEFAULT_COLORS, "mud": (140, 110, 74), "adobe": (164, 134, 102), "thatch": (112, 92, 64),
                   "timber": (84, 58, 32), "stone": (132, 120, 96), "tile": (150, 82, 50)}
 
 
