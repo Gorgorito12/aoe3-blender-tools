@@ -87,6 +87,11 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`;
   `fetch_materials.py` (CC0 swatches into `aoe3_blender_tools/materials/` with `MATERIALS.md`)
   and `palette_survey.py` (stock texture colour and grain), both with numpy.
+- `aoe3_blender_tools/core/comfy.py` (ComfyUI client, standard library only, and the repaint
+  workflow of core nodes) and `core/airepaint.py` (repaint by regions: tiles, margins, feathering,
+  colour kept, player colour kept, edge guard; prompts per style and region);
+  `aoe3_blender_tools/ai_panel.py` (the AI Texture panel, `scene.aoe3_ai`; the button runs in a
+  thread). `tests/fake_comfy.py` stands in for ComfyUI in the tests. `docs/ai-textures.md`.
 - `aoe3_blender_tools/core/materials.py`: swatches under the painting (`MATERIALS[style][role]`,
   `normalise`, `resample`, `tile`); the Painter's `base(region, colour, role)` lays them when
   `params.materials` is on. `aoe3_blender_tools/materials/`: the prepared PNGs and their credits.
@@ -103,6 +108,10 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 
 ## Working rules
 
+- AI repaint: the tests never need a GPU (they use `tests/fake_comfy.py`); never commit a model
+  or an AI-generated image other than the examples; never use a community checkpoint or LoRA
+  without reading its licence. ComfyUI is at `C:\ComfyUI\ComfyUI_windows_portable` on the
+  user's PC.
 - Material swatches come only through `tools/fetch_materials.py`, from a source whose licence page
   states CC0 (it checks before writing); never a texture from the game or a mod. Keep each
   swatch small (256 px; the zip stays under 6 MB, `build_zip.py` checks).

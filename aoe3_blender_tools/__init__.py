@@ -18,6 +18,7 @@ import bpy  # noqa: E402
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,  # noqa: E402
                        FloatVectorProperty, IntProperty, PointerProperty, StringProperty)
 
+from . import ai_panel  # noqa: E402
 from .aoe3game import bundle  # noqa: E402
 from .core import blender_io, building, paint, validate  # noqa: E402
 from .core import profile as calibration  # noqa: E402
@@ -520,9 +521,11 @@ def register():
     for c in CLASSES:
         bpy.utils.register_class(c)
     bpy.types.Scene.aoe3_building = PointerProperty(type=AOE3_PG_building)
+    ai_panel.register()
 
 
 def unregister():
+    ai_panel.unregister()
     del bpy.types.Scene.aoe3_building
     for c in reversed(CLASSES):
         bpy.utils.unregister_class(c)

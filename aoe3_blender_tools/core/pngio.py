@@ -82,3 +82,19 @@ def read_png(data):
             raise ValueError("palette PNG without PLTE")
         return plte[img[:, :, 0]]
     return img
+
+
+def encode_png(array):
+    """PNG bytes of an 8-bit grey, RGB or RGBA array (filter 0, zlib level 6)."""
+    a = np.ascontiguousarray(array, dtype=np.uint8)
+    if a.ndim == 2:
+        a = a[:, :, None]
+    h, w, n = a.shape
+    ctype = {1: 0, 3: 2, 4: 6}[n]
+    raw = b"".join(b"\x00" + a[y].tobytes() for y in range(h))
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    return (SIGNATURE + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, ctype, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))

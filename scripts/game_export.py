@@ -6,7 +6,7 @@ fields and strings) for `tools/game_deploy.py`.
                                   [--prefix mod] [--name NAME] [--display "Shown name"]
                                   [--template House] [--no-v-flip] [--player-colour]
                                   [--texture DXT3|DXT1|BGRA] [--no-icons] [--no-lowpoly] [--no-damaged]
-                                  [--materials]
+                                  [--materials] [--ai <strength>] [--ai-seed N] [--ai-url URL]
                                   [--profile <profile.json> | --no-profile]
 
 The calibration profile (default: the one shipped in aoe3_blender_tools/profiles/) sets the
@@ -55,6 +55,13 @@ def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     model = building.build(p)
     obj = blender_io.create_object(model, paint.paint_rgba(model) if p.player_colour else paint.paint(model))
+    if "--ai" in argv:              # repaint with the local ComfyUI (docs/ai-textures.md)
+        from aoe3_blender_tools.core import airepaint, comfy
+        repainted, report = airepaint.repaint(blender_io.texture_rgba(obj), model,
+                                        comfy.Client(opt("--ai-url", comfy.DEFAULT_URL), timeout=120),
+                                        strength=float(opt("--ai", "0.45")), seed=int(opt("--ai-seed", "1")))
+        blender_io.set_texture_rgba(obj, repainted)
+        print("AI repaint:", ", ".join(r["region"] for r in report if "skipped" not in r))
     positions, normals, uvs, tris = blender_io.game_mesh(obj)
     icon = portrait = None
     if "--no-icons" not in argv:
