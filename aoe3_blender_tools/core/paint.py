@@ -286,6 +286,62 @@ def _paint(model):
     return rgb, alpha
 
 
+def damaged(model, rgba, seed=None):
+    """The texture of the damaged building, from the intact one: soot above some of the
+    windows, slates missing from the roof, cracks in the walls. Drawn from the facade
+    measurements, so the marks line up with the openings. The alpha (player colour) is kept."""
+    p = model.params
+    at = model.atlas
+    rng = np.random.default_rng(p.seed + 1 if seed is None else seed)
+    out = np.asarray(rgba).astype(np.float32).copy()
+    h, w = out.shape[:2]
+    k = at.size / w                              # the atlas is painted at a larger size
+    ppm = at.density / k                         # texture pixels per metre
+
+    def to_px(region, u, v):
+        x, y = at.px(region, u, v)
+        return x / k, y / k
+
+    def darken(cx, cy, rx, ry, strength):
+        x0, x1 = int(max(0, cx - rx)), int(min(w, cx + rx + 1))
+        y0, y1 = int(max(0, cy - ry)), int(min(h, cy + ry + 1))
+        if x1 <= x0 or y1 <= y0:
+            return
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        d = ((xx - cx) / max(rx, 1)) ** 2 + ((yy - cy) / max(ry, 1)) ** 2
+        grain = rng.uniform(0.75, 1.0, d.shape).astype(np.float32)
+        f = 1 - strength * np.clip(1 - d, 0, 1) ** 0.8 * grain
+        out[y0:y1, x0:x1, :3] *= f[..., None]
+
+    def crack(region, u, v, length):
+        x, y = to_px(region, u, v)
+        ang = rng.uniform(-2.2, -0.9)
+        for _ in range(int(length * ppm)):
+            ang += rng.uniform(-0.5, 0.5)
+            x, y = x + np.cos(ang), y + np.sin(ang)
+            if 0 <= int(x) < w and 0 <= int(y) < h:
+                out[int(y), int(x), :3] *= 0.45
+
+    for region, spec in model.facades.items():
+        storeys = spec.get("storeys", p.storeys)
+        for uc in spec["bays"]:
+            for s in range(storeys):
+                if rng.random() > 0.45:
+                    continue
+                top = s * 3.1 + (2.7 if s == 0 else 2.2)
+                cx, cy = to_px(region, uc, top + 0.5)
+                darken(cx, cy, 0.75 * ppm, 0.9 * ppm, rng.uniform(0.45, 0.7))
+            if rng.random() < 0.3:
+                crack(region, uc + rng.uniform(-0.8, 0.8), rng.uniform(0.3, 2.0), rng.uniform(1.0, 2.5))
+    if "roof" in at:
+        r = at["roof"]
+        for _ in range(max(4, int(r.world_w * r.world_h / 12))):
+            u, v = rng.uniform(0, r.world_w), rng.uniform(0, r.world_h)
+            cx, cy = to_px("roof", u, v)
+            darken(cx, cy, rng.uniform(0.3, 0.7) * ppm, rng.uniform(0.25, 0.5) * ppm, 0.8)
+    return np.clip(out + 0.5, 0, 255).astype(np.uint8)
+
+
 def save_png(array, path):
     """Writes an RGB uint8 array as PNG with the standard library only (zlib)."""
     import struct

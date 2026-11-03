@@ -47,8 +47,34 @@ def _decal(tab, texture, width, height, selection=64):
             f"{tab}</decal>\n")
 
 
+def _asset(tab, model):
+    return (f"{tab}<assetreference type=\"GrannyModel\">\n"
+            f"{tab}\t<file>{escape(art_path(model))}</file>\n"
+            f"{tab}</assetreference>\n")
+
+
+def _model_block(tab, model, lowpoly=None, damaged=None):
+    """The finished model as the stock buildings write it: a Destruction logic (p1 the damaged
+    model, p99 the intact one) when there is a damaged model, inside a LowPoly logic (normal /
+    lowpoly) when there is a low-poly model; a plain asset reference otherwise."""
+    if damaged:
+        normal = (f"{tab}<logic type=\"Destruction\">\n"
+                  f"{tab}\t<p1>\n{_asset(tab + chr(9) * 2, damaged)}{tab}\t</p1>\n"
+                  f"{tab}\t<p99>\n{_asset(tab + chr(9) * 2, model)}{tab}\t</p99>\n"
+                  f"{tab}</logic>\n")
+    else:
+        normal = _asset(tab, model)
+    if not lowpoly:
+        return normal
+    inner = "".join(tab + "\t\t" + line[len(tab):] + "\n" for line in normal.splitlines())
+    return (f"{tab}<logic type=\"LowPoly\">\n"
+            f"{tab}\t<normal>\n{inner}{tab}\t</normal>\n"
+            f"{tab}\t<lowpoly>\n{_asset(tab + chr(9) * 2, lowpoly)}{tab}\t</lowpoly>\n"
+            f"{tab}</logic>\n")
+
+
 def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUND_DECAL,
-             bones=("bone_flag_civ",), chimney_bone=None):
+             bones=("bone_flag_civ",), chimney_bone=None, lowpoly=None, damaged=None):
     """The text of a building's anim file.
 
     name: the building's name (submodel and component names).
@@ -57,6 +83,10 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
     stages: the stock construction stage set ("2x2" ... "6x6").
     bones: bones the model carries that the game uses (the civilization flag).
     chimney_bone: a bone of the model to put chimney smoke on, or None.
+    lowpoly: a simpler model for the game's low model detail setting, or None.
+    damaged: a damaged model, or None. The stock files put it under p1 and the intact model
+        under p99 of a Destruction logic: read as hit point percentages, the damaged one shows
+        once the building is below 99 % (to verify in game).
     """
     model = art_path(model)
     sw, sh = stage_decal or decal
@@ -88,9 +118,7 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
         out.append("\t\t\t<anim>\n\t\t\t\tIdle\n\t\t\t\t<component>smoke</component>\n")
         out.append("\t\t\t</anim>\n\t\t</attachment>\n")
     out.append(f"\t\t<component>\n\t\t\t{escape(main)}\n")
-    out.append("\t\t\t<assetreference type=\"GrannyModel\">\n")
-    out.append(f"\t\t\t\t<file>{escape(model)}</file>\n")
-    out.append("\t\t\t</assetreference>\n")
+    out.append(_model_block("\t\t\t", model, lowpoly=lowpoly, damaged=damaged))
     out.append(_decal("\t\t\t", ground, decal[0], decal[1], sel))
     if chimney_bone:
         out.append(f"\t\t\t<attach a=\"chimney smoke\" frombone=\"{escape(chimney_bone)}\" "

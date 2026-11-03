@@ -108,6 +108,9 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
   `bone_flag_civ` bone for the flag), the texture as `.ddt` (DXT3 by default, DXT1 or BGRA), the
   anim file (stock construction stages of the footprint class, ground decal) and `bundle.json`
   with the proto fields and strings. Sizes come from the calibration profile.
+- **Low-poly and damaged models**: the LOW detail as the model for the game's low model detail
+  setting, and a damaged texture (soot, missing slates, cracks) for a building that has lost hit
+  points.
 - **Icon and portrait**: rendered from the building, framed like the game's own (64 x 64 and
   128 x 128, DXT1).
 - **Player colour**: an option paints the string courses and shutters for the owner's colour

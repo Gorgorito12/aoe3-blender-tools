@@ -268,6 +268,27 @@ def icon_and_portrait_render():
     assert not any(o.name.startswith("aoe3_icon_camera") for o in bpy.data.objects)
 
 
+@test
+def game_variants_lowpoly_and_damaged():
+    import dataclasses
+    p = dataclasses.replace(building.PRESETS["WHITE_HOUSE"], detail="MEDIUM", texture_size=512,
+                            player_colour=True)
+    model = building.build(p)
+    obj = blender_io.create_object(model, paint.paint_rgba(model))
+    before = {o.name for o in bpy.data.objects}
+    v = blender_io.game_variants(obj)
+    assert {o.name for o in bpy.data.objects} == before          # the temporary object is gone
+    tris, _ = blender_io.triangle_count(obj)
+    assert len(v["damaged"]["triangles"]) == tris
+    assert 200 < len(v["lowpoly"]["triangles"]) < tris / 2, len(v["lowpoly"]["triangles"])
+    intact = blender_io.texture_rgba(obj)
+    dmg = v["damaged"]["texture_rgba"]
+    assert (dmg[..., 3] == intact[..., 3]).all()                 # the player colour mask is kept
+    assert (dmg[..., :3] < intact[..., :3]).mean() > 0.02        # soot, slates, cracks
+    assert v["lowpoly"]["texture_rgba"][..., 3].min() < 128      # the LOW model keeps its mask
+    assert blender_io.game_variants(obj, lowpoly=False, damaged=False) == {}
+
+
 def main():
     addon.register()
     try:
@@ -275,7 +296,8 @@ def main():
                   medium_detail_presets_pass_checks, wall_triangulation_covers_the_wall_exactly,
                   regenerating_replaces_the_object, export_and_reimport, checks_catch_known_problems,
                   atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget,
-                  player_colour_marks_the_string_courses, icon_and_portrait_render):
+                  player_colour_marks_the_string_courses, icon_and_portrait_render,
+                  game_variants_lowpoly_and_damaged):
             t()
     finally:
         addon.unregister()

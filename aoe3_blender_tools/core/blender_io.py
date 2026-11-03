@@ -246,3 +246,47 @@ def texture_rgba(obj):
     img.pixels.foreach_get(px)
     arr = (np.clip(px.reshape(h, w, 4), 0, 1) * 255 + 0.5).astype(np.uint8)
     return arr[::-1].copy()                    # Blender rows go bottom-up
+
+
+def params_of(obj):
+    """The generator parameters stored on a generated object, or None."""
+    from .building import BuildingParams
+    raw = obj.get("aoe3_params")
+    if not raw:
+        return None
+    d = json.loads(raw)
+    d["colors"] = {k: tuple(v) for k, v in d.get("colors", {}).items()}
+    known = {f for f in BuildingParams.__dataclass_fields__}
+    return BuildingParams(**{k: v for k, v in d.items() if k in known})
+
+
+def game_variants(obj, lowpoly=True, damaged=True, lowpoly_texture=512):
+    """The variants the game export writes beside a generated building: a low-poly model (the
+    generator's LOW detail, for the game's low model detail setting; only when the building is
+    more detailed than that) and a damaged texture on the same mesh. {} for an object the
+    generator did not make."""
+    from dataclasses import replace
+    from . import building, paint
+    p = params_of(obj)
+    if p is None:
+        return {}
+    out = {}
+    if damaged:
+        model = building.build(p)
+        positions, normals, uvs, tris = game_mesh(obj)
+        out["damaged"] = {"positions": positions, "normals": normals, "uvs": uvs,
+                          "triangles": tris,
+                          "texture_rgba": paint.damaged(model, texture_rgba(obj))}
+    if lowpoly and p.detail != "LOW":
+        lp = replace(p, detail="LOW", name=p.name + "_LowPolyTemp",
+                     texture_size=min(lowpoly_texture, p.texture_size))
+        lp_model = building.build(lp)
+        tex = paint.paint_rgba(lp_model) if lp.player_colour else paint.paint(lp_model)
+        tmp = create_object(lp_model, tex, collection=None)
+        try:
+            positions, normals, uvs, tris = game_mesh(tmp)
+            out["lowpoly"] = {"positions": positions, "normals": normals, "uvs": uvs,
+                              "triangles": tris, "texture_rgba": texture_rgba(tmp)}
+        finally:
+            _remove_previous(tmp.name)
+    return out

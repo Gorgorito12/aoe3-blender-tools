@@ -359,6 +359,29 @@ class DdtTest(unittest.TestCase):
                 bundle.write(os.path.join(tmp, "x"), name="Box", prefix="mod", positions=P, normals=N,
                              uvs=UV, triangles=T, texture_rgba=tex, footprint_m=(4, 3), texture_format="DXT1")
 
+    def test_bundle_variants(self):
+        P, N, UV, T = box()
+        tex = np.full((32, 32, 4), 255, np.uint8)
+        with tempfile.TemporaryDirectory() as tmp:
+            variants = {"lowpoly": {"positions": P[:12], "normals": N[:12], "uvs": UV[:12],
+                                    "triangles": T[:6], "texture_rgba": tex[:16, :16]},
+                        "damaged": {"positions": P, "normals": N, "uvs": UV, "triangles": T}}
+            bundle.write(tmp, name="Box", prefix="mod", positions=P, normals=N, uvs=UV,
+                         triangles=T, texture_rgba=tex, footprint_m=(4, 3), variants=variants)
+            base = os.path.join(tmp, "art", "mod", "buildings", "box", "box")
+            lp = gr2.load(base + "_lp.gr2").stats()
+            dmg = gr2.load(base + "_damaged.gr2").stats()
+            self.assertEqual(lp["tris"], 6)
+            self.assertTrue(lp["textures"][1].endswith("box_lp.ddt"))      # its own texture
+            self.assertTrue(dmg["textures"][1].endswith("box.ddt"))        # the main one
+            self.assertFalse(os.path.exists(base + "_damaged.ddt"))
+            root = ET.parse(base + ".xml").getroot()
+            files = [f.text for f in root.iter("file")]
+            self.assertIn(r"mod\buildings\box\box_lp", files)
+            self.assertIn(r"mod\buildings\box\box_damaged", files)
+            logic = [l.get("type") for l in root.iter("logic")]
+            self.assertEqual(logic[:2], ["LowPoly", "Destruction"])
+
     def test_icon_compose(self):
         from aoe3game import icons
         shot = np.zeros((256, 256, 4), np.uint8)

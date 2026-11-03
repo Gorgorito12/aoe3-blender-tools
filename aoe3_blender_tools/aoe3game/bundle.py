@@ -45,8 +45,13 @@ def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None):
 def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba, bones=(),
           footprint_m, icon_rgba=None, portrait_rgba=None, display_name=None, rollover="",
           template="House", v_flip=True, player_colour=None, chimney_bone=None, profile=None,
-          texture_format="DXT3"):
+          texture_format="DXT3", variants=None):
     """Writes the bundle into `out` and returns the bundle description.
+
+    variants: {"lowpoly": {...}, "damaged": {...}}, each with positions, normals, uvs and
+    triangles, and optionally its own texture_rgba (else it uses the main texture). The
+    low-poly model is what the game draws at its low model detail setting; the damaged one
+    replaces the intact model once the building has lost hit points.
 
     player_colour: None decides from the texture: an alpha below 255 anywhere means the
     player-colour shader (the low alpha shows the owner's colour). texture_format: "DXT3" (the
@@ -65,14 +70,30 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
     os.makedirs(art_dir, exist_ok=True)
     size = game_size(footprint_m, profile=profile)
     texture_name = f"C:\\aoe3bt\\art\\{rel_dir}\\{low}.ddt"
-    model = gr2_write.static_model(name, positions, normals, uvs, triangles,
-                                   texture=texture_name, bump=FLAT_BUMP_TEXTURE, bones=bones,
-                                   v_flip=v_flip, player_colour=player_colour,
-                                   source=f"{low}.blend")
-    with open(os.path.join(art_dir, low + ".gr2"), "wb") as f:
-        f.write(model)
-    with open(os.path.join(art_dir, low + ".ddt"), "wb") as f:
-        f.write(ddt.write(rgba, fmt, alpha=1, usage=0, mips=True))
+    def model_file(base, mesh, texture):
+        model = gr2_write.static_model(name, mesh["positions"], mesh["normals"], mesh["uvs"],
+                                       mesh["triangles"], texture=texture,
+                                       bump=FLAT_BUMP_TEXTURE, bones=bones, v_flip=v_flip,
+                                       player_colour=player_colour, source=f"{base}.blend")
+        with open(os.path.join(art_dir, base + ".gr2"), "wb") as f:
+            f.write(model)
+
+    def texture_file(base, pixels):
+        with open(os.path.join(art_dir, base + ".ddt"), "wb") as f:
+            f.write(ddt.write(np.asarray(pixels), fmt, alpha=1, usage=0, mips=True))
+        return f"C:\\aoe3bt\\art\\{rel_dir}\\{base}.ddt"
+
+    model_file(low, {"positions": positions, "normals": normals, "uvs": uvs,
+                     "triangles": triangles}, texture_file(low, rgba))
+    refs = {}
+    for kind, suffix in (("lowpoly", "_lp"), ("damaged", "_damaged")):
+        v = (variants or {}).get(kind)
+        if not v:
+            continue
+        own = v.get("texture_rgba")
+        tex = texture_file(low + suffix, own) if own is not None else texture_name
+        model_file(low + suffix, v, tex)
+        refs[kind] = f"{rel_dir}\\{low}{suffix}"
     unit = {"AnimFile": f"{rel_dir}\\{low}.xml",
             "ObstructionRadiusX": "%.4f" % size["radius"][0],
             "ObstructionRadiusZ": "%.4f" % size["radius"][1],
@@ -89,7 +110,8 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
     anim = animxml.building(name, f"{rel_dir}\\{low}", decal=size["decal"],
                             stages=size["stages"],
                             bones=[b for b in bone_names if b != chimney_bone],
-                            chimney_bone=chimney_bone if chimney_bone in bone_names else None)
+                            chimney_bone=chimney_bone if chimney_bone in bone_names else None,
+                            lowpoly=refs.get("lowpoly"), damaged=refs.get("damaged"))
     with open(os.path.join(art_dir, low + ".xml"), "w", encoding="utf-8", newline="\r\n") as f:
         f.write(anim)
     display = display_name or name

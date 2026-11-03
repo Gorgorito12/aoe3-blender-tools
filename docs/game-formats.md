@@ -101,6 +101,16 @@ does the same: the string courses between storeys and the shutters are painted l
 get alpha 0 (about 1 % of the White House's texture). The bundle then switches the model to the
 `pixelxform` shader by itself, whenever the texture's alpha drops below 255.
 
+## Variants
+
+Beside the main model the export writes, as the stock buildings have them:
+
+- `<name>_lp.gr2` and its own texture `<name>_lp.ddt`: the generator's LOW detail (about 350
+  triangles for the White House against 1,235), under the `lowpoly` branch of a `LowPoly` logic;
+- `<name>_damaged.gr2`: the same mesh with a damaged texture (soot above some windows, slates
+  missing, cracks; the alpha mask kept), under `p1` of a `Destruction` logic, the intact model
+  under `p99`.
+
 ## Icons and portraits
 
 The stock house has a 64 x 64 icon and a 128 x 128 portrait, both DXT1: the building in three

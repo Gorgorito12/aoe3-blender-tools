@@ -73,6 +73,12 @@ player-colour mask, rendered icon and portrait):
 Obstruction (2026-11-03): a stock house fits 2 units from it, and musketeers sent straight
 across walked round its south side, 0.3 to 2 units outside the obstruction square, and reached the target. Three of the six never moved in two runs: to look into, not tied to the building so far.
 
+Low-poly and damaged variants (2026-11-03): the game loads the anim file with the `LowPoly` and
+`Destruction` logic and the three models without an error, and the damage trigger takes the
+building to 70 %. Not seen yet: the damaged texture on screen (the camera of the test copy put
+the building at the corner of the view, see below) and the low-poly model (it needs the game's
+low model detail setting).
+
 ## Driving a test without clicks
 
 The game's own triggers can place and drive everything:

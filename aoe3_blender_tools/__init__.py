@@ -92,6 +92,12 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
         ("BGRA", "BGRA", "Uncompressed")], default="DXT3")
     game_icons: BoolProperty(name="Icon and portrait", default=True,
                              description="Render the building's icon (64 x 64) and portrait (128 x 128)")
+    game_lowpoly: BoolProperty(name="Low-poly model", default=True,
+                               description="Also write the LOW detail version, which the game draws at "
+                                           "its low model detail setting")
+    game_damaged: BoolProperty(name="Damaged model", default=True,
+                               description="Also write a damaged texture (soot, missing slates, cracks) "
+                                           "that the game shows once the building has lost hit points")
     game_template: StringProperty(name="Proto template", default="House",
                                   description="The unit whose proto entry the new building copies")
     game_player_colour: BoolProperty(name="Player colour", default=False,
@@ -235,12 +241,13 @@ class AOE3_OT_export_game(bpy.types.Operator):
         try:
             positions, normals, uvs, tris = blender_io.game_mesh(obj)
             icon, portrait = render.icon_and_portrait(obj) if s.game_icons else (None, None)
+            variants = blender_io.game_variants(obj, lowpoly=s.game_lowpoly, damaged=s.game_damaged)
             desc = bundle.write(
                 bpy.path.abspath(s.game_dir), name=obj.name, prefix=s.game_prefix or "mod",
                 positions=positions, normals=normals, uvs=uvs, triangles=tris,
                 texture_rgba=blender_io.texture_rgba(obj), bones=blender_io.game_bones(obj),
                 footprint_m=footprint, display_name=s.game_display or None,
-                icon_rgba=icon, portrait_rgba=portrait,
+                icon_rgba=icon, portrait_rgba=portrait, variants=variants,
                 template=s.game_template or "House", texture_format=s.game_texture,
                 profile=calibration.load() if s.use_profile else None)
         except (ValueError, OSError) as exc:
@@ -349,6 +356,9 @@ class AOE3_PT_game_export(bpy.types.Panel):
         lay.prop(s, "game_template")
         lay.prop(s, "game_texture")
         lay.prop(s, "game_icons")
+        row = lay.row(align=True)
+        row.prop(s, "game_lowpoly", toggle=True)
+        row.prop(s, "game_damaged", toggle=True)
         lay.operator("aoe3.export_game", icon="EXPORT")
 
 

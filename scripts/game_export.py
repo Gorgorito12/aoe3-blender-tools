@@ -5,7 +5,7 @@ fields and strings) for `tools/game_deploy.py`.
     python scripts/game_export.py --out DIR [--preset WHITE_HOUSE] [--detail LOW|MEDIUM]
                                   [--prefix mod] [--name NAME] [--display "Shown name"]
                                   [--template House] [--no-v-flip] [--player-colour]
-                                  [--texture DXT3|DXT1|BGRA] [--no-icons]
+                                  [--texture DXT3|DXT1|BGRA] [--no-icons] [--no-lowpoly] [--no-damaged]
                                   [--profile <profile.json> | --no-profile]
 
 The calibration profile (default: the one shipped in aoe3_blender_tools/profiles/) sets the
@@ -56,11 +56,13 @@ def main():
     icon = portrait = None
     if "--no-icons" not in argv:
         icon, portrait = render.icon_and_portrait(obj)
+    variants = blender_io.game_variants(obj, lowpoly="--no-lowpoly" not in argv,
+                                        damaged="--no-damaged" not in argv)
     desc = bundle.write(
         out, name=p.name, prefix=opt("--prefix", "mod"), positions=positions, normals=normals,
         uvs=uvs, triangles=tris, texture_rgba=blender_io.texture_rgba(obj),
         bones=blender_io.game_bones(obj), footprint_m=tuple(obj["aoe3_footprint"]),
-        icon_rgba=icon, portrait_rgba=portrait,
+        icon_rgba=icon, portrait_rgba=portrait, variants=variants,
         display_name=opt("--display"), template=opt("--template", "House"),
         v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"),
         profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
