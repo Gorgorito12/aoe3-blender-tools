@@ -1,0 +1,1 @@
+AfricanTownCenterSubSaharan: 2008 triangles, 1625 vertices; footprint 16.9 x 12.9 m; texture 1024 x 1024

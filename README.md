@@ -8,8 +8,8 @@ the art a mod already has. It has two parts:
   anim file structure, and which stock parts the mod reuses. The generators are calibrated on it.
 - **A Blender add-on**: generators that build models from exact primitives (flat walls, straight
   edges), lay out one UV atlas, paint the texture from the real measurements, check that the
-  result is game-ready, and export it. Three styles so far: neoclassical, Spanish colonial and
-  European timber framing.
+  result is game-ready, and export it. Four styles so far: neoclassical, Spanish colonial,
+  European timber framing and African (Sub-Saharan and Sahel, thirteen building types).
 
 | White House | Courthouse |
 |---|---|
@@ -22,11 +22,22 @@ the art a mod already has. It has two parts:
 | ![Colonial house](examples/colonialhouse/preview_front34.jpg) | ![Colonial trading house](examples/colonialtradinghouse/preview_front34.jpg) |
 | **Timber house** | **Timber inn** |
 | ![Timber house](examples/timberhouse/preview_front34.jpg) | ![Timber inn](examples/timberinn/preview_front34.jpg) |
+| **African house, Sub-Saharan** | **African house, Sahel** |
+| ![African house, Sub-Saharan](examples/african_house_subsaharan/preview_front34.jpg) | ![African house, Sahel](examples/african_house_sahel/preview_front34.jpg) |
+| **African palace, Sub-Saharan** | **African palace, Sahel** |
+| ![African palace, Sub-Saharan](examples/african_palace_subsaharan/preview_front34.jpg) | ![African palace, Sahel](examples/african_palace_sahel/preview_front34.jpg) |
 
 The four presets at low detail have 92 to 413 triangles; the White House at medium detail has
 1,235. The colonial house has 362 triangles at medium detail, the trading house (a portal of
 arches, a balcony, a bell gable and a wing) 646; the timber house 426, the inn (three storeys,
 two dormers, a sign) 725. Each has one 1024 × 1024 texture.
+
+The African style, all 30 presets (13 building types in two architectures, the stone stockade and
+the two-storey customs house), each sized to the obstruction radius of the building it stands for
+and, at medium detail, between the median and the 90th percentile of the triangles of its
+footprint class (602 for the Sahel granary to 5,118 for the Sahel palace):
+
+![African presets](examples/african_gallery.jpg)
 
 **White House, 1914** (preset `WHITE_HOUSE_1914`, built from a reference picture): north and south
 elevations, then views from the south-west and the north-east. 3,035 triangles at medium detail,
@@ -66,6 +77,11 @@ The four new presets deployed together (colonial house, colonial trading house, 
 timber inn):
 
 ![The new styles in game](examples/ingame_styles.jpg)
+
+The Sahel palace among the other African buildings in the test copy (the copy's profile uses the
+low models, so these are the low-detail ones):
+
+![African palace in game](examples/african_palace_sahel/ingame.jpg)
 
 ## Why
 
@@ -119,6 +135,15 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
   of timber framing (posts, rails, cross or curved braces) over plaster or brick infill jutting out
   on joists, a steep tiled roof with framed gables, dormers on the front slope, brick chimneys and
   a hanging sign in the owner's colour. Presets: Timber House, Timber Inn.
+- **African style**: a building type (house, town center, granary, market, war camp, stockade,
+  armory, depot, quarry, plot, dock, customs house, palace) and an architecture. Sub-Saharan:
+  round mud huts with tiered thatch cones and finials, granaries on stilts, palisades, open
+  sheds, hill compounds. Sahel: adobe blocks with parapets, merlons and projecting beams, dome
+  granaries, towers and a crenellated fortress. Props at medium detail (baskets, sacks, pots,
+  drums, spear racks, log piles, wells, fires, cut stone, a shear-legs crane, millet on the
+  ridges of a plot). Player colour on wall bands, awnings and doors. Each type takes the exact
+  obstruction radius and proto template of the stock building it stands for. Presets:
+  `AFRICAN_<TYPE>_<SUBSAHARAN|SAHEL>`, `AFRICAN_STOCKADE_STONE_*`, `AFRICAN_CUSTOMS_UPPER_*`.
 - **Neoclassical style**: width, depth, 1 to 4 storeys, plinth, window
   spacing and side windows, a portico with 2 to 8 columns and a pediment, a hipped roof of any
   pitch, a cupola or a flagpole, up to 8 chimneys, a semicircular back portico (columns on an arc

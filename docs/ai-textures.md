@@ -20,7 +20,11 @@ plinth, the bell gable...):
    again at 0.65 of the strength, and left as it was if they still move.
 
 Regions without a prompt (glass, trims, rails, timber details) or thinner than 40 px are left as
-they are. The prompts are in `core/airepaint.py` (`MATERIALS`, one per style and region).
+they are. The prompts are in `core/airepaint.py` (`MATERIALS`, one per style and region). The
+African style names its walls per piece (`rw0`, `bk1_front`...): round walls get a mud prompt,
+blocks mud or adobe by the architecture (`AFRICAN_WALLS`); thatch, flat roofs, domes, parapets,
+plinths, stone and fields have their own. **Walls only** and **Roofs only** pick them by
+`airepaint.group`.
 
 Measured on the RTX 4090 (texture 1024): about 6 s a region; the colonial house 60 to 90 s, the
 timber inn about 2 minutes. Strength 0.35 to 0.5 keeps the drawing (edges moved 0 px on every

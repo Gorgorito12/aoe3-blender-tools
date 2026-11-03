@@ -38,6 +38,12 @@ class AfricanPrompts(unittest.TestCase):
         sahel = building.PRESETS["AFRICAN_HOUSE_SAHEL"]
         self.assertIn("adobe", airepaint.material_of("bk0_front", sahel))
         self.assertIsNone(airepaint.material_of("wood", sahel))      # small parts keep their paint
+        tc = building.build(building.PRESETS["AFRICAN_TOWN_CENTER_SUBSAHARAN"])
+        walls, roofs = airepaint.group(tc, "WALLS"), airepaint.group(tc, "ROOFS")
+        self.assertTrue(any(n.startswith("rw") for n in walls) and "thatch" in roofs, (walls, roofs))
+        self.assertIsNone(airepaint.group(tc, "ALL"))
+        wh = building.build(building.PRESETS["WHITE_HOUSE"])
+        self.assertIn("front", airepaint.group(wh, "WALLS"))
 
 
 class Helpers(unittest.TestCase):

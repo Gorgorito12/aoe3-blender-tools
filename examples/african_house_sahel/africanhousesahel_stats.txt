@@ -1,0 +1,1 @@
+AfricanHouseSahel: 839 triangles, 665 vertices; footprint 6.6 x 5.7 m; texture 1024 x 1024

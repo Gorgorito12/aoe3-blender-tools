@@ -19,6 +19,8 @@ and destroyed in game (`docs/game-test.md`), then more styles and units (README,
   the private projects this tool came from, and do not link private documents.
 - Never commit survey reports (`report.json`, `summary.md`) of a mod: they name its files. They
   belong to the user's private repository.
+- Reference images of a style guide may come from other games: they guide the composition only.
+  Never copy a model, texture or layout from them, and never name them in the repository.
 - License: GPL-3.0-or-later (Blender's requirement for add-ons). New source files start with
   `# SPDX-License-Identifier: GPL-3.0-or-later`.
 
@@ -61,7 +63,10 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   pieces: boxes, rings, walls with recessed openings, hipped roofs, arcs, chimneys; `Face`,
   `Model`, the wall triangulation), `styles/` (one module per style: `NAME`, `clamp`, `build`,
   `opening_tops`, `paint(pr, model)`, `random_params` for the new ones; `neoclassical.py` is the
-  original generator, `colonial.py` and `timber.py` the others), `painter.py`
+  original generator, `colonial.py` and `timber.py` the others; `african/` is a package:
+  `sizes.py` (type -> reference radius and template), `layouts.py` (the composition of each type
+  and architecture, declarative pieces), `parts.py` (declares the regions and emits the pieces),
+  `__init__.py` (clamp, build, paint)), `painter.py`
   (the `Painter`: canvas, mask, seeded generator, drawing in region metres; `base()` is the
   material hook), `pngio.py` (PNG reader) and `paint.py` (dispatch, damaged texture) are pure
   Python; `blender_io.py` (object creation, export)

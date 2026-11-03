@@ -100,6 +100,22 @@ def material_of(region, params):
     return MATERIALS.get(style, {}).get(region)
 
 
+WALLS = ("front", "back", "side", "bow", "wing_long", "wing_short", "gable", "front_g", "back_g", "side_g",
+         "front_u", "back_u", "side_u", "dormer", "arcade", "bell", "parapet")
+ROOFS = ("roof", "shed", "thatch", "roof_flat", "dome")
+
+
+def group(model, which):
+    """The regions of `model` that "WALLS" or "ROOFS" picks, or None for "ALL" (the walls of the
+    African style are named per piece: rw0, bk1_front...)."""
+    if which == "ALL":
+        return None
+    names = list(model.atlas.regions)
+    if which == "ROOFS":
+        return [n for n in names if n in ROOFS]
+    return [n for n in names if n in WALLS or (n[:2] in ("rw", "bk") and n[2:3].isdigit())]
+
+
 def prompt_for(material, extra=""):
     text = STYLE_TEXT.format(material)
     return f"{text}, {extra}" if extra else text
