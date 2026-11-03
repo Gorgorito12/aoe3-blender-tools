@@ -61,11 +61,19 @@ uses about 12 GB of video memory while repainting.
 3D Viewport > Sidebar (N) > AoE3 > **AI Texture**:
 
 - the address (`http://127.0.0.1:8188`) and **✓**: is ComfyUI there, with its nodes and models?
+- **Start ComfyUI**: starts the portable ComfyUI (folder in **ComfyUI folder**, by default
+  `C:\ComfyUI\ComfyUI_windows_portable`) in its own console window; about 20 s later the **✓**
+  says "ComfyUI ready". Closing that console stops it. Do not start it twice (one port).
 - **Strength** (0.45): how much is repainted; **Blend** (1.0): the repaint over the original;
-  **Seed**; **Regions**: all, walls only or roofs only; **Extra prompt**: words added to every
-  region's prompt ("weathered, mossy", "sun-bleached");
-- **AI Repaint**: runs in the background (Blender stays responsive, Esc cancels); always starts
-  from the original texture, so trying another seed does not stack repaints;
+  **Seed**; **Regions**: all, walls only, roofs only, or **One region** (a list of the active
+  building's regions, with the built-in prompt of the chosen one shown under it);
+- **Your prompt**: your own description of the material ("red mud wall with white painted
+  zigzags"), in place of the built-in one for every region repainted; empty keeps the built-in
+  prompts. **Extra prompt**: words added to the prompt ("weathered, mossy", "sun-bleached");
+- **AI Repaint**: runs in the background (Blender stays responsive, Esc cancels) and puts each
+  region on the model as soon as it is done, so you watch it come; set the viewport to Material
+  Preview or Solid with Texture colour to see it. It always starts from the original texture, so
+  trying another seed or prompt does not stack repaints;
 - **Back to the Original**: the texture as it was, byte for byte.
 
 The repainted texture is what Game Export writes (and what the damaged texture is made from).
