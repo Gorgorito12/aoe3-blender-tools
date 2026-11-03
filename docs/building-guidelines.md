@@ -69,29 +69,32 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
 | Neoclassical | White House 1,235 tris; the others 92 to 413 at low detail | 6x6 (Mansion) to 16x16 (White House 1914) | 3.1 m | hipped, slate | string courses, shutters |
 | Timber framing | Timber House 426 (low 63), Timber Inn 725 (low 108) | 4x4 (house), 6x6 (inn) | 2.7 m, ground floor of stone or brick 3.0 m | gable, plain tiles, pitch 0.7 to 1.6, dormers | shutters, door, sign |
 | Spanish colonial | Colonial House 362 (low 56), Colonial Trading House 646 | 4x4 (house), 6x6 (trading house) | 2.9 m | gable or hipped, clay tiles, 0.45 m eave | shutters, door leaf |
-| African | 30 presets, 602 to 5,118 (table below) | from the reference radius: 4x4 to 12x12 | 1.9 to 4.2 m walls; customs house 2 storeys | thatch cones and hips, flat roofs with parapets, domes | wall bands, awnings, doors |
+| African | 30 presets, 602 to 4,776 (table below) | from the reference radius: 4x4 to 12x12 | 1.9 to 4.2 m walls; customs house 2 storeys | thatch cones and hips, flat roofs with parapets, domes | wall bands, awnings, doors |
 
 African types: each takes the obstruction radius and proto template of the stock building the
 style guide names as its size (`core/styles/african/sizes.py`); the plan side is
-2 r / 0.615 / ratio (0.72 for radius 2, 0.82 for 3, 0.9 above). Medium detail sits between the
-class median and 90th percentile; low detail drops the props, pots, stacks, finials and some
-fences, and is under half of medium.
+2 r / 0.615 / ratio (0.72 for radius 2, 0.82 for 3, 0.9 above). Medium detail is within 15 % of
+the median of the target mod's **own** building models of its class (`sizes.TRIS_TARGET`,
+`tests/test_african_budget.py`): 4x4 618, 6x6 624, 8x8 1,639, 9x9 3,627, 10x10 1,880, 12x12
+4,174. The mod's own models (127) have a median of 1,639 triangles against 643 for the stock
+models it reuses (229), so they, not the stock ones, set the level. Low detail drops the props,
+pots, stacks, finials and some fences, and is under half of medium.
 
 | Type | Template | Radius | Class | Medium, Sub-Saharan / Sahel | Low |
 |---|---|---|---|---|---|
-| House | House | 2.0 | 4x4 | 684 / 839 | 94 / 84 |
-| Town center | TownCenter | 4.5 | 9x9 | 2,008 / 2,361 | 294 / 256 |
-| Granary | House | 3.0 | 6x6 | 886 / 602 | 170 / 172 |
-| Plot | Farm | 3.0 | 6x6 | 996 / 946 | 28 / 28 |
+| House | House | 2.0 | 4x4 | 684 / 697 | 94 / 84 |
+| Town center | TownCenter | 4.5 | 9x9 | 3,456 / 3,477 | 542 / 536 |
+| Granary | House | 3.0 | 6x6 | 694 / 602 | 114 / 172 |
+| Plot | Farm | 3.0 | 6x6 | 660 / 610 | 28 / 28 |
 | Market | Market | 5.0 | 10x10 | 1,890 / 2,019 | 184 / 174 |
 | War camp | WarHut | 4.0 | 8x8 | 1,532 / 1,701 | 190 / 184 |
-| Stockade (stone) | ypVillage | 4.0 | 8x8 | 1,554 / 1,656 (1,202 / 1,258) | 286 / 264 |
-| Armory | Arsenal | 4.0 | 8x8 | 1,367 / 1,562 | 144 / 102 |
-| Depot | ArtilleryDepot | 4.0 | 8x8 | 1,330 / 1,359 | 130 / 60 |
-| Quarry | House | 4.0 | 8x8 | 1,244 / 1,113 | 130 / 60 |
-| Dock | Dock | 4.0 | 8x8 | 1,804 / 1,958 | 476 / 430 |
-| Customs house (2 storeys) | ypConsulate | 4.0 | 8x8 | 1,625 / 1,229 (1,679 / 1,283) | 220 / 60 |
-| Palace | FortFrontier | 6.0 | 12x12 | 3,688 / 5,118 | 550 / 584 |
+| Stockade (stone) | ypVillage | 4.0 | 8x8 | 1,554 / 1,656 (1,618 / 1,672) | 286 / 264 |
+| Armory | Arsenal | 4.0 | 8x8 | 1,511 / 1,562 | 144 / 102 |
+| Depot | ArtilleryDepot | 4.0 | 8x8 | 1,578 / 1,717 | 130 / 60 |
+| Quarry | House | 4.0 | 8x8 | 1,420 / 1,423 | 130 / 102 |
+| Dock | Dock | 4.0 | 8x8 | 1,804 / 1,852 | 476 / 430 |
+| Customs house (2 storeys) | ypConsulate | 4.0 | 8x8 | 1,625 / 1,741 (1,679 / 1,795) | 220 / 142 |
+| Palace | FortFrontier | 6.0 | 12x12 | 3,688 / 4,776 | 550 / 584 |
 
 Class budgets (medium target between them): 8x8 median 1,102, 90th percentile 2,221; 9x9 1,235
 and 3,627; 10x10 1,886 and 2,638; 12x12 1,809 and 6,397. In the African style the round walls,

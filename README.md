@@ -34,8 +34,8 @@ two dormers, a sign) 725. Each has one 1024 × 1024 texture.
 
 The African style, all 30 presets (13 building types in two architectures, the stone stockade and
 the two-storey customs house), each sized to the obstruction radius of the building it stands for
-and, at medium detail, between the median and the 90th percentile of the triangles of its
-footprint class (602 for the Sahel granary to 5,118 for the Sahel palace):
+and, at medium detail, within 15 % of the median triangles of the target mod's own models of
+its footprint class (602 for the Sahel granary to 4,776 for the Sahel palace):
 
 ![African presets](examples/african_gallery.jpg)
 
