@@ -1,0 +1,1 @@
+ColonialHouse: 362 triangles, 242 vertices; footprint 9.9 x 8.8 m; texture 1024 x 1024

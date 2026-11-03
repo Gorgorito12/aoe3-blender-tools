@@ -388,6 +388,33 @@ def roof_kit_parts_have_no_overlaps():
         assert tris == sum(len(f.pts) - 2 for f in model.faces), tris
 
 
+@test
+def ui_has_a_property_for_every_param_field():
+    import dataclasses
+    s = bpy.context.scene.aoe3_building
+    for f in dataclasses.fields(building.BuildingParams):
+        if f.name == "colors":
+            for k in building.COLOR_KEYS:
+                assert hasattr(s, "color_" + k), k
+            continue
+        assert hasattr(s, addon.PROP_NAMES.get(f.name, f.name)), f.name
+    # every preset goes through the panel and back unchanged
+    for key, p in building.PRESETS.items():
+        s.preset = key
+        assert bpy.ops.aoe3.load_preset() == {"FINISHED"}
+        q = addon.params_from_props(s)
+        for f in dataclasses.fields(building.BuildingParams):
+            a, b = getattr(p, f.name), getattr(q, f.name)
+            if f.name == "colors":
+                assert {k: tuple(v) for k, v in {**building.DEFAULT_COLORS, **a}.items()} == b, key
+            elif isinstance(a, float):
+                assert abs(a - b) < 1e-5, (key, f.name, a, b)
+            elif f.name == "side_bays" and p.style != "NEOCLASSICAL":
+                pass
+            else:
+                assert a == b, (key, f.name, a, b)
+
+
 def main():
     addon.register()
     try:
@@ -397,7 +424,8 @@ def main():
                   atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget,
                   player_colour_marks_the_string_courses, icon_and_portrait_render,
                   game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo,
-                  square_hipped_roof_builds, roof_kit_parts_have_no_overlaps):
+                  square_hipped_roof_builds, roof_kit_parts_have_no_overlaps,
+                  ui_has_a_property_for_every_param_field):
             t()
     finally:
         addon.unregister()

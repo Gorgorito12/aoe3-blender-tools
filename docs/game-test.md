@@ -93,6 +93,14 @@ means; nothing more to do here. Frames from the recording:
 
 The low-poly model needs the game's low model detail setting (not tried).
 
+Colonial house (2026-11-03): exported at medium detail with the player-colour mask (362
+triangles, footprint class 4x4, the stock 2x2 construction stages and rubble), deployed with
+`--builder Settler` (the three validators of the mod: 0 errors) and placed for two players beside
+a stock house: the right size, lit like the stock buildings, the flag on the ridge, shutters and
+door in each owner's colour, its own icon and portrait
+(`examples/colonialhouse/ingame_player_colour.jpg`). A deployment replaces the previous one in
+the copy (the White House was taken out).
+
 Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds
 while the stock collapse dust rises, then the rubble takes its place.
 

@@ -3,7 +3,7 @@
 on each. It found the edge cases the fixed tests missed (overlapping posts, chimneys, windows and
 column bases on small or narrow buildings).
 
-    python scripts/sweep.py [--count N] [--seeds 2026,7,99]
+    python scripts/sweep.py [--count N] [--seeds 2026,7,99] [--style NEOCLASSICAL|COLONIAL|ALL]
 
 Prints the failing cases (at most 10) and exits with status 1 when any fails. About 0.25 s a case.
 """
@@ -21,6 +21,7 @@ from aoe3_blender_tools.core import blender_io, building, paint, validate  # noq
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
 count = int(argv[argv.index("--count") + 1]) if "--count" in argv else 200
 seeds = [int(x) for x in argv[argv.index("--seeds") + 1].split(",")] if "--seeds" in argv else [2026, 7, 99]
+style = (argv[argv.index("--style") + 1] if "--style" in argv else "ALL").upper()
 
 
 def random_params(rng, i):
@@ -46,7 +47,10 @@ def main():
     for seed in seeds:
         rng = random.Random(seed)
         for i in range(count):
-            p = random_params(rng, i)
+            if style == "COLONIAL" or (style == "ALL" and i % 3 == 2):
+                p = building.STYLES["COLONIAL"].random_params(rng, i, building.BuildingParams)
+            else:
+                p = random_params(rng, i)
             total += 1
             try:
                 bpy.ops.wm.read_factory_settings(use_empty=True)

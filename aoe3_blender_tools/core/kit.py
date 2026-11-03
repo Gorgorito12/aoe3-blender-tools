@@ -408,11 +408,14 @@ class Builder:
         self.face_auto(list(pts), region, anchor=anchor, smooth=smooth)
 
     def gable_roof(self, cx, cy, hx, hy, z, pitch, axis="X", region="roof", gable_region=None,
-                   overhang=0.0):
+                   overhang=0.0, gables=(True, True), ends=None):
         """A roof with two slopes over the walls cx +- hx, cy +- hy whose tops are at z, the ridge
         along `axis` ("X" or "Y"). The slopes reach `overhang` beyond the walls on every side
         (eaves and verges, lower by pitch x overhang at the eaves); with `gable_region`, the two
-        gable triangles close the ends in the wall planes. Returns the ridge height."""
+        gable triangles close the ends in the wall planes (`gables`: the low and the high end
+        along the ridge). `ends` (low, high): where the slopes stop along the ridge instead of
+        the walls plus the overhang (a wing's roof running into the main roof). Returns the
+        ridge height."""
         if axis == "X":
             run = hy
         else:
@@ -421,24 +424,28 @@ class Builder:
         ze = z - pitch * overhang
         o = overhang
         if axis == "X":
-            x0, x1 = cx - hx - o, cx + hx + o
+            x0, x1 = ends if ends else (cx - hx - o, cx + hx + o)
             self.face_out([(x0, cy - hy - o, ze), (x1, cy - hy - o, ze), (x1, cy, rz), (x0, cy, rz)],
                           region, (0.0, -1.0, 1.0))
             self.face_out([(x1, cy + hy + o, ze), (x0, cy + hy + o, ze), (x0, cy, rz), (x1, cy, rz)],
                           region, (0.0, 1.0, 1.0))
             if gable_region:
-                for sx in (-1, 1):
+                for sx, keep in zip((-1, 1), gables):
+                    if not keep:
+                        continue
                     x = cx + sx * hx
                     self.face_out([(x, cy - hy, z), (x, cy + hy, z), (x, cy, rz)], gable_region,
                                   (float(sx), 0.0, 0.0), anchor=(x, cy - sx * hy, z))
         else:
-            y0, y1 = cy - hy - o, cy + hy + o
+            y0, y1 = ends if ends else (cy - hy - o, cy + hy + o)
             self.face_out([(cx - hx - o, y1, ze), (cx - hx - o, y0, ze), (cx, y0, rz), (cx, y1, rz)],
                           region, (-1.0, 0.0, 1.0))
             self.face_out([(cx + hx + o, y0, ze), (cx + hx + o, y1, ze), (cx, y1, rz), (cx, y0, rz)],
                           region, (1.0, 0.0, 1.0))
             if gable_region:
-                for sy in (-1, 1):
+                for sy, keep in zip((-1, 1), gables):
+                    if not keep:
+                        continue
                     y = cy + sy * hy
                     self.face_out([(cx - hx, y, z), (cx + hx, y, z), (cx, y, rz)], gable_region,
                                   (0.0, float(sy), 0.0), anchor=(cx + sy * hx, y, z))
@@ -554,8 +561,12 @@ class Builder:
         # the band: its front from the springing's origin, so the painting runs on
         self.box(x0, x1, y, yb, crown, top, arch_region, post_region, skip=("-y",))
         # its lower edge carries every corner on the crown line (pier corners, crowns): no T-junctions
-        xs = sorted({x0, x1, *[px - post_half for px in piers], *[px + post_half for px in piers],
-                     *[(piers[i] + piers[i + 1]) / 2 for i in range(n_bays)]})
+        xs = []
+        for xx in sorted([x0, x1, *[px - post_half for px in piers], *[px + post_half for px in piers],
+                          *[(piers[i] + piers[i + 1]) / 2 for i in range(n_bays)]]):
+            if not xs or xx - xs[-1] > 1e-6:       # the end piers' outer corners are x0 and x1
+                xs.append(xx)
+        xs[0], xs[-1] = x0, x1
         self.face_out([(xx, y, crown) for xx in xs] + [(x1, y, top), (x0, y, top)], arch_region, front,
                       anchor=anchor)
         for px in piers:                               # the piers' fronts above the springing

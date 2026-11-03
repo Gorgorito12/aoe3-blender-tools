@@ -1,0 +1,1 @@
+ColonialTradingHouse: 794 triangles, 538 vertices; footprint 12.9 x 17.2 m; texture 1024 x 1024

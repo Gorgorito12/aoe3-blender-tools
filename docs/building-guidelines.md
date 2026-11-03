@@ -62,6 +62,25 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
   Triangulate modifier (the .blend keeps quads for editing) and attach empties.
 - `core/validate.py` runs the checks above on the evaluated mesh.
 
+## Styles
+
+| Style | Presets (medium detail) | Footprint class | Storey | Roof | Player colour |
+|---|---|---|---|---|---|
+| Neoclassical | White House 1,235 tris; the others 92 to 413 at low detail | 6x4 (Mansion) to 18x18 (White House 1914) | 3.1 m | hipped, slate | string courses, shutters |
+| Spanish colonial | Colonial House 362 (low 56), Colonial Trading House 794 (low 167) | 4x4 (house); 8x10 (trading house: the portal and the wing make it 17 m deep) | 2.9 m | gable or hipped, clay tiles, 0.45 m eave | shutters, door leaf |
+
+Measured class budgets (the survey): 4x4 median 571 triangles, 90th percentile 1,613; 6x6 median
+491, 90th percentile 1,024. Geometry against painting in the colonial style: walls, plinth,
+roof, gables, ridge caps, balcony slab and railing, portal piers and arches, the lean-to roof and
+the bell gable are geometry; windows, grilles, shutters, the door, beam ends under the eave,
+the dado, tiles, bells and the railing's balusters are painted. At medium detail the openings are
+recessed; an upper window is never wider than the one below it, so each wall stays one polygon
+with holes (a wider one above sends the wall to the grid fallback and doubles its triangles).
+
+Every style builds with `core/kit.py`: the regions first, then `pack()`, then the faces. The order
+of both is part of the output, so a refactor keeps them; the neoclassical presets are held byte
+for byte by `tests/test_golden.py`.
+
 ## To verify in the game
 
 Measured since 0.1 (see [game-formats.md](game-formats.md)): the scale of one unit, the attach

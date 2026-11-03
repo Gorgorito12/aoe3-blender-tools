@@ -8,7 +8,7 @@ the art a mod already has. It has two parts:
   anim file structure, and which stock parts the mod reuses. The generators are calibrated on it.
 - **A Blender add-on**: generators that build models from exact primitives (flat walls, straight
   edges), lay out one UV atlas, paint the texture from the real measurements, check that the
-  result is game-ready, and export it. The first generator makes neoclassical buildings.
+  result is game-ready, and export it. Two styles so far: neoclassical and Spanish colonial.
 
 | White House | Courthouse |
 |---|---|
@@ -17,9 +17,12 @@ the art a mod already has. It has two parts:
 | ![Capitol](examples/capitol/preview_front34.jpg) | ![Mansion](examples/mansion/preview_front34.jpg) |
 | **White House, medium detail** | **The same, geometry only** |
 | ![White House medium](examples/whitehouse_medium/preview_front34.jpg) | ![White House medium, clay](examples/whitehouse_medium/preview_wire.jpg) |
+| **Colonial house** | **Colonial trading house** |
+| ![Colonial house](examples/colonialhouse/preview_front34.jpg) | ![Colonial trading house](examples/colonialtradinghouse/preview_front34.jpg) |
 
 The four presets at low detail have 92 to 413 triangles; the White House at medium detail has
-1,235. Each has one 1024 × 1024 texture.
+1,235. The colonial house has 362 triangles at medium detail, the trading house (a portal of
+arches, a balcony, a bell gable and a wing) 794. Each has one 1024 × 1024 texture.
 
 **White House, 1914** (preset `WHITE_HOUSE_1914`, built from a reference picture): north and south
 elevations, then views from the south-west and the north-east. 3,035 triangles at medium detail,
@@ -45,6 +48,11 @@ stock construction stages; destroyed, leaving the stock rubble.
 ![Construction](examples/whitehouse_medium/ingame_construction.jpg)
 
 ![Rubble](examples/whitehouse_medium/ingame_rubble.jpg)
+
+The colonial house in the same copy, for two players (shutters and door in the owner's colour),
+beside a stock house:
+
+![Colonial house in game](examples/colonialhouse/ingame_player_colour.jpg)
 
 ## Why
 
@@ -83,7 +91,13 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 
 ## Features
 
-- **Building generator** (neoclassical for now): width, depth, 1 to 4 storeys, plinth, window
+- **Spanish colonial style**: whitewashed walls on a low plinth with a coloured dado, small
+  windows with iron grilles, shutters and a plank door in the owner's colour, a clay tile roof
+  (two slopes along or across, or hipped) with a wide eave, and as options a wooden balcony, a
+  portal along the front (wooden posts, or masonry piers with flat arches) under a lean-to roof,
+  a bell gable that carries the flag, and an L plan with a one-storey wing. Presets: Colonial
+  House, Colonial Trading House.
+- **Neoclassical style**: width, depth, 1 to 4 storeys, plinth, window
   spacing and side windows, a portico with 2 to 8 columns and a pediment, a hipped roof of any
   pitch, a cupola or a flagpole, up to 8 chimneys, a semicircular back portico (columns on an arc
   around a bowed bay, with a balustraded flat roof), wings (one-storey pavilions joined by
