@@ -30,6 +30,8 @@ outside the repository or in an ignored folder (`venv/`).
 ```
 venv/bin/python tests/run_tests.py                 # must print "all tests passed"
 python -I tests/test_art_survey.py                 # survey tests, plain Python
+venv/bin/python -I tests/test_golden.py            # neoclassical output byte for byte (numpy)
+venv/bin/python -I tests/test_pngio.py             # PNG reader
 venv/bin/python scripts/generate.py --preset ALL   # regenerates examples/ (about 40 s per view)
 venv/bin/python scripts/sweep.py --count 200       # random option sets through the checks: 0 failures
 python tools/build_zip.py                          # dist/ zips (extension and legacy)
@@ -71,6 +73,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   profile)` and `bundle.game_size(..., profile)` use it.
 - `scripts/generate.py`: headless generation with renders. `scripts/game_export.py`: headless game
   bundle. `tests/run_tests.py`: headless tests. `tests/test_game_formats.py`: format tests.
+  `tests/test_golden.py` with `tests/golden/neoclassical.json`: the recorded output of every
+  neoclassical preset (faces, atlas, texture, attach points, sizes, facade layout) and their
+  triangle counts.
 - `tools/`: `art_survey.py` (uses `bar.py` and `xmbedit.py`; standard library only, it runs on the
   user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`.
 - `examples/`: generated presets. `whitehouse/`, `whitehouse_medium/` and `whitehouse1914/` keep
@@ -86,6 +91,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 
 ## Working rules
 
+- The neoclassical presets are golden: a refactor must keep `tests/test_golden.py` green as
+  is. Run `--update-golden` only for a deliberate change to that style's output, and say so in
+  the commit (then regenerate `examples/`).
 - Every geometry change must keep the test suite green; the parameter sweep (both detail levels)
   catches overlapping coplanar faces, faces with repeated corners and UVs outside their regions.
 - Count triangles per region after a detail change (`building.build(...)`, then sum per

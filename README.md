@@ -171,6 +171,7 @@ venv/bin/python scripts/sweep.py --count 200                # random options thr
 venv/bin/python scripts/generate.py --preset CAPITOL --out out --no-render
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
 python -I tests/test_game_formats.py                   # game formats, plain Python
+venv/bin/python -I tests/test_golden.py               # presets byte for byte (--update-golden)
 ```
 
 On Windows the venv's interpreter is `venv\Scripts\python`.
