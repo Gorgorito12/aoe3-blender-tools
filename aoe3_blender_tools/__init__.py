@@ -65,7 +65,7 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     jetty: BoolProperty(name="Jetty", default=True, description="The upper floors jut out over the front and back")
     jetty_depth: FloatProperty(name="Jetty depth", default=0.4, min=0.2, max=0.8, unit="LENGTH")
     dormers: IntProperty(name="Dormers", default=1, min=0, max=4)
-    ground_floor: EnumProperty(name="Ground floor", items=[("STONE", "Stone", "Rubble stone"),
+    ground_floor: EnumProperty(name="Ground", items=[("STONE", "Stone", "Rubble stone"),
                                                            ("BRICK", "Brick", ""),
                                                            ("TIMBER", "Timber", "Framed like the upper floors")],
                                default="STONE")

@@ -4,8 +4,12 @@ The generated textures line up exactly with the geometry (each window is painted
 opening is), but they look flat and vector-like. This page lists the ways to give them a
 hand-painted look without losing that alignment, what each costs, and the order to try them.
 
-Status: nothing here is tried yet. Licence and price facts are as known on 2026-11-02 and are
-marked **to verify**: check each model's or service's page before publishing anything made with it.
+Status (2026-11-03): relief baking is done (a bump map from each finished texture) and material
+swatches are done (five CC0 photos from ambientCG under the painting, `core/materials.py`, credits
+in `aoe3_blender_tools/materials/MATERIALS.md`; their grain is fitted to a contrast measured on
+the stock textures by `tools/palette_survey.py`). The rest is not tried yet. Licence and price
+facts are as known on 2026-11-02 and are marked **to verify**: check each model's or service's
+page before publishing anything made with it.
 
 ## The rule
 

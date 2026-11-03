@@ -177,14 +177,18 @@ export all work. The Blender 3.6 to 4.1 path is untested.
 
 3D Viewport > Sidebar (N) > **AoE3**.
 
-1. **Building Generator**: pick a preset and load it, change the settings, then **Generate
-   Building**. Generating again replaces the object of the same name. When a setting cannot be
-   built (for example more columns than the front allows), it is reduced and a warning says so.
+1. **Building Generator**: pick a preset and load it (or pick a **Style**: neoclassical,
+   colonial or timber; the panel then shows that style's settings), change the settings, then
+   **Generate Building**. Generating again replaces the object of the same name. When a setting
+   cannot be built (for example more columns than the front allows), it is reduced and a warning
+   says so. **Material swatches** lays the CC0 photos under the painting.
 2. **Check and Export**: **Check** lists the problems of the active object; **Export** writes the
    files to the chosen folder (default `//aoe3_export`, next to the .blend).
 3. **Game Export**: writes the bundle for the game (mod folder, name shown in game, proto
    template, texture format, icon, low-poly and damaged models) to the chosen folder (default
    `//aoe3_game`); **Deploy to Test Copy** puts it into a copy of the game, **Undo** takes it out.
+
+![The panel in Blender 5.2](examples/blender_panel.jpg)
 
 Conventions: 1 unit = 1 m, Z up, the front (portico) faces −Y, the origin is the centre of the
 footprint (steps included) on the ground. GLB, FBX and OBJ are written Y-up.
@@ -237,10 +241,10 @@ see [tools/README.md](tools/README.md).
 2. **Calibration and game formats** (done, in-game check in progress): sizes and budgets from
    the profile; `.gr2`, `.ddt`, anim file, proto and strings written and deployed. Next: see the
    building placed, built and destroyed in game; player colour; DXT textures.
-3. **Buildings:** a kit of parts per architectural style found in the survey (colonial, European,
-   Asian, native, forts, walls and gates), damage and death models, and baking the texture of a
-   detailed model onto a clean mesh. Textures: relief baking, material swatches, Stable
-   Diffusion with ControlNet and the other options in [docs/texture-plan.md](docs/texture-plan.md).
+3. **Buildings** (in progress): the kit of parts (done), the Spanish colonial and European timber
+   styles (done, seen in game), material swatches (done) and death models (done). Next: Asian and
+   native styles, forts, walls and gates, baking a detailed model's texture onto a clean mesh,
+   and the other texture options in [docs/texture-plan.md](docs/texture-plan.md).
 4. **Units:** reuse the stock skeletons and animations; build the body from parts or fit a
    detailed mesh to a stock skeleton; textures with the player-colour mask.
 
