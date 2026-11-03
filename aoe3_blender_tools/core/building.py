@@ -111,7 +111,9 @@ COLONIAL_COLORS = {**DEFAULT_COLORS, "plaster": (238, 231, 214), "plinth": (176,
 TIMBER_COLORS = {**DEFAULT_COLORS, "timber": (62, 44, 32), "plaster": (230, 220, 194),
                  "stone": (172, 164, 150), "brick": (146, 66, 48), "tile": (154, 72, 50),
                  "door": (92, 60, 38), "glass": (52, 62, 66), "lead": (70, 72, 74)}
-AFRICAN_COLORS = {**DEFAULT_COLORS, "timber": (92, 64, 40), "stone": (168, 156, 136), "tile": (160, 84, 52)}
+# the means of the target mod's own African textures per material (measured 2026-11-03)
+AFRICAN_COLORS = {**DEFAULT_COLORS, "mud": (140, 110, 74), "adobe": (178, 142, 100), "thatch": (112, 92, 64),
+                  "timber": (84, 58, 32), "stone": (132, 120, 96), "tile": (150, 82, 50)}
 
 
 def african(building_type, architecture, **kw):
@@ -124,7 +126,7 @@ def african(building_type, architecture, **kw):
         words += "Upper"
     return BuildingParams(name=f"African{words}{arch}", style="AFRICAN", building_type=building_type,
                           architecture=architecture, portico=False, cupola=False, detail="MEDIUM",
-                          colors=dict(AFRICAN_COLORS), **kw)
+                          colors=dict(AFRICAN_COLORS), materials=True, **kw)
 
 
 PRESETS.update({
