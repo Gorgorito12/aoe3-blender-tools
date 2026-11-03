@@ -42,6 +42,10 @@ SOURCES = {
 # name -> source, asset id, metres per tile (as the painter uses it), swatch size in pixels
 ASSETS = {
     "plaster": {"source": "ambientCG", "id": "Plaster001", "tile_m": 2.0, "size": 256},
+    "ashlar": {"source": "ambientCG", "id": "Concrete012", "tile_m": 2.5, "size": 256},
+    "stone_rough": {"source": "ambientCG", "id": "Rock030", "tile_m": 2.0, "size": 256},
+    "clay": {"source": "ambientCG", "id": "Clay009", "tile_m": 1.5, "size": 256},
+    "timber": {"source": "ambientCG", "id": "Wood026", "tile_m": 1.0, "size": 256},
 }
 
 

@@ -29,6 +29,7 @@ class Painter:
         self.lw = max(1, int(round(self.px_per_m * 0.035)))      # thick line ~3.5 cm
         self.use_materials = bool(getattr(p, "materials", False))
         self.layers = []            # (x, y, block) of each swatch laid: the coverage at the end
+        self.swatched = {}          # region -> the colour its swatch was tinted with
         self._factors = {}
 
     def P(self, region, u, v):
@@ -67,15 +68,37 @@ class Painter:
         sw = materials.load(entry[0]) if entry else None
         if sw is None:
             return
-        name, tile_m, _ = entry
+        name, tile_m, _, contrast = entry
         px = max(4, int(round(tile_m * self.px_per_m)))
-        if (name, px) not in self._factors:
-            self._factors[(name, px)] = materials.normalise(sw, px)
+        if (name, px, contrast) not in self._factors:
+            self._factors[(name, px, contrast)] = materials.normalise(sw, px, contrast)
         r = self.at[region]
-        block = materials.tile(self.cv.a, (r.x, r.y, r.x + r.w, r.y + r.h), self._factors[(name, px)],
+        block = materials.tile(self.cv.a, (r.x, r.y, r.x + r.w, r.y + r.h), self._factors[(name, px, contrast)],
                                color, offset=(r.x, r.y))
         if block is not None:
             self.layers.append((max(0, r.x), max(0, r.y), block.copy()))
+            self.swatched[region] = (tuple(float(c) for c in color), len(self.layers) - 1)
+
+    def paint_on(self, region, u0, v0, u1, v1, color, outline=None, width=1):
+        """A rect of `color`; on a region with a swatch, the colour is laid by multiplying the
+        ground (so the grain shows through), and the outline stays flat. Without a swatch it is
+        exactly `rect`."""
+        entry = self.swatched.get(region)
+        if entry is None:
+            self.rect(region, u0, v0, u1, v1, color, outline, width)
+            return
+        base, layer = entry
+        (x0, y0), (x1, y1) = self.P(region, u0, v1), self.P(region, u1, v0)
+        xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
+        r = self.at[region]                          # never beyond the region's own pixels
+        xa, ya, xb, yb = max(xa, r.x), max(ya, r.y), min(xb, r.x + r.w), min(yb, r.y + r.h)
+        if xb > xa and yb > ya:
+            k = np.array([c / max(b, 1.0) for c, b in zip(color, base)], np.float32)
+            self.cv.a[ya:yb, xa:xb] *= k
+            lx, ly, block = self.layers[layer]       # the reference follows, for the coverage
+            block[max(0, ya - ly):max(0, yb - ly), max(0, xa - lx):max(0, xb - lx)] *= k
+        if outline is not None:
+            self.rect(region, u0, v0, u1, v1, None, outline, width)
 
     def tone(self, region, u0, v0, u1, v1, k):
         """Darkens (k < 1) or lightens a rect of a region, keeping any grain under it."""

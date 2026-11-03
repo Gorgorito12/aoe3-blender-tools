@@ -546,7 +546,7 @@ def paint(pr, model):
             while v < sh - 0.4:
                 w = 0.45 if k % 2 == 0 else 0.3
                 a, b = (0, w) if side == 0 else (sw - w, sw)
-                pr.rect(region, a, v, b, v + 0.42, _shade(WALL, 1.025), WALL_LINE)
+                pr.paint_on(region, a, v, b, v + 0.42, _shade(WALL, 1.025), WALL_LINE)
                 v += 0.42
                 k += 1
         for s in range(1, storeys):                          # string courses, frieze
@@ -595,7 +595,7 @@ def paint(pr, model):
 
     # --- roof slate --------------------------------------------------------------------------------
     ROOF = C["roof"]
-    pr.fill("roof", _shade(ROOF, 0.75))
+    pr.base("roof", _shade(ROOF, 0.75), role="roof")
     r = pr.at["roof"]
     row, v, k = 0.24, 0.0, 0
     while v < r.world_h:
@@ -603,14 +603,14 @@ def paint(pr, model):
         while u < r.world_w:
             t = int(pr.rng.integers(-9, 10))
             tile = tuple(max(0, min(255, c + t)) for c in ROOF)
-            pr.rect("roof", max(u, 0), v, min(u + 0.3, r.world_w), min(v + row, r.world_h), tile, _shade(ROOF, 0.75))
+            pr.paint_on("roof", max(u, 0), v, min(u + 0.3, r.world_w), min(v + row, r.world_h), tile, _shade(ROOF, 0.75))
             u += 0.3
         v += row
         k += 1
 
     # --- small materials ---------------------------------------------------------------------------
     PL = C["plinth"]
-    pr.fill("plinth", PL)
+    pr.base("plinth", PL, role="plinth")
     rp = pr.at["plinth"]
     for vv in (0.0, rp.world_h / 2):
         pr.hline("plinth", vv, 0, rp.world_w, _shade(PL, 0.78), pr.lw)
@@ -630,7 +630,7 @@ def paint(pr, model):
     pr.hline("trim", 0.7, 0, rt.world_w, _shade(WHITE, 0.93), pr.lw)
 
     ST = C["stone"]
-    pr.fill("stone", ST)
+    pr.base("stone", ST, role="stone")
     for i, vv in enumerate(np.arange(0, 4.0, 0.4)):
         pr.hline("stone", vv, 0, 8, _shade(ST, 0.86))
         for uu in np.arange((i % 2) * 0.4, 8, 0.8):

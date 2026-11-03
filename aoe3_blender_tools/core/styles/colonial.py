@@ -349,7 +349,7 @@ def paint(pr, model):
         r = at[region]
         sw, sh = r.world_w, r.world_h
         pr.base(region, PL, role="wall")
-        pr.rect(region, 0, 0, sw, 0.55, DADO, _shade(DADO, 0.8))              # the dado band
+        pr.paint_on(region, 0, 0, sw, 0.55, DADO, _shade(DADO, 0.8))          # the dado band
         if spec.get("eave"):                                                  # beam ends under the eave
             u = 0.25
             while u < sw - 0.2:
@@ -379,7 +379,7 @@ def paint(pr, model):
     def tiles(region):
         """Spanish tiles: columns of barrel tiles, each course a little lighter at its lower end."""
         r = at[region]
-        pr.fill(region, _shade(TILE, 0.62))
+        pr.base(region, _shade(TILE, 0.62), role="roof")
         u, col = 0.0, 0
         while u < r.world_w:
             v, row = 0.0, 0
@@ -387,9 +387,11 @@ def paint(pr, model):
             while v < r.world_h:
                 t = t0 + int(pr.rng.integers(-8, 9))
                 c = tuple(max(0, min(255, k + t)) for k in TILE)
-                pr.rect(region, u + 0.03, v, u + 0.19, min(v + 0.42, r.world_h), c)
-                pr.rect(region, u + 0.03, v, u + 0.19, min(v + 0.07, r.world_h), _shade(c, 0.78))
-                pr.vline(region, u + 0.11, v + 0.08, min(v + 0.4, r.world_h), _shade(c, 1.12), lw)
+                u1 = min(u + 0.19, r.world_w)
+                pr.paint_on(region, u + 0.03, v, u1, min(v + 0.42, r.world_h), c)
+                pr.paint_on(region, u + 0.03, v, u1, min(v + 0.07, r.world_h), _shade(c, 0.78))
+                if u + 0.11 < r.world_w:
+                    pr.vline(region, u + 0.11, v + 0.08, min(v + 0.4, r.world_h), _shade(c, 1.12), lw)
                 v += 0.4
                 row += 1
             u += 0.22
@@ -402,7 +404,7 @@ def paint(pr, model):
         tiles("ridge")
 
     PLN = DADO
-    pr.fill("plinth", _shade(PLN, 0.9))
+    pr.base("plinth", _shade(PLN, 0.9), role="plinth")
     rp = at["plinth"]
     u = 0.0
     while u < rp.world_w:
@@ -416,7 +418,7 @@ def paint(pr, model):
 
     if "post" in at:
         if p.arcade_posts == "WOOD":
-            pr.fill("post", TIMBER)
+            pr.base("post", TIMBER, role="timber")
             rp = at["post"]
             for i in range(14):
                 pr.vline("post", rp.world_w * (i + 0.5) / 14, 0, rp.world_h, _shade(TIMBER, 0.82))
@@ -426,14 +428,14 @@ def paint(pr, model):
     if "arcade" in at:
         ra = at["arcade"]
         if p.arcade_posts == "WOOD":
-            pr.fill("arcade", TIMBER)
+            pr.base("arcade", TIMBER, role="timber")
             pr.hline("arcade", 0.05, 0, ra.world_w, _shade(TIMBER, 0.7), lw)
             pr.hline("arcade", ra.world_h - 0.06, 0, ra.world_w, _shade(TIMBER, 1.15), lw)
         else:
             pr.base("arcade", PL, role="wall")
             pr.rect("arcade", 0, ra.world_h - 0.12, ra.world_w, ra.world_h, _shade(PL, 0.9), LINE)
     if "slab" in at:
-        pr.fill("slab", TIMBER)
+        pr.base("slab", TIMBER, role="timber")
         rs = at["slab"]
         vv = 0.0
         while vv < rs.world_h:
@@ -442,7 +444,7 @@ def paint(pr, model):
     if "rail" in at:
         rr_ = at["rail"]
         pr.fill("rail", _shade(TIMBER, 0.45))                                  # the gaps
-        pr.rect("rail", 0, 0, rr_.world_w, 0.1, TIMBER, _shade(TIMBER, 0.7))
+        pr.rect("rail", 0, 0, rr_.world_w, 0.1, TIMBER, _shade(TIMBER, 0.7))      # rails and balusters
         pr.rect("rail", 0, rr_.world_h - 0.12, rr_.world_w, rr_.world_h, TIMBER, _shade(TIMBER, 0.7))
         u = 0.06
         while u < rr_.world_w - 0.05:

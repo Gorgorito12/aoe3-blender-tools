@@ -31,7 +31,7 @@ class Swatches(unittest.TestCase):
 
     def test_every_mapped_swatch_ships(self):
         for style, roles in materials.MATERIALS.items():
-            for role, (name, tile_m, key) in roles.items():
+            for role, (name, tile_m, key, contrast) in materials.plan(style).items():
                 with self.subTest(style=style, role=role):
                     self.assertIsNotNone(materials.load(name), f"{name}.png is missing")
                     self.assertGreater(tile_m, 0.2)
@@ -109,6 +109,23 @@ class Painting(unittest.TestCase):
                 materials._cache.update(cache)
         self.assertEqual(int(cov.max()), 0)
         self.assertTrue((rgba == self.rgba_off).all())
+
+
+class ColonialPainting(unittest.TestCase):
+    def test_swatches_change_only_their_regions(self):
+        off = building.build(dataclasses.replace(building.PRESETS["COLONIAL_HOUSE"], texture_size=512))
+        on = building.build(dataclasses.replace(building.PRESETS["COLONIAL_HOUSE"], texture_size=512,
+                                                materials=True))
+        a, _ = paint.paint_layers(off)
+        b, cov = paint.paint_layers(on)
+        bare = cov == 0
+        self.assertGreater(float((cov == 255).mean()), 0.1)
+        self.assertTrue(((a[:, :, :3] == b[:, :, :3]).all(axis=2))[bare].all())
+        f, cf = wall_view(on, b, cov)
+        top = f.shape[0] * 6 // 10                     # above the dado, which is tinted on the plaster
+        mean = f[:top, :, :3][cf[:top] == 255].reshape(-1, 3).mean(axis=0)
+        want = np.array(on.params.colors["plaster"], np.float32)
+        self.assertLess(float(np.abs(mean - want).max()), 6.0, (mean, want))
 
 
 if __name__ == "__main__":

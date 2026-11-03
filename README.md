@@ -116,7 +116,10 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 - **Material swatches** (option, off by default; `--materials` on the command line): small
   tileable CC0 photos under the painting give the walls their grain while every drawn detail
   and the colours stay; the swatch's lighting is removed and its grain scaled to a measured
-  target. Credits in [aoe3_blender_tools/materials/MATERIALS.md](aoe3_blender_tools/materials/MATERIALS.md).
+  target (less on tiles and slates). Five swatches: plaster and ashlar for walls, rough stone for
+  plinths and slate, clay for tiles, wood grain for timber. The bump map is made from the
+  finished texture, so it carries the grain too. Credits in
+  [aoe3_blender_tools/materials/MATERIALS.md](aoe3_blender_tools/materials/MATERIALS.md).
 - **Game-ready check**: triangle budget, the 16-bit vertex limit, one UV map inside 0..1,
   power-of-two textures, material count, origin at the footprint centre and base on the ground,
   degenerate faces, hidden bottom faces, and overlapping coplanar faces (they flicker in game).

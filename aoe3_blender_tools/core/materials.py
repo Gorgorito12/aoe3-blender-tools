@@ -24,17 +24,21 @@ from .pngio import read_png
 TARGET_CONTRAST = 0.045
 FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "materials")
 
-# style -> role -> (swatch, metres per tile, colour key)
+# style -> role -> (swatch, metres per tile, colour key[, grain contrast]); a small drawn pattern
+# (tiles, slates) takes less grain than a plain wall, or it glitters
 MATERIALS = {
-    "NEOCLASSICAL": {"wall": ("plaster", 2.0, "wall")},
+    "NEOCLASSICAL": {"wall": ("ashlar", 2.5, "wall"), "roof": ("stone_rough", 1.5, "roof", 0.03),
+                     "plinth": ("stone_rough", 2.0, "plinth"), "stone": ("stone_rough", 2.0, "stone")},
+    "COLONIAL": {"wall": ("plaster", 2.0, "plaster"), "roof": ("clay", 1.5, "tile", 0.025),
+                 "plinth": ("stone_rough", 2.0, "plinth"), "timber": ("timber", 1.0, "timber")},
 }
 
 _cache = {}
 
 
 def plan(style):
-    """The roles of a style that have a swatch: {role: (swatch, tile_m, colour key)}."""
-    return MATERIALS.get(style, {})
+    """The roles of a style that have a swatch: {role: (swatch, tile_m, colour key, contrast)}."""
+    return {role: tuple(e) + (TARGET_CONTRAST,) * (4 - len(e)) for role, e in MATERIALS.get(style, {}).items()}
 
 
 def load(name, folder=None):

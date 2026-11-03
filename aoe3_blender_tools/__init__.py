@@ -53,7 +53,7 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     arcade: EnumProperty(name="Portal", items=[("NONE", "None", ""),
                                                ("FRONT", "Front", "An arcade along the front under a lean-to roof")],
                          default="NONE")
-    arcade_posts: EnumProperty(name="Portal posts", items=[("WOOD", "Wood", "Posts and a beam"),
+    arcade_posts: EnumProperty(name="Posts", items=[("WOOD", "Wood", "Posts and a beam"),
                                                            ("MASONRY", "Masonry", "Piers and arches")],
                                default="WOOD")
     arcade_depth: FloatProperty(name="Portal depth", default=2.4, min=1.6, max=3.5, unit="LENGTH")
