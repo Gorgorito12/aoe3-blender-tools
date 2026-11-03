@@ -26,7 +26,7 @@ BLOCK = 8                      # faces per hash in the face list
 
 # Triangles per preset as the generator makes them (the README's numbers).
 TRIANGLES = {"MANSION": 92, "WHITE_HOUSE": 355, "COURTHOUSE": 373, "CAPITOL": 413,
-             "WHITE_HOUSE_MEDIUM": 1235, "WHITE_HOUSE_1914": 3035}
+             "WHITE_HOUSE_MEDIUM": 1235, "WHITE_HOUSE_1914": 3035, "WHITE_HOUSE_1914_PC": 3035}
 
 
 def cases():
@@ -34,6 +34,9 @@ def cases():
     out = dict(building.PRESETS)
     out["WHITE_HOUSE_MEDIUM"] = dataclasses.replace(building.PRESETS["WHITE_HOUSE"],
                                                     detail="MEDIUM", name="WhiteHouseMedium")
+    # the player-colour mask (string courses and shutters) and its grey under the mask
+    out["WHITE_HOUSE_1914_PC"] = dataclasses.replace(building.PRESETS["WHITE_HOUSE_1914"],
+                                                     player_colour=True)
     return out
 
 
@@ -52,6 +55,7 @@ def _h(text):
 
 
 def fingerprint(model):
+    rgba = paint.paint_rgba(model)
     faces = [_face(f) for f in model.faces]
     blocks = [_h("\n".join(faces[i:i + BLOCK])) for i in range(0, len(faces), BLOCK)]
     regions = [f"{r.name},{r.x},{r.y},{r.w},{r.h},{_f(r.world_w)},{_f(r.world_h)}"
@@ -59,7 +63,8 @@ def fingerprint(model):
     attach = {k: [_f(c) for c in v] for k, v in sorted(model.attach.items())}
     return {"faces": len(faces), "face_blocks": blocks,
             "density": _f(model.atlas.density), "regions": regions,
-            "texture": _h(paint.paint(model).tobytes()),
+            "texture": _h(rgba[:, :, :3].tobytes()), "alpha": _h(rgba[:, :, 3].tobytes()),
+            "damaged": _h(paint.damaged(model, rgba).tobytes()),
             "attach": attach, "dims": _h(repr(model.dims)), "facades": _h(repr(model.facades))}
 
 
@@ -95,7 +100,7 @@ class Golden(unittest.TestCase):
                 for a, b in zip(got["regions"], want["regions"]):
                     self.assertEqual(a, b, f"{key}: atlas region")
                 self.assertEqual(len(got["regions"]), len(want["regions"]), f"{key}: region count")
-                for part in ("attach", "dims", "facades", "texture"):
+                for part in ("attach", "dims", "facades", "texture", "alpha", "damaged"):
                     self.assertEqual(got[part], want[part], f"{key}: {part}")
 
     def test_triangle_baselines(self):
