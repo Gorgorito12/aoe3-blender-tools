@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "aoe3_blender_tools"
-version = "0.1.0"
+version = "0.2.0"
 name = "AoE3 Blender Tools"
 tagline = "Low-poly building generator and checks for AoE3 mods"
 maintainer = "Gorgorito12"

@@ -10,15 +10,15 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
 
 | Aspect | Rule |
 |---|---|
-| Triangles | A few thousand at most for a large building (to verify against stock models). The generator makes 92 to 413. Many buildings on screen add up: render time is more than half of a late-game frame. |
-| Vertices per mesh | Below 65,535 once split by UV and normals: Direct3D 9 meshes usually use 16-bit indices (engine limit). |
-| Texture | One power-of-two texture (512 or 1024), one UV set, diffuse colour only, converted to `.ddt`. |
+| Triangles | **Measured** on 621 buildings of the target mod: median 1,016, 90th percentile 2,420. For an 8 x 8 unit footprint (205 buildings): median 1,102, 90th percentile 2,221. The check uses the profile's numbers for the building's footprint class. The generator makes 92 to 3,035. |
+| Vertices per mesh | **Measured**: most models use 16-bit indices (497 of 621); 124 use 32-bit ones, so more than 65,535 vertices works. The writer picks 16-bit when it can. |
+| Texture | One texture, one UV set. **Measured**: the mod's building textures are mostly 256 x 256 or 512 x 512 DXT3; uncompressed BGRA is also common. The writer makes BGRA with mip levels. V counts from the top row (see game-formats.md). |
 | Lighting | Nothing baked in the texture: the game lights and shadows the model itself. |
 | Materials | One, or very few: each one is another draw call. |
 | Origin | The centre of the footprint, with the base at ground level. Otherwise the building sinks, floats or turns around the wrong point. |
-| Scale and facing | As the stock buildings (to verify). The footprint has to match the obstruction in the unit's proto. |
+| Scale and facing | **Measured**: the stock buildings declare 0.615157485 units per metre (one game unit is about 1.63 m); the game's distances are in those units. The obstruction radius is about 0.91 of the model's half side (8 x 8 class). Facing: the writer keeps Blender's front (-Y) as the front, as the stock models' front in the editor preview (**in game**). |
 | Extras | No ground, grass or fence under the building: the game draws its own ground patch. Flags, smoke and fire are separate models on attach points, not part of the mesh. |
-| Construction, damage, destruction | Copy them from a stock building's anim XML (to verify how they are built). |
+| Construction, damage, destruction | **Measured**: construction stages reuse the stock models `buildings\constructions\<NxN>_stage1..3`, chosen by `BuildingCompletion` in the anim file; destruction leaves the proto's `DeadReplacement` rubble. Details in [game-formats.md](game-formats.md). |
 
 ## Pitfalls
 
@@ -62,9 +62,13 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
 
 ## To verify in the game
 
-1. The scale of 1 unit, against a stock building imported with a `.gr2` importer.
-2. Which way stock buildings face.
-3. The attach point names that the anim XML expects (the flag first).
-4. How construction stages, damage states and destruction are set up in a stock anim XML.
-5. The `.ddt` format and whether building textures use the alpha channel for player colour.
-6. Triangle and texture budgets of stock buildings of each size.
+Measured since 0.1 (see [game-formats.md](game-formats.md)): the scale of one unit, the attach
+point names (`bone_flag_civ`, `bone_chimney`), how construction and destruction are set up, the
+`.ddt` format and the alpha channel, the budgets per footprint class, and that the game loads a
+generated model and draws it in the world at the right size and lighting, with the civilization
+flag on `bone_flag_civ`. Still to see in game ([game-test.md](game-test.md)):
+
+1. The obstruction ring next to a placed stock house.
+2. The construction stages and the rubble.
+3. The player colour (texture alpha below 255 with the `pixelxform` shader).
+4. Why 27 of the mod's models declare 1,000 units per metre yet measure about 0.5 m.

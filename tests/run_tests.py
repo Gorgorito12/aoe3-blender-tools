@@ -185,13 +185,60 @@ def atlas_and_texture_sizes():
                 model.atlas.uv(f.region, u, v)
 
 
+@test
+def game_export_writes_the_bundle():
+    import json
+    import xml.etree.ElementTree as ET
+    from aoe3_blender_tools.aoe3game import ddt, gr2
+    s = bpy.context.scene.aoe3_building
+    s.preset = "MANSION"
+    assert bpy.ops.aoe3.load_preset() == {"FINISHED"}
+    assert bpy.ops.aoe3.generate_building() == {"FINISHED"}
+    obj = bpy.context.view_layer.objects.active
+    tris, _ = blender_io.triangle_count(obj)
+    with tempfile.TemporaryDirectory() as tmp:
+        s.game_dir, s.game_prefix, s.use_profile = tmp, "mod", False
+        assert bpy.ops.aoe3.export_game() == {"FINISHED"}
+        with open(os.path.join(tmp, "bundle.json"), encoding="utf-8") as f:
+            desc = json.load(f)
+        low = obj.name.lower()
+        base = os.path.join(tmp, "art", "mod", "buildings", low, low)
+        st = gr2.load(base + ".gr2").stats()
+        assert st["tris"] == tris, (st["tris"], tris)
+        names = [b["name"] for b in st["bones"]]
+        assert names[:2] == ["bone_main", obj.name], names
+        with open(base + ".ddt", "rb") as f:
+            h = ddt.read_header(f.read())
+        assert (h.width, h.height) == (int(s.texture_size), int(s.texture_size))
+        root = ET.parse(base + ".xml").getroot()
+        assert root.tag == "animfile"
+        assert desc["unit"]["AnimFile"] == "\\".join(["mod", "buildings", low, low + ".xml"]), desc["unit"]
+        assert float(desc["unit"]["ObstructionRadiusX"]) > 0
+
+
+@test
+def check_uses_profile_budget():
+    from aoe3_blender_tools.core import profile
+    prof = profile.Profile({"classes": {"8x8": {
+        "count": 5, "tris": {"min": 50, "median": 100, "p90": 200, "max": 300},
+        "obstruction_over_half_side": {"median": 0.85}}}})
+    s = bpy.context.scene.aoe3_building
+    s.preset = "WHITE_HOUSE"
+    assert bpy.ops.aoe3.load_preset() == {"FINISHED"}
+    assert bpy.ops.aoe3.generate_building() == {"FINISHED"}
+    obj = bpy.context.view_layer.objects.active
+    res = validate.check(obj, profile=prof)
+    assert any(lv == validate.ERROR and "class 8x8" in m for lv, m in res), res
+    assert not any("class 8x8" in m for lv, m in validate.check(obj) if lv != validate.INFO)
+
+
 def main():
     addon.register()
     try:
         for t in (presets_generate_and_pass_checks, parameter_sweep_has_no_overlaps_or_errors,
                   medium_detail_presets_pass_checks, wall_triangulation_covers_the_wall_exactly,
                   regenerating_replaces_the_object, export_and_reimport, checks_catch_known_problems,
-                  atlas_and_texture_sizes):
+                  atlas_and_texture_sizes, game_export_writes_the_bundle, check_uses_profile_budget):
             t()
     finally:
         addon.unregister()

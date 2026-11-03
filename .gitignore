@@ -7,3 +7,5 @@ venv/
 bvenv/
 aoe3_export/
 survey/
+out/
+*.aoe3bt-orig

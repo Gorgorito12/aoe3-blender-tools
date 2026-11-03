@@ -174,3 +174,73 @@ def export(obj, folder, glb=True, fbx=True, obj_file=True):
         fh.write(stats + "\n")
     written.append(base + "_stats.txt")
     return written
+
+
+# --------------------------------------------------------------------------------------------------
+# Game export: what the game format writers (`aoe3game`) need from an object
+
+# Attach empties of the generator, by the bone name the game's building files use.
+ATTACH_BONES = {"flag_attach": "bone_flag_civ", "chimney_attach": "bone_chimney"}
+
+
+def game_mesh(obj):
+    """(positions, normals, uvs, triangles) of the evaluated, triangulated mesh in object space
+    (metres). A vertex is split wherever its UV or its normal differs between corners, so flat
+    faces keep flat shading."""
+    deps = bpy.context.evaluated_depsgraph_get()
+    ev = obj.evaluated_get(deps)
+    m = ev.to_mesh()
+    try:
+        m.calc_loop_triangles()
+        if not m.uv_layers:
+            raise ValueError(f"{obj.name} has no UV map")
+        uv_data = m.uv_layers.active.data
+        if hasattr(m, "corner_normals"):
+            corner_normals = [tuple(cn.vector) for cn in m.corner_normals]
+        else:                                       # Blender before 4.1
+            m.calc_normals_split()
+            corner_normals = [tuple(lp.normal) for lp in m.loops]
+        positions, normals, uvs, triangles, index = [], [], [], [], {}
+        for tri in m.loop_triangles:
+            corners = []
+            for li in tri.loops:
+                vi = m.loops[li].vertex_index
+                uv = tuple(uv_data[li].uv)
+                n = corner_normals[li]
+                key = (vi, round(uv[0], 6), round(uv[1], 6),
+                       round(n[0], 4), round(n[1], 4), round(n[2], 4))
+                k = index.get(key)
+                if k is None:
+                    k = index[key] = len(positions)
+                    positions.append(tuple(m.vertices[vi].co))
+                    normals.append(n)
+                    uvs.append(uv)
+                corners.append(k)
+            triangles.append(tuple(corners))
+        return positions, normals, uvs, triangles
+    finally:
+        ev.to_mesh_clear()
+
+
+def game_bones(obj):
+    """(bone name, (x, y, z)) for each attach empty parented to the object, in object space."""
+    inv = obj.matrix_world.inverted()
+    out = []
+    for child in obj.children:
+        if child.type != "EMPTY":
+            continue
+        name = ATTACH_BONES.get(child.name.split(".")[0], child.name)
+        out.append((name, tuple((inv @ child.matrix_world).translation)))
+    return out
+
+
+def texture_rgba(obj):
+    """The object's image as an H x W x 4 uint8 array, top row first."""
+    img = _object_image(obj)
+    if img is None:
+        raise ValueError(f"{obj.name} has no image texture")
+    w, h = img.size
+    px = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(px)
+    arr = (np.clip(px.reshape(h, w, 4), 0, 1) * 255 + 0.5).astype(np.uint8)
+    return arr[::-1].copy()                    # Blender rows go bottom-up

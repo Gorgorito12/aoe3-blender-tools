@@ -5,7 +5,7 @@ Empires III mods. Panel: 3D Viewport > Sidebar (N) > AoE3."""
 bl_info = {      # read only by Blender versions without extensions; 4.2+ reads blender_manifest.toml
     "name": "AoE3 Blender Tools",
     "author": "Gorgorito12",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (3, 6, 0),
     "location": "3D Viewport > Sidebar > AoE3",
     "description": "Low-poly building generator, game-ready checks and exports for Age of Empires III mods",
@@ -16,7 +16,9 @@ import bpy  # noqa: E402
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,  # noqa: E402
                        FloatVectorProperty, IntProperty, PointerProperty, StringProperty)
 
+from .aoe3game import bundle  # noqa: E402
 from .core import blender_io, building, paint, validate  # noqa: E402
+from .core import profile as calibration  # noqa: E402
 
 COLOR_KEYS = ("wall", "trim", "roof", "glass", "door", "brick", "lead", "stone", "plinth")
 PRESET_ITEMS = [(k, k.replace("_", " ").title(), "") for k in building.PRESETS]
@@ -74,6 +76,20 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     seed: IntProperty(name="Seed", default=1870)
     show_colors: BoolProperty(name="Colours", default=False)
     tri_budget: IntProperty(name="Triangle budget", default=6000, min=100)
+    use_profile: BoolProperty(name="Measured budget", default=True,
+                              description="Use the budget measured for buildings of the same footprint "
+                                          "(calibration profile), when one is installed")
+    game_dir: StringProperty(name="Folder", subtype="DIR_PATH", default="//aoe3_game")
+    game_prefix: StringProperty(name="Mod folder", default="mod",
+                                description="The mod's own folder under art (the model goes to "
+                                            "art/<mod folder>/buildings/<name>/)")
+    game_display: StringProperty(name="Name in game", default="",
+                                 description="The name players see (empty: the object's name)")
+    game_template: StringProperty(name="Proto template", default="House",
+                                  description="The unit whose proto entry the new building copies")
+    game_player_colour: BoolProperty(name="Player colour", default=False,
+                                     description="Use the player-colour shader (texture alpha below 255 "
+                                                 "shows the player's colour)")
     export_dir: StringProperty(name="Folder", subtype="DIR_PATH", default="//aoe3_export")
     export_glb: BoolProperty(name="GLB", default=True)
     export_fbx: BoolProperty(name="FBX", default=True)
@@ -159,7 +175,8 @@ class AOE3_OT_check_building(bpy.types.Operator):
 
     def execute(self, context):
         s = context.scene.aoe3_building
-        res = validate.check(context.active_object, s.tri_budget)
+        prof = calibration.load() if s.use_profile else None
+        res = validate.check(context.active_object, s.tri_budget, prof)
         s.results.clear()
         for level, msg in res:
             item = s.results.add()
@@ -185,6 +202,42 @@ class AOE3_OT_export_building(bpy.types.Operator):
         folder = bpy.path.abspath(s.export_dir)
         paths = blender_io.export(context.active_object, folder, s.export_glb, s.export_fbx, s.export_obj)
         self.report({"INFO"}, f"Exported {len(paths)} files to {folder}")
+        return {"FINISHED"}
+
+
+class AOE3_OT_export_game(bpy.types.Operator):
+    bl_idname = "aoe3.export_game"
+    bl_label = "Export for the Game"
+    bl_description = ("Write the active building in the game's formats: model (.gr2), texture (.ddt), "
+                      "anim file and the proto fields and strings (bundle.json), for tools/game_deploy.py")
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.type == "MESH"
+
+    def execute(self, context):
+        s = context.scene.aoe3_building
+        obj = context.active_object
+        if "aoe3_footprint" in obj:
+            footprint = tuple(obj["aoe3_footprint"])[:2]
+        else:
+            footprint = (obj.dimensions.x, obj.dimensions.y)
+        try:
+            positions, normals, uvs, tris = blender_io.game_mesh(obj)
+            desc = bundle.write(
+                bpy.path.abspath(s.game_dir), name=obj.name, prefix=s.game_prefix or "mod",
+                positions=positions, normals=normals, uvs=uvs, triangles=tris,
+                texture_rgba=blender_io.texture_rgba(obj), bones=blender_io.game_bones(obj),
+                footprint_m=footprint, display_name=s.game_display or None,
+                template=s.game_template or "House", player_colour=s.game_player_colour,
+                profile=calibration.load() if s.use_profile else None)
+        except (ValueError, OSError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        size = desc["size"]
+        self.report({"INFO"}, f"{obj.name}: {len(tris)} triangles; obstruction {size['radius'][0]} x "
+                              f"{size['radius'][1]}, stages {size['stages']}; {len(desc['files'])} files")
         return {"FINISHED"}
 
 
@@ -256,6 +309,7 @@ class AOE3_PT_check_export(bpy.types.Panel):
         row = lay.row(align=True)
         row.prop(s, "tri_budget")
         row.operator("aoe3.check_building", icon="CHECKMARK")
+        lay.prop(s, "use_profile")
         icons = {"ERROR": "CANCEL", "WARNING": "ERROR", "INFO": "INFO"}
         for r in s.results:
             lay.label(text=r.message, icon=icons.get(r.level, "DOT"))
@@ -268,8 +322,26 @@ class AOE3_PT_check_export(bpy.types.Panel):
         lay.operator("aoe3.export_building", icon="EXPORT")
 
 
+class AOE3_PT_game_export(bpy.types.Panel):
+    bl_label = "Game Export"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "AoE3"
+
+    def draw(self, context):
+        s = context.scene.aoe3_building
+        lay = self.layout
+        lay.prop(s, "game_dir")
+        lay.prop(s, "game_prefix")
+        lay.prop(s, "game_display")
+        lay.prop(s, "game_template")
+        lay.prop(s, "game_player_colour")
+        lay.operator("aoe3.export_game", icon="EXPORT")
+
+
 CLASSES = (AOE3_PG_result, AOE3_PG_building, AOE3_OT_load_preset, AOE3_OT_generate_building,
-           AOE3_OT_check_building, AOE3_OT_export_building, AOE3_PT_building, AOE3_PT_check_export)
+           AOE3_OT_check_building, AOE3_OT_export_building, AOE3_OT_export_game, AOE3_PT_building,
+           AOE3_PT_check_export, AOE3_PT_game_export)
 
 
 def register():

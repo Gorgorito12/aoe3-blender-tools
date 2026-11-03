@@ -1,0 +1,110 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Anim files (the art XML a proto names in <AnimFile>) for a building.
+
+Layout taken from the game's own building files: construction stages reuse the stock stage
+models of the footprint class, the finished building is its own submodel with a ground decal,
+and the root component picks the submodel by build progress (BuildingCompletion, inside a
+Variation logic). Paths are relative to the art folder, with backslashes; model and texture
+paths have no extension; particle files keep theirs. Never writes a compiled .xmb.
+"""
+from xml.sax.saxutils import escape
+
+STAGE_DECAL = r"buildings\constructions\2x2_construction_decal"
+GROUND_DECAL = r"buildings\market\market_ground_generic"
+SELECTION = r"shadows_selections\selection_square_{0}x{0}"
+FLAT_BUMP = r"shadows_selections\flat_normal_black_spec"
+CHIMNEY_SMOKE = r"effects\smoke\white_smoke_a.particle"
+STAGE_CLASSES = ("2x2", "3x3", "4x4", "5x5", "6x6")
+
+
+def art_path(path):
+    """Backslashes, no leading art folder, no model or texture extension."""
+    p = path.replace("/", "\\").lstrip("\\")
+    if p.lower().startswith("art\\"):
+        p = p[4:]
+    for ext in (".gr2", ".ddt", ".tga", ".png"):
+        if p.lower().endswith(ext):
+            p = p[:-len(ext)]
+    return p
+
+
+def stage_class(width, depth):
+    """The stock construction stage set closest to a footprint in game units (the side of the
+    obstruction square: 2 x ObstructionRadius)."""
+    side = max(width, depth)
+    best = min(STAGE_CLASSES, key=lambda c: abs(int(c[0]) * 2 - side))
+    return best
+
+
+def _decal(tab, texture, width, height, selection=64):
+    return (f"{tab}<decal>\n"
+            f"{tab}\t<effecttype>bump</effecttype>\n"
+            f"{tab}\t<texture>{escape(texture)}</texture>\n"
+            f"{tab}\t<selectedtexture>{SELECTION.format(selection)}</selectedtexture>\n"
+            f"{tab}\t<bumptexture>{FLAT_BUMP}</bumptexture>\n"
+            f"{tab}\t<width>{width:.2f}</width>\n"
+            f"{tab}\t<height>{height:.2f}</height>\n"
+            f"{tab}</decal>\n")
+
+
+def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUND_DECAL,
+             bones=("bone_flag_civ",), chimney_bone=None):
+    """The text of a building's anim file.
+
+    name: the building's name (submodel and component names).
+    model: the finished model, as an art path (e.g. "Mod\\buildings\\x\\x").
+    decal: (width, height) of the ground decal in game units.
+    stages: the stock construction stage set ("2x2" ... "6x6").
+    bones: bones the model carries that the game uses (the civilization flag).
+    chimney_bone: a bone of the model to put chimney smoke on, or None.
+    """
+    model = art_path(model)
+    sw, sh = stage_decal or decal
+    sel = 128 if max(decal) > 10 else 64
+    out = ['<?xml version="1.0" encoding="utf-8"?>\n', "<animfile>\n"]
+    for b in list(bones) + ([chimney_bone] if chimney_bone else []):
+        out.append(f"\t<definebone>{escape(b)}</definebone>\n")
+    refs = []
+    for k in (1, 2, 3):
+        sub = f"sub_construction_stage_{k:02d}"
+        comp = f"construction_stage_{k:02d}"
+        refs.append(sub)
+        out.append(f"\t<submodel>\n\t\t{sub}\n")
+        out.append(f"\t\t<component>\n\t\t\t{comp}\n")
+        out.append("\t\t\t<assetreference type=\"GrannyModel\">\n")
+        out.append(f"\t\t\t\t<file>buildings\\constructions\\{stages}_stage{k}</file>\n")
+        out.append("\t\t\t</assetreference>\n")
+        out.append(_decal("\t\t\t", STAGE_DECAL, sw, sh, sel))
+        out.append("\t\t</component>\n")
+        out.append(f"\t\t<anim>\n\t\t\tIdle\n\t\t\t<component>{comp}</component>\n\t\t</anim>\n")
+        out.append("\t</submodel>\n")
+    main = f"{name}_main"
+    out.append(f"\t<submodel>\n\t\t{escape(name)}\n")
+    if chimney_bone:
+        out.append("\t\t<attachment>\n\t\t\tchimney smoke\n\t\t\t<component>\n\t\t\t\tsmoke\n")
+        out.append("\t\t\t\t<assetreference type=\"ParticleSystem\">\n")
+        out.append(f"\t\t\t\t\t<file>{CHIMNEY_SMOKE}</file>\n")
+        out.append("\t\t\t\t</assetreference>\n\t\t\t</component>\n")
+        out.append("\t\t\t<anim>\n\t\t\t\tIdle\n\t\t\t\t<component>smoke</component>\n")
+        out.append("\t\t\t</anim>\n\t\t</attachment>\n")
+    out.append(f"\t\t<component>\n\t\t\t{escape(main)}\n")
+    out.append("\t\t\t<assetreference type=\"GrannyModel\">\n")
+    out.append(f"\t\t\t\t<file>{escape(model)}</file>\n")
+    out.append("\t\t\t</assetreference>\n")
+    out.append(_decal("\t\t\t", ground, decal[0], decal[1], sel))
+    if chimney_bone:
+        out.append(f"\t\t\t<attach a=\"chimney smoke\" frombone=\"{escape(chimney_bone)}\" "
+                   f"tobone=\"{escape(chimney_bone)}\" syncanims=\"0\"/>\n")
+    out.append("\t\t</component>\n")
+    out.append(f"\t\t<anim>\n\t\t\tIdle\n\t\t\t<component>{escape(main)}</component>\n"
+               "\t\t</anim>\n")
+    out.append("\t</submodel>\n")
+    out.append(f"\t<component>\n\t\t{escape(name)}\n")
+    out.append("\t\t<logic type=\"Variation\">\n\t\t\t<none>\n")
+    out.append("\t\t\t\t<logic type=\"BuildingCompletion\">\n")
+    for pct, ref in zip((0, 33, 66, 100), refs + [name]):
+        out.append(f"\t\t\t\t\t<p{pct}>\n\t\t\t\t\t\t<submodelref ref=\"{escape(ref)}\"/>\n"
+                   f"\t\t\t\t\t</p{pct}>\n")
+    out.append("\t\t\t\t</logic>\n\t\t\t</none>\n\t\t</logic>\n\t</component>\n")
+    out.append("</animfile>\n")
+    return "".join(out)
