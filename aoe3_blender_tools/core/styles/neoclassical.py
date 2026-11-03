@@ -5,8 +5,11 @@ golden (tests/test_golden.py): keep the order of regions and faces as it is."""
 import math
 from dataclasses import replace
 
+import numpy as np
+
 from ..atlas import Region
 from ..kit import Builder, Face
+from ..painter import PLAYER_GREY, _shade
 
 NAME = "NEOCLASSICAL"
 STOREY_H = 3.1          # one storey of wall
@@ -452,3 +455,228 @@ def build(p, params):
                 notes.append(f"{label} {want:g} -> {got:g}: the bow and its colonnade must fit the back.")
     return b.finish(p, facades, {"wall_h": wall_h, "storeys": p.storeys, "ped_half": ped_half},
                     notes)
+
+
+# --------------------------------------------------------------------------------------------------
+# Texture
+
+def opening_tops(spec, p):
+    """The top of each storey's openings on a facade (metres up the wall), where the damaged
+    texture puts its soot."""
+    return [s * STOREY_H + (2.7 if s == 0 else 2.2) for s in range(spec.get("storeys", p.storeys))]
+
+
+def paint(pr, model):
+    """Draws the neoclassical texture with the Painter `pr`: ashlar facades with quoins, string
+    courses, windows with caps and the door, the pediment, slate, plinth, trim, stone, columns,
+    brick, the cupola, reveals, balustrade and lead. Same order as ever (the golden record)."""
+    p = model.params
+    C = pr.C
+    WALL, WHITE, GLASS, WOOD = C["wall"], C["trim"], C["glass"], C["door"]
+    WALL_LINE = _shade(WALL, 0.92)
+    BAND = _shade(WALL, 1.035)
+    SHADOW = _shade(WHITE, 0.7)
+    GLASS_HI = tuple(min(255, int(v * 1.6)) for v in GLASS)
+
+    # --- facades -----------------------------------------------------------------------------------
+    SHUT = PLAYER_GREY if pr.pc else (46, 72, 52)
+
+    def shutters(region, uc, v0, h, w, room):
+        sw = min(0.42, room)
+        if sw < 0.12:
+            return
+        for a in (uc - w / 2 - 0.12 - sw, uc + w / 2 + 0.12):
+            pr.rect(region, a, v0 - 0.04, a + sw, v0 + h + 0.04, SHUT, _shade(SHUT, 0.7))
+            pr.mark(region, a, v0 - 0.04, a + sw, v0 + h + 0.04)
+            vv = v0 + 0.12
+            while vv < v0 + h - 0.05:
+                pr.hline(region, vv, a + 0.04, a + sw - 0.04, _shade(SHUT, 0.75))
+                vv += 0.14
+
+    def window(region, uc, v0, h, w=1.0, cap="flat"):
+        pr.rect(region, uc - w / 2 - 0.12, v0 - 0.08, uc + w / 2 + 0.12, v0 + h + 0.1, WHITE, SHADOW)
+        pr.rect(region, uc - w / 2 - 0.2, v0 - 0.16, uc + w / 2 + 0.2, v0 - 0.04, WHITE, SHADOW)
+        pr.rect(region, uc - w / 2, v0, uc + w / 2, v0 + h, GLASS)
+        pr.rect(region, uc - w / 2, v0 + h * 0.62, uc + w / 2, v0 + h, GLASS_HI)
+        pr.vline(region, uc, v0, v0 + h, WHITE, pr.lw)
+        for k in (1, 2):
+            pr.hline(region, v0 + h * k / 3, uc - w / 2, uc + w / 2, WHITE, pr.lw)
+        top = v0 + h + 0.1
+        if cap == "pediment":
+            pr.cv.triangle([pr.P(region, uc - w / 2 - 0.3, top), pr.P(region, uc + w / 2 + 0.3, top),
+                            pr.P(region, uc, top + 0.45)], WHITE)
+            pr.hline(region, top, uc - w / 2 - 0.3, uc + w / 2 + 0.3, SHADOW)
+        elif cap == "segment":           # a shallow arch
+            cx_, cy_ = pr.P(region, uc, top)
+            pr.cv.ellipse(cx_, cy_, (w / 2 + 0.3) * pr.px_per_m, 0.32 * pr.px_per_m, WHITE, upper_half=True)
+            pr.hline(region, top, uc - w / 2 - 0.3, uc + w / 2 + 0.3, SHADOW)
+        else:
+            pr.rect(region, uc - w / 2 - 0.25, top, uc + w / 2 + 0.25, top + 0.16, WHITE, SHADOW)
+
+    def door(region, uc):
+        w, h = 1.4, 2.6
+        pr.rect(region, uc - w / 2 - 0.18, 0, uc + w / 2 + 0.18, h + 0.15, WHITE, SHADOW)
+        pr.rect(region, uc - w / 2, 0, uc + w / 2, h - 0.55, WOOD)
+        pr.vline(region, uc, 0, h - 0.55, _shade(WOOD, 0.65), pr.lw)
+        for k in (0.35, 1.15):
+            pr.rect(region, uc - w / 2 + 0.12, k, uc - 0.08, k + 0.6, None, _shade(WOOD, 1.3), 2)
+            pr.rect(region, uc + 0.08, k, uc + w / 2 - 0.12, k + 0.6, None, _shade(WOOD, 1.3), 2)
+        cx, cy = pr.P(region, uc, h - 0.55)
+        rx = w / 2 * pr.px_per_m
+        pr.cv.ellipse(cx, cy, rx + pr.lw, rx + pr.lw, WHITE, upper_half=True)
+        pr.cv.ellipse(cx, cy, rx, rx, GLASS_HI, upper_half=True)
+        pr.rect(region, uc - w / 2, h - 0.62, uc + w / 2, h - 0.55, WHITE)
+
+    def facade(region, spec):
+        r = pr.at[region]
+        sw, sh = r.world_w, r.world_h
+        pr.fill(region, WALL)
+        course, joint, n, v = 0.42, 1.15, 0, 0.42
+        while v < sh - 0.4:                                  # stone courses
+            pr.hline(region, v, 0, sw, WALL_LINE)
+            u = (n % 2) * joint / 2
+            while u < sw:
+                pr.vline(region, u, v - course, v, WALL_LINE)
+                u += joint
+            v += course
+            n += 1
+        storeys = spec.get("storeys", p.storeys)
+        for side in (0, 1) if spec.get("quoins", True) else ():      # quoins
+            v, k = 0.0, 0
+            while v < sh - 0.4:
+                w = 0.45 if k % 2 == 0 else 0.3
+                a, b = (0, w) if side == 0 else (sw - w, sw)
+                pr.rect(region, a, v, b, v + 0.42, _shade(WALL, 1.025), WALL_LINE)
+                v += 0.42
+                k += 1
+        for s in range(1, storeys):                          # string courses, frieze
+            vs = s * STOREY_H
+            pr.rect(region, 0, vs - 0.05, sw, vs + 0.2, PLAYER_GREY if pr.pc else BAND, WALL_LINE)
+            pr.mark(region, 0, vs - 0.03, sw, vs + 0.18)
+        pr.rect(region, 0, sh - 0.4, sw, sh, BAND, WALL_LINE)
+        bays = spec["bays"]
+        gaps = [b - a for a, b in zip(bays, bays[1:])]
+        for i, uc in enumerate(bays):
+            near = min([g for g in gaps[max(0, i - 1):i + 1]] or [sw])
+            edge = min(uc, sw - uc)
+            room = min((near - 1.24) / 2 - 0.05, edge - 0.62 - 0.05) if spec.get("quoins", True) is False \
+                else min((near - 1.24) / 2 - 0.05, edge - 0.62 - 0.45)
+            for s in range(storeys):
+                base = s * STOREY_H
+                if s == 0:
+                    if spec["door"] is not None and abs(uc - spec["door"]) < 0.01:
+                        door(region, uc)
+                        continue
+                    cap = ("pediment" if i % 2 == 0 else "segment") if spec.get("alt_caps") else "pediment"
+                    v0, h = base + 0.8, 1.9
+                else:
+                    cap, v0, h = "flat", base + 0.55, 1.65
+                if spec.get("shutters"):
+                    shutters(region, uc, v0, h, 1.0, room)
+                window(region, uc, v0, h, cap=cap)
+
+    for region, spec in model.facades.items():
+        facade(region, spec)
+
+    # --- pediment ----------------------------------------------------------------------------------
+    if "pedi" in pr.at:
+        r = pr.at["pedi"]
+        pw, ph = r.world_w, r.world_h
+        pr.fill("pedi", WHITE)
+        pr.cv.line(*pr.P("pedi", 0, 0.05), *pr.P("pedi", pw, 0.05), SHADOW, 2 * pr.lw)
+        pr.cv.line(*pr.P("pedi", 0.05, 0.02), *pr.P("pedi", pw / 2, ph - 0.02), SHADOW, 2 * pr.lw)
+        pr.cv.line(*pr.P("pedi", pw - 0.05, 0.02), *pr.P("pedi", pw / 2, ph - 0.02), SHADOW, 2 * pr.lw)
+        if ph > 1.2:
+            cx, cy = pr.P("pedi", pw / 2, ph * 0.38)
+            rr = 0.32 * pr.px_per_m
+            pr.cv.ellipse(cx, cy, rr + pr.lw * 1.5, rr + pr.lw * 1.5, SHADOW)
+            pr.cv.ellipse(cx, cy, rr + pr.lw * 0.5, rr + pr.lw * 0.5, WHITE)
+            pr.cv.ellipse(cx, cy, rr, rr, GLASS)
+
+    # --- roof slate --------------------------------------------------------------------------------
+    ROOF = C["roof"]
+    pr.fill("roof", _shade(ROOF, 0.75))
+    r = pr.at["roof"]
+    row, v, k = 0.24, 0.0, 0
+    while v < r.world_h:
+        u = -(k % 2) * 0.15
+        while u < r.world_w:
+            t = int(pr.rng.integers(-9, 10))
+            tile = tuple(max(0, min(255, c + t)) for c in ROOF)
+            pr.rect("roof", max(u, 0), v, min(u + 0.3, r.world_w), min(v + row, r.world_h), tile, _shade(ROOF, 0.75))
+            u += 0.3
+        v += row
+        k += 1
+
+    # --- small materials ---------------------------------------------------------------------------
+    PL = C["plinth"]
+    pr.fill("plinth", PL)
+    rp = pr.at["plinth"]
+    for vv in (0.0, rp.world_h / 2):
+        pr.hline("plinth", vv, 0, rp.world_w, _shade(PL, 0.78), pr.lw)
+        u = (vv / max(rp.world_h / 2, 1e-6)) * 0.5
+        while u < rp.world_w:
+            pr.vline("plinth", u, vv, vv + rp.world_h / 2, _shade(PL, 0.78), pr.lw)
+            u += 1.0
+
+    rt = pr.at["trim"]
+    pr.fill("trim", WHITE)
+    pr.hline("trim", 0.02, 0, rt.world_w, SHADOW, pr.lw)
+    pr.hline("trim", 0.3, 0, rt.world_w, _shade(WHITE, 0.93), pr.lw)
+    u = 0.05
+    while u < rt.world_w - 0.1:
+        pr.rect("trim", u, 0.48, u + 0.1, 0.62, _shade(WHITE, 1.02), _shade(WHITE, 0.85))
+        u += 0.2
+    pr.hline("trim", 0.7, 0, rt.world_w, _shade(WHITE, 0.93), pr.lw)
+
+    ST = C["stone"]
+    pr.fill("stone", ST)
+    for i, vv in enumerate(np.arange(0, 4.0, 0.4)):
+        pr.hline("stone", vv, 0, 8, _shade(ST, 0.86))
+        for uu in np.arange((i % 2) * 0.4, 8, 0.8):
+            pr.vline("stone", uu, vv, vv + 0.4, _shade(ST, 0.86))
+
+    if "column" in pr.at:
+        rc = pr.at["column"]
+        pr.fill("column", _shade(WHITE, 0.995))
+        for i in range(20):
+            pr.vline("column", rc.world_w * (i + 0.5) / 20, 0, rc.world_h, _shade(WHITE, 0.92), pr.lw)
+
+    BR = C["brick"]
+    pr.fill("brick", (190, 180, 170))
+    for j, vv in enumerate(np.arange(0, 3.0, 0.09)):
+        off = (j % 2) * 0.12
+        for uu in np.arange(-off, 4.0, 0.25):
+            t = int(pr.rng.integers(-12, 12))
+            pr.rect("brick", max(uu + 0.01, 0), vv + 0.012, min(uu + 0.24, 4.0), min(vv + 0.08, 3.0),
+                 tuple(max(0, min(255, c + t)) for c in BR))
+
+    pr.fill("cupwin", WHITE)
+    pr.rect("cupwin", 0.2, 0.25, 0.6, 1.05, GLASS)
+    cx, cy = pr.P("cupwin", 0.4, 1.05)
+    pr.cv.ellipse(cx, cy, 0.2 * pr.px_per_m, 0.2 * pr.px_per_m, GLASS, upper_half=True)
+    pr.rect("cupwin", 0.0, 0.0, 0.8, 0.12, _shade(WHITE, 0.94))
+
+    pr.fill("white", WHITE)
+
+    if "reveal" in pr.at:                       # inside of the recessed openings: wall stone, darker
+        rr = pr.at["reveal"]
+        pr.fill("reveal", _shade(WALL, 0.86))
+        for vv in np.arange(0.42, rr.world_h, 0.42):
+            pr.hline("reveal", vv, 0, rr.world_w, _shade(WALL, 0.8))
+    if "balus" in pr.at:                        # balustrade: base and rail with turned balusters
+        rb = pr.at["balus"]
+        GAP = _shade(WHITE, 0.55)
+        pr.fill("balus", GAP)
+        pr.rect("balus", 0, 0, rb.world_w, 0.15, WHITE, SHADOW)
+        pr.rect("balus", 0, 0.6, rb.world_w, rb.world_h, WHITE, SHADOW)
+        u = 0.06
+        while u < rb.world_w - 0.12:
+            cxp, _ = pr.P("balus", u + 0.06, 0)
+            for (v0, v1, half) in ((0.15, 0.22, 0.05), (0.22, 0.42, 0.065), (0.42, 0.52, 0.04), (0.52, 0.6, 0.055)):
+                pr.rect("balus", u + 0.06 - half, v0, u + 0.06 + half, v1, WHITE)
+            u += 0.22
+    LE = C["lead"]
+    pr.fill("lead", LE)
+    for uu in np.arange(0, 7.0, 7.0 / 16):
+        pr.vline("lead", uu, 0, 2.5, _shade(LE, 0.83), pr.lw)

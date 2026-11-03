@@ -59,8 +59,10 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 - `aoe3_blender_tools/core/`: `atlas.py`, `canvas.py`, `building.py` (parameters, presets,
   dispatch to the style), `kit.py` (the `Builder`: regions, then `pack()`, then faces from the
   pieces: boxes, rings, walls with recessed openings, hipped roofs, arcs, chimneys; `Face`,
-  `Model`, the wall triangulation), `styles/` (one module per style: `NAME`, `clamp`, `build`;
-  `neoclassical.py` is the original generator), `pngio.py` (PNG reader) and `paint.py` are pure
+  `Model`, the wall triangulation), `styles/` (one module per style: `NAME`, `clamp`, `build`,
+  `opening_tops`, `paint(pr, model)`; `neoclassical.py` is the original generator), `painter.py`
+  (the `Painter`: canvas, mask, seeded generator, drawing in region metres; `base()` is the
+  material hook), `pngio.py` (PNG reader) and `paint.py` (dispatch, damaged texture) are pure
   Python; `blender_io.py` (object creation, export)
   and `validate.py` (checks) need Blender.
 - `aoe3_blender_tools/aoe3game/`: the game formats, pure Python, never importing `core` or bpy
