@@ -107,6 +107,23 @@ for two players beside a stock house: the right size, the flag on the ridge, shu
 each owner's colour (`examples/timberhouse/ingame_player_colour.jpg`). The swatches' grain
 showed no glitter in a still at the default zoom; to watch while the camera moves.
 
+Several buildings at once (2026-11-03): `tools/game_deploy.py` takes several `--bundle`; the
+four new presets went in together (ids 25000 to 25003, validators 0 errors;
+`examples/ingame_styles.jpg`). Units of the player seen through a building show as their
+silhouette in the player's colour: the game's own behaviour.
+
+Material grain while the camera moves (2026-11-03): the four presets with swatches, the camera
+panned by posted arrow keys (`pan.py` in the cache's scripts: key-down messages to the window, no
+real input) and recorded at 10 frames a second. Each pair of frames was aligned on its shift and
+compared: what is left on the buildings (median 7.6 grey levels, 90th percentile 10.1) is what is
+left on the game's own terrain (7.4, 10.1). The swatches do not glitter more than the stock
+textures.
+
+Low model detail (2026-11-03): not seen yet. The console command `setGraphicDetail(0)` closes the
+game (the log ends on it). The graphics options are not in the player profile; the game keeps
+them in the Windows registry, shared with the real install, so changing them waits for the
+user's word.
+
 Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds
 while the stock collapse dust rises, then the rubble takes its place.
 

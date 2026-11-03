@@ -25,7 +25,7 @@ the art a mod already has. It has two parts:
 
 The four presets at low detail have 92 to 413 triangles; the White House at medium detail has
 1,235. The colonial house has 362 triangles at medium detail, the trading house (a portal of
-arches, a balcony, a bell gable and a wing) 794; the timber house 426, the inn (three storeys,
+arches, a balcony, a bell gable and a wing) 646; the timber house 426, the inn (three storeys,
 two dormers, a sign) 725. Each has one 1024 × 1024 texture.
 
 **White House, 1914** (preset `WHITE_HOUSE_1914`, built from a reference picture): north and south
@@ -61,6 +61,11 @@ beside a stock house:
 The timber house with its material swatches, for two players (shutters and door):
 
 ![Timber house in game](examples/timberhouse/ingame_player_colour.jpg)
+
+The four new presets deployed together (colonial house, colonial trading house, timber house,
+timber inn):
+
+![The new styles in game](examples/ingame_styles.jpg)
 
 ## Why
 

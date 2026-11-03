@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Deploy a game bundle into a TEST COPY of the game, or take it out again.
 
-    python -I tools/game_deploy.py --install <copy> --bundle <folder> [--validate] [--show-as <Unit>]
-                                   [--builder <Unit>]
+    python -I tools/game_deploy.py --install <copy> --bundle <folder> [--bundle <folder> ...]
+                                   [--validate] [--show-as <Unit>] [--builder <Unit>]
     python -I tools/game_deploy.py --install <copy> --undo
     python -I tools/game_deploy.py --install <copy> --validate
 
+Several --bundle deploy those buildings together (each gets its own id and strings).
 Refuses any folder inside a Steam library. Backups are kept as <file>.aoe3bt-orig and the
 changes are listed in <copy>/aoe3bt-manifest.json, which --undo reads. --show-as TownCenter also
 points that unit's model, icon and portrait at the new building, so it stands at the start of
@@ -36,9 +37,10 @@ def main(argv):
     if "--undo" in argv:
         d.undo()
         print("undone")
-    if opt("--bundle"):
-        m = d.apply(opt("--bundle"), show_as=opt("--show-as"), builder=opt("--builder"))
-        print(f"deployed: unit {m.get('units')} id {m.get('unit_id')}, strings {m.get('strings')}")
+    bundles = [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--bundle"]
+    if bundles:
+        m = d.apply_many(bundles, show_as=opt("--show-as"), builder=opt("--builder"))
+        print(f"deployed: units {m.get('units')} ids {m.get('unit_ids')}, strings {m.get('strings')}")
     if "--validate" in argv:
         bad = 0
         for script, (code, errors, _lines) in d.validate(log=lambda s: None).items():

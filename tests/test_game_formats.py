@@ -271,6 +271,32 @@ class DeployTest(unittest.TestCase):
             d.undo(log=lambda s: None)
             self.assertEqual(self.digest(inst), before)
 
+    def test_apply_many_and_undo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inst, b = self.make_copy(tmp)
+            b2 = os.path.join(tmp, "bundle2")
+            os.makedirs(os.path.join(b2, "art", "mod", "buildings", "inn"))
+            with open(os.path.join(b2, "art", "mod", "buildings", "inn", "inn.gr2"), "wb") as f:
+                f.write(b"model2")
+            with open(os.path.join(b2, "bundle.json"), "w", encoding="utf-8") as f:
+                json.dump({"name": "Inn", "template": "House", "unit": {"AnimFile": "mod\\buildings\\inn\\inn.xml"},
+                           "strings": {"DisplayNameID": "Inn"}}, f)
+            before = self.digest(inst)
+            d = deploy.Deployment(inst)
+            m = d.apply_many([b, b2], log=lambda s: None)
+            self.assertEqual(m["units"], ["Tower", "Inn"])
+            self.assertEqual(len(set(m["unit_ids"])), 2)
+            self.assertEqual(len(set(m["strings"])), 3)
+            text, _ = proto.read_text(os.path.join(inst, "data", "protoy.xml"))
+            self.assertIn('name="Tower"', text)
+            self.assertIn('name="Inn"', text)
+            d.apply_many([b2], log=lambda s: None)         # again: replaces both
+            text, _ = proto.read_text(os.path.join(inst, "data", "protoy.xml"))
+            self.assertNotIn('name="Tower"', text)
+            self.assertEqual(text.count('name="Inn"'), 1)
+            d.undo(log=lambda s: None)
+            self.assertEqual(self.digest(inst), before)
+
     def test_show_as(self):
         with tempfile.TemporaryDirectory() as tmp:
             inst, b = self.make_copy(tmp)

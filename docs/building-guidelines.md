@@ -66,9 +66,14 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
 
 | Style | Presets (medium detail) | Footprint class | Storey | Roof | Player colour |
 |---|---|---|---|---|---|
-| Neoclassical | White House 1,235 tris; the others 92 to 413 at low detail | 6x4 (Mansion) to 18x18 (White House 1914) | 3.1 m | hipped, slate | string courses, shutters |
-| Timber framing | Timber House 426 (low 63), Timber Inn 725 (low 108) | 4x4 (house) | 2.7 m, ground floor of stone or brick 3.0 m | gable, plain tiles, pitch 0.7 to 1.6, dormers | shutters, door, sign |
-| Spanish colonial | Colonial House 362 (low 56), Colonial Trading House 794 (low 167) | 4x4 (house); 8x10 (trading house: the portal and the wing make it 17 m deep) | 2.9 m | gable or hipped, clay tiles, 0.45 m eave | shutters, door leaf |
+| Neoclassical | White House 1,235 tris; the others 92 to 413 at low detail | 6x6 (Mansion) to 16x16 (White House 1914) | 3.1 m | hipped, slate | string courses, shutters |
+| Timber framing | Timber House 426 (low 63), Timber Inn 725 (low 108) | 4x4 (house), 6x6 (inn) | 2.7 m, ground floor of stone or brick 3.0 m | gable, plain tiles, pitch 0.7 to 1.6, dormers | shutters, door, sign |
+| Spanish colonial | Colonial House 362 (low 56), Colonial Trading House 646 | 4x4 (house), 6x6 (trading house) | 2.9 m | gable or hipped, clay tiles, 0.45 m eave | shutters, door leaf |
+
+The footprint class is the measured class (10 buildings or more) whose median model side is
+closest to the building's longer side; a non-square class also needs a building-like obstruction
+ratio (0.8 or more). Matching the obstruction alone let a few long walls (class 6x8, ratio 0.57)
+attract every large building, and ties between 6x4 and 6x6 went to whichever came first.
 
 Measured class budgets (the survey): 4x4 median 571 triangles, 90th percentile 1,613; 6x6 median
 491, 90th percentile 1,024. Geometry against painting in the colonial style: walls, plinth,

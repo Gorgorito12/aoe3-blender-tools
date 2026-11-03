@@ -120,10 +120,10 @@ PRESETS.update({
         roof_pitch=0.45, bay_spacing=2.4, roof_type="GABLE", ridge="ALONG", balcony=True, rejas=True,
         chimneys=1, portico=False, cupola=False, detail="MEDIUM", colors=dict(COLONIAL_COLORS)),
     "COLONIAL_TRADING_HOUSE": BuildingParams(
-        name="ColonialTradingHouse", style="COLONIAL", width=12.0, depth=9.0, storeys=2, plinth=0.3,
+        name="ColonialTradingHouse", style="COLONIAL", width=11.0, depth=6.5, storeys=2, plinth=0.3,
         roof_pitch=0.42, bay_spacing=2.4, roof_type="GABLE", ridge="ALONG", arcade="FRONT",
-        arcade_posts="MASONRY", arcade_depth=2.6, balcony=True, bell_gable=True, plan="L",
-        wing_width=5.0, wing_depth=5.0, rejas=True, chimneys=2, portico=False, cupola=False,
+        arcade_posts="MASONRY", arcade_depth=2.0, balcony=True, bell_gable=True, plan="L",
+        wing_width=4.5, wing_depth=3.5, rejas=True, chimneys=2, portico=False, cupola=False,
         detail="MEDIUM", colors=dict(COLONIAL_COLORS)),
 })
 

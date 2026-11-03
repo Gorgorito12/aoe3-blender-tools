@@ -7,6 +7,7 @@ A profile groups the measured buildings by their obstruction footprint in game u
 declare 0.615157485 model units per metre, and obstructions and decals are in those units.
 """
 import json
+import math
 import os
 
 DEFAULT_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -14,6 +15,7 @@ DEFAULT_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 UNITS_PER_METER = 0.615157485
 FALLBACK = {"obstruction_over_half_side": 0.85, "decal_over_side": 1.25}
 MIN_CLASS_COUNT = 3
+SELECT_MIN = 10        # buildings a class needs to be chosen by its model size
 
 
 def load(path=None):
@@ -43,11 +45,26 @@ class Profile:
         return q["median"] if q else FALLBACK.get(key)
 
     def footprint_class(self, width_m, depth_m):
-        """The measured class whose obstruction side is closest to what a building of this
-        footprint (metres) would get."""
+        """The measured class for a building of this footprint (metres): among the classes
+        measured on SELECT_MIN buildings or more, the one whose median model side is closest
+        (in ratio) to this building's longer side. Without those measurements, the class whose
+        obstruction side is closest to what this footprint would get.
+
+        Matching the model's own size keeps a class with few, odd members from attracting every
+        large building; a non-square class also needs a building's obstruction ratio (0.8 or
+        more: long walls and gates have far less)."""
         if not self.classes:
             return None
         side = max(width_m, depth_m) * self.units_per_meter
+        def candidate(k, v):
+            a, b = k.split("x")
+            square = a == b
+            ratio = self._median(k, "obstruction_over_half_side") or 0
+            return (v.get("count", 0) >= SELECT_MIN and (v.get("side_units") or {}).get("median")
+                    and (square or ratio >= 0.8))
+        pool = [k for k, v in self.classes.items() if candidate(k, v)]
+        if pool and side > 0:
+            return min(pool, key=lambda k: abs(math.log(side / self.classes[k]["side_units"]["median"])))
 
         def obstruction_side(key):
             ratio = self._median(key, "obstruction_over_half_side")
