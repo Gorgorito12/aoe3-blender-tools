@@ -115,13 +115,17 @@ def paint(pr, model):
             if spec["door"] is not None:
                 door(region, spec["door"], spec["door_w"], spec["door_h"])
         else:
-            pr.base(region, ADOBE, role="wall")
-            smears(region, ADOBE, w, h, int(w * h * 4), 0.05)
-            for _ in range(int(w * 1.5)):                                       # rain runs from the top
-                u = float(rng.uniform(0, w))
-                pr.paint_on(region, u, h * float(rng.uniform(0.3, 0.7)), u + 0.05, h, _shade(ADOBE, 0.9))
-            pr.paint_on(region, 0, 0, w, 0.3, _shade(ADOBE, 0.8))
-            band(region, h - 0.32, h - 0.18, w)
+            earth = ADOBE if spec.get("sahel", True) else MUD
+            pr.base(region, earth, role="wall")
+            smears(region, earth, w, h, int(w * h * 4), 0.05)
+            if spec.get("sahel", True):
+                for _ in range(int(w * 1.5)):                                   # rain runs from the top
+                    u = float(rng.uniform(0, w))
+                    pr.paint_on(region, u, h * float(rng.uniform(0.3, 0.7)), u + 0.05, h, _shade(earth, 0.9))
+                band(region, h - 0.32, h - 0.18, w)
+            else:
+                band(region, 0.28, 0.42, w)
+            pr.paint_on(region, 0, 0, w, 0.3, _shade(earth, 0.8))
             for (u0, v0, u1, v1) in spec["openings"]:
                 if v0 == 0.0:
                     pr.rect(region, u0 - 0.1, 0, u1 + 0.1, v1 + 0.14, WOOD, _shade(WOOD, 0.7))
@@ -170,6 +174,10 @@ def paint(pr, model):
         rp = at["parapet"]
         pr.base("parapet", ADOBE, role="wall")
         smears("parapet", ADOBE, rp.world_w, rp.world_h, int(rp.world_w * rp.world_h * 4), 0.05)
+    if "trim" in at:
+        rt2 = at["trim"]
+        pr.base("trim", _shade(ADOBE, 0.95), role="wall")
+        smears("trim", _shade(ADOBE, 0.95), rt2.world_w, rt2.world_h, int(rt2.world_w * rt2.world_h * 4), 0.05)
     pr.base("wood", WOOD, role="timber")
     rw = at["wood"]
     for k in range(18):
@@ -216,3 +224,9 @@ def paint(pr, model):
             pr.rect("field", u, v, min(rfi.world_w, u + 0.06), min(rfi.world_h, v + 0.16), g)
     if "reveal" in at:
         pr.fill("reveal", _shade(ADOBE, 0.75))
+    if "crop" in at:
+        rc2 = at["crop"]
+        pr.fill("crop", (112, 128, 52))
+        pr.rect("crop", 0, rc2.world_h * 0.7, rc2.world_w, rc2.world_h, (176, 150, 70))      # the heads
+        for k in range(6):
+            pr.vline("crop", rc2.world_w * (k + 0.5) / 6, 0, rc2.world_h * 0.7, (88, 104, 40))

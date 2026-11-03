@@ -125,6 +125,11 @@ def african(building_type, architecture, **kw):
 PRESETS.update({
     "AFRICAN_HOUSE_SUBSAHARAN": african("HOUSE", "SUBSAHARAN"),
     "AFRICAN_HOUSE_SAHEL": african("HOUSE", "SAHEL"),
+    **{f"AFRICAN_{t}_{a}": african(t, a) for t in ("TOWN_CENTER", "GRANARY", "MARKET", "WAR_CAMP",
+                                                   "STOCKADE", "ARMORY", "DEPOT", "QUARRY", "PLOT")
+       for a in ("SUBSAHARAN", "SAHEL")},
+    "AFRICAN_STOCKADE_STONE_SUBSAHARAN": african("STOCKADE", "SUBSAHARAN", wall_upgrade="STONE"),
+    "AFRICAN_STOCKADE_STONE_SAHEL": african("STOCKADE", "SAHEL", wall_upgrade="STONE"),
 })
 PRESETS.update({
     "TIMBER_HOUSE": BuildingParams(

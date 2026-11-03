@@ -197,6 +197,20 @@ class ProtoTest(unittest.TestCase):
         with self.assertRaises(proto.ProtoError):
             proto.insert_unit(text, block)
 
+    def test_clone_drops_comments_that_span_dropped_lines(self):
+        # a comment opened on one line and closed on a <Tech> line, as in the mod's town center
+        template = ('<Unit id="7" name="Hall">\r\n\t\t<DBID>7</DBID>\r\n'
+                    "\t\t<!-- <Tech column='1'>A</Tech>\r\n"
+                    "\t\t<Tech column='2'>B</Tech> -->\r\n"
+                    "\t\t<!-- Fake buttons -->\r\n"
+                    "\t\t<Tech column='3'>C</Tech>\r\n"
+                    "\t\t<UnitType>Building</UnitType>\r\n\t</Unit>")
+        block = proto.clone_unit(template, name="NewHall", uid=25009, fields={})
+        ET.fromstring(block)                                   # well formed
+        self.assertNotIn("<!--", block)
+        self.assertNotIn("<Tech", block)
+        self.assertIn("<UnitType>Building</UnitType>", block)
+
     def test_add_train(self):
         text = proto.add_train(PROTO, "House", "Tower")
         house = proto.unit_text(text, "House")

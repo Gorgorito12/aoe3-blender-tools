@@ -770,13 +770,25 @@ class Builder:
             if gap is not None and i == gap:
                 continue
             L = math.hypot(b[0] - a[0], b[1] - a[1])
-            if kind == "PALISADE":
-                self._panel(a, b, 0.0, height, max(thick, 0.18), region, tips=max(1, int(L / 0.28)),
-                            tip_h=0.25)
+            if kind == "PALISADE":                      # pointed tops at medium detail only
+                tips = max(1, int(L / 0.4)) if self.medium else 0
+                t = max(thick, 0.18)
+                ux, uy = (b[0] - a[0]) / L, (b[1] - a[1]) / L
+                a2 = (a[0] + ux * t / 2, a[1] + uy * t / 2)       # stop short of the corner logs
+                b2 = (b[0] - ux * t / 2, b[1] - uy * t / 2)
+                self._panel(a2, b2, 0.0, height, t, region, tips=tips, tip_h=0.3)
             else:
                 for zr in (height * 0.45, height * 0.85):
                     self._panel(a, b, zr - 0.05, zr + 0.05, 0.06, region)
-        if kind != "PALISADE":
+        if kind == "PALISADE":                          # a thicker log at every corner
+            h = max(thick, 0.18) / 2 + 0.04
+            ends = set()
+            for i, (a, b) in enumerate(segs):
+                if gap is None or i != gap:
+                    ends.update((a, b))
+            for px, py in sorted(ends):
+                self.box(px - h, px + h, py - h, py + h, 0.0, height + 0.4, pr, pr)
+        else:
             for px, py in points:
                 h = thick / 2 + 0.03
                 self.box(px - h, px + h, py - h, py + h, 0.0, height, pr, pr)
@@ -817,11 +829,97 @@ class Builder:
             pts = [(x1, y0, z_lo), (x1, y1, z_lo), (x0, y1, z_hi), (x0, y0, z_hi)]
         self.face_out(pts, region, (0.0, 0.0, 1.0))
         i = post + 0.02
-        for (px, py, pz) in pts:
+        for (px, py, pz) in (pts if self.medium else pts[:2]):        # low detail: the low side's posts
             qx = min(max(px, x0 + i), x1 - i)
             qy = min(max(py, y0 + i), y1 - i)
             self.box(qx - post, qx + post, qy - post, qy + post, 0.0, pz - 0.03, post_region, post_region,
                      skip=("top",))
+
+    def frustum(self, cx, cy, r0, r1, z0, z1, sides, region, phase=0.0, v0=0.0):
+        """A ring of quads from radius r0 at z0 to r1 at z1 (a cylinder when equal, a tapering band
+        otherwise), facing out; u round the girth, v along the slope from v0."""
+        reg = self.atlas[region]
+        L = math.hypot(r1 - r0, z1 - z0)
+        seg = 2 * max(r0, r1) * math.sin(math.pi / sides)
+        k = min(1.0, reg.world_w / (seg * sides), reg.world_h / max(v0 + L, 1e-6))
+        for i in range(sides):
+            a0 = phase + 2 * math.pi * i / sides
+            a1 = phase + 2 * math.pi * (i + 1) / sides
+            q = [(cx + r0 * math.cos(a0), cy + r0 * math.sin(a0), z0), (cx + r0 * math.cos(a1), cy + r0 * math.sin(a1), z0),
+                 (cx + r1 * math.cos(a1), cy + r1 * math.sin(a1), z1), (cx + r1 * math.cos(a0), cy + r1 * math.sin(a0), z1)]
+            am = (a0 + a1) / 2
+            nz = (r0 - r1) / max(L, 1e-6)
+            self.facing(q, [(i * seg * k, v0 * k), ((i + 1) * seg * k, v0 * k), ((i + 1) * seg * k, (v0 + L) * k),
+                            (i * seg * k, (v0 + L) * k)], region, (math.cos(am), math.sin(am), nz))
+
+    def thatch_cone(self, cx, cy, r, z, height, sides, region, overhang=0.4, tiers=3, lip=0.12, finial=0.0,
+                    finial_region=None):
+        """A thatched cone in `tiers` overlapping courses: each course starts a little outside and
+        below the top of the one under it, so the roof shows its layers; the last one closes on a
+        single apex. Same meeting with the wall as cone_roof. Returns the apex height."""
+        slope = height / r
+        R0 = r + overhang
+        ze = z - slope * overhang
+        za = z + height
+        reg = self.atlas[region]
+
+        def at(t):
+            return R0 * (1 - t), ze + (za - ze) * t
+        apex = (cx, cy, za)
+        seg = 2 * (R0 + lip) * math.sin(math.pi / sides)
+        L_all = math.hypot(R0, za - ze)
+        k = min(1.0, reg.world_w / (seg * sides), reg.world_h / L_all)
+        for c in range(tiers):
+            t0, t1 = c / tiers, (c + 1) / tiers
+            ra, za_ = at(t0)
+            rb, zb = at(t1)
+            if c > 0:                                        # the course's lip: out and down a little
+                ra, za_ = ra + lip, za_ - lip * slope * 0.6
+            if c < tiers - 1:
+                self.frustum(cx, cy, ra, rb, za_, zb, sides, region, v0=L_all * t0)
+                continue
+            for i in range(sides):                           # the top course: triangles to the apex
+                a0 = 2 * math.pi * i / sides
+                a1 = 2 * math.pi * (i + 1) / sides
+                p0 = (cx + ra * math.cos(a0), cy + ra * math.sin(a0), za_)
+                p1 = (cx + ra * math.cos(a1), cy + ra * math.sin(a1), za_)
+                am = (a0 + a1) / 2
+                self.facing([p0, p1, apex], [(i * seg * k, L_all * t0 * k), ((i + 1) * seg * k, L_all * t0 * k),
+                                             ((i + 0.5) * seg * k, L_all * k)], region,
+                            (math.cos(am), math.sin(am), R0 / max(height, 1e-6)))
+        if finial > 0:
+            fr = finial_region or region
+            self.frustum(cx, cy, 0.09, 0.04, za - 0.15, za + finial, 6, fr)
+            self.disc(cx, cy, 0.04, za + finial, 6, fr)
+        return za
+
+    def pyramid(self, x0, x1, y0, y1, z, h, region):
+        """A four-sided point on the rectangle at z (a pinnacle or a merlon's cap)."""
+        apex = ((x0 + x1) / 2, (y0 + y1) / 2, z + h)
+        for pts, n in (([(x0, y0, z), (x1, y0, z), apex], (0.0, -1.0, 1.0)), ([(x1, y1, z), (x0, y1, z), apex], (0.0, 1.0, 1.0)),
+                       ([(x0, y1, z), (x0, y0, z), apex], (-1.0, 0.0, 1.0)), ([(x1, y0, z), (x1, y1, z), apex], (1.0, 0.0, 1.0))):
+            self.face_out(pts, region, n)
+
+    def log(self, x0, y0, x1, y1, z, r, sides, region, caps=True):
+        """A horizontal log (a cylinder) from (x0, y0) to (x1, y1), its axis at height z."""
+        dx, dy = x1 - x0, y1 - y0
+        L = math.hypot(dx, dy) or 1.0
+        ux, uy = dx / L, dy / L
+        px, py = -uy, ux                                    # across the log, horizontal
+        reg = self.atlas[region]
+        seg = 2 * r * math.sin(math.pi / sides)
+        k = min(1.0, reg.world_w / (seg * sides), reg.world_h / L)
+        ring = [(px * r * math.cos(2 * math.pi * i / sides), py * r * math.cos(2 * math.pi * i / sides),
+                 r * math.sin(2 * math.pi * i / sides)) for i in range(sides + 1)]
+        for i in range(sides):
+            (ax, ay, az), (bx, by, bz) = ring[i], ring[i + 1]
+            q = [(x0 + ax, y0 + ay, z + az), (x0 + bx, y0 + by, z + bz), (x1 + bx, y1 + by, z + bz), (x1 + ax, y1 + ay, z + az)]
+            mx, my, mz = (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2
+            self.facing(q, [(i * seg * k, 0), ((i + 1) * seg * k, 0), ((i + 1) * seg * k, L * k), (i * seg * k, L * k)],
+                        region, (mx, my, mz))
+        if caps:
+            for (cx, cy), n in (((x0, y0), (-ux, -uy, 0.0)), ((x1, y1), (ux, uy, 0.0))):
+                self.face_out([(cx + ax, cy + ay, z + az) for ax, ay, az in ring[:-1]], region, n)
 
 # --------------------------------------------------------------------------------------------------
 # Region sizes for the pieces (declare them before pack())
