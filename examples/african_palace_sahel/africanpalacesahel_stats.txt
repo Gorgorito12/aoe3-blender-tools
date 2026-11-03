@@ -1,0 +1,1 @@
+AfricanPalaceSahel: 5118 triangles, 4099 vertices; footprint 23.2 x 24.0 m; texture 1024 x 1024

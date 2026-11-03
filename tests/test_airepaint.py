@@ -25,6 +25,27 @@ def noisy(rgb):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
+class AfricanPrompts(unittest.TestCase):
+    def test_walls_and_roofs_have_a_material(self):
+        for key in ("AFRICAN_TOWN_CENTER_SUBSAHARAN", "AFRICAN_TOWN_CENTER_SAHEL", "AFRICAN_PALACE_SAHEL"):
+            p = building.PRESETS[key]
+            model = building.build(p)
+            names = list(model.atlas.regions)
+            walls = [n for n in names if n[:2] in ("rw", "bk") and n[2:3].isdigit()]
+            self.assertTrue(walls, key)
+            for n in walls + [n for n in ("thatch", "roof_flat", "dome") if n in names]:
+                self.assertTrue(airepaint.material_of(n, p), (key, n))
+        sahel = building.PRESETS["AFRICAN_HOUSE_SAHEL"]
+        self.assertIn("adobe", airepaint.material_of("bk0_front", sahel))
+        self.assertIsNone(airepaint.material_of("wood", sahel))      # small parts keep their paint
+        tc = building.build(building.PRESETS["AFRICAN_TOWN_CENTER_SUBSAHARAN"])
+        walls, roofs = airepaint.group(tc, "WALLS"), airepaint.group(tc, "ROOFS")
+        self.assertTrue(any(n.startswith("rw") for n in walls) and "thatch" in roofs, (walls, roofs))
+        self.assertIsNone(airepaint.group(tc, "ALL"))
+        wh = building.build(building.PRESETS["WHITE_HOUSE"])
+        self.assertIn("front", airepaint.group(wh, "WALLS"))
+
+
 class Helpers(unittest.TestCase):
     def test_tiles_cover_and_stay_short(self):
         for w, h in ((300, 100), (100, 300), (90, 90), (1000, 41)):

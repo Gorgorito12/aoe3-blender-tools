@@ -68,7 +68,20 @@ MATERIALS = {
         "plinth": "grey rubble stone base",
         "brick": "old red brick",
     },
+    "AFRICAN": {
+        "thatch": "dry golden grass thatch in overlapping courses",
+        "dome": "smooth sun-dried mud plaster dome",
+        "roof_flat": "packed earth flat roof, smooth mud plaster",
+        "parapet": "hand-smoothed mud plaster parapet",
+        "plinth": "packed earth and dry stone base",
+        "stone": "dry-laid rough grey and ochre stones",
+        "field": "tilled dry red earth in furrows",
+    },
 }
+# round walls (rw0, rw1...) and adobe blocks (bk0_front...) are named per piece
+AFRICAN_WALLS = {"rw": "ochre hand-smoothed mud wall of a round hut, fine cracks, a wooden door",
+                 "bk_SUBSAHARAN": "ochre hand-smoothed mud wall, fine cracks, small dark openings, a wooden door",
+                 "bk_SAHEL": "pale sun-dried adobe wall with trowel marks, small dark windows, a wooden door"}
 GROUND = {"STONE": "grey rubble stone wall with small windows and a plank door",
           "BRICK": "old red brick wall with small windows and a plank door",
           "TIMBER": "European half-timbered wall, dark oak beams over cream plaster infill"}
@@ -79,7 +92,28 @@ def material_of(region, params):
     style = str(getattr(params, "style", "NEOCLASSICAL")).upper()
     if style == "TIMBER" and region in ("front_g", "back_g", "side_g"):
         return GROUND.get(str(getattr(params, "ground_floor", "STONE")).upper())
+    if style == "AFRICAN" and region[:2] in ("rw", "bk") and region[2:3].isdigit():
+        if region.startswith("rw"):
+            return AFRICAN_WALLS["rw"]
+        arch = str(getattr(params, "architecture", "SUBSAHARAN")).upper()
+        return AFRICAN_WALLS.get(f"bk_{arch}", AFRICAN_WALLS["bk_SUBSAHARAN"])
     return MATERIALS.get(style, {}).get(region)
+
+
+WALLS = ("front", "back", "side", "bow", "wing_long", "wing_short", "gable", "front_g", "back_g", "side_g",
+         "front_u", "back_u", "side_u", "dormer", "arcade", "bell", "parapet")
+ROOFS = ("roof", "shed", "thatch", "roof_flat", "dome")
+
+
+def group(model, which):
+    """The regions of `model` that "WALLS" or "ROOFS" picks, or None for "ALL" (the walls of the
+    African style are named per piece: rw0, bk1_front...)."""
+    if which == "ALL":
+        return None
+    names = list(model.atlas.regions)
+    if which == "ROOFS":
+        return [n for n in names if n in ROOFS]
+    return [n for n in names if n in WALLS or (n[:2] in ("rw", "bk") and n[2:3].isdigit())]
 
 
 def prompt_for(material, extra=""):

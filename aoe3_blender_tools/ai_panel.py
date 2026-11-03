@@ -30,11 +30,6 @@ class AOE3_PG_ai(bpy.types.PropertyGroup):
     status: StringProperty(default="")
 
 
-WALLS = ("front", "back", "side", "bow", "wing_long", "wing_short", "gable", "front_g", "back_g", "side_g",
-         "front_u", "back_u", "side_u", "dormer", "arcade", "bell")
-ROOFS = ("roof", "shed")
-
-
 def _original(obj):
     name = obj.get("aoe3_ai_orig")
     return bpy.data.images.get(name) if name else None
@@ -80,7 +75,7 @@ class AOE3_OT_ai_repaint(bpy.types.Operator):
         self._obj_name = obj.name
         self._args = dict(texture=blender_io.image_rgba(orig), model=model,
                           client=comfy.Client(a.url, timeout=120), strength=a.strength, seed=a.seed,
-                          regions={"ALL": None, "WALLS": WALLS, "ROOFS": ROOFS}[a.regions],
+                          regions=airepaint.group(model, a.regions),
                           extra=a.extra, blend=a.blend)
         self._settings = {"strength": a.strength, "seed": a.seed, "extra": a.extra, "blend": a.blend}
 

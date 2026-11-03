@@ -75,6 +75,15 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     bracing: EnumProperty(name="Braces", items=[("CROSS", "Cross", ""), ("CURVED", "Curved", ""),
                                                 ("PLAIN", "Plain", "Posts and rails only")], default="CROSS")
     signboard: BoolProperty(name="Sign", default=False, description="A sign hanging from the front wall")
+    building_type: EnumProperty(name="Building", items=[(t, t.replace("_", " ").title(), "")
+                                                        for t in building.STYLES["AFRICAN"].sizes.TYPES],
+                                default="HOUSE")
+    architecture: EnumProperty(name="Architecture", items=[
+        ("SUBSAHARAN", "Sub-Saharan", "Round mud huts with thatched cones, log fences"),
+        ("SAHEL", "Sahel / Horn", "Adobe blocks with flat roofs, parapets and beam ends")], default="SUBSAHARAN")
+    wall_upgrade: EnumProperty(name="Stockade wall", items=[("WOOD", "Wood", "A palisade"),
+                                                            ("STONE", "Stone", "The upgraded stone wall")],
+                               default="WOOD")
     materials: BoolProperty(name="Material swatches", default=False,
                             description="Photo swatches (CC0) under the painting give the walls their grain")
     width: FloatProperty(name="Width", default=14.0, min=4.0, max=60.0, unit="LENGTH")
@@ -165,6 +174,10 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     color_tile: _color_prop("tile")
     color_timber: _color_prop("timber")
     color_iron: _color_prop("iron")
+    color_mud: _color_prop("mud")
+    color_thatch: _color_prop("thatch")
+    color_adobe: _color_prop("adobe")
+    color_cloth: _color_prop("cloth")
 
 
 
@@ -182,7 +195,8 @@ def params_from_props(s):
         arcade_depth=s.arcade_depth, balcony=s.balcony, bell_gable=s.bell_gable, plan=s.plan,
         rejas=s.rejas, materials=s.materials, jetty=s.jetty, jetty_depth=s.jetty_depth,
         dormers=s.dormers, ground_floor=s.ground_floor, infill=s.infill, bracing=s.bracing,
-        signboard=s.signboard)
+        signboard=s.signboard, building_type=s.building_type, architecture=s.architecture,
+        wall_upgrade=s.wall_upgrade)
     p.colors = {k: tuple(int(round(c * 255)) for c in getattr(s, "color_" + k)) for k in COLOR_KEYS}
     return p
 
@@ -194,7 +208,8 @@ def props_from_params(s, p):
                  "back_portico", "bow_radius", "bow_columns", "wings", "wing_gap", "wing_width", "wing_depth",
                  "shutters", "window_caps", "style", "roof_type", "ridge", "arcade", "arcade_posts",
                  "arcade_depth", "balcony", "bell_gable", "plan", "rejas", "materials", "jetty",
-                 "jetty_depth", "dormers", "ground_floor", "infill", "bracing", "signboard"):
+                 "jetty_depth", "dormers", "ground_floor", "infill", "bracing", "signboard",
+                 "building_type", "architecture", "wall_upgrade"):
         setattr(s, attr, getattr(p, attr))
     s.game_player_colour = p.player_colour
     s.texture_size = str(p.texture_size)
@@ -297,13 +312,17 @@ class AOE3_OT_export_game(bpy.types.Operator):
             positions, normals, uvs, tris = blender_io.game_mesh(obj)
             icon, portrait = render.icon_and_portrait(obj) if s.game_icons else (None, None)
             variants = blender_io.game_variants(obj, lowpoly=s.game_lowpoly, damaged=s.game_damaged)
+            params = blender_io.params_of(obj)
+            ref = building.reference(params) if params is not None else None
+            obstruction = (ref[0], ref[0]) if ref else None
+            template = (ref[1] if ref and s.game_template in ("", "House") else s.game_template) or "House"
             desc = bundle.write(
                 bpy.path.abspath(s.game_dir), name=obj.name, prefix=s.game_prefix or "mod",
                 positions=positions, normals=normals, uvs=uvs, triangles=tris,
                 texture_rgba=blender_io.texture_rgba(obj), bones=blender_io.game_bones(obj),
                 footprint_m=footprint, display_name=s.game_display or None,
                 icon_rgba=icon, portrait_rgba=portrait, variants=variants,
-                template=s.game_template or "House", texture_format=s.game_texture,
+                template=template, texture_format=s.game_texture, obstruction=obstruction,
                 profile=calibration.load() if s.use_profile else None)
         except (ValueError, OSError) as exc:
             self.report({"ERROR"}, str(exc))
@@ -329,13 +348,18 @@ class AOE3_PT_building(bpy.types.Panel):
         lay.prop(s, "name")
         lay.prop(s, "style")
         lay.prop(s, "detail", expand=True)
-        col = lay.column(align=True)
-        col.prop(s, "width")
-        col.prop(s, "depth")
-        col.prop(s, "storeys")
-        col.prop(s, "plinth")
-        col.prop(s, "bay_spacing")
-        if s.style == "COLONIAL":
+        if s.style == "AFRICAN":
+            self.draw_african(s, lay)
+        else:
+            col = lay.column(align=True)
+            col.prop(s, "width")
+            col.prop(s, "depth")
+            col.prop(s, "storeys")
+            col.prop(s, "plinth")
+            col.prop(s, "bay_spacing")
+        if s.style == "AFRICAN":
+            pass
+        elif s.style == "COLONIAL":
             self.draw_colonial(s, lay)
         elif s.style == "TIMBER":
             self.draw_timber(s, lay)
@@ -352,6 +376,17 @@ class AOE3_PT_building(bpy.types.Panel):
             for k in COLOR_KEYS:
                 grid.prop(s, "color_" + k, text=k.title())
         lay.operator("aoe3.generate_building", icon="HOME")
+
+    @staticmethod
+    def draw_african(s, lay):
+        col = lay.column(align=True)
+        col.prop(s, "building_type")
+        col.prop(s, "architecture")
+        if s.building_type == "STOCKADE":
+            col.prop(s, "wall_upgrade")
+        if s.building_type == "CUSTOMS":
+            col.prop(s, "storeys")
+        lay.label(text="Size: the style guide's reference", icon="INFO")
 
     @staticmethod
     def draw_timber(s, lay):

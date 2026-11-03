@@ -1,0 +1,1 @@
+AfricanPalaceSubSaharan: 3688 triangles, 2761 vertices; footprint 20.0 x 21.4 m; texture 1024 x 1024

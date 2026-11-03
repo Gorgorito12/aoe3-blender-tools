@@ -98,13 +98,17 @@ def _drop(block, tag):
 
 def clone_unit(template, *, name, uid, fields, drop=("Train", "Tech", "Command")):
     """A new unit block from a template block: the name, id = DBID = uid, the given fields set
-    (None leaves one as it is), and the lines of the `drop` elements removed."""
+    (None leaves one as it is), and the lines of the `drop` elements removed. The template's
+    comments go first: a comment may span several lines and close on a dropped one (the mod's
+    town center has one), which would leave it open."""
     m = UNIT_RE.match(template.lstrip())
     if not m:
         raise ProtoError("the template does not start with <Unit id=... name=...>")
     head = template[:template.find(">") + 1]
     body = template[len(head):]
     q = '"' if '"' in head else "'"
+    body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+    body = re.sub(r"\n[ \t]*\r?(?=\n)", "", body)          # the lines the comments left empty
     block = f"<Unit id={q}{uid}{q} name={q}{name}{q}>" + body
     block = _set(block, "DBID", uid)
     for tag, value in fields.items():
