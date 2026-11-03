@@ -146,8 +146,8 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
   `bone_flag_civ` bone for the flag), the texture as `.ddt` (DXT3 by default, DXT1 or BGRA), the
   anim file (stock construction stages of the footprint class, ground decal) and `bundle.json`
   with the proto fields and strings. Sizes come from the calibration profile.
-- **Low-poly and damaged models**: the LOW detail as the model for the game's low model detail
-  setting, and a damaged texture (soot, missing slates, cracks) for a building that has lost hit
+- **Low-poly and damaged models**: the LOW detail as the model for the game's "High Poly Models"
+  option turned off (seen in game), and a damaged texture (soot, missing slates, cracks) for a building that has lost hit
   points (written; like the stock houses, the building looks intact with flames until it
   is destroyed, see docs/game-test.md).
 - **Death animation**: the building sinks into the ground with the stock collapse dust before

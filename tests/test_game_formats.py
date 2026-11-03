@@ -426,6 +426,9 @@ class DdtTest(unittest.TestCase):
             self.assertIn(r"mod\buildings\box\box_damaged", files)
             logic = [l.get("type") for l in root.iter("logic")]
             self.assertEqual(logic[:2], ["LowPoly", "Destruction"])
+            # every model reference has the shape, the low-poly one too (else the game ignores it)
+            lp_ref = next(a for a in root.iter("assetreference") if a.findtext("file", "").endswith("box_lp"))
+            self.assertTrue(lp_ref.get("shape"))
             self.assertIn(r"mod\buildings\box\box_death", files)
             anims = [a.text.split()[0] for a in root.iter("anim")]
             self.assertIn("Death", anims)
@@ -439,6 +442,15 @@ class DdtTest(unittest.TestCase):
             with open(os.path.join(tmp, "proto_fields.xml"), encoding="utf-8") as f:
                 fields = f.read()
             self.assertIn(r"<AnimFile>mod\buildings\box\box.xml</AnimFile>", fields)
+        # a low-poly model alone still borrows the skeleton that gives the shape
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle.write(tmp, name="Box", prefix="mod", positions=P, normals=N, uvs=UV, triangles=T,
+                         texture_rgba=tex, footprint_m=(4, 3), variants={"lowpoly": variants["lowpoly"]})
+            root = ET.parse(os.path.join(tmp, "art", "mod", "buildings", "box", "box.xml")).getroot()
+            refs = [a for a in root.iter("assetreference")
+                    if a.get("type") == "GrannyModel" and a.findtext("file", "").startswith("mod")]
+            self.assertTrue(refs and all(a.get("shape") for a in refs), [a.attrib for a in refs])
+            self.assertTrue(list(root.iter("simskeleton")))
 
     def test_sink_animation(self):
         data = gr2_write.sink_animation("Tower", [("bone_flag_civ", (0.0, 0.0, 5.0))], 6.0,
