@@ -90,8 +90,9 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
     chimney_bone: a bone of the model to put chimney smoke on, or None.
     lowpoly: a simpler model for the game's low model detail setting, or None.
     damaged: a damaged model, or None. The stock files put it under p1 and the intact model
-        under p99 of a Destruction logic: read as hit point percentages, the damaged one shows
-        once the building is below 99 % (to verify in game).
+        under p99 of a Destruction logic. Seen in game: it is not a state between full
+        health and death (the stock houses also look intact until they are destroyed, with
+        flames); it only belongs to the destruction.
     death_anim: a Granny animation the building plays when it is destroyed (with the stock
         collapse dust), or None (the building then just goes).
     simskeleton: (damaged model, damage template) of a stock building whose damage system

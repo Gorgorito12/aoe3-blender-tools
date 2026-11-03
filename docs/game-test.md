@@ -78,9 +78,20 @@ Low-poly and damaged variants (2026-11-03): the game loads the anim file with th
 70 % nor at 2 % of the hit points: the `Destruction` logic is not driven by the hit points alone.
 Borrowing the stock outpost's damage system, as the mod's own large buildings do (`simskeleton`
 with `outpost_generic_damaged` and its `.dmg`, and `shape="outpost_generic"` on the model
-references), did not change that at 60 %. The next thing to try is real hits: the damage
-template's impact points probably react to projectiles, not to hit points set by a trigger. The low-poly
-model needs the game's low model detail setting (not tried).
+references), did not change that at 60 %.
+
+Real hits (2026-11-03): three falconets and four musketeers (torches) took it from 1,200 hit
+points to nothing in about 35 seconds of game time. It kept the intact model down to 80 hit
+points (7 %), with flames on the roof; when it died it caught fire, faded while sinking, and
+a pile of burnt debris and the rubble took its place. A stock `House` under the same attack
+does the same: intact model with flames while it loses hit points, burnt debris when it dies.
+So the `Destruction` logic is not a state between full health and death: in this game a
+building looks intact until it is destroyed, and the damaged model only belongs to the
+destruction. The damaged texture is kept for that and for mods that switch models by other
+means; nothing more to do here. Frames from the recording:
+`examples/whitehouse_medium/ingame_destruction.jpg`.
+
+The low-poly model needs the game's low model detail setting (not tried).
 
 Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds
 while the stock collapse dust rises, then the rubble takes its place.
