@@ -114,7 +114,7 @@ def declare(b, layout, medium):
     return facades
 
 
-PROPS = {"basket": [("thatch", 2.0, 1.0)], "sack": [("thatch", 2.0, 1.0)], "logs": [("wood", 2.0, 3.0)],
+PROPS = {"balcony": [("slab", 6.0, 1.2), ("rail", 6.0, 1.0)], "basket": [("thatch", 2.0, 1.0)], "sack": [("thatch", 2.0, 1.0)], "logs": [("wood", 2.0, 3.0)],
          "rack": [("wood", 2.0, 3.0)], "drum": [("wood", 2.0, 3.0), ("pot", 2.0, 1.0)],
          "well": [("stone", 4.0, 1.2), ("wood", 2.0, 3.0)], "fire": [("stone", 4.0, 1.2), ("wood", 2.0, 3.0)],
          "crane": [("wood", 2.0, 3.0)], "stones": [("stone", 4.0, 1.2)], "frame": [("wood", 2.0, 3.0)]}
@@ -196,10 +196,17 @@ def emit(b, layout, medium):
             b.box(piece["x0"], piece["x1"], piece["y0"], piece["y1"], 0.0, piece["h"], "plinth", "plinth")
             at = (piece["x0"], piece["y0"], piece["h"])
         elif k in PROPS:
-            if not medium:
+            if not medium and k != "balcony":
                 continue
+            start = len(b.faces)
             _prop(b, piece)
-            at = (piece.get("x", 0.0), piece.get("y", 0.0), 0.5)
+            dz = piece.get("z", 0.0) if k != "balcony" else 0.0
+            if dz:                                         # standing on a deck or a plinth
+                for f in b.faces[start:]:
+                    f.pts = [(x, y, z + dz) for x, y, z in f.pts]
+                b.faces[start:] = [f for f in b.faces[start:]          # bottoms lying on the deck are hidden
+                                   if any(abs(z - dz) > 1e-6 for _, _, z in f.pts)]
+            at = (piece.get("x", 0.0), piece.get("y", 0.0), 0.5 + dz)
         if at[2] > top[2]:
             top = at
     return top
@@ -354,7 +361,12 @@ def _buttresses(b, p, z0, h, top):
 def _prop(b, p):
     k = p["kind"]
     x, y = p.get("x", 0.0), p.get("y", 0.0)
-    if k == "basket":
+    if k == "balcony":                                     # a gallery on posts in front of a wall at -Y
+        x0, x1, yw, z, d = p["x0"], p["x1"], p["y_wall"], p["z"], p.get("depth", 1.2)
+        b.balcony(x0, x1, yw, z, d, "slab", "rail")
+        for px in [x0 + 0.15 + (x1 - x0 - 0.3) * j / max(1, int((x1 - x0) / 1.8)) for j in range(int((x1 - x0) / 1.8) + 1)]:
+            b.box(px - 0.07, px + 0.07, yw - d + 0.05, yw - d + 0.19, 0.0, z - 0.12, "wood", "wood", skip=("top",))
+    elif k == "basket":
         r, h = p.get("r", 0.3), p.get("h", 0.35)
         b.frustum(x, y, r * 0.8, r, 0.0, h, 12, "thatch")
         b.disc(x, y, r, h, 12, "thatch")

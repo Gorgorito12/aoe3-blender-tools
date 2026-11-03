@@ -259,9 +259,96 @@ def plot(p, S, medium):
     return [{"kind": "field", "x0": -h, "x1": h, "y0": -h, "y1": h, "rows": 7, "plants": 14, "flag": True}, fence]
 
 
+def dock(p, S, medium):
+    deck = {"kind": "deck", "x0": -6.0, "x1": 6.0, "y0": -6.2, "y1": 0.4, "z": 0.6}
+    dz = deck["z"]
+    cargo = [prop("logs", -4.0, -4.6, length=2.0, n=3), prop("rack", 0.0, -5.6, w=2.4), prop("drum", -2.4, -3.6)]
+    cargo += goods(2.6, -5.6, 5) + goods(-4.6, -2.4, 3)
+    out = [deck] + [dict(pc, z=dz) for pc in cargo] + [dict(pot(-1.4, -3.4, 0.3, 0.55), z=dz),
+                                                        dict(pot(-0.7, -3.2, 0.22, 0.4), z=dz)]
+    if p.architecture == "SUBSAHARAN":
+        out += [hut(-2.6, 3.0, 2.4, 2.4, 2.8, overhang=0.5, finial=0.5, door=True, base=0.25, flag=True),
+                hut(3.4, 3.2, 1.8, 2.1, 2.3, overhang=0.4, door=True, door_w=0.9, door_h=1.6, base=0.2),
+                canopy(1.4, 5.6, -3.4, -0.6, 3.0, 2.6, cloth=False)]
+        return out
+    out += [block(-5.6, 0.8, 1.0, 6.0, 4.0, door=True, parapet=0.5, merlons=1.0, beams=True, windows=1, flag=True),
+            block(1.6, 5.6, 1.6, 5.4, 3.0, door=True, parapet=0.4, windows=1),
+            prop("crane", 3.6, -1.6, h=4.6)]
+    return out
+
+
+def customs(p, S, medium):
+    two = p.storeys >= 2
+    h = 6.2 if two else 3.4
+    out = []
+    if p.architecture == "SUBSAHARAN":
+        out.append(block(-4.6, 4.6, -2.6, 3.6, h, door=True, roof="thatch", sahel=False, windows=3, flag=True))
+        out.append(canopy(-4.6, 4.6, -4.6, -2.6, 3.0, 2.5, cloth=False))
+        out += [hut(-5.4, 5.4, 1.5, 1.9, 2.0, overhang=0.35, finial=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
+                hut(5.4, 5.4, 1.5, 1.9, 2.0, overhang=0.35, finial=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
+                granary(6.0, 0.6, 1.0, 1.3, 1.4, roof="cone", overhang=0.25, stilts=0.6),
+                granary(-6.0, 0.6, 1.0, 1.3, 1.4, roof="cone", overhang=0.25, stilts=0.6),
+                {"kind": "fence", "points": [(-7.0, -6.6), (-7.0, -1.6)], "h": 1.0, "type": "RAILS",
+                 "closed": False, "medium_only": True},
+                {"kind": "fence", "points": [(7.0, -6.6), (7.0, -1.6)], "h": 1.0, "type": "RAILS",
+                 "closed": False, "medium_only": True},
+                prop("rack", 5.6, -3.6, w=1.4), prop("drum", -5.6, -3.4)]
+    else:
+        out.append(block(-4.6, 4.6, -2.6, 3.6, h, door=True, parapet=0.55, merlons=1.0, beams=True, windows=3,
+                         flag=True))
+        out.append(canopy(-4.6, 4.6, -4.6, -2.6, 3.0, 2.5, cloth=True))
+    if two:
+        out.append({"kind": "balcony", "x0": -3.6, "x1": 3.6, "y_wall": -2.6, "z": 3.4, "depth": 1.1})
+        for pc in out:
+            if pc["kind"] == "canopy":
+                pc["z_hi"], pc["z_lo"] = 3.1, 2.7
+    out += [pot(-5.4, -5.2), pot(-4.8, -5.4, 0.22, 0.4), prop("logs", 5.4, 0.6, length=1.8, n=3, along="y")]
+    out += goods(2.4, -5.6, 3)
+    return out
+
+
+def palace(p, S, medium):
+    import math
+    if p.architecture == "SUBSAHARAN":
+        n = 20 if medium else 12
+        pts = ring_points(10.0, n, start=-math.pi / 2 - math.pi / n)
+        out = [{"kind": "fence", "points": pts, "h": 3.2, "type": "PALISADE", "closed": True, "gap": 0}]
+        gx = 10.0 * math.sin(math.pi / n) + 0.9
+        gy = -10.0 * math.cos(math.pi / n)
+        out += [tower(-gx, gy, 1.2, 5.4, roof="cone", roof_h=2.0, overhang=0.35),          # the gate's towers
+                tower(gx, gy, 1.2, 5.4, roof="cone", roof_h=2.0, overhang=0.35),
+                block(-4.6, 4.6, 1.4, 7.0, 4.2, door=True, roof="thatch", sahel=False, windows=2),   # the royal hall
+                hut(0.0, -1.6, 3.4, 3.4, 4.6, overhang=0.6, finial=0.9, door=True, door_w=1.6, door_h=2.3,
+                    base=0.35, big=True, flag=True),
+                hut(-6.0, -2.2, 1.9, 2.2, 2.4, overhang=0.4, finial=0.4, door=True, door_w=0.9, door_h=1.6, base=0.2),
+                hut(6.0, -2.2, 1.9, 2.2, 2.4, overhang=0.4, finial=0.4, door=True, door_w=0.9, door_h=1.6, base=0.2),
+                granary(-6.6, 3.2, 1.2, 1.4, 1.6, roof="cone", overhang=0.3, stilts=0.7),
+                granary(6.6, 3.2, 1.2, 1.4, 1.6, roof="cone", overhang=0.3, stilts=0.7),
+                prop("fire", 0.0, -6.0), prop("rack", -3.4, -6.4), prop("rack", 3.4, -6.4),
+                prop("drum", -1.6, -6.6), prop("drum", 1.6, -6.6)]
+        return out
+    w, t, hw = 9.6, 1.4, 5.0                              # half size, wall thickness, wall height
+    e = 1.4                                               # the walls' ends sink into the towers (no flush faces)
+    out = [block(-w + e, -2.4, -w, -w + t, hw, parapet=0.6, merlons=1.0, windows=0),        # front, left of the gate
+           block(2.4, w - e, -w, -w + t, hw, parapet=0.6, merlons=1.0, windows=0),
+           block(-w + e, w - e, w - t, w, hw, parapet=0.6, merlons=1.0, windows=0),         # back
+           block(-w, -w + t, -w + e, w - e, hw, parapet=0.6, merlons=1.0, windows=0),       # sides
+           block(w - t, w, -w + e, w - e, hw, parapet=0.6, merlons=1.0, windows=0)]
+    for cx in (-w, w):                                    # corner towers
+        for cy in (-w, w):
+            out.append(block(cx - 1.8, cx + 1.8, cy - 1.8, cy + 1.8, 7.4, parapet=0.6, merlons=1.2, windows=1))
+    out += [block(-3.2, -1.8, -w - 0.8, -w + t + 0.8, 6.6, parapet=0.5, merlons=1.0, windows=0),   # the gate's towers
+            block(1.8, 3.2, -w - 0.8, -w + t + 0.8, 6.6, parapet=0.5, merlons=1.0, windows=0),
+            block(-4.2, 4.2, 0.6, 6.6, 6.4, door=True, parapet=0.6, merlons=1.0, beams=True, windows=2, flag=True),
+            granary(-5.0, -3.2, 1.4, 2.2, 1.6), granary(5.0, -3.2, 1.4, 2.2, 1.6),
+            prop("well", 0.0, -3.4), pot(-2.6, -5.6), pot(2.6, -5.6, 0.3, 0.55)]
+    out += goods(-6.0, 1.0, 4) + goods(4.8, 1.0, 4)
+    return out
+
+
 TYPES = {"HOUSE": house, "TOWN_CENTER": town_center, "GRANARY": granary_type, "MARKET": market,
          "WAR_CAMP": war_camp, "STOCKADE": stockade, "ARMORY": armory, "DEPOT": depot, "QUARRY": quarry,
-         "PLOT": plot}
+         "PLOT": plot, "DOCK": dock, "CUSTOMS": customs, "PALACE": palace}
 
 
 def layout(p, S, medium):

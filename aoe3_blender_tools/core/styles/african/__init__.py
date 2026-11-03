@@ -224,6 +224,23 @@ def paint(pr, model):
             pr.rect("field", u, v, min(rfi.world_w, u + 0.06), min(rfi.world_h, v + 0.16), g)
     if "reveal" in at:
         pr.fill("reveal", _shade(ADOBE, 0.75))
+    if "slab" in at:
+        rs2 = at["slab"]
+        pr.base("slab", WOOD, role="timber")
+        vv = 0.0
+        while vv < rs2.world_h:
+            pr.hline("slab", vv, 0, rs2.world_w, _shade(WOOD, 0.72))
+            vv += 0.2
+    if "rail" in at:
+        rr2 = at["rail"]
+        pr.fill("rail", _shade(WOOD, 0.45))
+        pr.rect("rail", 0, 0, rr2.world_w, 0.1, WOOD, _shade(WOOD, 0.7))
+        pr.rect("rail", 0, rr2.world_h - 0.12, rr2.world_w, rr2.world_h, WOOD, _shade(WOOD, 0.7))
+        band("rail", rr2.world_h - 0.24, rr2.world_h - 0.14, rr2.world_w)
+        u = 0.06
+        while u < rr2.world_w - 0.05:
+            pr.rect("rail", u, 0.1, u + 0.06, rr2.world_h - 0.24, _shade(WOOD, 1.1))
+            u += 0.15
     if "crop" in at:
         rc2 = at["crop"]
         pr.fill("crop", (112, 128, 52))

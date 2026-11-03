@@ -53,7 +53,13 @@ def presets_generate_and_pass_checks():
         res = validate.check(obj)
         assert not problems(res), (key, problems(res))
         tris, _ = blender_io.triangle_count(obj)
-        assert 50 < tris < 4000, (key, tris)
+        ref = building.reference(building.PRESETS[key])
+        cap = 4000                                 # a sized building: the p90 of its profile class
+        if ref is not None:
+            from aoe3_blender_tools.core import profile
+            cls = profile.load().classes.get(f"{2 * ref[0]:g}x{2 * ref[0]:g}")
+            cap = cls["tris"]["p90"] if cls else cap
+        assert 50 < tris <= cap, (key, tris, cap)
 
 
 @test

@@ -117,6 +117,11 @@ AFRICAN_COLORS = {**DEFAULT_COLORS, "timber": (92, 64, 40), "stone": (168, 156, 
 def african(building_type, architecture, **kw):
     words = "".join(w.title() for w in building_type.split("_"))
     arch = "Sahel" if architecture == "SAHEL" else "SubSaharan"
+    kw.setdefault("storeys", 1)
+    if kw.get("wall_upgrade") == "STONE":
+        words += "Stone"
+    if kw["storeys"] >= 2:
+        words += "Upper"
     return BuildingParams(name=f"African{words}{arch}", style="AFRICAN", building_type=building_type,
                           architecture=architecture, portico=False, cupola=False, detail="MEDIUM",
                           colors=dict(AFRICAN_COLORS), **kw)
@@ -130,6 +135,9 @@ PRESETS.update({
        for a in ("SUBSAHARAN", "SAHEL")},
     "AFRICAN_STOCKADE_STONE_SUBSAHARAN": african("STOCKADE", "SUBSAHARAN", wall_upgrade="STONE"),
     "AFRICAN_STOCKADE_STONE_SAHEL": african("STOCKADE", "SAHEL", wall_upgrade="STONE"),
+    **{f"AFRICAN_{t}_{a}": african(t, a) for t in ("DOCK", "CUSTOMS", "PALACE") for a in ("SUBSAHARAN", "SAHEL")},
+    "AFRICAN_CUSTOMS_UPPER_SUBSAHARAN": african("CUSTOMS", "SUBSAHARAN", storeys=2),
+    "AFRICAN_CUSTOMS_UPPER_SAHEL": african("CUSTOMS", "SAHEL", storeys=2),
 })
 PRESETS.update({
     "TIMBER_HOUSE": BuildingParams(
