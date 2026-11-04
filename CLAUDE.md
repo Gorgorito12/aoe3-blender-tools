@@ -113,6 +113,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 - `docs/game-formats.md`: the formats as measured, and how the writer was proven.
 - `docs/game-test.md`: the test copy, deployment, what to check in game, and the status.
 - `docs/specs/`: the technical sheet of every building, generated, with an index.
+- `aoe3_blender_tools/aoe3game/collision.py`: a building's own collision shape (`.shp`, Havok XML),
+  written into `data/physics/` of the bundle; `Model.boxes` holds the boxes, `building.obstruction`
+  a style's own obstruction. See "Collision" in `docs/game-formats.md`.
 
 ## Working rules
 

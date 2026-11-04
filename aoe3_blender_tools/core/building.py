@@ -188,6 +188,16 @@ def reference(params):
     return fn(p) if fn else None
 
 
+def obstruction(params):
+    """(radius x, radius z) in game units the style fixes for this building, or None."""
+    p = clamp_params(params)
+    fn = getattr(STYLES[p.style], "obstruction", None)
+    if fn:
+        return fn(p)
+    ref = reference(p)
+    return (ref[0], ref[0]) if ref else None
+
+
 def build(params):
     p = clamp_params(params)
     return STYLES[p.style].build(p, params)

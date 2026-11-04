@@ -315,7 +315,7 @@ class AOE3_OT_export_game(bpy.types.Operator):
             variants = blender_io.game_variants(obj, lowpoly=s.game_lowpoly, damaged=s.game_damaged)
             params = blender_io.params_of(obj)
             ref = building.reference(params) if params is not None else None
-            obstruction = (ref[0], ref[0]) if ref else None
+            obstruction = building.obstruction(params) if params is not None else None
             template = (ref[1] if ref and s.game_template in ("", "House") else s.game_template) or "House"
             desc = bundle.write(
                 bpy.path.abspath(s.game_dir), name=obj.name, prefix=s.game_prefix or "mod",
@@ -324,6 +324,7 @@ class AOE3_OT_export_game(bpy.types.Operator):
                 footprint_m=footprint, display_name=s.game_display or None,
                 icon_rgba=icon, portrait_rgba=portrait, variants=variants,
                 template=template, texture_format=s.game_texture, obstruction=obstruction,
+                collision_boxes=building.build(params).boxes if params is not None else None,
                 profile=calibration.load() if s.use_profile else None)
             if params is not None:                         # the building's technical sheet, beside its bundle
                 out = bpy.path.abspath(s.game_dir)

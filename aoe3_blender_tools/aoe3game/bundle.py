@@ -16,7 +16,7 @@ the stock and mod buildings; the survey's profile can override them):
 import json
 import os
 
-from . import animxml, ddt, gr2_write
+from . import animxml, collision, ddt, gr2_write
 
 UNITS_PER_METER = gr2_write.STOCK_BASIS["units_per_meter"]
 OBSTRUCTION_RATIO = 0.85
@@ -45,7 +45,8 @@ def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None, obstru
     w, d = (footprint_m[0] * units_per_meter, footprint_m[1] * units_per_meter)
     cls = profile.footprint_class(*footprint_m) if profile is not None else None
     if obstruction is not None and profile is not None:
-        key = f"{2 * obstruction[0]:g}x{2 * obstruction[1]:g}"
+        side = 2 * min(obstruction)                      # an oblong one belongs to its shorter side's class
+        key = f"{side:g}x{side:g}"
         if key in getattr(profile, "classes", {}):
             cls = key
     ratio = (profile.obstruction_ratio(cls) if cls else None) or OBSTRUCTION_RATIO
@@ -64,7 +65,7 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
           footprint_m, icon_rgba=None, portrait_rgba=None, display_name=None, rollover="",
           template="House", v_flip=True, player_colour=None, chimney_bone=None, profile=None,
           texture_format="DXT3", variants=None, death_animation=True, relief=True, obstruction=None,
-          ground_rgba=None):
+          ground_rgba=None, collision_boxes=None):
     """Writes the bundle into `out` and returns the bundle description.
 
     variants: {"lowpoly": {...}, "damaged": {...}}, each with positions, normals, uvs and
@@ -153,6 +154,14 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
             f.write(ddt.write(ground_rgba, ddt.DXT3, alpha=8, usage=0, mips=True))
         ground["ground"] = f"{rel_dir}\\{low}_ground"
         size["decal"] = tuple(round(v * GROUND_MARGIN, 2) for v in size["decal"])
+    shape_file = None
+    if collision_boxes:                                  # its own boxes, beside the game's physics data
+        phys_dir = os.path.join(out, "data", "physics")
+        os.makedirs(phys_dir, exist_ok=True)
+        shape_file = os.path.join(phys_dir, low + ".shp")
+        with open(shape_file, "w", encoding="utf-8", newline="") as f:
+            f.write(collision.shape_xml(collision_boxes, UNITS_PER_METER))
+        ground["shape"] = low
     anim = animxml.building(name, f"{rel_dir}\\{low}", decal=size["decal"], **ground,
                             stages=size["stages"],
                             bones=[b for b in bone_names if b != chimney_bone],
@@ -168,8 +177,8 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
             "strings": {"DisplayNameID": display, "EditorNameID": display,
                         "RolloverTextID": rollover or display,
                         "ShortRolloverTextID": rollover or display},
-            "files": sorted(os.path.relpath(os.path.join(art_dir, f), out)
-                            for f in os.listdir(art_dir))}
+            "files": sorted([os.path.relpath(os.path.join(art_dir, f), out) for f in os.listdir(art_dir)]
+                            + ([os.path.relpath(shape_file, out)] if shape_file else []))}
     with open(os.path.join(out, "bundle.json"), "w", encoding="utf-8") as f:
         json.dump(desc, f, indent=1)
     write_readme(out, desc, rel_dir=rel_dir, low=low, has=refs)

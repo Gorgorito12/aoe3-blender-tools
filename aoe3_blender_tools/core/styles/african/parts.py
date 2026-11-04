@@ -641,6 +641,21 @@ def _pier(b, p):
     b.face_out(top, "pier_cap", (0.0, 0.0, 1.0))
 
 
+def collision(pieces):
+    """The boxes that stand for a building in the game's physics, one for each mass and each pier
+    (its middle section, as it leans): (x0, x1, y0, y1, z0, z1), metres on the plan."""
+    boxes = []
+    for q in pieces:
+        if q["kind"] == "block":
+            z = q.get("z", 0.0)
+            boxes.append((q["x0"], q["x1"], q["y0"], q["y1"], z, z + q["h"] + (q.get("parapet") or 0.0)))
+        elif q["kind"] == "pier":
+            f, t = q["foot"], q["top"]
+            m = [(a + c) / 2 for a, c in zip(f, t)]
+            boxes.append((m[0], m[1], m[2], m[3], 0.0, q["h"]))
+    return boxes
+
+
 def _door_frame(b, p):
     """Posts and a lintel round the door, standing a little out of a wall that looks -Y."""
     x, y, w, h = p["x"], p["y"], p["w"], p["h"]

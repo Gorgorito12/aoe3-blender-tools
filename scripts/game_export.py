@@ -88,7 +88,7 @@ def main():
     positions, normals, uvs, tris = blender_io.game_mesh(obj)
     icon = portrait = None
     ref = building.reference(p)          # a style guide's reference size and proto template
-    obstruction = (ref[0], ref[0]) if ref else None
+    obstruction = building.obstruction(p)
     if ref and not opt("--template"):
         argv.extend(["--template", ref[1]])
     if "--no-icons" not in argv:
@@ -103,7 +103,7 @@ def main():
         icon_rgba=icon, portrait_rgba=portrait, variants=variants,
         display_name=opt("--display"), template=opt("--template", "House"),
         v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"), obstruction=obstruction,
-        ground_rgba=ground, profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
+        ground_rgba=ground, collision_boxes=building.build(p).boxes, profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
     write_sheet(out, p, desc, len(positions), len(tris))
     print(f"{p.name}: {len(tris)} triangles, {len(positions)} vertices; "
           f"obstruction {desc['size']['radius']}, decal {desc['size']['decal']}, "

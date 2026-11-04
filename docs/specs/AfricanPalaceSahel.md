@@ -59,9 +59,9 @@ Where they go, at medium detail:
 
 | Field | Value |
 |---|---|
-| Obstruction: units path around it, buildings place against it | 12.00 x 12.00 |
-| Model past the obstruction, on each side | 2.41 wide, 0.29 deep |
-| Collision shape | `outpost_generic`, a stock shape shared by every generated building, not fitted to this model |
+| Obstruction: units path around it, buildings place against it | 13.00 x 12.00 |
+| Model past the obstruction, on each side | 1.91 wide, 0.29 deep |
+| Collision shape | `africanpalacesahel`, its own: 17 boxes covering 15.91 x 11.65 x 9.72 |
 | Ground decal | 23.40 x 17.50 |
 | Construction stages | 6x6 |
 | Rubble | BuildingRubble4x4 |
@@ -74,10 +74,10 @@ Where they go, at medium detail:
 |---|---|---|---|---|
 | Height, game units | 10.86 | 9.18 | 11.09 | 14.4 |
 | Height over longest side | 0.646 | 0.765 | 0.855 | 1.006 |
-| Share of the obstruction covered | 0.84 | 0.527 | 0.636 | 0.712 |
-| Share of what stands outside it | 0.188 | 0.0 | 0.0 | 0.001 |
+| Share of the obstruction covered | 0.841 | 0.527 | 0.636 | 0.712 |
+| Share of what stands outside it | 0.125 | 0.0 | 0.0 | 0.001 |
 | Share in its largest part | 1.0 | 0.99 | 1.0 | 1.0 |
-| Share of the edge lined | 0.68 | 0.007 | 0.13 | 0.263 |
+| Share of the edge lined | 0.671 | 0.007 | 0.13 | 0.263 |
 | Flat levels | 8 | 5.0 | 5.0 | 6.0 |
 | Triangles in the lower third | 0.104 | 0.146 | 0.308 | 0.521 |
 | Triangles in the middle third | 0.437 | 0.301 | 0.369 | 0.432 |

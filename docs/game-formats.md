@@ -136,6 +136,30 @@ compiled (`.xml.xmb`, plain `X1`, inside the art archives); mods ship plain XML.
 - Logic types measured in the mod: LowPoly, Tech, BuildingCompletion, Destruction, Variation,
   Civ, Culture.
 
+## Collision
+
+A building's hitbox is three things, none of them its visible mesh:
+
+- **Obstruction**, in the proto: `ObstructionRadiusX` and `Z`, half-sides of a rectangle. With the
+  flag `SelectWithObstruction` it is also what a click selects. The stock fort's is 12 x 12 while its
+  model reaches 7.3 from the centre: real models stand past their obstruction.
+- **Collision shape**: `shape="<name>"` on a model reference in the anim file names
+  `Data\\PHYSICS\\<name>.shp`. A plain Havok XML file (CRLF, sdk 20300): an `hkListShape` of
+  `hkTransformShape`s, each around an `hkBoxShape`, in the model file's coordinates. The stock fort
+  has 16 boxes. `aoe3game/collision.py` writes them, into `data\\physics\\` of the copy.
+- **Physics body**: the proto's `PhysicsInfo` names `Data\\PHYSICS\\<name>.physics.xmb`, whose blueprint
+  gives mass, friction and a shape of its own. Generated buildings inherit `house` from the template.
+
+A generated building without boxes of its own points at the stock outpost's shape, 2 boxes
+3.3 x 4.3 x 8.85, because it borrows that building's damage system (`bundle.DAMAGE_SKELETON`).
+
+Seen in game (2026-11-04) with a generated shape of 17 boxes: the game loads it from
+`data\\physics\\`, the building takes cannon fire, and it collapses and clears normally. What a shape
+does to a shot aimed past a building is still unclear: four cannons firing at a target behind a
+wing did no damage to either with these boxes; with the outpost's shape the building lost 2,000 hit
+points and the target none. One run each, with the cannons in different places: repeat it before
+relying on it.
+
 ## Protos and strings
 
 - `data\protoy.xml`: `<Unit id=... name=...>` blocks (both quote styles occur), CRLF line ends.

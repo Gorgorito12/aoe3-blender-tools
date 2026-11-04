@@ -55,7 +55,7 @@ def facts(params, size, template, upm, key=None, collision=None, shape=None, ban
         "parts": tris_by_part(medium), "texture": p.texture_size,
         "density": at.density * p.texture_size / at.size / scale / upm, "materials": bool(getattr(p, "materials", False)),
         "game": dict(size), "collision": collision, "shape": shape, "attach": dict(medium.attach),
-        "notes": list(medium.notes),
+        "notes": list(medium.notes), "boxes": list(medium.boxes),
     }
 
 
@@ -134,7 +134,13 @@ def render(f, export=None, proto=None):
     over_x, over_z = w * upm / 2 - rx, d * upm / 2 - rz
     rows = [("Obstruction: units path around it, buildings place against it", f"{_n(2 * rx)} x {_n(2 * rz)}"),
             ("Model past the obstruction, on each side", f"{_n(over_x)} wide, {_n(over_z)} deep")]
-    if f["collision"]:
+    if f["boxes"]:
+        bw = max(b[1] for b in f["boxes"]) - min(b[0] for b in f["boxes"])
+        bd = max(b[3] for b in f["boxes"]) - min(b[2] for b in f["boxes"])
+        bh = max(b[5] for b in f["boxes"]) - min(b[4] for b in f["boxes"])
+        rows.append(("Collision shape", f"`{f['name'].lower()}`, its own: {len(f['boxes'])} boxes covering "
+                     f"{_n(bw * upm)} x {_n(bd * upm)} x {_n(bh * upm)}"))
+    elif f["collision"]:
         rows.append(("Collision shape", f"`{f['collision']}`, a stock shape shared by every generated "
                      "building, not fitted to this model"))
     rows += [("Ground decal", f"{_n(g['decal'][0])} x {_n(g['decal'][1])}"),

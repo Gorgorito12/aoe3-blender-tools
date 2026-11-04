@@ -18,7 +18,7 @@ from aoe3game import animxml, deploy, gr2, gr2_write, proto  # noqa: E402
 
 try:
     import numpy as np
-    from aoe3game import bundle, ddt
+    from aoe3game import bundle, collision, ddt
 except ImportError:          # plain Python without numpy
     np = None
 
@@ -398,6 +398,35 @@ class DdtTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 bundle.write(os.path.join(tmp, "x"), name="Box", prefix="mod", positions=P, normals=N,
                              uvs=UV, triangles=T, texture_rgba=tex, footprint_m=(4, 3), texture_format="DXT1")
+
+    def test_a_building_can_carry_its_own_collision_boxes(self):
+        P, N, UV, T = box()
+        boxes = [(-2.0, 2.0, -1.0, 3.0, 0.0, 4.0), (-1.0, 1.0, -3.0, -1.0, 0.0, 2.0)]
+        with tempfile.TemporaryDirectory() as tmp:
+            tex = np.full((32, 32, 4), 255, np.uint8)
+            desc = bundle.write(tmp, name="Box", prefix="mod", positions=P, normals=N, uvs=UV, triangles=T,
+                                texture_rgba=tex, footprint_m=(4, 3), collision_boxes=boxes)
+            path = os.path.join(tmp, "data", "physics", "box.shp")
+            self.assertIn(os.path.join("data", "physics", "box.shp"), desc["files"])
+            with open(path, encoding="utf-8", newline="") as f:
+                text = f.read()
+            with open(os.path.join(tmp, "art", "mod", "buildings", "box", "box.xml"), encoding="utf-8") as f:
+                anim = f.read()
+        self.assertIn('shape="box"', anim)
+        self.assertNotIn("outpost_generic\"", anim)
+        self.assertTrue(text.startswith('<?xml version="1.0" encoding="UTF-8" ?>\r\n<hke '))
+        root = ET.fromstring(text)
+        types = [o.get("type") for o in root.iter("hkobject")]
+        self.assertEqual(types.count("hkBoxShape"), 2)
+        self.assertEqual(types[-1], "hkListShape")
+        u = bundle.UNITS_PER_METER
+        half, centre = collision.stored(boxes[1], u)       # (x, y, z) -> (-x, z, -y) * units
+        self.assertAlmostEqual(half[0], 1.0 * u)
+        self.assertAlmostEqual(half[1], 1.0 * u)
+        self.assertAlmostEqual(centre[1], 1.0 * u)
+        self.assertAlmostEqual(centre[2], 2.0 * u)
+        with self.assertRaises(ValueError):
+            collision.shape_xml([(0.0, 0.0, 0.0, 1.0, 0.0, 1.0)], u)
 
     def test_normal_map(self):
         img = np.full((32, 32, 3), 200, np.uint8)

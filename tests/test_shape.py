@@ -28,9 +28,9 @@ def measured(params):
         pts += [tuple(c * shape_survey.UNITS_PER_METER for c in q) for q in f.pts]
         tris += [(n, n + i, n + i + 1) for i in range(1, len(f.pts) - 1)]
     V, T = np.array(pts, np.float32), np.array(tris)
-    r = building.reference(params)[0]
+    rx, rz = building.obstruction(params)
     facts = {"upm": shape_survey.UNITS_PER_METER, "up": (0.0, 0.0, 1.0), "textures": 1, "materials": 1}
-    return shape_survey.measure(V, np.zeros((len(V), 2), np.float32), T, facts, r, r)
+    return shape_survey.measure(V, np.zeros((len(V), 2), np.float32), T, facts, rx, rz)
 
 
 def rules(c, flat_roofs=True):
