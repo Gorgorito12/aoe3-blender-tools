@@ -64,12 +64,12 @@ What a static building model holds (as the stock files):
   `bumpspec_mask_pixelxform` with `pixelxformColor = playerColor` for player colour.
 - Texture names: the model stores a full path; the engine uses the part after `\art\`.
 
-**Scale** (**measured**, to confirm in game): the survey measured 657 building models. 507 in the
-stock basis and 70 in 3ds Max inches have a size that agrees with their obstruction once their
-declared units are applied, which means the engine converts each file's basis. The 27 models
-that declare 1,000 units per metre would be about 0.5 m wide by the same rule: either the engine
-handles that basis differently or those models look wrong in game (to verify). The writer uses
-the stock basis, so no conversion is involved.
+**Scale** (**measured**, confirmed in game 2026-11-04): the survey measured 657 building models. 507
+in the stock basis and 70 in 3ds Max inches have a size that agrees with their obstruction once
+their declared units are applied. The 27 that declare 1,000 units per metre would be about 0.5 m
+wide by that rule, and they are not: in game they stand at full size, their stored coordinates
+scaled as if they were inches (x 0.015625: 1,280 stored units are 20 game units). A survey must not
+trust that declaration. The writer uses the stock basis, so no conversion is involved.
 
 ## Textures (.ddt)
 
