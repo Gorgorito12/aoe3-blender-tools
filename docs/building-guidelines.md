@@ -31,6 +31,13 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
   in game they flicker (z-fighting); in a Cycles render they show as a black band (shadow acne).
   Measured on the first White House: the portico platform overlapped the plinth top by 20 cm next
   to the wall. Stop one face where the other begins. The check reports them.
+- **Volumes that cross badly.** A tower and a wing can pass every check and still look wrong:
+  corners outside the cylinder, parapets and pinnacles running through it, a sliver of air between
+  two walls. Measured on the first Sahel town center: wings 5.2 m wide against a tower of radius
+  3 m, their corners 0.6 m out of it and 0.1 m between neighbours. Keep volumes at least 0.25 m
+  apart, or end one entirely inside a taller one, counting the polygon of the low-detail model and
+  not the radius, and declare that side `joined` so it carries nothing. `core/joints.py` checks
+  it; the coplanar check does not.
 - **Hidden faces.** The bottom of each box is never seen from the game camera: leave it out.
 - **Baked light.** A texture with one bright and one dark side looks wrong under the game's
   lighting.

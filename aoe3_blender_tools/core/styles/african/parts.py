@@ -12,9 +12,11 @@ has it); thatch, domes, roofs, wood, cloth and stone share one region each, size
 largest piece. Layouts face -Y like every style (the front, with the door, is at -Y)."""
 import math
 
+from ... import joints
 from ...kit import cone_roof_size, dome_size, ring_size
 
 DOOR_ANGLE = 1.5 * math.pi          # the round walls' doors face -Y
+SIDE_OF = {"front": "-y", "back": "+y", "left": "-x", "right": "+x"}
 
 
 def sides(medium, big=False):
@@ -72,6 +74,8 @@ def declare(b, layout, medium):
         elif k == "block":
             w, d, h = piece["x1"] - piece["x0"], piece["y1"] - piece["y0"], piece["h"]
             for face, length in (("front", w), ("back", w), ("left", d), ("right", d)):
+                if face in piece.get("joined", ()):                # ends inside its neighbour: no wall
+                    continue
                 name = f"bk{i}_{face}"
                 want(name, length, h)
                 door = piece.get("door") is True and face == "front" or piece.get("door") == face
@@ -140,6 +144,41 @@ def _block_openings(bays, door, h):
         else:
             out.append((u - 0.3, 1.2, u + 0.3, min(1.9, h - 0.6)))
     return out
+
+
+# --------------------------------------------------------------------------------------------------
+# joints
+
+def solids(layout):
+    """The solid volumes of a layout as shapes for core/joints.py: what a neighbour can collide
+    with, from the widest it gets (the plinth or the eave) to its highest point."""
+    out = []
+    for i, p in enumerate(layout):
+        k = p["kind"]
+        z0 = p.get("z", 0.0)
+        name = f"{k} {i}"
+        if k in ("hut", "granary", "tower"):
+            roof = p.get("roof", "cone" if k != "granary" else "dome")
+            r = p["r"] + max(0.15 if p.get("base") else 0.0, p.get("overhang", 0.4) if roof == "cone" else 0.0)
+            z1 = z0 + p.get("stilts", 0.0) + p.get("base", 0.0) + p["wall_h"] + p.get("roof_h", 0.0) + (
+                0.6 if roof == "crenel" else 0.0)
+            out.append({"shape": "circle", "x": p["x"], "y": p["y"], "r": r, "z0": z0, "z1": z1, "name": name,
+                        "sides": 10 if p.get("big") else 8})
+        elif k == "block":
+            z1 = z0 + p["h"] + p.get("parapet", 0.0) + (0.3 if p.get("merlons") else 0.0)
+            shape = {"shape": "rect", "x0": p["x0"], "y0": p["y0"], "x1": p["x1"], "y1": p["y1"], "z0": z0,
+                     "z1": z1, "name": name}
+            if p.get("roof") == "thatch":
+                shape["z1"] = z0 + p["h"] + 0.4
+            else:
+                shape["roof"] = z0 + p["h"]
+            out.append(shape)
+    return out
+
+
+def junctions(layout):
+    """The bad joints of a layout: [] when every pair of volumes is apart or embedded."""
+    return [m for _, _, m in joints.problems(solids(layout))]
 
 
 # --------------------------------------------------------------------------------------------------
@@ -323,7 +362,11 @@ def _block(b, p, medium):
     z0 = p.get("z", 0.0)
     walls = (("front", (x0, y0, z0), (1.0, 0.0, 0.0), x1 - x0), ("back", (x1, y1, z0), (-1.0, 0.0, 0.0), x1 - x0),
              ("left", (x0, y1, z0), (0.0, -1.0, 0.0), y1 - y0), ("right", (x1, y0, z0), (0.0, 1.0, 0.0), y1 - y0))
+    joined = p.get("joined", ())
+    open_sides = tuple(SIDE_OF[j] for j in joined)
     for face, origin, ua, length in walls:
+        if face in joined:
+            continue
         region = f"bk{i}_{face}"
         spec = b._african_facades[region]
         if medium and spec["openings"]:
@@ -339,14 +382,20 @@ def _block(b, p, medium):
     else:
         top = b.flat_roof(x0, x1, y0, y1, zt, "roof_flat", parapet_h=p.get("parapet", 0.0),
                           parapet_region="parapet" if p.get("parapet") else None,
-                          merlons=(p.get("merlons", 0.0) if medium else 0.0))
+                          merlons=(p.get("merlons", 0.0) if medium else 0.0), open_sides=open_sides)
     if medium and p.get("sahel", True) and roof != "thatch":
         _buttresses(b, p, z0, h, top)
     if medium and p.get("beams"):                          # toron: beam ends on the front and sides
         zb = z0 + h - 0.45
-        b.beam_ends("-y", y0, x0 + 0.3, x1 - 0.3, zb, max(3, int((x1 - x0) / 0.9)), 0.35, "wood")
-        b.beam_ends("-x", x0, y0 + 0.3, y1 - 0.3, zb, max(2, int((y1 - y0) / 0.9)), 0.35, "wood")
-        b.beam_ends("+x", x1, y0 + 0.3, y1 - 0.3, zb, max(2, int((y1 - y0) / 0.9)), 0.35, "wood")
+        # along the sides they stop short of a joined end
+        a0, a1 = y0 + (1.2 if "-y" in open_sides else 0.3), y1 - (1.2 if "+y" in open_sides else 0.3)
+        c0, c1 = x0 + (1.2 if "-x" in open_sides else 0.3), x1 - (1.2 if "+x" in open_sides else 0.3)
+        if "-y" not in open_sides:
+            b.beam_ends("-y", y0, c0, c1, zb, max(3, int((c1 - c0) / 0.9)), 0.35, "wood")
+        if "-x" not in open_sides:
+            b.beam_ends("-x", x0, a0, a1, zb, max(2, int((a1 - a0) / 0.9)), 0.35, "wood")
+        if "+x" not in open_sides:
+            b.beam_ends("+x", x1, a0, a1, zb, max(2, int((a1 - a0) / 0.9)), 0.35, "wood")
     return top
 
 
@@ -356,8 +405,16 @@ def _buttresses(b, p, z0, h, top):
     x0, x1, y0, y1 = p["x0"], p["x1"], p["y0"], p["y1"]
     zt = max(top, z0 + h) + 0.35
     out = 0.18
+    joined = tuple(SIDE_OF[j] for j in p.get("joined", ()))
+    near = {"-y": ("-x", "+x"), "+y": ("-x", "+x"), "-x": ("-y", "+y"), "+x": ("-y", "+y")}
     for side, a0, a1 in (("-y", x0, x1), ("+y", x0, x1), ("-x", y0, y1), ("+x", y0, y1)):
+        if side in joined:
+            continue
+        lo, hi = near[side]                                 # keep clear of a joined end
+        a0, a1 = a0 + (1.2 if lo in joined else 0.0), a1 - (1.2 if hi in joined else 0.0)
         L = a1 - a0
+        if L < 1.2:                                         # too short for two pilasters
+            continue
         n = max(2, int(L / 1.8) + 1)
         for k in range(n):
             a = a0 + 0.2 + (L - 0.4) * k / (n - 1)
@@ -375,6 +432,8 @@ def _buttresses(b, p, z0, h, top):
                 b.pyramid(xa, xb, a - 0.15, a + 0.15, zt, 0.35, "trim")
     zs = z0 + h + 0.1                                       # waterspouts on the front and back
     for yy, (ya, yb) in ((y0, (y0 - 0.6, y0)), (y1, (y1, y1 + 0.6))):
+        if ("-y" if yy == y0 else "+y") in joined:
+            continue
         for a in (x0 + (x1 - x0) * 0.3, x0 + (x1 - x0) * 0.7):
             b.box(a - 0.07, a + 0.07, ya, yb, zs, zs + 0.12, "wood", "wood",
                   skip=("+y",) if yy == y0 else ("-y",))

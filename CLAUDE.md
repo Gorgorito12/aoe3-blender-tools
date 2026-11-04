@@ -137,6 +137,13 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   Compare every preset's count before and after a change: an unexpected drop is a lost part
   (it caught the side balustrades disappearing).
 - Run `scripts/sweep.py` after any geometry change; a new option goes into its `random_params`.
+- Volumes of a composed building never cross carelessly (`core/joints.py`): two volumes are either
+  at least 0.25 m apart, or one ends entirely inside a taller one, also on the low-detail polygon
+  (a round wall of few sides cuts well inside its radius). A side that ends inside its neighbour
+  is declared (`joined=("back",)`) and loses its wall, parapet, merlons, buttresses and beams. A
+  passing `validate.check` proves nothing here: it only sees coplanar faces.
+  `tests/test_african_joints.py` covers every preset and random parameters; a new composed style
+  gets the same test.
 - Look at the renders after a visual change (`scripts/generate.py`, then read the JPEGs).
 - Mark game facts as measured, engine limit, or to verify, as `docs/building-guidelines.md` does.
 - Regenerate `examples/` when the output of a preset changes, and keep the README gallery in step.
