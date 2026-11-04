@@ -126,6 +126,8 @@ def declare(b, layout, medium):
             want(piece.get("region", "trim"), 3.2, 1.2)
         elif k == "door_frame":
             want("frame", 2.2, 3.0)
+        elif k == "mast":
+            want("frame", 2.2, 3.0)
         elif k == "pier":
             want("pier", PIER_FACE[4] + 0.4, PIER_FACE[3])
             want("pier_cap", 1.4, 1.2)
@@ -284,6 +286,10 @@ def emit(b, layout, medium):
         elif k == "door_frame":
             _door_frame(b, piece)
             at = (piece["x"], piece["y"], piece["h"])
+        elif k == "mast":
+            x, y, z, r = piece["x"], piece["y"], piece["z"], 0.05
+            b.box(x - r, x + r, y - r, y + r, z, z + piece["h"], "frame", "frame")
+            at = (x, y, z + piece["h"])
         elif k == "banner":
             if medium:
                 _banner(b, piece)
@@ -620,8 +626,8 @@ def _pier(b, p):
         ox, oy = tx0 if sx > 0 else tx1, ty0 if sy > 0 else ty1
         return z1 + rise * (abs(x - ox) / (tx1 - tx0) + abs(y - oy) / (ty1 - ty0))
 
-    foot, tags = ring(p["foot"], p.get("chamfer", 0.11))
-    top = [(x, y, cap(x, y)) for x, y in ring(p["top"], p.get("chamfer", 0.11) * 0.55)[0]]
+    foot, tags = ring(p["foot"], p.get("chamfer", 0.14))
+    top = [(x, y, cap(x, y)) for x, y in ring(p["top"], p.get("chamfer", 0.14) * 0.55)[0]]
     w, a, c, h, lane = PIER_FACE
     cx, cy = sum(q[0] for q in foot) / len(foot), sum(q[1] for q in foot) / len(foot)
     for i, q in enumerate(foot):

@@ -117,7 +117,7 @@ AFRICAN_COLORS = {**DEFAULT_COLORS, "mud": (140, 110, 74), "adobe": (164, 134, 1
 
 
 # a palace is kept up: fresh warm plaster
-PALACE_COLORS = {"adobe": (176, 126, 74), "mud": (168, 122, 76), "cloth": (60, 66, 150), "timber": (122, 74, 40),
+PALACE_COLORS = {"adobe": (160, 112, 64), "mud": (152, 108, 66), "cloth": (60, 66, 150), "timber": (122, 74, 40),
                  "tile": (128, 88, 60)}
 
 

@@ -30,11 +30,11 @@ SURFACES = {
     "wall_mud": {"role": "wall", "cracks": (0.15, 0.5, 0.75), "stains": (0.3, 0.07, 1.0)},
     "wall_adobe": {"role": "adobe", "cracks": (0.3, 0.22, 0.4), "stains": (0.35, 0.15, 1.6)},
     "wall_kept": {"role": "roofmud", "cracks": (0.6, 0.12, 0.2), "stains": None,
-                  "mottle": ((1.6, 0.05), (0.07, 0.08)), "patches": ((0.46, 0.07), (0.2, 0.06)), "courses": 0.5, "stones": (0.36, 0.05)},
+                  "mottle": ((1.6, 0.05), (0.07, 0.08)), "patches": ((0.46, 0.07), (0.2, 0.06)), "courses": 0.5, "stones": (0.55, 0.12)},
     "trim_kept": {"role": "roofmud", "cracks": (0.6, 0.12, 0.2), "stains": None,
                   "mottle": ((1.2, 0.04), (0.3, 0.05), (0.07, 0.09)), "courses": 2.6},
     "pier_kept": {"role": "roofmud", "cracks": None, "stains": None,
-                  "mottle": ((1.2, 0.04), (0.07, 0.07)), "patches": ((0.4, 0.07), (0.18, 0.06)), "streaks": 1.2, "stones": (0.42, 0.04)},
+                  "mottle": ((1.2, 0.04), (0.07, 0.07)), "patches": ((0.4, 0.07), (0.18, 0.06)), "streaks": 1.2, "stones": (0.55, 0.08)},
     "roof_kept": {"role": "roofmud", "cracks": (0.7, 0.1, 0.25), "stains": None,
                   "mottle": ((1.4, 0.05), (0.07, 0.08)), "patches": ((0.26, 0.13), (0.12, 0.1))},
     "parapet_kept": {"role": "roofmud", "cracks": None, "stains": None, "mottle": ((0.8, 0.04), (0.07, 0.08)),
@@ -84,13 +84,13 @@ def coat(pr, region, surface, cols):
                 pr.tone(region, max(0.0, u), v, min(r.world_w, u + bw), min(r.world_h, v + ch),
                         1.0 + float(pr.rng.uniform(-k, k)))
                 if pr.rng.random() < 0.7 and u > 0.0:     # the joints are mostly lost
-                    pr.tone(region, u, v, u + 0.025, min(r.world_h, v + ch), 1.0 - k * 1.1)
+                    pr.tone(region, u, v, u + 0.06, min(r.world_h, v + ch), 1.0 - k * 1.5)
                 if pr.rng.random() < 0.7:
-                    pr.tone(region, max(0.0, u), v, min(r.world_w, u + bw), min(r.world_h, v + 0.022), 1.0 - k * 1.1)
+                    pr.tone(region, max(0.0, u), v, min(r.world_w, u + bw), min(r.world_h, v + 0.055), 1.0 - k * 1.5)
                 u += bw
             v += ch
         for _ in range(int(r.world_w * r.world_h * 12)):  # flat chips and trowel marks
-            u, v, d = float(pr.rng.uniform(0, r.world_w)), float(pr.rng.uniform(0, r.world_h)), float(pr.rng.uniform(0.1, 0.34))
+            u, v, d = float(pr.rng.uniform(0, r.world_w)), float(pr.rng.uniform(0, r.world_h)), float(pr.rng.uniform(0.16, 0.46))
             pts = [(u + float(pr.rng.uniform(-d, d)), v + float(pr.rng.uniform(-d, d))) for _ in range(3)]
             pr.facet(region, [(min(r.world_w, max(0.0, a)), min(r.world_h, max(0.0, c))) for a, c in pts],
                      1.0 + float(pr.rng.choice([-1.0, -0.6, 0.6, 1.0])) * k)

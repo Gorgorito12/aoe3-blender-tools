@@ -15,6 +15,8 @@ from . import compose, sizes
 
 def flag_point(piece, medium=True):
     k = piece["kind"]
+    if k == "mast":
+        return piece["x"], piece["y"], piece["z"] + piece["h"]
     if k in ("hut", "granary", "tower"):
         z = piece.get("z", 0.0) + piece.get("stilts", 0.0) + piece.get("base", 0.0) + piece["wall_h"]
         if piece.get("roof", "cone" if k != "granary" else "dome") == "cone":
@@ -357,7 +359,7 @@ def palace(p, P, medium):
             block(-ux, ux, bay + 0.08, hall_y + 0.1, Hb - Hg, z=Hg, parapet=0.34, coping="coping", windows=0,
                   art={"front": "frieze"}, joined=("back",), band=False, **K),
             block(-hx, hx, hall_y, back, Hh - Hw, z=Hw, parapet=0.34, beams=("-y", "+y"), beam_gap=0.5, pinnacles="stepped",
-                  flag=True, windows=0, win={"front": [(0.8, 0.12, 0.95, 1.12, True), (2 * hx - 0.8, 0.12, 0.95, 1.12, True),
+                  windows=0, win={"front": [(0.8, 0.12, 0.95, 1.12, True), (2 * hx - 0.8, 0.12, 0.95, 1.12, True),
                                                        (hx, 0.23, 2 * ax, 1.75, "recess")],
                                              "left": [(back + 0.45, 0.1, 1.0, 1.35, True)],
                                              "back": [(hx, 0.45, 0.42, 0.7, False)]}, **K),
@@ -379,6 +381,7 @@ def palace(p, P, medium):
             {"kind": "banner", "x": -2.09, "y": bay - 0.02, "w": 0.54, "z1": 3.0, "h": 1.35},
             {"kind": "banner", "x": 1.55, "y": bay - 0.02, "w": 0.54, "z1": 3.0, "h": 1.35},
             {"kind": "door_frame", "x": 0.0, "y": bay, "w": 1.6, "h": 2.5},
+            {"kind": "mast", "x": 1.1, "y": back - 0.3, "z": 6.55, "h": 2.5, "flag": True},   # the owner's flag flies from it
             {**stairs(0.0, bay - 0.8, 0.34, d="+y", w=2.9, run=0.8, n=2), "region": "step"}]
 
 

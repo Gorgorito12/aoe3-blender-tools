@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
 from aoe3_blender_tools.core import blender_io, building, paint  # noqa: E402
 from aoe3_blender_tools.core import profile as calibration  # noqa: E402
 from aoe3_blender_tools.core import render  # noqa: E402
+from aoe3_blender_tools.core.styles import african  # noqa: E402
 from aoe3game import bundle  # noqa: E402
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
@@ -72,6 +73,7 @@ def main():
         icon, portrait = render.icon_and_portrait(obj)
     variants = blender_io.game_variants(obj, lowpoly="--no-lowpoly" not in argv,
                                         damaged="--no-damaged" not in argv)
+    ground = african.ground_decal(p) if p.style == "AFRICAN" else None
     desc = bundle.write(
         out, name=p.name, prefix=opt("--prefix", "mod"), positions=positions, normals=normals,
         uvs=uvs, triangles=tris, texture_rgba=blender_io.texture_rgba(obj),
@@ -79,7 +81,7 @@ def main():
         icon_rgba=icon, portrait_rgba=portrait, variants=variants,
         display_name=opt("--display"), template=opt("--template", "House"),
         v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"), obstruction=obstruction,
-        profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
+        ground_rgba=ground, profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
     print(f"{p.name}: {len(tris)} triangles, {len(positions)} vertices; "
           f"obstruction {desc['size']['radius']}, decal {desc['size']['decal']}, "
           f"stages {desc['size']['stages']}, class {desc['size'].get('class')}; texture "

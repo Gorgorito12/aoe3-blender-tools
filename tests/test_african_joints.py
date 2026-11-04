@@ -92,6 +92,15 @@ class Piers(unittest.TestCase):
             self.assertLess(abs(ox - ix) + abs(oy - iy), 1.5, q)
 
 
+class Ground(unittest.TestCase):
+    def test_the_palace_lies_on_sand_that_thins_out(self):
+        rgba = african.ground_decal(african.clamp(building.PRESETS["AFRICAN_PALACE_SAHEL"]), 128)
+        self.assertEqual(rgba.shape, (128, 128, 4))
+        self.assertEqual(rgba[0, 0, 3], 0)                 # the corners are grass
+        self.assertGreater(rgba[64, 64, 3], 150)           # the middle is sand
+        self.assertIsNone(african.ground_decal(african.clamp(building.PRESETS["AFRICAN_HOUSE_SAHEL"])))
+
+
 class Composition(unittest.TestCase):
     def test_nothing_is_left_alone_on_the_plot(self):
         """Every prop stands near a structure or another prop: a building is one place."""

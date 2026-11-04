@@ -8,6 +8,8 @@ the foot and the top of the walls, cloths, banners."""
 import math
 from dataclasses import replace
 
+import numpy as np
+
 from ...kit import Builder
 from ...painter import PLAYER_GREY, _shade
 from . import facade, layouts, parts, sizes, skin
@@ -32,6 +34,38 @@ def clamp(p):
     return p
 
 
+def ground_decal(p, size=512):
+    """The ground a building lies on, RGBA for the game's decal, or None to use the game's own:
+    sand worn by feet, thinning out irregularly into the grass."""
+    if (p.building_type, p.architecture) != ("PALACE", "SAHEL"):
+        return None
+    rng = np.random.default_rng(p.seed + 11)
+
+    def noise(cells):
+        """Smooth noise from -1 to 1, about `cells` blobs across."""
+        g = rng.uniform(-1.0, 1.0, (cells + 2, cells + 2))
+        t = np.linspace(0.0, cells, size)
+        i = t.astype(int)
+        f = (t - i)[None, :]
+        c = (t - i)[:, None]
+        f, c = f * f * (3 - 2 * f), c * c * (3 - 2 * c)
+        top = g[np.ix_(i, i)] * (1 - f) + g[np.ix_(i, i + 1)] * f
+        low = g[np.ix_(i + 1, i)] * (1 - f) + g[np.ix_(i + 1, i + 1)] * f
+        return top * (1 - c) + low * c
+
+    y, x = np.mgrid[-1.0:1.0:size * 1j, -1.0:1.0:size * 1j]
+    edge = np.maximum(np.abs(x), np.abs(y)) * 0.65 + np.hypot(x, y) * 0.35   # a rounded square
+    rim = 0.8 + 0.14 * noise(4) + 0.1 * noise(11) + 0.06 * noise(36)
+    alpha = np.clip((rim - edge) / 0.05, 0.0, 1.0)
+    tone = 1.0 + 0.14 * noise(7) + 0.1 * noise(24) + 0.08 * noise(80)
+    grit = rng.uniform(-1.0, 1.0, (size, size)) * 0.03
+    out = np.zeros((size, size, 4), np.uint8)
+    for ch, value in enumerate((142, 106, 68)):
+        out[..., ch] = np.clip(value * (tone + grit), 0, 255)
+    out[..., 3] = np.clip(alpha * 215, 0, 255)
+    return out
+
+
 def reference(p):
     """(obstruction radius in game units, proto template) of the building the guide names."""
     return sizes.radius(p.building_type), sizes.template(p.building_type)
@@ -54,7 +88,7 @@ def build(p, params):
         b.attach["flag_attach"] = layouts.flag_point(flag, medium)
     else:
         b.attach["flag_attach"] = top
-    k = sizes.SCALE                                       # to the game's size, all of it together
+    k = sizes.scale(p.building_type, p.architecture)      # to the game's size, all of it together
     for f in b.faces:
         f.pts = [(x * k, y * k, z * k) for x, y, z in f.pts]
     b.attach = {name: tuple(c * k for c in at) for name, at in b.attach.items()}

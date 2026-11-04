@@ -260,7 +260,7 @@ def pier_chamfer(pr, region, u, w, h):
     v = 0.0
     while v < h:
         ln = rng.uniform(0.12, 0.5)
-        pr.tone(region, u, v, u + w, min(h, v + ln), rng.choice((1.12, 1.16, 1.2, 1.24, 1.3)))
+        pr.tone(region, u, v, u + w, min(h, v + ln), rng.choice((1.16, 1.22, 1.27, 1.32, 1.38)))
         v += ln
     for _ in range(int(h * 60)):                              # its grain
         uu, v = rng.uniform(u, u + w - 0.05), rng.uniform(0.0, h)
@@ -326,10 +326,10 @@ def worn(pr, region, u0, v0, u1, v1, rng, dirt=0.0):
         pts = [(u, v), (u + c * ln, v + e * ln), (u + c * ln + 0.018, v + e * ln + 0.018)]
         pr.facet(region, [(min(u1, max(u0, a)), min(v1, max(v0, b))) for a, b in pts], 0.84)
     if dirt:
-        for layer, count, k in ((1.0, 20, (0.96, 0.93, 0.88)), (0.7, 24, (0.95, 0.91, 0.85)), (0.4, 24, (0.93, 0.89, 0.82))):
+        for layer, count, k in ((1.0, 16, (0.92, 0.87, 0.78)), (0.7, 18, (0.92, 0.86, 0.77)), (0.4, 18, (0.9, 0.84, 0.74))):
             for _ in range(int(du * count)):
                 top = dirt * layer * rng.uniform(0.55, 1.15)
-                pr.facet(region, tri(rng.uniform(u0, u1), v0 + rng.uniform(0.0, top), rng.uniform(0.07, 0.2), 0.8), k)
+                pr.facet(region, tri(rng.uniform(u0, u1), v0 + rng.uniform(0.0, top), rng.uniform(0.12, 0.34), 0.7), k)
 
 
 def foot_stones(pr, region, w, wall):
@@ -342,7 +342,7 @@ def foot_stones(pr, region, w, wall):
         bw = rng.uniform(0.9, 1.7)
         pr.tone(region, max(0.0, u), 0.0, min(w, u + bw), 0.72, rng.uniform(0.95, 1.03))
         u += bw
-    worn(pr, region, 0.0, 0.0, w, 0.72, rng, dirt=0.42)
+    worn(pr, region, 0.0, 0.0, w, 0.72, rng, dirt=0.5)
     pr.tone(region, 0, 0.67, w, 0.72, 1.1)                    # its top edge, rubbed pale
     pr.hline(region, 0.73, 0, w, _shade(wall, 0.72), pr.lw)
 

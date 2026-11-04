@@ -41,8 +41,14 @@ RATIO = {2.0: 0.72, 3.0: 0.82}
 # stands 6 to 11 units high with doors to match (measured on the stock and the mod's models), against
 # 3 of a plan drawn at human size. Layouts are drawn at human size and all of it is scaled up.
 SCALE = 1.7
+SCALES = {("PALACE", "SAHEL"): 1.95}   # it stood at the lowest height of its class (median 11.1 units)
 TALL = 1.3               # walls and roofs a little taller still, as tall as the real ones
 GROUND = 0.26            # the terrace every building stands on, in layout metres
+
+
+def scale(building_type, architecture=None):
+    """How much larger than the plan a building is built."""
+    return SCALES.get((building_type, architecture), SCALE)
 
 
 def court_half(building_type):

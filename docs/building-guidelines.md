@@ -51,6 +51,9 @@ profile's `shape`; `tests/test_shape.py` holds every African preset to them). In
   corner, it keeps most of its width as it rises while it loses its depth, so it runs out into the
   walls, and a chamfer down the outer corner carries the line that divides it (`parts._pier`).
   Take such forms from several views: one view hides the sections and the sides of a building.
+- Texture detail under about 5 cm is gone at the game's camera, and its sun bleaches pale walls.
+  Paint stones about 0.5 m long with joints 5 cm wide, and keep walls darker than they look right
+  in a render. Check in game, next to a stock building.
 
 - **AI-generated meshes.** Image-to-3D and text-to-3D tools build a sculpted surface. Their
   remeshing at a game budget (measured: 1.4 million faces down to 3,568) leaves wavy walls and
