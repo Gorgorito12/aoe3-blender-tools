@@ -399,6 +399,10 @@ class DdtTest(unittest.TestCase):
                 bundle.write(os.path.join(tmp, "x"), name="Box", prefix="mod", positions=P, normals=N,
                              uvs=UV, triangles=T, texture_rgba=tex, footprint_m=(4, 3), texture_format="DXT1")
 
+    def test_a_style_can_name_the_rubble(self):
+        self.assertEqual(bundle.game_size((14.6, 14.6), rubble="BuildingRubble6x6")["rubble"], "BuildingRubble6x6")
+        self.assertNotEqual(bundle.game_size((14.6, 14.6))["rubble"], "BuildingRubble6x6")
+
     def test_a_building_can_carry_its_own_collision_boxes(self):
         P, N, UV, T = box()
         boxes = [(-2.0, 2.0, -1.0, 3.0, 0.0, 4.0), (-1.0, 1.0, -3.0, -1.0, 0.0, 2.0)]

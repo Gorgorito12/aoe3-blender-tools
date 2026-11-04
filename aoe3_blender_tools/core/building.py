@@ -198,6 +198,13 @@ def obstruction(params):
     return (ref[0], ref[0]) if ref else None
 
 
+def rubble(params):
+    """The proto of what the building leaves, when the style fixes it; None leaves it to its class."""
+    p = clamp_params(params)
+    fn = getattr(STYLES[p.style], "rubble", None)
+    return fn(p) if fn else None
+
+
 def build(params):
     p = clamp_params(params)
     return STYLES[p.style].build(p, params)

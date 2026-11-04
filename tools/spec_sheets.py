@@ -29,7 +29,8 @@ def game_side(params, prof):
     from dataclasses import replace
     model = building.build(replace(params, detail="MEDIUM"))
     ref = building.reference(params)
-    size = bundle.game_size(model.dims["footprint"], profile=prof, obstruction=building.obstruction(params))
+    size = bundle.game_size(model.dims["footprint"], profile=prof, obstruction=building.obstruction(params),
+                            rubble=building.rubble(params))
     if params.style == "AFRICAN" and african.ground_decal(african.clamp(params), 8) is not None:
         size["decal"] = tuple(round(v * bundle.GROUND_MARGIN, 2) for v in size["decal"])
     return size, (ref[1] if ref else "House"), model

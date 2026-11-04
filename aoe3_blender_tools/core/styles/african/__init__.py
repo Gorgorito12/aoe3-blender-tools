@@ -75,6 +75,10 @@ def obstruction(p):
     return sizes.obstruction(p.building_type, p.architecture)
 
 
+def rubble(p):
+    return sizes.RUBBLES.get((p.building_type, p.architecture))
+
+
 def opening_tops(spec, p):
     return spec.get("tops", [])
 

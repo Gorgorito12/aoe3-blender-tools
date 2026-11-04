@@ -64,7 +64,7 @@ Where they go, at medium detail:
 | Collision shape | `africanpalacesahel`, its own: 17 boxes covering 15.91 x 11.65 x 9.72 |
 | Ground decal | 23.40 x 17.50 |
 | Construction stages | 6x6 |
-| Rubble | BuildingRubble4x4 |
+| Rubble | BuildingRubble6x6 |
 | Placement file | buildinglarge.xml |
 | Footprint class | 12x12 |
 
