@@ -290,7 +290,7 @@ def game_variants(obj, lowpoly=True, damaged=True, lowpoly_texture=512):
     """The variants the game export writes beside a generated building: a low-poly model (the
     generator's LOW detail, for the game's low model detail setting; only when the building is
     more detailed than that) and a damaged texture on the same mesh. {} for an object the
-    generator did not make."""
+    generator did not make. With a texture budget the damaged model shares the main texture."""
     from dataclasses import replace
     from . import building, paint
     p = params_of(obj)
@@ -300,9 +300,9 @@ def game_variants(obj, lowpoly=True, damaged=True, lowpoly_texture=512):
     if damaged:
         model = building.build(p)
         positions, normals, uvs, tris = game_mesh(obj)
-        out["damaged"] = {"positions": positions, "normals": normals, "uvs": uvs,
-                          "triangles": tris,
-                          "texture_rgba": paint.damaged(model, texture_rgba(obj))}
+        out["damaged"] = {"positions": positions, "normals": normals, "uvs": uvs, "triangles": tris}
+        if not building.texture_budget(p):
+            out["damaged"]["texture_rgba"] = paint.damaged(model, texture_rgba(obj))
     if lowpoly and p.detail != "LOW":
         lp = replace(p, detail="LOW", name=p.name + "_LowPolyTemp",
                      texture_size=min(lowpoly_texture, p.texture_size))

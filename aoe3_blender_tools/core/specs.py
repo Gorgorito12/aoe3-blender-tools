@@ -35,9 +35,23 @@ def extent(model):
     return [max(q[i] for q in pts) - min(q[i] for q in pts) for i in range(3)]
 
 
-def facts(params, size, template, upm, key=None, collision=None, shape=None, band=None, scale=1.0):
+def texture_mb(main, bump, damaged_own, ground, lowpoly=512):
+    """Megabytes of a building's textures: DXT3 with its mips, DXT5 bumps, as a bundle writes them."""
+    def colour(side):
+        return side * side * 4 / 3
+
+    total = colour(main) + bump * bump + colour(lowpoly) + lowpoly * lowpoly
+    if damaged_own:
+        total += colour(main) + main * main
+    if ground:
+        total += colour(512)
+    return total / 1048576
+
+
+def facts(params, size, template, upm, key=None, collision=None, shape=None, band=None, scale=1.0, budget=None):
     """Everything a sheet shows. `size`: bundle.game_size's dict, `upm`: game units per metre,
     `scale`: how much larger than its plan a style builds it (the texture is laid on the plan),
+    `budget`: (largest side of the texture, of its bump) the export halves them to,
     `collision`: the name of the collision shape the model's anim file points at, `shape`: the
     numbers of tools/shape_survey.py with `shape_class`, (name, the class's table), `band`: the
     triangle target (target, lowest, highest)."""
@@ -46,14 +60,16 @@ def facts(params, size, template, upm, key=None, collision=None, shape=None, ban
     w, d, h = extent(medium)
     p = medium.params
     at = medium.atlas
+    main, bump = budget or (p.texture_size, p.texture_size)
     return {
         "name": p.name, "preset": key, "style": p.style,
         "type": medium.dims.get("type") or getattr(p, "building_type", None),
         "architecture": medium.dims.get("architecture"), "template": template, "upm": upm,
         "size_m": (w, d, h), "storeys": medium.dims.get("storeys"),
         "tris": tris_of(medium), "tris_low": tris_of(low), "faces": len(medium.faces), "band": band,
-        "parts": tris_by_part(medium), "texture": p.texture_size,
-        "density": at.density * p.texture_size / at.size / scale / upm, "materials": bool(getattr(p, "materials", False)),
+        "parts": tris_by_part(medium), "texture": main, "painted": p.texture_size, "bump": bump,
+        "texture_mb": texture_mb(main, bump, budget is None, bool(medium.boxes)),
+        "density": at.density * main / at.size / scale / upm, "materials": bool(getattr(p, "materials", False)),
         "game": dict(size), "collision": collision, "shape": shape, "attach": dict(medium.attach),
         "notes": list(medium.notes), "boxes": list(medium.boxes),
     }
@@ -126,7 +142,9 @@ def render(f, export=None, proto=None):
     out += _table(("Part", "Triangles", "Share"), [(n, c, f"{100 * c / f['tris']:.0f} %") for n, c in f["parts"]])
 
     out += ["", "## Texture", ""]
-    rows = [("Size", f"{f['texture']} x {f['texture']}"), ("Texels per game unit", _n(f["density"], 0)),
+    rows = [("Size", f"{f['texture']} x {f['texture']}"), ("Painted at", f"{f['painted']} x {f['painted']}"),
+            ("Bump map", f"{f['bump']} x {f['bump']}"), ("All its textures", f"{_n(f['texture_mb'])} MB"),
+            ("Texels per game unit", _n(f["density"], 0)),
             ("Swatches under the paint", "yes" if f["materials"] else "no")]
     out += _table(("Field", "Value"), rows)
 

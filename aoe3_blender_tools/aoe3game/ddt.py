@@ -68,6 +68,14 @@ def mip_chain(rgba, smallest=4):
     return levels
 
 
+def fitted(rgba, size):
+    """The image halved until its side is at most `size`: the mip level the game would show, so a
+    smaller texture is the larger one's own level and not another painting."""
+    if rgba.shape[0] <= size:
+        return rgba
+    return mip_chain(rgba, smallest=size)[-1]
+
+
 def write_bgra(rgba, *, alpha=1, usage=0, mips=True):
     """Bytes of an uncompressed BGRA texture from an H x W x 3 or 4 uint8 array (top row first).
     Without an alpha channel the alpha is 255 everywhere (no player colour shows)."""

@@ -75,6 +75,10 @@ def obstruction(p):
     return sizes.obstruction(p.building_type, p.architecture)
 
 
+def texture_budget(p):
+    return sizes.TEXTURE_BUDGET.get((p.building_type, p.architecture))
+
+
 def rubble(p):
     return sizes.RUBBLES.get((p.building_type, p.architecture))
 

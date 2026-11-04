@@ -399,6 +399,21 @@ class DdtTest(unittest.TestCase):
                 bundle.write(os.path.join(tmp, "x"), name="Box", prefix="mod", positions=P, normals=N,
                              uvs=UV, triangles=T, texture_rgba=tex, footprint_m=(4, 3), texture_format="DXT1")
 
+    def test_a_budget_halves_the_painting_and_nothing_else(self):
+        P, N, UV, T = box()
+        tex = np.random.default_rng(1).integers(0, 255, (64, 64, 4), np.uint8)
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle.write(tmp, name="Box", prefix="mod", positions=P, normals=N, uvs=UV, triangles=T,
+                         texture_rgba=tex, footprint_m=(4, 3), texture_max=32, bump_max=16)
+            base = os.path.join(tmp, "art", "mod", "buildings", "box", "box")
+            with open(base + ".ddt", "rb") as f:
+                main = ddt.read_header(f.read())
+            with open(base + "_b.ddt", "rb") as f:
+                bump = ddt.read_header(f.read())
+        self.assertEqual((main.width, bump.width), (32, 16))
+        self.assertTrue((ddt.fitted(tex, 32) == ddt.mip_chain(tex)[1]).all())   # the game's own mip level
+        self.assertIs(ddt.fitted(tex, 64), tex)                                 # a smaller budget only
+
     def test_a_style_can_name_the_rubble(self):
         self.assertEqual(bundle.game_size((14.6, 14.6), rubble="BuildingRubble6x6")["rubble"], "BuildingRubble6x6")
         self.assertNotEqual(bundle.game_size((14.6, 14.6))["rubble"], "BuildingRubble6x6")

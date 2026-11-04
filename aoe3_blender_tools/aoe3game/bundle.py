@@ -65,7 +65,7 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
           footprint_m, icon_rgba=None, portrait_rgba=None, display_name=None, rollover="",
           template="House", v_flip=True, player_colour=None, chimney_bone=None, profile=None,
           texture_format="DXT3", variants=None, death_animation=True, relief=True, obstruction=None,
-          ground_rgba=None, collision_boxes=None, rubble=None):
+          ground_rgba=None, collision_boxes=None, rubble=None, texture_max=None, bump_max=None):
     """Writes the bundle into `out` and returns the bundle description.
 
     variants: {"lowpoly": {...}, "damaged": {...}}, each with positions, normals, uvs and
@@ -107,13 +107,15 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
             f.write(model)
 
     def texture_file(base, pixels):
-        """Writes the texture and, with `relief`, its bump map; returns both stored names."""
+        """Writes the texture and, with `relief`, its bump map; returns both stored names.
+        `texture_max`, `bump_max`: the largest side of each, reached by halving the painting."""
+        pixels = np.asarray(pixels)
         with open(os.path.join(art_dir, base + ".ddt"), "wb") as f:
-            f.write(ddt.write(np.asarray(pixels), fmt, alpha=1, usage=0, mips=True))
+            f.write(ddt.write(ddt.fitted(pixels, texture_max) if texture_max else pixels, fmt, alpha=1, usage=0, mips=True))
         bump = FLAT_BUMP_TEXTURE
         if relief:
             with open(os.path.join(art_dir, base + "_b.ddt"), "wb") as f:
-                f.write(ddt.write_normal_map(ddt.normal_from_texture(pixels)))
+                f.write(ddt.write_normal_map(ddt.normal_from_texture(ddt.fitted(pixels, bump_max) if bump_max else pixels)))
             bump = f"C:\\aoe3bt\\art\\{rel_dir}\\{base}_b.ddt"
         return f"C:\\aoe3bt\\art\\{rel_dir}\\{base}.ddt", bump
 

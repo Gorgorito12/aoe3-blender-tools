@@ -39,8 +39,8 @@ its footprint class (602 for the Sahel granary up), with the Sahel palace at its
 
 ![African presets](examples/african_gallery.jpg)
 
-**Sahel palace in the game** (preset `AFRICAN_PALACE_SAHEL`): 1,610 triangles, a 2048 x 2048 texture,
-10 piers on its corners, its own ground and collision boxes. Every building has a technical sheet,
+**Sahel palace in the game** (preset `AFRICAN_PALACE_SAHEL`): 1,610 triangles, painted at 2048 and
+exported at 1024, 2.5 MB of textures, 10 piers on its corners, its own ground and collision boxes. Every building has a technical sheet,
 this one in [docs/specs/AfricanPalaceSahel.md](docs/specs/AfricanPalaceSahel.md). Filmed at the game's
 own pixels, [30 seconds as MP4](examples/african_palace_sahel/ingame.mp4):
 

@@ -198,6 +198,14 @@ def obstruction(params):
     return (ref[0], ref[0]) if ref else None
 
 
+def texture_budget(params):
+    """(largest side of the texture, of its bump) a style allows a building, or None for no limit.
+    With a budget the damaged model shares the main texture."""
+    p = clamp_params(params)
+    fn = getattr(STYLES[p.style], "texture_budget", None)
+    return fn(p) if fn else None
+
+
 def rubble(params):
     """The proto of what the building leaves, when the style fixes it; None leaves it to its class."""
     p = clamp_params(params)

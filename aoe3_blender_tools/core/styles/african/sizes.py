@@ -41,6 +41,7 @@ RATIO = {2.0: 0.72, 3.0: 0.82}
 # stands 6 to 11 units high with doors to match (measured on the stock and the mod's models), against
 # 3 of a plan drawn at human size. Layouts are drawn at human size and all of it is scaled up.
 SCALE = 1.7
+TEXTURE_BUDGET = {("PALACE", "SAHEL"): (1024, 512)}   # painted at 2048 and halved: largest side, of the texture and its bump
 RUBBLES = {("PALACE", "SAHEL"): "BuildingRubble6x6"}   # as the stock fort of its size, not its class's 4x4
 OBSTRUCTIONS = {("PALACE", "SAHEL"): (6.5, 6.0)}   # leaves out of it what the stock fort leaves out of its own
 SCALES = {("PALACE", "SAHEL"): 1.95}   # it stood at the lowest height of its class (median 11.1 units)

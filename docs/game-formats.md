@@ -160,6 +160,27 @@ wing did no damage to either with these boxes; with the outpost's shape the buil
 points and the target none. One run each, with the cannons in different places: repeat it before
 relying on it.
 
+## Damage
+
+Large buildings do not change with their hit points: they break where they are hit. Measured on the
+stock fort; a test building made this way worked in game.
+
+- The anim file's `Idle` has a `<simskeleton>` with the `_damaged` model and a `<damagetemplate>`, and a
+  `Destruction` logic swaps models (`p1` the damaged one, `p99` the intact one).
+- The template is XML (`.dmg`, plain text or compiled `.dmg.xmb`): `<model name=...>`, then
+  `<impactpoint name bone impacttype motionstopfadetime motionstopfadedelay splasheffect>` holding
+  `<part mesh bone halfextents effect blueprint>`. The stock fort has 6 impact points and 24 parts.
+- The damaged model is the body plus one mesh per part, each bound whole to its own bone
+  (`debris_1a` to `bone_debris_1a`), its vertices in the model's coordinates, plus `boneimpactNN` bones.
+- A hit near an impact point throws its parts off for good, so the building loses pieces under fire.
+  Hand attacks and torches did not show it on the houses tried.
+
+Cost: the stock fort goes from 1,589 triangles to 4,179. Our test cut a palace with boxes (faces clipped
+with their UVs, 22 parts) and went from 1,610 to 3,214. It was dropped for that cost. Two things to solve
+if it comes back: a hollow building shows the ground through its holes, so it needs a dark core inside;
+and a part that rests on another one stays in the air when the lower one goes. Check that every part a
+template names exists in its model: real mods ship templates whose models are empty, and nothing breaks.
+
 ## Protos and strings
 
 - `data\protoy.xml`: `<Unit id=... name=...>` blocks (both quote styles occur), CRLF line ends.

@@ -65,7 +65,8 @@ def facts_of(key, prof):
     size, template, model = game_side(params, prof)
     band, scale = style_side(params)
     return specs.facts(params, size, template, bundle.UNITS_PER_METER, key=key, collision=bundle.COLLISION_SHAPE,
-                       shape=shape_of(model, size, prof), band=band, scale=scale)
+                       shape=shape_of(model, size, prof), band=band, scale=scale,
+                       budget=building.texture_budget(params))
 
 
 def sheet(key, prof=None, proto=None):

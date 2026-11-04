@@ -51,8 +51,11 @@ Where they go, at medium detail:
 
 | Field | Value |
 |---|---|
-| Size | 2048 x 2048 |
-| Texels per game unit | 62 |
+| Size | 1024 x 1024 |
+| Painted at | 2048 x 2048 |
+| Bump map | 512 x 512 |
+| All its textures | 2.50 MB |
+| Texels per game unit | 31 |
 | Swatches under the paint | yes |
 
 ## Collision and footprint
