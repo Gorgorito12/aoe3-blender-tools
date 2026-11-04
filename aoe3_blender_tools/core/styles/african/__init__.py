@@ -10,7 +10,7 @@ from dataclasses import replace
 
 from ...kit import Builder
 from ...painter import PLAYER_GREY, _shade
-from . import layouts, parts, sizes
+from . import layouts, parts, sizes, skin
 
 NAME = "AFRICAN"
 CHOICES = {"building_type": sizes.TYPES, "architecture": ("SUBSAHARAN", "SAHEL"), "wall_upgrade": ("WOOD", "STONE")}
@@ -79,6 +79,7 @@ def paint(pr, model):
     MUD, THATCH, ADOBE, WOOD = C["mud"], C["thatch"], C["adobe"], C["timber"]
     STONE, CLOTH, POT = C["stone"], C["cloth"], C["tile"]
     DARK = (38, 28, 22)
+    SKIN = skin.colours(C)
     BAND = PLAYER_GREY if pr.pc else (70, 64, 120)
     lw = pr.lw
     rng = pr.rng
@@ -96,16 +97,7 @@ def paint(pr, model):
             pr.paint_on(region, u, v, min(w, u + ln), min(h, v + th), _shade(base, f))
 
     def stains(region, w, h, n, k=0.12, size=1.0):
-        """Soft broad patches a little darker or lighter (weathering): nested rects, each
-        multiplying what is there, so the grain stays. `size` scales them."""
-        for _ in range(n):
-            cu, cv = float(rng.uniform(0, w)), float(rng.uniform(0, h))
-            sw, sh = float(rng.uniform(0.4, 1.6)) * size, float(rng.uniform(0.3, 1.0)) * size
-            f = 1 + float(rng.uniform(-k, k * 0.5))
-            for j in range(4):
-                t = 1 - j / 4
-                pr.tone(region, max(0.0, cu - sw * t / 2), max(0.0, cv - sh * t / 2), min(w, cu + sw * t / 2),
-                        min(h, cv + sh * t / 2), 1 + (f - 1) / 4)
+        skin.stains(pr, region, w, h, n, k, size)
 
     def line(region, u0, v0, u1, v1, color, width=None):
         (x0, y0), (x1, y1) = pr.P(region, u0, v0), pr.P(region, u1, v1)
@@ -139,9 +131,7 @@ def paint(pr, model):
         r = at[region]
         w, h = r.world_w, r.world_h
         if spec["kind"] == "round":
-            pr.base(region, MUD, role="wall")
-            pr.cracks(region, 0.15, 0.5)
-            stains(region, w, h, int(w * h * 0.3) + 1, 0.07)
+            skin.coat(pr, region, "wall_mud", SKIN)
             shade_band(region, w, h, h - 0.7, 0.72)                            # under the thatch's eave
             shade_band(region, w, 0, 0.45, 0.7)                                 # the splashed foot
             if spec.get("bands"):
@@ -151,15 +141,7 @@ def paint(pr, model):
                 door(region, spec["door"], spec["door_w"], spec["door_h"])
         else:
             earth = ADOBE if spec.get("sahel", True) else MUD
-            pr.base(region, earth, role="adobe" if spec.get("sahel", True) else "wall")
-            if spec.get("sahel", True):
-                pr.cracks(region, 0.3, 0.22, keep=0.4)                         # plastered: a few
-            else:
-                pr.cracks(region, 0.15, 0.5)
-            if spec.get("sahel", True):                                       # seen from afar:
-                stains(region, w, h, int(w * h * 0.35) + 2, 0.15, 1.6)             # broad weathering
-            else:
-                stains(region, w, h, int(w * h * 0.3) + 1, 0.06)
+            skin.coat(pr, region, "wall_adobe" if spec.get("sahel", True) else "wall_mud", SKIN)
             if not spec.get("sahel", True):
                 shade_band(region, w, h, h - 0.6, 0.75)                         # under the thatch's eave
             if spec.get("sahel", True):
@@ -192,25 +174,13 @@ def paint(pr, model):
         stains("thatch", rt.world_w, rt.world_h, int(rt.world_w * rt.world_h * 0.3) + 1, 0.16)
     if "dome" in at:
         rd = at["dome"]
-        pr.base("dome", _shade(MUD, 1.08), role="wall")
-        pr.cracks("dome", 0.15, 0.45)
-        vv = 0.5
-        while vv < rd.world_h:
-            pr.hline("dome", vv, 0, rd.world_w, _shade(MUD, 0.85), lw)
-            vv += 0.6
+        skin.coat(pr, "dome", "dome", SKIN)
     if "roof_flat" in at:
-        rf = at["roof_flat"]
-        pr.base("roof_flat", _shade(ADOBE, 1.05), role="adobe")
-        pr.cracks("roof_flat", 0.22, 0.3, keep=0.6)                                  # trodden, dried
-        stains("roof_flat", rf.world_w, rf.world_h, int(rf.world_w * rf.world_h * 0.15) + 2, 0.06)
+        skin.coat(pr, "roof_flat", "roof_flat", SKIN)
     if "parapet" in at:
-        rp = at["parapet"]
-        pr.base("parapet", ADOBE, role="adobe")
-        pr.cracks("parapet", 0.3, 0.22, keep=0.4)
+        skin.coat(pr, "parapet", "parapet", SKIN)
     if "trim" in at:
-        rt2 = at["trim"]
-        pr.base("trim", _shade(ADOBE, 0.95), role="adobe")
-        pr.cracks("trim", 0.3, 0.22, keep=0.4)
+        skin.coat(pr, "trim", "trim", SKIN)
     pr.base("wood", WOOD, role="timber")
     rw = at["wood"]
     stains("wood", rw.world_w, rw.world_h, 6, 0.2)
