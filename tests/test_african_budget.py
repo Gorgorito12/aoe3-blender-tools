@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Every African preset at medium detail within its class's triangle target (the median of the
-target mod's own building models, +-15 %), and its low detail under half of that.
+target mod's own building models, +-15 %; a plot up to the 90th percentile of its class), and its low
+detail under half of that.
 
     venv\\Scripts\\python -I tests\\test_african_budget.py
 """
@@ -26,7 +27,7 @@ class AfricanBudget(unittest.TestCase):
                 continue
             with self.subTest(key):
                 med, low = tris(p, "MEDIUM"), tris(p, "LOW")
-                t, lo, hi = sizes.tris_target(p.building_type)
+                t, lo, hi = sizes.tris_target(p.building_type, p.architecture)
                 self.assertTrue(lo <= med <= hi, (key, med, (lo, hi)))
                 self.assertGreater(med, 2 * low, key)
 

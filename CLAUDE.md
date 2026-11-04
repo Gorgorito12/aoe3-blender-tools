@@ -113,6 +113,20 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 
 ## Working rules
 
+- **Learn from the real models first.** Before designing or changing a building type, open the
+  game's and the target mod's models of that function, render them and measure them
+  (`tools/shape_survey.py`; the numbers per class are the `shape` of
+  `aoe3_blender_tools/profiles/buildings.json`, `tests/test_shape.py` holds the presets to them). What
+  322 models show, for any style: a building is **one mass** (one connected part holding over 95 % of
+  what stands; nothing scattered on the plot, units come out of it and its door stays clear); it
+  covers 60 to 80 % of its obstruction and barely leaves it; it is about as tall as it is wide (8x8:
+  6 to 11 units); it has about 3 levels, and its roofs carry things too; about 48 % of its triangles
+  are in the lower third of its height, 35 % in the middle, 16 % at the top. Parts stand on one
+  common base. Doors, props and walls are out of proportion to a person together: draw at human size
+  and scale the whole model (`sizes.SCALE`). A closed yard is rare (20 of 322): keep it for forts,
+  palaces and the like. What a building holds follows from what it is for (`program.py`).
+  Never judge a design from our own renders alone. These models guide shape and proportion only:
+  never copy one, and nothing of them goes into the repository.
 - AI repaint: the tests never need a GPU (they use `tests/fake_comfy.py`); never commit a model
   or an AI-generated image other than the examples; never use a community checkpoint or LoRA
   without reading its licence. ComfyUI is at `C:\ComfyUI\ComfyUI_windows_portable` on the

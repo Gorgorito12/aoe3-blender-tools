@@ -18,8 +18,10 @@ def mix(a, b, t):
 def colours(C):
     """Surface -> colour, from the building's palette."""
     mud, adobe = C["mud"], C["adobe"]
-    return {"wall_mud": mud, "wall_adobe": adobe, "roof_flat": mix(adobe, SUN, 0.5), "dome": mix(mud, SUN, 0.32),
-            "parapet": mix(adobe, SUN, 0.25), "trim": _shade(adobe, 0.94)}
+    return {"wall_mud": mud, "wall_adobe": adobe, "wall_kept": adobe, "trim_kept": _shade(adobe, 0.96),
+            "roof_kept": mix(adobe, SUN, 0.3), "parapet_kept": mix(adobe, SUN, 0.42), "roof_flat": mix(adobe, SUN, 0.5),
+            "dome": mix(mud, SUN, 0.32),
+            "parapet": mix(adobe, SUN, 0.25), "trim": _shade(adobe, 0.94), "yard": _shade(mix(mud, SUN, 0.1), 0.86)}
 
 
 # surface -> material role (core.materials), cracks (cell m, depth, share kept), stains (per m2,
@@ -27,9 +29,17 @@ def colours(C):
 SURFACES = {
     "wall_mud": {"role": "wall", "cracks": (0.15, 0.5, 0.75), "stains": (0.3, 0.07, 1.0)},
     "wall_adobe": {"role": "adobe", "cracks": (0.3, 0.22, 0.4), "stains": (0.35, 0.15, 1.6)},
+    "wall_kept": {"role": "roofmud", "cracks": (0.6, 0.12, 0.2), "stains": None,
+                  "mottle": ((1.6, 0.1), (0.45, 0.08), (0.09, 0.07))},
+    "trim_kept": {"role": "roofmud", "cracks": (0.6, 0.12, 0.2), "stains": None,
+                  "mottle": ((1.2, 0.1), (0.4, 0.08), (0.09, 0.07))},
+    "roof_kept": {"role": "roofmud", "cracks": (0.7, 0.1, 0.25), "stains": None,
+                  "mottle": ((1.4, 0.05), (0.32, 0.08), (0.1, 0.06))},
+    "parapet_kept": {"role": "roofmud", "cracks": None, "stains": None, "mottle": ((0.8, 0.05), (0.09, 0.04))},
     "roof_flat": {"role": "roofmud", "cracks": (0.5, 0.1, 0.3), "stains": (0.03, 0.05, 2.5)},
     "dome": {"role": "roofmud", "cracks": (0.3, 0.16, 0.45), "stains": (0.08, 0.06, 1.5)},
     "parapet": {"role": "roofmud", "cracks": None, "stains": (0.1, 0.05, 1.0)},
+    "yard": {"role": "plinth", "cracks": None, "stains": (0.12, 0.12, 2.0)},
     "trim": {"role": "adobe", "cracks": (0.3, 0.22, 0.4), "stains": None},
 }
 
@@ -56,6 +66,8 @@ def coat(pr, region, surface, cols):
     if s["cracks"]:
         cell, depth, keep = s["cracks"]
         pr.cracks(region, cell, depth, keep=keep)
+    for cell, k in s.get("mottle", ()):
+        pr.mottle(region, cell, k)
     if s["stains"]:
         per_m2, k, size = s["stains"]
         stains(pr, region, r.world_w, r.world_h, int(r.world_w * r.world_h * per_m2) + 1, k, size)

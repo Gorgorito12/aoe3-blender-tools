@@ -845,6 +845,122 @@ class Builder:
             self.box(qx - post, qx + post, qy - post, qy + post, 0.0, pz - 0.03, post_region, post_region,
                      skip=("top",))
 
+    def draped_cloth(self, x0, x1, y0, y1, z_hi, z_lo, region, post_region, slope="-y", post=0.07, sag=0.17,
+                     nu=5, nv=3, hem=0.2, rafters=0, z_base=0.0):
+        """Cloth stretched from a pole along its high side to the poles of its low side: a grid that
+        hangs between them, with a scalloped hem. `rafters`: that many timbers under it, which show
+        at both ends (a tarp over a beamed yard). Faces up; nothing under it (the camera never
+        sees that side)."""
+        if slope in ("-y", "+y"):
+            W, L = x1 - x0, y1 - y0
+        else:
+            W, L = y1 - y0, x1 - x0
+
+        def at(s, t):
+            """s across the slope, t down it, from the high side."""
+            if slope == "-y":
+                return x0 + s, y1 - t
+            if slope == "+y":
+                return x1 - s, y0 + t
+            if slope == "-x":
+                return x1 - t, y0 + s
+            return x0 + t, y1 - s
+
+        def z(s, t):
+            f = t / L
+            belly = 0.3 + 0.7 * math.sin(math.pi * s / W)
+            return z_hi + (z_lo - z_hi) * f - sag * math.sin(math.pi * f) * belly
+
+        reg = self.atlas[region]
+        k = min(1.0, reg.world_w / W, reg.world_h / (L + hem))
+        ss = [W * i / nu for i in range(nu + 1)]
+        ts = [L * j / nv for j in range(nv + 1)]
+        for j in range(nv):
+            for i in range(nu):
+                corners = ((ss[i], ts[j]), (ss[i + 1], ts[j]), (ss[i + 1], ts[j + 1]), (ss[i], ts[j + 1]))
+                pts = [(*at(s, t), z(s, t)) for s, t in corners]
+                uvs = [(s * k, (L + hem - t) * k) for s, t in corners]
+                (ax, ay, az), (bx, by, bz), (cx, cy, cz), (dx, dy, dz) = pts
+                self.facing([pts[0], pts[1], pts[2]], [uvs[0], uvs[1], uvs[2]], region, (0.0, 0.0, 1.0), smooth=True)
+                self.facing([pts[0], pts[2], pts[3]], [uvs[0], uvs[2], uvs[3]], region, (0.0, 0.0, 1.0), smooth=True)
+        ex, ey = at(0, L + 1.0)[0] - at(0, L)[0], at(0, L + 1.0)[1] - at(0, L)[1]
+        for i in range(nu):                                  # the hem: one scallop a segment
+            sa, sb, sm = ss[i], ss[i + 1], (ss[i] + ss[i + 1]) / 2
+            pa, pb, pm = at(sa, L), at(sb, L), at(sm, L)
+            za, zb = z(sa, L), z(sb, L)
+            self.facing([(*pa, za), (*pb, zb), (*pm, (za + zb) / 2 - hem)],
+                        [(sa * k, hem * k), (sb * k, hem * k), (sm * k, 0.0)], region, (ex, ey, 0.0))
+        i = post + 0.02
+        for s, t, zp in ((0.0, 0.0, z_hi), (W, 0.0, z_hi), (W, L, z_lo), (0.0, L, z_lo)):
+            px, py = at(min(max(s, i), W - i), min(max(t, i), L - i))
+            self.box(px - post, px + post, py - post, py + post, z_base, zp + 0.1, post_region, post_region)
+        ra, rb = at(0.0, i), at(W, i)
+        self.log(ra[0], ra[1], rb[0], rb[1], z_hi + 0.05, 0.05, 6, post_region)      # the pole
+        for j in range(rafters):
+            s = W * (j + 1) / (rafters + 1)
+            ra, rb = at(s, -0.25), at(s, L + 0.25)
+            ha, hb = z_hi - 0.12, z_lo - 0.12
+            self.log_sloped(ra, ha + 0.03, rb, hb - 0.03, 0.06, 6, post_region)
+
+    def timber_roof(self, x0, x1, y0, y1, z_hi, z_lo, region, post_region, slope="-y", rafters=4, z_base=0.0,
+                    posts=(True, True), boards=True):
+        """A lean-to of timber: rafters that show past both edges, a wall plate along each side and,
+        with `boards`, planks on top; open rafters without. `posts`: whether its high and its low
+        side stand on posts (a side against a wall needs none). `z_base`: where the posts stand."""
+        if slope in ("-y", "+y"):
+            W, L = x1 - x0, y1 - y0
+        else:
+            W, L = y1 - y0, x1 - x0
+
+        def at(s, t):
+            if slope == "-y":
+                return x0 + s, y1 - t
+            if slope == "+y":
+                return x1 - s, y0 + t
+            if slope == "-x":
+                return x1 - t, y0 + s
+            return x0 + t, y1 - s
+
+        corners = [(0.0, 0.0, z_hi), (W, 0.0, z_hi), (W, L, z_lo), (0.0, L, z_lo)]
+        if boards:
+            self.face_out([(*at(s, t), z) for s, t, z in corners], region, (0.0, 0.0, 1.0))
+        slope_t = (z_hi - z_lo) / max(L, 1e-6)
+        for j in range(rafters):
+            s = W * (j + 0.5) / rafters
+            self.log_sloped(at(s, -0.3), z_hi + slope_t * 0.3 - 0.07, at(s, L + 0.3), z_lo - slope_t * 0.3 - 0.07,
+                            0.06, 4, post_region)
+        for t, z in ((0.12, z_hi - 0.14 - slope_t * 0.12), (L - 0.12, z_lo - 0.14 + slope_t * 0.12)):
+            a, c = at(-0.1, t), at(W + 0.1, t)
+            self.log(a[0], a[1], c[0], c[1], z, 0.07, 6, post_region)
+        for keep, t, z in ((posts[0], 0.12, z_hi - slope_t * 0.12), (posts[1], L - 0.12, z_lo + slope_t * 0.12)):
+            if not keep:
+                continue
+            for s in (0.14, W - 0.14):
+                px, py = at(s, t)
+                self.box(px - 0.07, px + 0.07, py - 0.07, py + 0.07, z_base, z - 0.2, post_region, post_region,
+                         skip=("top",))
+
+    def log_sloped(self, a, za, b, zb, r, sides, region):
+        """A timber from (a, za) to (b, zb) in a vertical plane, square to its length enough for a
+        rafter: its ends are left open, they sit in the shade of what it carries."""
+        dx, dy, dz = b[0] - a[0], b[1] - a[1], zb - za
+        L = math.hypot(dx, dy, dz) or 1.0
+        h = math.hypot(dx, dy) or 1.0
+        px, py = -dy / h, dx / h                             # across, horizontal
+        qx, qy, qz = -dx * dz / (h * L), -dy * dz / (h * L), h / L   # across, up
+        reg = self.atlas[region]
+        seg = 2 * r * math.sin(math.pi / sides)
+        k = min(1.0, reg.world_w / (seg * sides), reg.world_h / L)
+        ring = [(r * math.cos(2 * math.pi * i / sides), r * math.sin(2 * math.pi * i / sides)) for i in range(sides + 1)]
+        for i in range(sides):
+            (c0, s0), (c1, s1) = ring[i], ring[i + 1]
+            o0 = (px * c0 + qx * s0, py * c0 + qy * s0, qz * s0)
+            o1 = (px * c1 + qx * s1, py * c1 + qy * s1, qz * s1)
+            q = [(a[0] + o0[0], a[1] + o0[1], za + o0[2]), (a[0] + o1[0], a[1] + o1[1], za + o1[2]),
+                 (b[0] + o1[0], b[1] + o1[1], zb + o1[2]), (b[0] + o0[0], b[1] + o0[1], zb + o0[2])]
+            self.facing(q, [(i * seg * k, 0), ((i + 1) * seg * k, 0), ((i + 1) * seg * k, L * k), (i * seg * k, L * k)],
+                        region, ((o0[0] + o1[0]) / 2, (o0[1] + o1[1]) / 2, (o0[2] + o1[2]) / 2))
+
     def frustum(self, cx, cy, r0, r1, z0, z1, sides, region, phase=0.0, v0=0.0):
         """A ring of quads from radius r0 at z0 to r1 at z1 (a cylinder when equal, a tapering band
         otherwise), facing out; u round the girth, v along the slope from v0."""

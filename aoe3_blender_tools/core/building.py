@@ -116,6 +116,10 @@ AFRICAN_COLORS = {**DEFAULT_COLORS, "mud": (140, 110, 74), "adobe": (164, 134, 1
                   "timber": (84, 58, 32), "stone": (132, 120, 96), "tile": (150, 82, 50)}
 
 
+# a palace is kept up: fresh warm plaster
+PALACE_COLORS = {"adobe": (190, 142, 88), "mud": (168, 122, 76)}
+
+
 def african(building_type, architecture, **kw):
     words = "".join(w.title() for w in building_type.split("_"))
     arch = "Sahel" if architecture == "SAHEL" else "SubSaharan"
@@ -126,7 +130,8 @@ def african(building_type, architecture, **kw):
         words += "Upper"
     return BuildingParams(name=f"African{words}{arch}", style="AFRICAN", building_type=building_type,
                           architecture=architecture, portico=False, cupola=False, detail="MEDIUM",
-                          colors=dict(AFRICAN_COLORS), materials=True, **kw)
+                          colors={**AFRICAN_COLORS, **(PALACE_COLORS if building_type == "PALACE" else {})},
+                          materials=True, **kw)
 
 
 PRESETS.update({

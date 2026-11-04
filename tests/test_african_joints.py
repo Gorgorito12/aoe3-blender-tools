@@ -15,7 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
 from core import building, joints  # noqa: E402
 from core.styles import african  # noqa: E402
-from core.styles.african import layouts, parts, sizes  # noqa: E402
+from core.styles.african import compose, layouts, parts, sizes  # noqa: E402
 
 
 def layout_of(params, detail):
@@ -72,6 +72,45 @@ class Buildings(unittest.TestCase):
             p = african.random_params(rng, i, building.BuildingParams)
             with self.subTest(i=i):
                 self.assertEqual(parts.junctions(layout_of(p, p.detail)), [])
+
+
+class Composition(unittest.TestCase):
+    def test_nothing_is_left_alone_on_the_plot(self):
+        """Every prop stands near a structure or another prop: a building is one place."""
+        for key, params in building.PRESETS.items():
+            if params.style != "AFRICAN":
+                continue
+            p = african.clamp(dataclasses.replace(params, detail="MEDIUM"))
+            S = 2 * sizes.court_half(p.building_type) + 0.2
+            pieces = layouts.structure(p, S, True)
+            ground = compose.survey(pieces, S)
+            done = layouts.layout(p, S, True)
+            props = done[len([q for q in pieces if q["kind"] != "yard"]):]
+            base = ground.solid.copy()
+            for q in props:
+                if q["kind"] == "boat" or q.get("z"):
+                    continue
+                d = compose.reach(base)
+                i = abs(ground.X[0] - q["x"]).argmin()
+                j = abs(ground.Y[:, 0] - q["y"]).argmin()
+                with self.subTest(key=key, prop=q["kind"]):
+                    self.assertLessEqual(float(d[j, i]), compose.MAX_REACH + 1.5)
+                base |= ground.disc(q["x"], q["y"], 0.3)
+
+    def test_the_same_parameters_give_the_same_building(self):
+        p = african.clamp(building.PRESETS["AFRICAN_ARMORY_SAHEL"])
+        S = sizes.side_m(p.building_type)
+        self.assertEqual(layouts.layout(p, S, True), layouts.layout(p, S, True))
+
+    def test_an_armory_is_an_armory_and_a_quarry_a_quarry(self):
+        want = {"ARMORY": {"anvil", "bellows", "rack", "shields", "trough"}, "QUARRY": {"crate", "barrel", "stones", "crane"},
+                "CUSTOMS": {"weigh", "crate"}, "WAR_CAMP": {"dummy", "rack", "fire"}, "DOCK": {"boat"}}
+        for key, params in building.PRESETS.items():
+            if params.style == "AFRICAN" and params.building_type in want:
+                p = african.clamp(params)
+                kinds = {q["kind"] for q in layouts.layout(p, sizes.side_m(p.building_type), True)}
+                with self.subTest(key):
+                    self.assertLessEqual(want[params.building_type], kinds)
 
 
 if __name__ == "__main__":

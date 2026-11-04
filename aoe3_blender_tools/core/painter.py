@@ -106,6 +106,25 @@ class Painter:
         xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
         materials.multiply(self.cv.a, (xa, ya, xb, yb), k)
 
+    def mottle(self, region, cell_m, k):
+        """A soft uneven tone over a region, blobs about `cell_m` across, up to `k` either way: the
+        life of hand-laid plaster. Multiplies what is there."""
+        r = self.at[region]
+        x0, y0, w, h = int(r.x), int(r.y), int(r.w), int(r.h)
+        if w < 2 or h < 2:
+            return
+        c = max(2.0, cell_m * self.px_per_m)
+        ny, nx = int(h / c) + 3, int(w / c) + 3
+        g = self.rng.uniform(-1.0, 1.0, (ny, nx)).astype(np.float32)
+        ys, xs = np.arange(h, dtype=np.float32) / c, np.arange(w, dtype=np.float32) / c
+        iy, ix = ys.astype(int), xs.astype(int)
+        fy, fx = ys - iy, xs - ix
+        fy, fx = (fy * fy * (3 - 2 * fy))[:, None], (fx * fx * (3 - 2 * fx))[None, :]
+        top = g[iy][:, ix] * (1 - fx) + g[iy][:, ix + 1] * fx
+        bot = g[iy + 1][:, ix] * (1 - fx) + g[iy + 1][:, ix + 1] * fx
+        m = top * (1 - fy) + bot * fy
+        self.cv.a[y0:y0 + h, x0:x0 + w] *= (1.0 + k * m)[:, :, None]
+
     def cracks(self, region, cell_m=0.16, depth=0.4, width_m=0.012, keep=0.75):
         """A network of fine cracks over a region, as dried mud or old plaster shows: the edges of
         jittered cells (`cell_m` across), darkened by `depth`, `width_m` wide; about `keep` of the
