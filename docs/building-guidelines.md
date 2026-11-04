@@ -47,6 +47,11 @@ profile's `shape`; `tests/test_shape.py` holds every African preset to them). In
 
 ## Pitfalls
 
+- A buttress is not a wedge stuck on a wall. Over a corner, it touches both walls: its foot wraps the
+  corner, it keeps most of its width as it rises while it loses its depth, so it runs out into the
+  walls, and a chamfer down the outer corner carries the line that divides it (`parts._pier`).
+  Take such forms from several views: one view hides the sections and the sides of a building.
+
 - **AI-generated meshes.** Image-to-3D and text-to-3D tools build a sculpted surface. Their
   remeshing at a game budget (measured: 1.4 million faces down to 3,568) leaves wavy walls and
   warped windows and columns. Prompts reduce it but do not remove it. Build the geometry from

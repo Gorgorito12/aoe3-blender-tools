@@ -18,6 +18,7 @@ from ...kit import cone_roof_size, dome_size, ring_size
 
 DOOR_ANGLE = 1.5 * math.pi          # the round walls' doors face -Y
 SIDE_OF = {"front": "-y", "back": "+y", "left": "-x", "right": "+x"}
+PIER_FACE = (1.3, 0.1, 1.2, 4.8, 1.5)  # a pier's side painted: foot's width, top's two ends, height, its chamfer
 
 
 def sides(medium, big=False):
@@ -88,14 +89,21 @@ def declare(b, layout, medium):
                                  "gate": bool(door and piece.get("gate")), "foot": piece.get("foot", False),
                                  "shutters": piece.get("shutters", False),
                                  "band": piece.get("band", True), "art": piece.get("art", {}).get(face),
+                                 "closed": [],
                                  "openings": _block_openings(bays, length / 2 if door else None, h,
                                                              piece.get("gate", (1.1, 2.1)), piece.get("sill"))}
+                for u, v, ww, wh, closed in piece.get("win", {}).get(face, ()):
+                    facades[name]["openings"].append((u - ww / 2, v, u + ww / 2, v + wh))
+                    if closed:
+                        facades[name]["closed"].append(u - ww / 2)
             want("roof_flat", max(w, d) + 0.2, min(w, d) + 0.2)
             want("trim", 2.0, h + 1.2)
             if piece.get("parapet"):
                 want("parapet", max(w, d) + 0.4, piece["parapet"] + 0.4)
             if piece.get("painted"):
                 want("step", 2.0, 1.0)
+            if piece.get("coping"):
+                want(piece["coping"], max(w, d) + 0.4, piece["parapet"] + 0.4)
             if piece.get("roof") == "thatch":
                 want("thatch", max(w, d) + 1.2, math.hypot(min(w, d) / 2 + 0.5, (min(w, d) / 2 + 0.5) * 0.8) + 0.3)
             want("wood", 2.0, 3.0)
@@ -116,9 +124,11 @@ def declare(b, layout, medium):
             want("planks", piece["y1"] - piece["y0"] + 0.2, piece["x1"] - piece["x0"] + 0.2)
         elif k == "stairs":
             want(piece.get("region", "trim"), 3.2, 1.2)
-        elif k == "pylon":
-            want("trim", 2.0, 3.0)
-            want("parapet", 1.6, 1.0)
+        elif k == "door_frame":
+            want("frame", 2.2, 3.0)
+        elif k == "pier":
+            want("pier", PIER_FACE[4] + 0.4, PIER_FACE[3])
+            want("pier_cap", 1.4, 1.2)
         elif k == "banner":
             want("banner", piece["w"] + 0.1, piece["h"] + 0.1)
             want("wood", 2.0, 3.0)
@@ -247,9 +257,15 @@ def emit(b, layout, medium):
             x, y, r, h, z = piece["x"], piece["y"], piece["r"], piece["h"], piece.get("z", 0.0)
             n = piece.get("n", 12)
             start = len(b.faces)
-            b.frustum(x, y, r * 0.75, r, z, z + h * 0.45, n, "pot")
-            b.frustum(x, y, r, r * 0.55, z + h * 0.45, z + h * 0.8, n, "pot")
-            b.frustum(x, y, r * 0.55, r * 0.6, z + h * 0.8, z + h, n, "pot")
+            if piece.get("belly"):                         # a round body, a short neck, a rim
+                prof, v = ((0.5, 0.0), (0.9, 0.18), (1.0, 0.42), (0.86, 0.66), (0.5, 0.82), (0.45, 0.9), (0.6, 1.0)), 0.0
+                for (ra, za), (rc, zc) in zip(prof, prof[1:]):
+                    b.frustum(x, y, r * ra, r * rc, z + h * za, z + h * zc, n, "pot", v0=v)
+                    v += math.hypot(r * (rc - ra), h * (zc - za))
+            else:
+                b.frustum(x, y, r * 0.75, r, z, z + h * 0.45, n, "pot")
+                b.frustum(x, y, r, r * 0.55, z + h * 0.45, z + h * 0.8, n, "pot")
+                b.frustum(x, y, r * 0.55, r * 0.6, z + h * 0.8, z + h, n, "pot")
             b.disc(x, y, r * 0.6, z + h, n, "pot")
             _smooth(b, start)
             at = (piece["x"], piece["y"], piece["h"])
@@ -262,8 +278,11 @@ def emit(b, layout, medium):
                 b.fence(piece["points"], piece["h"], "wood", kind=piece.get("type", "RAILS"),
                         closed=piece.get("closed", False), gap=piece.get("gap"))
             at = (0.0, 0.0, piece["h"])
-        elif k == "pylon":
-            _pylon(b, piece)
+        elif k == "pier":
+            _pier(b, piece)
+            at = (piece["foot"][0], piece["foot"][2], piece["h"])
+        elif k == "door_frame":
+            _door_frame(b, piece)
             at = (piece["x"], piece["y"], piece["h"])
         elif k == "banner":
             if medium:
@@ -284,7 +303,9 @@ def emit(b, layout, medium):
             if medium and piece.get("cloth", True):
                 b.draped_cloth(piece["x0"], piece["x1"], piece["y0"], piece["y1"], piece["z_hi"], piece["z_lo"],
                                "cloth", "wood", slope=piece.get("slope", "-y"), rafters=piece.get("rafters", 0),
-                               z_base=piece.get("z", 0.0))
+                               z_base=piece.get("z", 0.0), scallops=piece.get("scallops", True),
+                               nu=piece.get("nu", 5), nv=piece.get("nv", 3), post=piece.get("post", 0.07),
+                               on_wall=piece.get("on_wall", False))
             else:
                 b.canopy(piece["x0"], piece["x1"], piece["y0"], piece["y1"], piece["z_hi"], piece["z_lo"],
                          "cloth" if piece.get("cloth", True) else "thatch", "wood", slope=piece.get("slope", "-y"))
@@ -464,10 +485,6 @@ def _block(b, p, medium):
             b.wall(origin, ua, length, h, region, real)
         else:
             b.flat_wall(origin, ua, length, h, region)
-        if medium and p.get("painted"):                    # a real lintel over each painted window
-            for (u0, v0, u1, v1) in spec["openings"]:
-                if v0 > 0.0:
-                    _lintel(b, face, origin, u0, u1, z0 + v1, z0 + v0)
     zt = z0 + h
     roof = p.get("roof", "flat")
     if roof == "thatch":
@@ -476,7 +493,7 @@ def _block(b, p, medium):
             if p.get("hipped", True) else zt
     else:
         top = b.flat_roof(x0, x1, y0, y1, zt, "roof_flat", parapet_h=p.get("parapet", 0.0),
-                          parapet_region="parapet" if p.get("parapet") else None,
+                          parapet_region=p.get("coping", "parapet") if p.get("parapet") else None,
                           merlons=(p.get("merlons", 0.0) if medium else 0.0), open_sides=open_sides)
     if medium and p.get("sahel", True) and roof != "thatch" and not p.get("plain"):
         _buttresses(b, p, z0, h, top)
@@ -491,12 +508,12 @@ def _block(b, p, medium):
                 continue
             step = medium and p.get("pinnacles") == "stepped"
             if step:                                       # two steps, then the point
-                b.box(px - 0.24, px + 0.24, py - 0.24, py + 0.24, top, top + 0.26, "parapet", "parapet")
-                b.box(px - 0.17, px + 0.17, py - 0.17, py + 0.17, top + 0.26, top + 0.56, "parapet", "parapet", skip=("top",))
-                b.pyramid(px - 0.17, px + 0.17, py - 0.17, py + 0.17, top + 0.56, 0.42, "parapet")
+                b.box(px - 0.2, px + 0.2, py - 0.2, py + 0.2, top, top + 0.2, "parapet", "parapet")
+                b.box(px - 0.13, px + 0.13, py - 0.13, py + 0.13, top + 0.2, top + 0.42, "parapet", "parapet", skip=("top",))
+                b.pyramid(px - 0.13, px + 0.13, py - 0.13, py + 0.13, top + 0.42, 0.3, "parapet")
             else:
-                b.box(px - 0.2, px + 0.2, py - 0.2, py + 0.2, top, top + 0.42, "parapet", "parapet", skip=("top",))
-                b.pyramid(px - 0.2, px + 0.2, py - 0.2, py + 0.2, top + 0.42, 0.4, "parapet")
+                b.box(px - 0.17, px + 0.17, py - 0.17, py + 0.17, top, top + 0.3, "parapet", "parapet", skip=("top",))
+                b.pyramid(px - 0.17, px + 0.17, py - 0.17, py + 0.17, top + 0.3, 0.32, "parapet")
     if medium and p.get("beams"):                          # toron: beam ends on the front and sides
         zb = z0 + h - 0.45
         # along the sides they stop short of a joined end
@@ -504,12 +521,16 @@ def _block(b, p, medium):
         a0, a1 = y0 + (1.2 if "-y" in open_sides else 0.337), y1 - (1.2 if "+y" in open_sides else 0.3)
         c0, c1 = x0 + (1.2 if "-x" in open_sides else 0.337), x1 - (1.2 if "+x" in open_sides else 0.3)
         gap = p.get("beam_gap", 0.9)
-        if "-y" not in open_sides:
-            b.beam_ends("-y", y0, c0, c1, zb, max(3, int((c1 - c0) / gap)), 0.35, "wood")
-        if "-x" not in open_sides:
-            b.beam_ends("-x", x0, a0, a1, zb, max(2, int((a1 - a0) / gap)), 0.35, "wood")
-        if "+x" not in open_sides:
-            b.beam_ends("+x", x1, a0, a1, zb, max(2, int((a1 - a0) / gap)), 0.35, "wood")
+        ln, sz = (0.15, 0.11) if p.get("painted") else (0.35, 0.14)
+        sides = p["beams"] if isinstance(p["beams"], tuple) else ("-y", "-x", "+x")
+        if "-y" not in open_sides and "-y" in sides:
+            b.beam_ends("-y", y0, c0, c1, zb, max(3, int((c1 - c0) / gap)), ln, "wood", size=sz)
+        if "-x" not in open_sides and "-x" in sides:
+            b.beam_ends("-x", x0, a0, a1, zb, max(2, int((a1 - a0) / gap)), ln, "wood", size=sz)
+        if "+x" not in open_sides and "+x" in sides:
+            b.beam_ends("+x", x1, a0, a1, zb, max(2, int((a1 - a0) / gap)), ln, "wood", size=sz)
+        if "+y" in sides:                                  # few at the back, where they cost and show least
+            b.beam_ends("+y", y1, c0, c1, zb, max(2, int((c1 - c0) / (gap * 1.7))), ln, "wood", size=sz)
     return top
 
 
@@ -568,32 +589,65 @@ def _lintel(b, face, origin, u0, u1, zt, zs):
             b.box(ox, ox + d, oy + u0 - 0.16, oy + u1 + 0.16, z0, z1, r, r, skip=("-x",))
 
 
-def _pylon(b, p):
-    """A buttress against a wall: broad and far out at the foot, leaning in as it rises until it
-    dies into the wall at its thin top, the way earthen walls are held up. (x, y) is its foot's
-    middle on the wall, `face` the way it looks, `d` how far its foot stands out."""
-    x, y, w, d, h = p["x"], p["y"], p["w"], p["d"], p["h"]
-    tw = w * 0.22                                          # half its width where it meets the wall
-    z0 = p.get("z", 0.0)
+def _pier(b, p):
+    """A pier over a corner of the walls, `foot` and `top` both (x0, x1, y0, y1), the walls lying
+    the way `into` says, (sx, sy). It leans into both walls until little stands out, a thin cap
+    climbs from its edge into them, and a narrow chamfer down its outer corner divides it, the
+    one line that says what it is. Its sides share one painted side, the chamfer has its own."""
+    sx, sy = p["into"]
+    tx0, tx1, ty0, ty1 = p["top"]
+    z0, z1 = p.get("z", 0.0), p.get("z", 0.0) + p["h"]
+    outer = {(1, 1): 0, (-1, 1): 1, (-1, -1): 2, (1, -1): 3}[(sx, sy)]    # the corner away from the walls
+    rise = 0.09
 
-    def at(s, t):
-        """s along the wall, t out of it."""
-        return {"-y": (x + s, y - t), "+y": (x - s, y + t), "-x": (x - t, y - s), "+x": (x + t, y + s)}[p["face"]]
+    def ring(rect, cut):
+        """The rectangle's corners in order, the outer one cut off; which of them are the chamfer."""
+        x0, x1, y0, y1 = rect
+        corners = ((x0, y0), (x1, y0), (x1, y1), (x0, y1))
+        pts, tags = [], []
+        for i, (x, y) in enumerate(corners):
+            if i != outer:
+                pts.append((x, y))
+                tags.append(False)
+                continue
+            for qx, qy in (corners[i - 1], corners[(i + 1) % 4]):
+                ln = math.hypot(qx - x, qy - y)
+                pts.append((x + (qx - x) / ln * cut, y + (qy - y) / ln * cut))
+                tags.append(True)
+        return pts, tags
 
-    a, c = at(-w / 2, d), at(w / 2, d)                     # the foot's outer corners
-    g, q = at(-w / 2, 0.0), at(w / 2, 0.0)                 # the foot on the wall
-    r, u = at(tw, 0.0), at(-tw, 0.0)                       # the thin top, on the wall
-    out = (a[0] + c[0] - 2 * x, a[1] + c[1] - 2 * y, 0.0)
-    b.face_out([(*a, z0), (*c, z0), (*r, z0 + h), (*u, z0 + h)], "trim", (out[0], out[1], d / h))
-    side = (c[0] - a[0], c[1] - a[1], 0.0)
-    b.face_out([(*c, z0), (*q, z0), (*r, z0 + h)], "trim", side)
-    b.face_out([(*g, z0), (*a, z0), (*u, z0 + h)], "trim", (-side[0], -side[1], 0.0))
+    def cap(x, y):
+        ox, oy = tx0 if sx > 0 else tx1, ty0 if sy > 0 else ty1
+        return z1 + rise * (abs(x - ox) / (tx1 - tx0) + abs(y - oy) / (ty1 - ty0))
+
+    foot, tags = ring(p["foot"], p.get("chamfer", 0.11))
+    top = [(x, y, cap(x, y)) for x, y in ring(p["top"], p.get("chamfer", 0.11) * 0.55)[0]]
+    w, a, c, h, lane = PIER_FACE
+    cx, cy = sum(q[0] for q in foot) / len(foot), sum(q[1] for q in foot) / len(foot)
+    for i, q in enumerate(foot):
+        j = (i + 1) % len(foot)
+        mx, my = (q[0] + foot[j][0]) / 2 - cx, (q[1] + foot[j][1]) / 2 - cy
+        if tags[i] and tags[j]:
+            u, uvs = lane, ((0.0, 0.0), (0.3, 0.0), (0.24, h), (0.06, h))
+        else:
+            u, uvs = 0.0, ((0.0, 0.0), (w, 0.0), (c, h), (a, h))
+        b.facing([(*q, z0), (*foot[j], z0), top[j], top[i]], [(u + e, f) for e, f in uvs], "pier", (mx, my, 0.1))
+    b.face_out(top, "pier_cap", (0.0, 0.0, 1.0))
+
+
+def _door_frame(b, p):
+    """Posts and a lintel round the door, standing a little out of a wall that looks -Y."""
+    x, y, w, h = p["x"], p["y"], p["w"], p["h"]
+    t, out = 0.13, 0.08
+    for x0, x1, z0, z1 in ((x - w / 2 - t, x - w / 2, 0.0, h), (x + w / 2, x + w / 2 + t, 0.0, h),
+                           (x - w / 2 - t, x + w / 2 + t, h, h + t)):
+        b.box(x0, x1, y - out, y, z0, z1, "frame", "frame", skip=("+y",) if z0 else ("+y", "top"))
 
 
 def _banner(b, p):
     """A cloth hanging from a rod on a wall that looks -Y, with a slight swing."""
     x, y, w, z1, h = p["x"], p["y"], p["w"], p["z1"], p["h"]
-    n = 3
+    n = 5
     for j in range(n):
         s0, s1 = j / n, (j + 1) / n
         o0, o1 = 0.04 * (j % 2), 0.04 * ((j + 1) % 2)

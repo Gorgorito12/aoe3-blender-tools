@@ -155,7 +155,7 @@ def paint(pr, model):
             if not spec.get("sahel", True):
                 shade_band(region, w, h, h - 0.6, 0.75)                         # under the thatch's eave
             if spec.get("art") == "frieze":
-                facade.frieze(pr, region, w, h * 0.72, earth, pr.p.seed, style=0)
+                facade.pale_frieze(pr, region, (w - 4.1) / 2, (w + 4.1) / 2, h - 0.62, earth)
             if spec.get("sahel", True):
                 for _ in range(0 if kept else int(w * 1.2)):                    # rain runs from the top
                     u, rw_ = float(rng.uniform(0, w)), float(rng.uniform(0.06, 0.22))
@@ -174,7 +174,8 @@ def paint(pr, model):
                 shade_band(region, w, 0, 0.9, 0.62)                             # the splashed foot
             spans = [(u0, u1) for (u0, v0, u1, v1) in spec["openings"]]
             kind = "kept" if kept else ("adobe" if spec.get("sahel", True) else "mud")
-            facade.draw(pr, region, facade.plan(pr.p.seed, region, w, h, kind, pr.p.building_type, spans), earth, WOOD, BAND)
+            if not kept:                                      # a palace's walls show what the design put there
+                facade.draw(pr, region, facade.plan(pr.p.seed, region, w, h, kind, pr.p.building_type, spans), earth, WOOD, BAND)
             if h > 3.2 and not kept:                          # a tall wall carries a frieze
                 facade.frieze(pr, region, w, h * 0.68, earth, pr.p.seed)
             for (u0, v0, u1, v1) in spec["openings"]:
@@ -188,7 +189,7 @@ def paint(pr, model):
                         pr.vline(region, uu, 0, v1, _shade(WOOD, 0.65))
                         uu += 0.14
                 elif kept:                                    # painted: the model keeps the triangles
-                    facade.window(pr, region, u0, v0, u1, v1, earth, WOOD, spec.get("shutters"))
+                    facade.window(pr, region, u0, v0, u1, v1, earth, WOOD, u0 in spec.get("closed", ()))
                 else:
                     pr.rect(region, u0, v0, u1, v1, DARK)
                     pr.rect(region, u0 - 0.08, v1, u1 + 0.08, v1 + 0.1, WOOD, _shade(WOOD, 0.7))
@@ -214,23 +215,38 @@ def paint(pr, model):
             pr.rect("banner", k * 0.075, 0, min(rb2.world_w, k * 0.075 + 0.04), 0.16, (216, 202, 172))
             k += 1
         pr.rect("banner", 0, 0.16, rb2.world_w, 0.22, (216, 202, 172))
+    if "coping" in at:
+        pr.fill("coping", skin.mix(ADOBE, facade.CREAM, 0.36))
+        pr.mottle("coping", 0.5, 0.06)
+        pr.mottle("coping", 0.09, 0.05)
     if "step" in at:
         rs3 = at["step"]
-        pale = skin.mix(ADOBE, facade.CREAM, 0.65)
-        pr.fill("step", _shade(pale, 0.76))
-        pr.mottle("step", 0.3, 0.05)
+        pale = skin.mix(ADOBE, facade.CREAM, 0.55)
+        pr.fill("step", _shade(pale, 0.86))
         u = 0.0
-        while u < rs3.world_w:
-            bw = float(rng.uniform(0.5, 0.9))
-            pr.rect("step", u + 0.015, 0.015, min(rs3.world_w, u + bw - 0.015), rs3.world_h - 0.015,
-                    _shade(pale, float(rng.uniform(0.9, 1.05))))
+        while u < rs3.world_w:                                # long slabs, their joints faint
+            bw = float(rng.uniform(1.1, 1.9))
+            pr.rect("step", u + 0.01, 0.0, min(rs3.world_w, u + bw - 0.01), rs3.world_h,
+                    _shade(pale, float(rng.uniform(0.86, 0.98))))
             u += bw
+        facade.worn(pr, "step", 0.0, 0.0, rs3.world_w, rs3.world_h, facade.random.Random(5))
     if "roof_flat" in at:
         skin.coat(pr, "roof_flat", "roof_kept" if pr.p.building_type == "PALACE" else "roof_flat", SKIN)
     if "parapet" in at:
         skin.coat(pr, "parapet", "parapet_kept" if pr.p.building_type == "PALACE" else "parapet", SKIN)
     if "trim" in at:
         skin.coat(pr, "trim", "trim_kept" if pr.p.building_type == "PALACE" else "trim", SKIN)
+    if "frame" in at:
+        pr.fill("frame", (96, 60, 34))
+        pr.mottle("frame", 0.2, 0.08)
+        pr.mottle("frame", 0.05, 0.08)
+    if "pier" in at:
+        skin.coat(pr, "pier", "pier_kept", SKIN)
+        w, a, c, h, lane = parts.PIER_FACE
+        facade.pier_side(pr, "pier", w, a, c, h)
+        facade.pier_chamfer(pr, "pier", lane, 0.3, h)         # the line that divides it
+        skin.coat(pr, "pier_cap", "parapet_kept", SKIN)
+        pr.tone("pier_cap", 0.0, 0.0, 1.4, 1.2, 1.2)          # the cap takes the light
     pr.base("wood", WOOD, role="timber")
     rw = at["wood"]
     stains("wood", rw.world_w, rw.world_h, 6, 0.2)
@@ -244,6 +260,10 @@ def paint(pr, model):
         rpo = at["pot"]
         pr.fill("pot", POT)
         pr.hline("pot", rpo.world_h * 0.7, 0, rpo.world_w, _shade(POT, 0.7), 2 * lw)
+        if pr.p.building_type == "PALACE":                    # painted bands
+            for v in (0.28, 0.42, 0.56):
+                pr.rect("pot", 0, v, rpo.world_w, v + 0.05, (178, 150, 116))
+            pr.mottle("pot", 0.1, 0.1)
     if "plinth" in at:
         rpl = at["plinth"]
         pr.base("plinth", _shade(MUD, 0.7), role="plinth")
@@ -259,8 +279,9 @@ def paint(pr, model):
         pr.fill("cloth", EARTH)
         u, j = 0.0, 0
         if plain:                                             # the owner's plain cloth, two pale stripes
-            pattern = ((BAND, cw - 0.54, True), (CREAM, 0.08, False), (BAND, 0.1, True), (CREAM, 0.08, False),
-                       (BAND, 0.28, True))
+            pattern = ((BAND, 0.22, True), (CREAM, 0.09, False), (BAND, 0.1, True), (CREAM, 0.09, False),
+                       (BAND, 2.5, True), (CREAM, 0.09, False), (BAND, 0.1, True), (CREAM, 0.09, False),
+                       (BAND, 0.6, True))
         while u < cw:                                         # strips woven on a narrow loom
             col, sw, mine = pattern[j % len(pattern)]
             pr.rect("cloth", u, 0, min(cw, u + sw), ch, col)
@@ -272,7 +293,7 @@ def paint(pr, model):
         while v < ch:                                         # the weft, and blocks across the strips
             pr.tone("cloth", 0, v, cw, min(ch, v + 0.02), 0.93)
             v += 0.05
-        for k in range(int(cw / 0.66) + 1):                   # where two strips were sewn together
+        for k in range(0 if plain else int(cw / 0.66) + 1):   # where two strips were sewn together
             pr.vline("cloth", k * 0.66, 0, ch, DARK, 1)
         for k in range(int(ch / 0.5) + 1):                    # soft folds down the fall of the cloth
             for j in range(3):

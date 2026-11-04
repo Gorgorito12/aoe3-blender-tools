@@ -82,6 +82,10 @@ def shed(x0, x1, y0, y1, z_hi, z_lo, slope="-y", rafters=4, z=0.0, posts=(True, 
             "rafters": rafters, "z": z, "posts": posts, "boards": boards}
 
 
+def pier(fx0, fx1, fy0, fy1, tx0, tx1, ty0, ty1, h, into):
+    return {"kind": "pier", "foot": (fx0, fx1, fy0, fy1), "top": (tx0, tx1, ty0, ty1), "h": h, "into": into}
+
+
 def stairs(x, y, z1, d="+x", w=0.7, run=2.8, n=7):
     return {"kind": "stairs", "x": x, "y": y, "z1": z1, "dir": d, "w": w, "run": run, "n": n}
 
@@ -321,52 +325,61 @@ def palace(p, P, medium):
                 yard(r=R - 0.4)]
     # one stepped mass: two tall towers at the back, a high hall between them, a lower storey in
     # front with terraces, a gate in a projecting bay and a balcony with an awning above it
+    # measured on four views of the reference. Symmetric: the towers stand out past the wings, the
+    # rear wall lies back between them, and every corner left exposed has its pier. Metres on the plan
+    t = sizes.TALL
     K = {"mass": "keep", "plain": True, "painted": True}   # windows in the texture, the triangles in the detail
-    front = -4.5                                          # the lower storey's front
-    bay = -5.5                                            # the gate bay's front
-    tw = 3.2                                              # a tower's side
-    W = P - 0.3
-    Hl, Hb = 3.3, 3.7                                     # the lower storey, the gate bay
-    Ht = 7.4                                              # the towers
-    z = Hl * sizes.TALL
-    tall = sizes.TALL
-    return [block(-W, W, front, 1.2, Hl, parapet=0.45, beams=True, beam_gap=1.3, foot=True, pinnacles=True, windows=2,
-                  joined=("back",), blank=("front",), shutters=True, **K),
-            block(-3.0, 3.0, bay, front + 0.2, Hb, parapet=0.5, door=True, foot=True, gate=(2.0, 2.7), windows=0,
-                  art={"front": "frieze"}, pinnacles=True, joined=("back",), **K),
-            block(-3.2, 3.2, -1.7, 2.2, 2.9, z=Hl, parapet=0.45, beams=True, beam_gap=1.3, pinnacles=True, flag=True,
-                  windows=2, shutters=True, blank=("left", "right", "back"), **K),
-            block(-W, -W + tw, 1.2, W, Ht, parapet=0.5, beams=True, beam_gap=0.8, foot=True, pinnacles="stepped",
-                  windows=1, sill=0.62, blank=("right", "back"), **K),
-            block(W - tw, W, 1.2, W, Ht, parapet=0.5, beams=True, beam_gap=0.8, foot=True, pinnacles="stepped",
-                  windows=1, sill=0.62, blank=("left", "back"), **K),
-            block(-1.9, 1.9, 1.0, W - 0.2, 5.6, parapet=0.45, foot=True, windows=0, **K),
-            # the balcony's walls
-            block(-2.1, -1.75, -4.3, -1.5, 0.9, z=Hl, windows=0, band=False, joined=("back",), **K),
-            block(1.75, 2.1, -4.3, -1.5, 0.9, z=Hl, windows=0, band=False, joined=("back",), **K),
-            # the buttresses: they lean in and die into the wall at their thin top
-            {"kind": "pylon", "x": -W + 0.55, "y": front, "w": 0.95, "d": 1.15, "h": Hl * 0.94, "face": "-y"},
-            {"kind": "pylon", "x": W - 0.55, "y": front, "w": 0.95, "d": 1.15, "h": Hl * 0.94, "face": "-y"},
-            {"kind": "pylon", "x": -2.6, "y": bay, "w": 0.85, "d": 1.1, "h": Hb * 0.94, "face": "-y"},
-            {"kind": "pylon", "x": 2.6, "y": bay, "w": 0.85, "d": 1.1, "h": Hb * 0.94, "face": "-y"},
-            {"kind": "pylon", "x": -W, "y": 1.85, "w": 1.05, "d": 1.3, "h": Ht * 0.7, "face": "-x"},
-            {"kind": "pylon", "x": -W, "y": 4.6, "w": 1.05, "d": 1.3, "h": Ht * 0.7, "face": "-x"},
-            {"kind": "pylon", "x": W, "y": 1.85, "w": 1.05, "d": 1.3, "h": Ht * 0.7, "face": "+x"},
-            {"kind": "pylon", "x": W, "y": 4.6, "w": 1.05, "d": 1.3, "h": Ht * 0.7, "face": "+x"},
-            {"kind": "pylon", "x": -W, "y": -3.9, "w": 0.95, "d": 1.0, "h": Hl * 0.94, "face": "-x"},
-            {"kind": "pylon", "x": W, "y": -3.9, "w": 0.95, "d": 1.0, "h": Hl * 0.94, "face": "+x"},
-            # the balcony over the gate: an awning, its posts on the terrace, jars
-            {**canopy(-1.5, 1.5, -3.4, -1.7, 5.5, 5.0, cloth=True), "z": Hl},
-            {"kind": "pot", "x": -0.4, "y": -2.3, "r": 0.34, "h": 0.8, "z": Hl, "n": 8},
-            {"kind": "pot", "x": 0.35, "y": -2.5, "r": 0.26, "h": 0.6, "z": Hl, "n": 8},
-            # the way up to the hall's roof, a hatch on the other terrace
-            {**stairs(-3.75, -3.6, 2.9, d="+y", w=0.8, run=3.2, n=6), "z": z},
-            {"kind": "hatch", "x": 4.2, "y": -2.6, "z": z + 0.001},
-            # banners by the gate, spouts through the parapets, steps up to the door
-            {"kind": "banner", "x": -2.05, "y": bay - 0.02, "w": 0.7, "z1": 3.05, "h": 1.75},
-            {"kind": "banner", "x": 1.35, "y": bay - 0.02, "w": 0.7, "z1": 3.05, "h": 1.75},
-            {"kind": "spouts", "z": (Hl + 0.15) * tall, "at": [(-3.9, front, "-y"), (3.9, front, "-y"), (-W, -1.5, "-x"), (W, -1.5, "+x")]},
-            {**stairs(0.0, bay - 1.2, 0.54, d="+y", w=3.2, run=1.2, n=3), "region": "step"}]
+    W = P - 0.3                                           # half the width of the wings
+    T, ti = W + 0.72, W - 2.38                            # a tower's outer and inner sides
+    front, bay, hall_y, tower_y, lb, back = -3.2, -4.4, -1.5, 1.3, 4.6, 3.6
+    Hw, Hg, Hb, Hh, Ht = 3.87 / t, 3.3 / t, 4.1 / t, 6.55 / t, 7.76 / t  # the tops of the walls under their parapets
+    bx, ux, hx, ax = 2.93, 2.1, 3.3, 1.55                 # half the bay, its upper part, the hall, the awning
+    tw, depth = T - ti, lb - tower_y
+    L = tower_y - front                                   # the side walls of the wings
+    piers = []
+    for m in (-1, 1):                                     # the left side's piers, drawn once, and their mirror
+
+        def corner(fx, fy0, fy1, tx, ty0, ty1, h, into):
+            fx, tx = sorted((m * fx[0], m * fx[1])), sorted((m * tx[0], m * tx[1]))
+            piers.append(pier(*fx, fy0, fy1, *tx, ty0, ty1, h, (-m * into[0], into[1])))
+
+        corner((W + 0.42, W - 0.72), front - 0.6, front + 0.6, (W, W - 0.66), front - 0.14, front + 0.5, 3.1 / t, (1, 1))
+        corner((bx + 0.4, bx - 0.5), bay - 0.5, bay + 0.5, (bx, bx - 0.5), bay - 0.12, bay + 0.35, 3.35 / t, (1, 1))
+        corner((T + 0.85, T - 0.3), tower_y - 0.55, tower_y + 0.56, (T + 0.1, T - 0.3), tower_y - 0.12, tower_y + 0.5, 4.85 / t, (1, 1))
+        corner((T + 0.85, T - 0.45), lb - 0.5, lb + 0.68, (T + 0.1, T - 0.42), lb - 0.47, lb + 0.12, 4.85 / t, (1, -1))
+        corner((ti + 0.45, ti - 0.45), lb - 0.45, lb + 0.68, (ti + 0.42, ti - 0.12), lb - 0.42, lb + 0.12, 4.85 / t, (-1, -1))
+    return [block(-W, W, front, tower_y, Hw, parapet=0.32, foot=True, pinnacles="stepped", windows=0, joined=("back",),
+                  win={"front": [(1.38, 1.6, 0.46, 0.8, False), (2 * W - 1.38, 1.6, 0.46, 0.8, False)],
+                       "left": [(L - 2.4, 1.3, 0.8, 1.3, True)], "right": [(2.4, 1.3, 0.8, 1.3, True)]}, **K),
+            block(-bx, bx, bay, front + 0.2, Hg, parapet=0.2, coping="coping", door=True, foot=True, gate=(1.6, 2.5),
+                  windows=0, joined=("back",), band=False, **K),
+            # over its shoulders the bay's middle goes on up as the balcony, back to the hall, in low walls
+            block(-ux, ux, bay + 0.08, hall_y + 0.1, Hb - Hg, z=Hg, parapet=0.34, coping="coping", windows=0,
+                  art={"front": "frieze"}, joined=("back",), band=False, **K),
+            block(-hx, hx, hall_y, back, Hh - Hw, z=Hw, parapet=0.34, beams=("-y", "+y"), beam_gap=0.5, pinnacles="stepped",
+                  flag=True, windows=0, win={"front": [(0.8, 0.12, 0.95, 1.12, True), (2 * hx - 0.8, 0.12, 0.95, 1.12, True),
+                                                       (hx, 0.23, 2 * ax, 1.75, "recess")],
+                                             "left": [(back + 0.45, 0.1, 1.0, 1.35, True)],
+                                             "back": [(hx, 0.45, 0.42, 0.7, False)]}, **K),
+            block(-T, -ti, tower_y, lb, Ht, parapet=0.34, beams=("-y", "-x", "+y"), beam_gap=0.5, foot=True,
+                  pinnacles="stepped", windows=0, win={"front": [(tw / 2, 5.15, 0.42, 0.8, False)],
+                                  "left": [(depth / 2, 5.45, 0.42, 0.75, False), (depth / 2, 2.1, 0.42, 0.7, False)],
+                                  "back": [(tw * 0.5, 5.2, 0.42, 0.75, False), (tw * 0.5, 2.1, 0.42, 0.7, False)]}, **K),
+            block(ti, T, tower_y, lb, Ht, parapet=0.34, beams=("-y", "+x", "+y"), beam_gap=0.5, foot=True,
+                  pinnacles="stepped", windows=0, win={"front": [(tw / 2, 5.15, 0.42, 0.8, False)],
+                                  "right": [(depth / 2, 5.45, 0.42, 0.75, False), (depth / 2, 2.1, 0.42, 0.7, False)],
+                                  "back": [(tw * 0.5, 5.2, 0.42, 0.75, False), (tw * 0.5, 2.1, 0.42, 0.7, False)]}, **K),
+            block(-ti - 0.2, ti + 0.2, tower_y, back, Hw, windows=0, band=False, joined=("front",), **K),
+            *piers,
+            # the awning over the balcony, the jars, banners by the gate, steps up to the door
+            {**canopy(-ax, ax, hall_y - 1.7, hall_y - 0.02, 5.85 / t, 5.65 / t, cloth=True), "z": Hb,
+             "scallops": False, "nu": 12, "nv": 5, "post": 0.055, "on_wall": True},
+            {"kind": "pot", "x": 0.74, "y": -2.75, "r": 0.42, "h": 0.92, "z": Hb, "n": 12, "belly": True},
+            {"kind": "pot", "x": 1.17, "y": -3.3, "r": 0.31, "h": 0.64, "z": Hb, "n": 12, "belly": True},
+            {"kind": "banner", "x": -2.09, "y": bay - 0.02, "w": 0.54, "z1": 3.0, "h": 1.35},
+            {"kind": "banner", "x": 1.55, "y": bay - 0.02, "w": 0.54, "z1": 3.0, "h": 1.35},
+            {"kind": "door_frame", "x": 0.0, "y": bay, "w": 1.6, "h": 2.5},
+            {**stairs(0.0, bay - 0.8, 0.34, d="+y", w=2.9, run=0.8, n=2), "region": "step"}]
 
 
 TYPES = {"HOUSE": house, "TOWN_CENTER": town_center, "GRANARY": granary_type, "MARKET": market,
@@ -381,10 +394,10 @@ def taller(pieces):
         for key in ("wall_h", "roof_h", "h", "z_hi", "z_lo", "z1"):
             if key in q and q["kind"] in ("hut", "granary", "tower", "block", "shed", "canopy", "stairs", "lookout"):
                 q[key] *= k
-        if q["kind"] in ("block", "shed", "granary", "hut", "tower", "lookout", "canopy", "pot", "pylon") and \
+        if q["kind"] in ("block", "shed", "granary", "hut", "tower", "lookout", "canopy", "pot", "pier") and \
                 q.get("z", 0.0) > 0.7:
             q["z"] *= k
-        if q["kind"] == "pylon":
+        if q["kind"] == "pier":
             q["h"] *= k
     return pieces
 

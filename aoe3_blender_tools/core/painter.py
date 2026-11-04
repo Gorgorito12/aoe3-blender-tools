@@ -106,9 +106,42 @@ class Painter:
         xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
         materials.multiply(self.cv.a, (xa, ya, xb, yb), k)
 
-    def mottle(self, region, cell_m, k):
+    def facet(self, region, pts, k):
+        """Multiplies a triangle by `k`, its corners in metres on the region: the flat chips and
+        trowel marks a rectangle cannot draw."""
+        (ax, ay), (bx, by), (cx, cy) = (self.P(region, u, v) for u, v in pts)
+        h, w = self.cv.a.shape[:2]
+        x0, x1 = max(0, int(min(ax, bx, cx))), min(w, int(max(ax, bx, cx)) + 1)
+        y0, y1 = max(0, int(min(ay, by, cy))), min(h, int(max(ay, by, cy)) + 1)
+        area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+        if x1 <= x0 or y1 <= y0 or abs(area) < 1e-6:
+            return
+        ys, xs = np.mgrid[y0:y1, x0:x1]
+        e0 = ((bx - ax) * (ys - ay) - (by - ay) * (xs - ax)) / area
+        e1 = ((cx - bx) * (ys - by) - (cy - by) * (xs - bx)) / area
+        e2 = ((ax - cx) * (ys - cy) - (ay - cy) * (xs - cx)) / area
+        inside = (e0 >= 0) & (e1 >= 0) & (e2 >= 0)
+        self.cv.a[y0:y1, x0:x1][inside] *= k
+
+    def soften(self, region, u0, v0, u1, v1, radius_m):
+        """A small box blur over a rect of a region."""
+        (x0, y0), (x1, y1) = self.P(region, u0, v1), self.P(region, u1, v0)
+        xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
+        r = max(1, int(radius_m * self.px_per_m))
+        if xb - xa <= 2 * r or yb - ya <= 2 * r:
+            return
+        a = self.cv.a[ya:yb, xa:xb].astype(float)
+        for axis in (0, 1):
+            total = np.cumsum(np.pad(a, [(r + 1, r) if i == axis else (0, 0) for i in range(3)], mode="edge"), axis=axis)
+            high = np.take(total, range(2 * r + 1, total.shape[axis]), axis=axis)
+            low = np.take(total, range(0, total.shape[axis] - 2 * r - 1), axis=axis)
+            a = (high - low) / (2 * r + 1)
+        self.cv.a[ya:yb, xa:xb] = a
+
+    def mottle(self, region, cell_m, k, hard=False):
         """A soft uneven tone over a region, blobs about `cell_m` across, up to `k` either way: the
-        life of hand-laid plaster. Multiplies what is there."""
+        life of hand-laid plaster. `hard`: patches with an edge, lighter by `k`, as worn or
+        re-laid earth. Multiplies what is there."""
         r = self.at[region]
         x0, y0, w, h = int(r.x), int(r.y), int(r.w), int(r.h)
         if w < 2 or h < 2:
@@ -123,6 +156,8 @@ class Painter:
         top = g[iy][:, ix] * (1 - fx) + g[iy][:, ix + 1] * fx
         bot = g[iy + 1][:, ix] * (1 - fx) + g[iy + 1][:, ix + 1] * fx
         m = top * (1 - fy) + bot * fy
+        if hard:
+            m = np.clip((m - 0.12) * 9.0, 0.0, 1.0)
         self.cv.a[y0:y0 + h, x0:x0 + w] *= (1.0 + k * m)[:, :, None]
 
     def cracks(self, region, cell_m=0.16, depth=0.4, width_m=0.012, keep=0.75):

@@ -846,11 +846,12 @@ class Builder:
                      skip=("top",))
 
     def draped_cloth(self, x0, x1, y0, y1, z_hi, z_lo, region, post_region, slope="-y", post=0.07, sag=0.17,
-                     nu=5, nv=3, hem=0.2, rafters=0, z_base=0.0):
+                     nu=5, nv=3, hem=0.2, rafters=0, z_base=0.0, scallops=True, on_wall=False):
         """Cloth stretched from a pole along its high side to the poles of its low side: a grid that
         hangs between them, with a scalloped hem. `rafters`: that many timbers under it, which show
-        at both ends (a tarp over a beamed yard). Faces up; nothing under it (the camera never
-        sees that side)."""
+        at both ends (a tarp over a beamed yard). `on_wall`: its high side is nailed to a wall, so
+        it stands on the two low posts alone. Faces up; nothing under it (the camera never sees
+        that side)."""
         if slope in ("-y", "+y"):
             W, L = x1 - x0, y1 - y0
         else:
@@ -884,7 +885,7 @@ class Builder:
                 self.facing([pts[0], pts[1], pts[2]], [uvs[0], uvs[1], uvs[2]], region, (0.0, 0.0, 1.0), smooth=True)
                 self.facing([pts[0], pts[2], pts[3]], [uvs[0], uvs[2], uvs[3]], region, (0.0, 0.0, 1.0), smooth=True)
         ex, ey = at(0, L + 1.0)[0] - at(0, L)[0], at(0, L + 1.0)[1] - at(0, L)[1]
-        for i in range(nu):                                  # the hem: one scallop a segment
+        for i in range(nu if scallops else 0):               # the hem: one scallop a segment
             sa, sb, sm = ss[i], ss[i + 1], (ss[i] + ss[i + 1]) / 2
             pa, pb, pm = at(sa, L), at(sb, L), at(sm, L)
             za, zb = z(sa, L), z(sb, L)
@@ -892,10 +893,14 @@ class Builder:
                         [(sa * k, hem * k), (sb * k, hem * k), (sm * k, 0.0)], region, (ex, ey, 0.0))
         i = post + 0.02
         for s, t, zp in ((0.0, 0.0, z_hi), (W, 0.0, z_hi), (W, L, z_lo), (0.0, L, z_lo)):
+            if on_wall and t == 0.0:
+                continue
             px, py = at(min(max(s, i), W - i), min(max(t, i), L - i))
-            self.box(px - post, px + post, py - post, py + post, z_base, zp + 0.1, post_region, post_region)
-        ra, rb = at(0.0, i), at(W, i)
-        self.log(ra[0], ra[1], rb[0], rb[1], z_hi + 0.05, 0.05, 6, post_region)      # the pole
+            self.box(px - post, px + post, py - post, py + post, z_base, zp + (0.0 if on_wall else 0.1),
+                     post_region, post_region)
+        if not on_wall:
+            ra, rb = at(0.0, i), at(W, i)
+            self.log(ra[0], ra[1], rb[0], rb[1], z_hi + 0.05, 0.05, 6, post_region)  # the pole
         for j in range(rafters):
             s = W * (j + 1) / (rafters + 1)
             ra, rb = at(s, -0.25), at(s, L + 0.25)

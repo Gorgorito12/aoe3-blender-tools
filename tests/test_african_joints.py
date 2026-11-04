@@ -74,6 +74,24 @@ class Buildings(unittest.TestCase):
                 self.assertEqual(parts.junctions(layout_of(p, p.detail)), [])
 
 
+class Piers(unittest.TestCase):
+    def test_a_palace_pier_runs_out_into_the_walls(self):
+        pieces = layout_of(building.PRESETS["AFRICAN_PALACE_SAHEL"], "MEDIUM")
+        piers = [q for q in pieces if q["kind"] == "pier"]
+        walls = [q for q in pieces if q["kind"] == "block" and not q.get("z")]
+        self.assertEqual(len(piers), 10)                   # every exposed corner, both sides alike
+        for q in piers:
+            fx0, fx1, fy0, fy1 = q["foot"]
+            tx0, tx1, ty0, ty1 = q["top"]
+            self.assertLess(tx1 - tx0, fx1 - fx0 + 0.01)   # it narrows as it rises
+            self.assertLess(ty1 - ty0, fy1 - fy0 + 0.01)
+            sx, sy = q["into"]
+            ox, oy = tx0 if sx > 0 else tx1, ty0 if sy > 0 else ty1    # its top's outer corner
+            ix, iy = tx1 if sx > 0 else tx0, ty1 if sy > 0 else ty0    # and the one in the walls
+            self.assertTrue(any(w["x0"] < ix < w["x1"] and w["y0"] < iy < w["y1"] for w in walls), q)
+            self.assertLess(abs(ox - ix) + abs(oy - iy), 1.5, q)
+
+
 class Composition(unittest.TestCase):
     def test_nothing_is_left_alone_on_the_plot(self):
         """Every prop stands near a structure or another prop: a building is one place."""
