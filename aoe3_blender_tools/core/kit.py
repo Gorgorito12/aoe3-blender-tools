@@ -690,24 +690,34 @@ class Builder:
         self.face_out(pts, region, (0.0, 0.0, -1.0 if down else 1.0))
 
     def flat_roof(self, x0, x1, y0, y1, z, region, parapet_h=0.0, parapet_t=0.25, parapet_region=None,
-                  merlons=0, merlon_h=0.3):
+                  merlons=0, merlon_h=0.3, open_sides=()):
         """A flat roof over walls x0..x1, y0..y1 whose tops are at z: the roof surface and, with
         parapet_h, a parapet round it flush with the walls (four boxes that never overlap at the
-        corners) and optionally `merlons` per metre... per side (small boxes on the parapet)."""
+        corners) and optionally `merlons` per metre... per side (small boxes on the parapet).
+        `open_sides` ("-y", "+y", "-x", "+x"): sides without a parapet (they end inside something
+        taller, see core/joints.py)."""
         pr = parapet_region or region
         t = parapet_t if parapet_h > 0 else 0.0
-        self.face_out([(x0 + t, y0 + t, z), (x1 - t, y0 + t, z), (x1 - t, y1 - t, z), (x0 + t, y1 - t, z)],
+        tf, tb = (0.0 if "-y" in open_sides else t), (0.0 if "+y" in open_sides else t)
+        tl, tr = (0.0 if "-x" in open_sides else t), (0.0 if "+x" in open_sides else t)
+        self.face_out([(x0 + tl, y0 + tf, z), (x1 - tr, y0 + tf, z), (x1 - tr, y1 - tb, z), (x0 + tl, y1 - tb, z)],
                       region, (0.0, 0.0, 1.0))
         if parapet_h <= 0:
             return z
         zt = z + parapet_h
-        self.box(x0, x1, y0, y0 + t, z, zt, pr, pr)                        # front and back: full length
-        self.box(x0, x1, y1 - t, y1, z, zt, pr, pr)
-        self.box(x0, x0 + t, y0 + t, y1 - t, z, zt, pr, pr, skip=("-y", "+y"))   # sides between them
-        self.box(x1 - t, x1, y0 + t, y1 - t, z, zt, pr, pr, skip=("-y", "+y"))
+        if tf:
+            self.box(x0, x1, y0, y0 + t, z, zt, pr, pr)                    # front and back: full length
+        if tb:
+            self.box(x0, x1, y1 - t, y1, z, zt, pr, pr)
+        ends = (("-y",) if tf else ()) + (("+y",) if tb else ())           # sides between them
+        if tl:
+            self.box(x0, x0 + t, y0 + tf, y1 - tb, z, zt, pr, pr, skip=ends)
+        if tr:
+            self.box(x1 - t, x1, y0 + tf, y1 - tb, z, zt, pr, pr, skip=ends)
         if merlons:
             w = 0.35
-            for (ax, ay, bx, by) in ((x0, y0, x1, y0 + t), (x0, y1 - t, x1, y1)):
+            spans = (((x0, y0, x1, y0 + t),) if tf else ()) + (((x0, y1 - t, x1, y1),) if tb else ())
+            for (ax, ay, bx, by) in spans:
                 n = max(2, int((bx - ax) * merlons))
                 for k in range(n):
                     mx = ax + (bx - ax) * (k + 0.5) / n

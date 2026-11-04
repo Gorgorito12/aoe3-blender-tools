@@ -106,6 +106,37 @@ class Painter:
         xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
         materials.multiply(self.cv.a, (xa, ya, xb, yb), k)
 
+    def cracks(self, region, cell_m=0.16, depth=0.4, width_m=0.012, keep=0.75):
+        """A network of fine cracks over a region, as dried mud or old plaster shows: the edges of
+        jittered cells (`cell_m` across), darkened by `depth`, `width_m` wide; about `keep` of the
+        edges are drawn (a smooth noise leaves some cells open). Multiplies what is there."""
+        r = self.at[region]
+        x0, y0, w, h = int(r.x), int(r.y), int(r.w), int(r.h)
+        if w < 4 or h < 4:
+            return
+        c = max(3.0, cell_m * self.px_per_m)
+        nx, ny = int(w / c) + 3, int(h / c) + 3
+        rng = self.rng
+        pts = (np.stack(np.meshgrid(np.arange(nx), np.arange(ny)), -1) + rng.uniform(0.1, 0.9, (ny, nx, 2))) * c
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        ix, iy = (xx / c).astype(int), (yy / c).astype(int)
+        d1 = np.full((h, w), 1e9, np.float32)
+        d2 = np.full((h, w), 1e9, np.float32)
+        for dy in (-1, 0, 1, 2):
+            for dx in (-1, 0, 1, 2):
+                jx, jy = np.clip(ix + dx, 0, nx - 1), np.clip(iy + dy, 0, ny - 1)
+                p = pts[jy, jx]
+                d = np.hypot(xx - p[..., 0], yy - p[..., 1])
+                closer = d < d1
+                d2 = np.where(closer, d1, np.minimum(d2, d))
+                d1 = np.where(closer, d, d1)
+        t = max(0.8, width_m * self.px_per_m)
+        edge = np.clip(1.0 - (d2 - d1) / t, 0.0, 1.0)
+        n = rng.uniform(0, 1, (ny // 2 + 2, nx // 2 + 2)).astype(np.float32)   # open some cells
+        gate = n[np.clip(iy // 2, 0, n.shape[0] - 1), np.clip(ix // 2, 0, n.shape[1] - 1)] < keep
+        k = 1.0 - depth * edge * gate
+        self.cv.a[y0:y0 + h, x0:x0 + w] *= k[:, :, None]
+
     def coverage(self):
         """Where a swatch still shows (1.0) at the painting size, before the noise."""
         cm = np.zeros(self.cv.a.shape[:2], np.float32)

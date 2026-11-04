@@ -46,6 +46,8 @@ ASSETS = {
     "stone_rough": {"source": "ambientCG", "id": "Rock030", "tile_m": 2.0, "size": 256},
     "clay": {"source": "ambientCG", "id": "Clay009", "tile_m": 1.5, "size": 256},
     "timber": {"source": "ambientCG", "id": "Wood026", "tile_m": 1.0, "size": 256},
+    "thatch": {"source": "ambientCG", "id": "ThatchedRoof001A", "tile_m": 1.5, "size": 256},
+    "mud": {"source": "ambientCG", "id": "Ground031", "tile_m": 2.0, "size": 256},
 }
 
 

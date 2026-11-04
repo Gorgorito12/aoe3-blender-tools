@@ -53,7 +53,7 @@ def goods(x, y, n=4):
 def house(p, S, medium):
     if p.architecture == "SUBSAHARAN":
         return [hut(-0.9, 0.4, 2.4, 2.3, 2.9, overhang=0.45, finial=0.5, door=True, base=0.25, flag=True),
-                {"kind": "granary", "x": 2.6, "y": -1.6, "r": 0.9, "wall_h": 1.1, "roof_h": 1.2, "roof": "cone",
+                {"kind": "granary", "x": 2.9, "y": -1.7, "r": 0.9, "wall_h": 1.1, "roof_h": 1.2, "roof": "cone",
                  "overhang": 0.25, "stilts": 0.5, "bands": False},
                 pot(-2.4, -2.7), pot(-1.8, -3.0, 0.22, 0.4)]
     return [block(-3.0, 2.6, -2.2, 2.0, 3.0, door=True, parapet=0.55, merlons=0.6, beams=True, windows=1),
@@ -84,8 +84,8 @@ def town_center(p, S, medium):
                            base=0.2))
         out += [hut(-6.6, 1.4, 1.4, 1.8, 1.9, overhang=0.3, finial=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
                 hut(6.6, 1.4, 1.4, 1.8, 1.9, overhang=0.3, finial=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
-                granary(-2.6, 6.4, 0.9, 1.1, 1.2, roof="cone", overhang=0.25, stilts=0.5),
-                granary(2.6, 6.4, 0.9, 1.1, 1.2, roof="cone", overhang=0.25, stilts=0.5),
+                granary(-1.5, 6.9, 0.9, 1.1, 1.2, roof="cone", overhang=0.25, stilts=0.5),
+                granary(1.5, 6.9, 0.9, 1.1, 1.2, roof="cone", overhang=0.25, stilts=0.5),
                 {"kind": "fence", "points": [(-7.6, -5.6), (-3.0, -5.6)], "h": 1.3, "stone": True, "crenels": False},
                 {"kind": "fence", "points": [(3.0, -5.6), (7.6, -5.6)], "h": 1.3, "stone": True, "crenels": False},
                 prop("fire", 0.0, -4.4), prop("drum", -1.2, -5.0), prop("drum", 1.2, -5.0, r=0.22, h=0.55),
@@ -93,12 +93,13 @@ def town_center(p, S, medium):
         out += [pot(-2.6, -4.6), pot(-2.0, -4.9, 0.22, 0.4), pot(2.4, -4.7, 0.3, 0.55)]
         out += goods(-2.2, -7.0, 3) + goods(0.8, -7.0, 3)          # at the entrance, outside the wall
         return out
-    out = [{"kind": "tower", "x": 0.0, "y": 0.0, "r": 3.0, "wall_h": 6.6, "roof_h": 0.0, "roof": "crenel",
+    out = [{"kind": "tower", "x": 0.0, "y": 0.0, "r": 3.6, "wall_h": 6.6, "roof_h": 0.0, "roof": "crenel",
             "bands": True, "big": True, "flag": True}]
-    out += [block(-2.6, 2.6, -7.6, -2.5, 3.6, door=True, parapet=0.5, merlons=1.0, beams=True, windows=1),
-            block(-2.6, 2.6, 2.5, 7.4, 3.6, parapet=0.5, merlons=1.0, beams=True, windows=1),
-            block(-7.6, -2.5, -2.4, 2.4, 3.6, parapet=0.5, merlons=1.0, beams=True, windows=1),
-            block(2.5, 7.6, -2.4, 2.4, 3.6, parapet=0.5, merlons=1.0, beams=True, windows=1)]
+    out += [block(-2.2, 2.2, -7.6, -2.6, 3.6, door=True, parapet=0.5, merlons=1.0, beams=True, windows=1,
+                  joined=("back",)),
+            block(-2.2, 2.2, 2.6, 7.4, 3.6, parapet=0.5, merlons=1.0, beams=True, windows=1, joined=("front",)),
+            block(-7.6, -2.6, -2.2, 2.2, 3.6, parapet=0.5, merlons=1.0, beams=True, windows=1, joined=("right",)),
+            block(2.6, 7.6, -2.2, 2.2, 3.6, parapet=0.5, merlons=1.0, beams=True, windows=1, joined=("left",))]
     for cx, cy in ((-6.4, -6.4), (6.4, -6.4), (-6.4, 6.4), (6.4, 6.4)):
         out.append({"kind": "tower", "x": cx, "y": cy, "r": 1.0, "wall_h": 4.4, "roof_h": 0.0, "roof": "crenel",
                     "bands": True})
@@ -192,9 +193,9 @@ def stockade(p, S, medium):
         pts = ring_points(5.6, n, start=-math.pi / 2 - math.pi / n)
         out = [{"kind": "fence", "points": pts, "h": 2.4, "type": "PALISADE", "closed": True, "gap": 0,
                 "stone": stone},
-               hut(-1.6, 1.8, 1.9, 2.1, 2.4, overhang=0.35, finial=0.4, door=True, door_w=0.9, door_h=1.6, base=0.2,
+               hut(-2.0, 1.6, 1.9, 2.1, 2.4, overhang=0.35, finial=0.4, door=True, door_w=0.9, door_h=1.6, base=0.2,
                    flag=True),
-               hut(2.2, 2.0, 1.5, 1.9, 2.0, overhang=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
+               hut(2.4, 1.8, 1.5, 1.9, 2.0, overhang=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
                tower(2.6, -3.0, 1.2, 4.6, roof="cone", roof_h=1.6, overhang=0.3),      # the bottom quadrant
                pot(-2.4, -1.4), pot(-1.8, -1.8, 0.22, 0.4)]
         if stone:
@@ -226,7 +227,7 @@ def armory(p, S, medium):
                 prop("logs", 4.6, 4.4, length=1.8, n=4), prop("stones", -0.6, -4.8, n=4),
                 prop("drum", -5.4, -1.0), prop("rack", -1.8, -1.4)]
     return [block(-5.6, 1.2, 0.0, 5.4, 4.0, door=True, parapet=0.5, merlons=1.0, beams=True, windows=1, flag=True),
-            block(1.2, 5.6, 1.4, 5.4, 2.8, door="front", parapet=0.35, windows=1),
+            block(0.8, 5.6, 1.4, 5.2, 2.8, door="front", parapet=0.35, windows=1, joined=("left",)),
             canopy(1.6, 5.6, -2.8, 1.0, 2.6, 2.1, cloth=True),
             stack(-4.2, -3.4, 2.0, 2.8, 5.6, "stone", z=0.0),                       # the forge's chimney
             stack(2.4, 3.4, -2.0, -1.0, 1.0, "stone"), pot(-4.6, -1.2, 0.4, 0.6),
@@ -269,7 +270,7 @@ def quarry(p, S, medium):
                 canopy(0.8, 5.4, 0.6, 4.4, 2.8, 2.3, cloth=False, slope="+x")] + piles
     return [block(-5.4, -0.4, 0.6, 5.0, 3.2, door=True, parapet=0.45, merlons=1.0, beams=True, windows=1, flag=True),
             canopy(0.6, 5.4, 0.8, 4.8, 2.8, 2.3, cloth=True, slope="+x"),
-            block(-7.0, -5.4, 2.0, 4.8, 2.2, door="right", parapet=0.3, windows=0)] + piles
+            block(-7.0, -5.1, 2.0, 4.6, 2.2, door="front", parapet=0.3, windows=0, joined=("right",))] + piles
 
 
 def plot(p, S, medium):
@@ -308,10 +309,10 @@ def customs(p, S, medium):
     if p.architecture == "SUBSAHARAN":
         out.append(block(-4.6, 4.6, -2.6, 3.6, h, door=True, roof="thatch", sahel=False, windows=3, flag=True))
         out.append(canopy(-4.6, 4.6, -4.6, -2.6, 3.0, 2.5, cloth=False))
-        out += [hut(-5.4, 5.4, 1.5, 1.9, 2.0, overhang=0.35, finial=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
-                hut(5.4, 5.4, 1.5, 1.9, 2.0, overhang=0.35, finial=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
-                granary(6.0, 0.6, 1.0, 1.3, 1.4, roof="cone", overhang=0.25, stilts=0.6),
-                granary(-6.0, 0.6, 1.0, 1.3, 1.4, roof="cone", overhang=0.25, stilts=0.6),
+        out += [hut(-5.4, 5.4, 1.4, 1.9, 2.0, overhang=0.3, finial=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
+                hut(5.4, 5.4, 1.4, 1.9, 2.0, overhang=0.3, finial=0.3, door=True, door_w=0.8, door_h=1.5, base=0.2),
+                granary(6.0, 0.6, 0.9, 1.3, 1.4, roof="cone", overhang=0.25, stilts=0.6),
+                granary(-6.0, 0.6, 0.9, 1.3, 1.4, roof="cone", overhang=0.25, stilts=0.6),
                 {"kind": "fence", "points": [(-7.0, -6.6), (-7.0, -1.6)], "h": 1.0, "type": "RAILS",
                  "closed": False, "medium_only": True},
                 {"kind": "fence", "points": [(7.0, -6.6), (7.0, -1.6)], "h": 1.0, "type": "RAILS",
@@ -343,18 +344,18 @@ def palace(p, S, medium):
         gy = -10.0 * math.cos(math.pi / n)
         out += [tower(-gx, gy, 1.2, 5.4, roof="cone", roof_h=2.0, overhang=0.35),          # the gate's towers
                 tower(gx, gy, 1.2, 5.4, roof="cone", roof_h=2.0, overhang=0.35),
-                block(-4.6, 4.6, 1.4, 7.0, 4.2, door=True, roof="thatch", sahel=False, windows=2),   # the royal hall
+                block(-4.6, 4.6, 2.8, 8.0, 4.2, door=True, roof="thatch", sahel=False, windows=2),   # the royal hall
                 hut(0.0, -1.6, 3.4, 3.4, 4.6, overhang=0.6, finial=0.9, door=True, door_w=1.6, door_h=2.3,
                     base=0.35, big=True, flag=True),
-                hut(-6.0, -2.2, 1.9, 2.2, 2.4, overhang=0.4, finial=0.4, door=True, door_w=0.9, door_h=1.6, base=0.2),
-                hut(6.0, -2.2, 1.9, 2.2, 2.4, overhang=0.4, finial=0.4, door=True, door_w=0.9, door_h=1.6, base=0.2),
+                hut(-6.9, -1.8, 1.9, 2.2, 2.4, overhang=0.4, finial=0.4, door=True, door_w=0.9, door_h=1.6, base=0.2),
+                hut(6.9, -1.8, 1.9, 2.2, 2.4, overhang=0.4, finial=0.4, door=True, door_w=0.9, door_h=1.6, base=0.2),
                 granary(-6.6, 3.2, 1.2, 1.4, 1.6, roof="cone", overhang=0.3, stilts=0.7),
                 granary(6.6, 3.2, 1.2, 1.4, 1.6, roof="cone", overhang=0.3, stilts=0.7),
                 prop("fire", 0.0, -6.0), prop("rack", -3.4, -6.4), prop("rack", 3.4, -6.4),
                 prop("drum", -1.6, -6.6), prop("drum", 1.6, -6.6)]
         return out
     w, t, hw = 9.6, 1.4, 5.0                              # half size, wall thickness, wall height
-    e = 1.4                                               # the walls' ends sink into the towers (no flush faces)
+    e = 1.7                                               # the walls' ends, apart, inside the corner towers
     out = [block(-w + e, -2.4, -w, -w + t, hw, parapet=0.6, merlons=0.8, windows=0),        # front, left of the gate
            block(2.4, w - e, -w, -w + t, hw, parapet=0.6, merlons=0.8, windows=0),
            block(-w + e, w - e, w - t, w, hw, parapet=0.6, merlons=0.8, windows=0),         # back

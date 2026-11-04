@@ -31,9 +31,12 @@ MATERIALS = {
                      "plinth": ("stone_rough", 2.0, "plinth"), "stone": ("stone_rough", 2.0, "stone")},
     "COLONIAL": {"wall": ("plaster", 2.0, "plaster"), "roof": ("clay", 1.5, "tile", 0.025),
                  "plinth": ("stone_rough", 2.0, "plinth"), "timber": ("timber", 1.0, "timber")},
-    "AFRICAN": {"wall": ("plaster", 2.0, "mud", 0.05), "roof": ("clay", 1.2, "thatch", 0.03),
-                "plinth": ("stone_rough", 2.0, "mud"), "stone": ("stone_rough", 2.0, "stone"),
-                "timber": ("timber", 1.0, "timber")},
+    # the grain of the target mod's own African textures, measured per material (2026-11-03): mud
+    # 0.19, adobe 0.10, thatch 0.28, wood 0.30, stone 0.26 (the stock European ones carry less)
+    # (the cracks of the mud walls and the straw are drawn on top: the walls take a smooth grain)
+    "AFRICAN": {"wall": ("plaster", 3.0, "mud", 0.05), "adobe": ("plaster", 3.0, "adobe", 0.08),
+                "roof": ("thatch", 1.2, "thatch", 0.3), "plinth": ("mud", 3.0, "mud", 0.2),
+                "stone": ("stone_rough", 1.5, "stone", 0.13), "timber": ("timber@90", 1.0, "timber", 0.4)},
     "TIMBER": {"stone": ("stone_rough", 2.0, "stone"), "infill": ("plaster", 2.0, "plaster"),
                "roof": ("clay", 1.5, "tile", 0.025), "timber": ("timber", 1.0, "timber")},
 }
@@ -48,7 +51,9 @@ def plan(style):
 
 def load(name, folder=None):
     """The swatch `name` as a float32 RGB array, or None when its file is missing (the painter
-    then keeps the flat colour)."""
+    then keeps the flat colour). `name@90`: the swatch turned a quarter (wood grain upright)."""
+    turn = name.endswith("@90")
+    name = name[:-3] if turn else name
     path = os.path.join(folder or FOLDER, name + ".png")
     key = os.path.normcase(os.path.abspath(path))
     if key not in _cache:
@@ -60,6 +65,8 @@ def load(name, folder=None):
             if img.shape[2] == 1:
                 img = np.repeat(img, 3, axis=2)
             _cache[key] = img[:, :, :3].astype(np.float32)
+    if turn and _cache[key] is not None:
+        return np.ascontiguousarray(np.transpose(_cache[key], (1, 0, 2)))
     return _cache[key]
 
 
@@ -83,7 +90,7 @@ def normalise(sw, px, target_contrast=TARGET_CONTRAST):
     """A brightness factor (px x px, mean 1.0) from a swatch at `px` pixels per tile: its grain
     (what the 8 x 8 view leaves) scaled to a standard deviation of `target_contrast` (smoothed
     3 x 3 first, so no pixel noise glitters; the 9 x 9 measure then reads a little less), its
-    broad variation (the swatch seen at 8 x 8) kept up to LOW_MAX, clipped to 0.7 .. 1.3."""
+    broad variation (the swatch seen at 8 x 8) kept up to LOW_MAX, clipped to 0.5 .. 1.5."""
     lum = sw @ np.array([0.299, 0.587, 0.114], np.float32)
     f = lum / max(float(lum.mean()), 1e-6)
     f = resample(f[:, :, None], px)[:, :, 0]
@@ -96,7 +103,7 @@ def normalise(sw, px, target_contrast=TARGET_CONTRAST):
     sd = float((low - 1.0).std())
     s_low = min(1.0, LOW_MAX / sd) if sd > 1e-6 else 0.0
     out = 1.0 + fine * s_fine + (low - 1.0) * s_low
-    return np.clip(out, 0.7, 1.3).astype(np.float32)
+    return np.clip(out, 0.5, 1.5).astype(np.float32)
 
 
 def _weights(n_in, n_out):

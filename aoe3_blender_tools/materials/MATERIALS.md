@@ -11,3 +11,5 @@ here anyway. Prepared by tools/fetch_materials.py (baked lighting removed, resiz
 | `stone_rough.png` | ambientCG | [Rock030](https://ambientcg.com/a/Rock030) | CC0 1.0 | 2026-11-03 |
 | `clay.png` | ambientCG | [Clay009](https://ambientcg.com/a/Clay009) | CC0 1.0 | 2026-11-03 |
 | `timber.png` | ambientCG | [Wood026](https://ambientcg.com/a/Wood026) | CC0 1.0 | 2026-11-03 |
+| `thatch.png` | ambientCG | [ThatchedRoof001A](https://ambientcg.com/a/ThatchedRoof001A) | CC0 1.0 | 2026-11-03 |
+| `mud.png` | ambientCG | [Ground031](https://ambientcg.com/a/Ground031) | CC0 1.0 | 2026-11-03 |

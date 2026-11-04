@@ -95,6 +95,39 @@ def paint(pr, model):
             f = 1 + float(rng.uniform(-k, k))
             pr.paint_on(region, u, v, min(w, u + ln), min(h, v + th), _shade(base, f))
 
+    def stains(region, w, h, n, k=0.12, size=1.0):
+        """Soft broad patches a little darker or lighter (weathering): nested rects, each
+        multiplying what is there, so the grain stays. `size` scales them."""
+        for _ in range(n):
+            cu, cv = float(rng.uniform(0, w)), float(rng.uniform(0, h))
+            sw, sh = float(rng.uniform(0.4, 1.6)) * size, float(rng.uniform(0.3, 1.0)) * size
+            f = 1 + float(rng.uniform(-k, k * 0.5))
+            for j in range(4):
+                t = 1 - j / 4
+                pr.tone(region, max(0.0, cu - sw * t / 2), max(0.0, cv - sh * t / 2), min(w, cu + sw * t / 2),
+                        min(h, cv + sh * t / 2), 1 + (f - 1) / 4)
+
+    def line(region, u0, v0, u1, v1, color, width=None):
+        (x0, y0), (x1, y1) = pr.P(region, u0, v0), pr.P(region, u1, v1)
+        pr.cv.line(x0, y0, x1, y1, color, width or lw)
+
+    def straw(region, base, w, h, density=160.0):
+        """Loose straw: many short thin strands down the slope, a little slanted, light and dark."""
+        thin = max(1, lw // 2)
+        for _ in range(int(w * h * density)):
+            u, v = float(rng.uniform(0, w)), float(rng.uniform(0, h))
+            ln = float(rng.uniform(0.1, 0.32))
+            du = ln * float(rng.uniform(-0.4, 0.4))
+            f = float(rng.choice([0.6, 0.72, 0.85, 1.18, 1.3]))
+            line(region, u, min(h, v + ln), u + du, v, _shade(base, f), thin)
+
+    def shade_band(region, w, v0, v1, f, steps=4):
+        """A soft darkening from v0 (strongest, factor f) towards v1: under an eave, at the foot."""
+        for j in range(steps):
+            a = v0 + (v1 - v0) * j / steps
+            b = v0 + (v1 - v0) * (j + 1) / steps
+            pr.tone(region, 0, max(0.0, min(a, b)), w, max(a, b), 1 - (1 - f) * (1 - j / steps) / 2)
+
     def door(region, u, w, h, arched=True):
         pr.rect(region, u - w / 2 - 0.08, 0, u + w / 2 + 0.08, h + 0.08, WOOD, _shade(WOOD, 0.7))
         pr.rect(region, u - w / 2, 0, u + w / 2, h - (w / 2 if arched else 0), DARK)
@@ -107,8 +140,10 @@ def paint(pr, model):
         w, h = r.world_w, r.world_h
         if spec["kind"] == "round":
             pr.base(region, MUD, role="wall")
-            smears(region, MUD, w, h, int(w * h * 3))
-            pr.paint_on(region, 0, 0, w, 0.22, _shade(MUD, 0.72))                 # the splashed foot
+            pr.cracks(region, 0.15, 0.5)
+            stains(region, w, h, int(w * h * 0.3) + 1, 0.07)
+            shade_band(region, w, h, h - 0.7, 0.72)                            # under the thatch's eave
+            shade_band(region, w, 0, 0.45, 0.7)                                 # the splashed foot
             if spec.get("bands"):
                 band(region, 0.28, 0.42, w)
                 band(region, h - 0.22, h - 0.1, w)
@@ -116,16 +151,27 @@ def paint(pr, model):
                 door(region, spec["door"], spec["door_w"], spec["door_h"])
         else:
             earth = ADOBE if spec.get("sahel", True) else MUD
-            pr.base(region, earth, role="wall")
-            smears(region, earth, w, h, int(w * h * 4), 0.05)
+            pr.base(region, earth, role="adobe" if spec.get("sahel", True) else "wall")
             if spec.get("sahel", True):
-                for _ in range(int(w * 1.5)):                                   # rain runs from the top
-                    u = float(rng.uniform(0, w))
-                    pr.paint_on(region, u, h * float(rng.uniform(0.3, 0.7)), u + 0.05, h, _shade(earth, 0.9))
+                pr.cracks(region, 0.3, 0.22, keep=0.4)                         # plastered: a few
+            else:
+                pr.cracks(region, 0.15, 0.5)
+            if spec.get("sahel", True):                                       # seen from afar:
+                stains(region, w, h, int(w * h * 0.35) + 2, 0.15, 1.6)             # broad weathering
+            else:
+                stains(region, w, h, int(w * h * 0.3) + 1, 0.06)
+            if not spec.get("sahel", True):
+                shade_band(region, w, h, h - 0.6, 0.75)                         # under the thatch's eave
+            if spec.get("sahel", True):
+                for _ in range(int(w * 1.2)):                                   # rain runs from the top
+                    u, rw_ = float(rng.uniform(0, w)), float(rng.uniform(0.06, 0.22))
+                    v0 = h * float(rng.uniform(0.2, 0.7))
+                    for j in range(3):                                          # fading downwards
+                        pr.tone(region, u, v0 + (h - v0) * j / 3, min(w, u + rw_), h, 0.95)
                 band(region, h - 0.32, h - 0.18, w)
             else:
                 band(region, 0.28, 0.42, w)
-            pr.paint_on(region, 0, 0, w, 0.3, _shade(earth, 0.8))
+            shade_band(region, w, 0, 0.9, 0.62)                                 # the splashed foot
             for (u0, v0, u1, v1) in spec["openings"]:
                 if v0 == 0.0:
                     pr.rect(region, u0 - 0.1, 0, u1 + 0.1, v1 + 0.14, WOOD, _shade(WOOD, 0.7))
@@ -140,48 +186,40 @@ def paint(pr, model):
 
     if "thatch" in at:
         rt = at["thatch"]
-        pr.base("thatch", _shade(THATCH, 0.8), role="roof")
-        v, row = 0.0, 0
-        while v < rt.world_h:                                                    # courses of bundles
-            u = -(row % 2) * 0.09
-            while u < rt.world_w:
-                t = int(rng.integers(-14, 15))
-                c = tuple(max(0, min(255, k + t)) for k in THATCH)
-                pr.paint_on("thatch", max(0.0, u), v, min(rt.world_w, u + 0.17), min(rt.world_h, v + 0.42), c)
-                pr.vline("thatch", u + 0.06, v + 0.05, min(rt.world_h, v + 0.4), _shade(c, 0.78))
-                pr.vline("thatch", u + 0.12, v + 0.1, min(rt.world_h, v + 0.38), _shade(c, 1.1))
-                u += 0.18
-            pr.hline("thatch", v + 0.02, 0, rt.world_w, _shade(THATCH, 0.62), lw)
-            v += 0.38
-            row += 1
-        pr.paint_on("thatch", 0, 0, rt.world_w, 0.12, _shade(THATCH, 0.6))           # the ragged eave
+        pr.base("thatch", THATCH, role="roof")
+        straw("thatch", THATCH, rt.world_w, rt.world_h)
+        shade_band("thatch", rt.world_w, 0, 0.25, 0.7)                               # the eave's cut ends
+        stains("thatch", rt.world_w, rt.world_h, int(rt.world_w * rt.world_h * 0.3) + 1, 0.16)
     if "dome" in at:
         rd = at["dome"]
         pr.base("dome", _shade(MUD, 1.08), role="wall")
-        smears("dome", _shade(MUD, 1.08), rd.world_w, rd.world_h, int(rd.world_w * rd.world_h * 3))
+        pr.cracks("dome", 0.15, 0.45)
         vv = 0.5
         while vv < rd.world_h:
             pr.hline("dome", vv, 0, rd.world_w, _shade(MUD, 0.85), lw)
             vv += 0.6
     if "roof_flat" in at:
         rf = at["roof_flat"]
-        pr.base("roof_flat", _shade(ADOBE, 1.05), role="wall")
-        smears("roof_flat", _shade(ADOBE, 1.05), rf.world_w, rf.world_h, int(rf.world_w * rf.world_h * 2))
-        for _ in range(3):
-            u, v = float(rng.uniform(0.5, rf.world_w - 0.5)), float(rng.uniform(0.5, rf.world_h - 0.5))
-            pr.paint_on("roof_flat", u, v, u + 0.6, v + 0.4, _shade(ADOBE, 0.85))
+        pr.base("roof_flat", _shade(ADOBE, 1.05), role="adobe")
+        pr.cracks("roof_flat", 0.22, 0.3, keep=0.6)                                  # trodden, dried
+        stains("roof_flat", rf.world_w, rf.world_h, int(rf.world_w * rf.world_h * 0.15) + 2, 0.06)
     if "parapet" in at:
         rp = at["parapet"]
-        pr.base("parapet", ADOBE, role="wall")
-        smears("parapet", ADOBE, rp.world_w, rp.world_h, int(rp.world_w * rp.world_h * 4), 0.05)
+        pr.base("parapet", ADOBE, role="adobe")
+        pr.cracks("parapet", 0.3, 0.22, keep=0.4)
     if "trim" in at:
         rt2 = at["trim"]
-        pr.base("trim", _shade(ADOBE, 0.95), role="wall")
-        smears("trim", _shade(ADOBE, 0.95), rt2.world_w, rt2.world_h, int(rt2.world_w * rt2.world_h * 4), 0.05)
+        pr.base("trim", _shade(ADOBE, 0.95), role="adobe")
+        pr.cracks("trim", 0.3, 0.22, keep=0.4)
     pr.base("wood", WOOD, role="timber")
     rw = at["wood"]
-    for k in range(18):
-        pr.vline("wood", rw.world_w * (k + 0.5) / 18, 0, rw.world_h, _shade(WOOD, 0.8 + 0.1 * (k % 3)))
+    stains("wood", rw.world_w, rw.world_h, 6, 0.2)
+    u = 0.0
+    while u < rw.world_w:                                                        # planks and their gaps
+        pw = float(rng.uniform(0.12, 0.22))
+        pr.tone("wood", u, 0, min(rw.world_w, u + pw), rw.world_h, float(rng.uniform(0.82, 1.12)))
+        pr.vline("wood", u, 0, rw.world_h, _shade(WOOD, 0.45), lw)
+        u += pw
     if "pot" in at:
         rpo = at["pot"]
         pr.fill("pot", POT)
@@ -202,16 +240,20 @@ def paint(pr, model):
             k += 1
     if "stone" in at:
         rs = at["stone"]
-        pr.base("stone", _shade(STONE, 0.7), role="stone")
+        MORTAR = (142, 122, 90)
+        pr.base("stone", MORTAR, role="stone")
         v = 0.0
-        while v < rs.world_h:
-            hh = float(rng.uniform(0.2, 0.35))
+        while v < rs.world_h:                                                    # rubble: uneven stones
+            hh = float(rng.uniform(0.24, 0.5))
             u = -float(rng.uniform(0, 0.3))
             while u < rs.world_w:
-                ww = float(rng.uniform(0.25, 0.6))
-                t = int(rng.integers(-14, 15))
-                pr.paint_on("stone", max(0.0, u + 0.02), v + 0.02, min(rs.world_w, u + ww - 0.02),
-                            min(rs.world_h, v + hh - 0.02), tuple(max(0, min(255, c + t)) for c in STONE))
+                ww = float(rng.uniform(0.3, 0.8))
+                t = int(rng.integers(-28, 29))
+                gap = float(rng.uniform(0.015, 0.04))
+                dv = float(rng.uniform(-0.04, 0.04))
+                c = tuple(max(0, min(255, k + t)) for k in STONE)
+                pr.paint_on("stone", max(0.0, u + gap), max(0.0, v + gap + dv), min(rs.world_w, u + ww - gap),
+                            min(rs.world_h, v + hh - gap + dv), c, _shade(c, 0.62))
                 u += ww
             v += hh
     if "field" in at:
