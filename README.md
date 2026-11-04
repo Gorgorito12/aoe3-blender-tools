@@ -46,6 +46,11 @@ own pixels, [30 seconds as MP4](examples/african_palace_sahel/ingame.mp4):
 
 ![The Sahel palace in the game](examples/african_palace_sahel/ingame.gif)
 
+Destroyed, it sinks in its dust with the stock collapse effects and leaves the rubble of a fort,
+[30 seconds as MP4](examples/african_palace_sahel/ingame_collapse.mp4):
+
+![The Sahel palace collapsing](examples/african_palace_sahel/ingame_collapse.gif)
+
 **White House, 1914** (preset `WHITE_HOUSE_1914`, built from a reference picture): north and south
 elevations, then views from the south-west and the north-east. 3,035 triangles at medium detail,
 one 2048 × 2048 texture, 44.5 × 23.6 m with the wings. The game's ground is flat, so the basement
