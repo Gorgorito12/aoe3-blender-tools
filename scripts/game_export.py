@@ -7,11 +7,12 @@ fields and strings) for `tools/game_deploy.py`.
                                   [--template House] [--no-v-flip] [--player-colour]
                                   [--texture DXT3|DXT1|BGRA] [--no-icons] [--no-lowpoly] [--no-damaged]
                                   [--materials] [--ai <strength>] [--ai-seed N] [--ai-url URL]
-                                  [--profile <profile.json> | --no-profile]
+                                  [--profile <profile.json> | --no-profile] [--proto <protoy.xml>]
 
 The calibration profile (default: the one shipped in aoe3_blender_tools/profiles/) sets the
 obstruction, ground decal, construction stages and rubble from the measured buildings of the same
-footprint class.
+footprint class. SPECS.md beside the bundle is the building's technical sheet; with --proto it also
+shows the game's data (hit points, cost) of its unit or template.
 
 or with Blender: blender -b --factory-startup -P scripts/game_export.py -- [same options]
 """
@@ -24,10 +25,12 @@ import bpy  # noqa: I001  (bpy first: it makes bmesh and mathutils importable)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 from aoe3_blender_tools.core import blender_io, building, paint  # noqa: E402
 from aoe3_blender_tools.core import profile as calibration  # noqa: E402
-from aoe3_blender_tools.core import render  # noqa: E402
+from aoe3_blender_tools.core import render, specs  # noqa: E402
+from aoe3_blender_tools.core.styles import african  # noqa: E402
 from aoe3game import bundle  # noqa: E402
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
@@ -35,6 +38,26 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
 
 def opt(name, default=None):
     return argv[argv.index(name) + 1] if name in argv else default
+
+
+def write_sheet(out, p, desc, vertices, triangles):
+    """SPECS.md beside the bundle: the building's technical sheet and what this export wrote."""
+    import spec_sheets
+    prof = calibration.load()
+    size = desc["size"]
+    model = building.build(dataclasses.replace(p, detail="MEDIUM"))
+    key = next((k for k, v in building.PRESETS.items() if v.name == p.name), None)
+    band, scale = spec_sheets.style_side(p)
+    facts = specs.facts(p, size, desc["template"], bundle.UNITS_PER_METER, key=key, collision=bundle.COLLISION_SHAPE,
+                        shape=spec_sheets.shape_of(model, size, prof), band=band, scale=scale)
+    files = [(os.path.basename(f), os.path.getsize(os.path.join(out, f))) for f in desc["files"]]
+    export = {"vertices": vertices, "triangles": triangles, "format": desc["texture"]["format"], "files": files}
+    proto = None
+    if opt("--proto"):
+        with open(opt("--proto"), encoding="utf-8", errors="ignore") as fh:
+            proto = specs.proto_of(fh.read(), p.name, desc["template"])
+    with open(os.path.join(out, "SPECS.md"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(specs.render(facts, export, proto))
 
 
 def main():
@@ -72,6 +95,7 @@ def main():
         icon, portrait = render.icon_and_portrait(obj)
     variants = blender_io.game_variants(obj, lowpoly="--no-lowpoly" not in argv,
                                         damaged="--no-damaged" not in argv)
+    ground = african.ground_decal(p) if p.style == "AFRICAN" else None
     desc = bundle.write(
         out, name=p.name, prefix=opt("--prefix", "mod"), positions=positions, normals=normals,
         uvs=uvs, triangles=tris, texture_rgba=blender_io.texture_rgba(obj),
@@ -79,7 +103,8 @@ def main():
         icon_rgba=icon, portrait_rgba=portrait, variants=variants,
         display_name=opt("--display"), template=opt("--template", "House"),
         v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"), obstruction=obstruction,
-        profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
+        ground_rgba=ground, profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
+    write_sheet(out, p, desc, len(positions), len(tris))
     print(f"{p.name}: {len(tris)} triangles, {len(positions)} vertices; "
           f"obstruction {desc['size']['radius']}, decal {desc['size']['decal']}, "
           f"stages {desc['size']['stages']}, class {desc['size'].get('class')}; texture "

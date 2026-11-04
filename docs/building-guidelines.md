@@ -20,7 +20,40 @@ Facts are marked as **measured** (from this repository's models or tests), **eng
 | Extras | No ground, grass or fence under the building: the game draws its own ground patch. Flags, smoke and fire are separate models on attach points, not part of the mesh. |
 | Construction, damage, destruction | **Measured**: construction stages reuse the stock models `buildings\constructions\<NxN>_stage1..3`, chosen by `BuildingCompletion` in the anim file; destruction leaves the proto's `DeadReplacement` rubble. Details in [game-formats.md](game-formats.md). |
 
+## How real buildings are built
+
+Measured with `tools/shape_survey.py` on 322 models of the game and the target mod (quartiles in the
+profile's `shape`; `tests/test_shape.py` holds every African preset to them). In game units:
+
+| Class | Height | Height / side | Obstruction covered | Parts | Flat levels |
+|---|---|---|---|---|---|
+| 4x4 | 4.2 to 6.5 | 0.69 to 1.13 | 72 to 94 % | 1 | 3 |
+| 6x6 | 4.5 to 9.0 | 0.54 to 1.20 | 50 to 84 % | 1 | 2 |
+| 8x8 | 6.2 to 10.8 | 0.59 to 1.01 | 58 to 81 % | 1 | 3 |
+| 9x9 | 7.8 to 13.4 | 0.77 to 1.41 | 52 to 80 % | 1 to 3 | 4 |
+| 10x10 | 6.4 to 11.1 | 0.58 to 1.05 | 52 to 69 % | 1 to 8 | 3 |
+| 12x12 | 9.2 to 14.4 | 0.77 to 1.01 | 53 to 71 % | 1 to 2 | 5 |
+
+- One mass: over 95 % of what stands is one connected part; props touch it, or stand on its base.
+  Units leave a building, so nothing is scattered round it and its door stays clear.
+- As tall as wide, with doors and props out of proportion to a person. Layouts are drawn at human
+  size and scaled up (`sizes.SCALE`, `sizes.TALL`) so everything grows together.
+- About 3 levels, and the roofs carry things: domes, chimneys, stairs, rooms.
+- Triangles: about 48 % in the lower third of the height, 35 % in the middle, 16 % at the top.
+- A closed yard is rare: 20 of 322 models, mostly forts and military compounds. Most are solid.
+- One mesh, with the building's own texture and a texture of props shared between buildings; bones
+  with a job (`bone_smoke`, `bone_sparks`, launch points, the flag), and a ground decal larger than the
+  footprint (10 x 10 under an 8x8) that blends the base into the terrain.
+
 ## Pitfalls
+
+- A buttress is not a wedge stuck on a wall. Over a corner, it touches both walls: its foot wraps the
+  corner, it keeps most of its width as it rises while it loses its depth, so it runs out into the
+  walls, and a chamfer down the outer corner carries the line that divides it (`parts._pier`).
+  Take such forms from several views: one view hides the sections and the sides of a building.
+- Texture detail under about 5 cm is gone at the game's camera, and its sun bleaches pale walls.
+  Paint stones about 0.5 m long with joints 5 cm wide, and keep walls darker than they look right
+  in a render. Check in game, next to a stock building.
 
 - **AI-generated meshes.** Image-to-3D and text-to-3D tools build a sculpted surface. Their
   remeshing at a game budget (measured: 1.4 million faces down to 3,568) leaves wavy walls and

@@ -55,6 +55,9 @@ Check, in this order:
 | Destruction | rubble (`BuildingRubble4x4`) | the proto's DeadReplacement |
 | Player colour | the string courses (and shutters) in the owner's colour | the alpha mask or the shader |
 
+A unit a test map creates does not take the heading of a placed building. For the front toward
+the camera use the trigger effect `Unit Heading` with `Heading=225`; console `tr*` calls do nothing.
+
 ## Status (2026-11-03)
 
 Seen in game, in a copy of the target mod (White House, medium detail, DXT3 texture with the

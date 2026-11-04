@@ -116,17 +116,25 @@ AFRICAN_COLORS = {**DEFAULT_COLORS, "mud": (140, 110, 74), "adobe": (164, 134, 1
                   "timber": (84, 58, 32), "stone": (132, 120, 96), "tile": (150, 82, 50)}
 
 
+# a palace is kept up: fresh warm plaster
+PALACE_COLORS = {"adobe": (160, 112, 64), "mud": (152, 108, 66), "cloth": (60, 66, 150), "timber": (122, 74, 40),
+                 "tile": (128, 88, 60)}
+
+
 def african(building_type, architecture, **kw):
     words = "".join(w.title() for w in building_type.split("_"))
     arch = "Sahel" if architecture == "SAHEL" else "SubSaharan"
     kw.setdefault("storeys", 1)
+    if (building_type, architecture) == ("PALACE", "SAHEL"):
+        kw.setdefault("texture_size", 2048)                # its walls carry what other buildings model
     if kw.get("wall_upgrade") == "STONE":
         words += "Stone"
     if kw["storeys"] >= 2:
         words += "Upper"
     return BuildingParams(name=f"African{words}{arch}", style="AFRICAN", building_type=building_type,
                           architecture=architecture, portico=False, cupola=False, detail="MEDIUM",
-                          colors=dict(AFRICAN_COLORS), materials=True, **kw)
+                          colors={**AFRICAN_COLORS, **(PALACE_COLORS if building_type == "PALACE" else {})},
+                          materials=True, **kw)
 
 
 PRESETS.update({

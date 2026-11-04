@@ -35,6 +35,7 @@ MATERIALS = {
     # 0.19, adobe 0.10, thatch 0.28, wood 0.30, stone 0.26 (the stock European ones carry less)
     # (the cracks of the mud walls and the straw are drawn on top: the walls take a smooth grain)
     "AFRICAN": {"wall": ("plaster", 3.0, "mud", 0.05), "adobe": ("plaster", 3.0, "adobe", 0.08),
+                "roofmud": ("plaster", 4.0, "adobe", 0.015),
                 "roof": ("thatch", 1.2, "thatch", 0.3), "plinth": ("mud", 3.0, "mud", 0.2),
                 "stone": ("stone_rough", 1.5, "stone", 0.13), "timber": ("timber@90", 1.0, "timber", 0.4)},
     "TIMBER": {"stone": ("stone_rough", 2.0, "stone"), "infill": ("plaster", 2.0, "plaster"),

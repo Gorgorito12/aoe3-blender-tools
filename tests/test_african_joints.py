@@ -15,7 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
 from core import building, joints  # noqa: E402
 from core.styles import african  # noqa: E402
-from core.styles.african import layouts, parts, sizes  # noqa: E402
+from core.styles.african import compose, layouts, parts, sizes  # noqa: E402
 
 
 def layout_of(params, detail):
@@ -72,6 +72,72 @@ class Buildings(unittest.TestCase):
             p = african.random_params(rng, i, building.BuildingParams)
             with self.subTest(i=i):
                 self.assertEqual(parts.junctions(layout_of(p, p.detail)), [])
+
+
+class Piers(unittest.TestCase):
+    def test_a_palace_pier_runs_out_into_the_walls(self):
+        pieces = layout_of(building.PRESETS["AFRICAN_PALACE_SAHEL"], "MEDIUM")
+        piers = [q for q in pieces if q["kind"] == "pier"]
+        walls = [q for q in pieces if q["kind"] == "block" and not q.get("z")]
+        self.assertEqual(len(piers), 10)                   # every exposed corner, both sides alike
+        for q in piers:
+            fx0, fx1, fy0, fy1 = q["foot"]
+            tx0, tx1, ty0, ty1 = q["top"]
+            self.assertLess(tx1 - tx0, fx1 - fx0 + 0.01)   # it narrows as it rises
+            self.assertLess(ty1 - ty0, fy1 - fy0 + 0.01)
+            sx, sy = q["into"]
+            ox, oy = tx0 if sx > 0 else tx1, ty0 if sy > 0 else ty1    # its top's outer corner
+            ix, iy = tx1 if sx > 0 else tx0, ty1 if sy > 0 else ty0    # and the one in the walls
+            self.assertTrue(any(w["x0"] < ix < w["x1"] and w["y0"] < iy < w["y1"] for w in walls), q)
+            self.assertLess(abs(ox - ix) + abs(oy - iy), 1.5, q)
+
+
+class Ground(unittest.TestCase):
+    def test_the_palace_lies_on_sand_that_thins_out(self):
+        rgba = african.ground_decal(african.clamp(building.PRESETS["AFRICAN_PALACE_SAHEL"]), 128)
+        self.assertEqual(rgba.shape, (128, 128, 4))
+        self.assertEqual(rgba[0, 0, 3], 0)                 # the corners are grass
+        self.assertGreater(rgba[64, 64, 3], 150)           # the middle is sand
+        self.assertIsNone(african.ground_decal(african.clamp(building.PRESETS["AFRICAN_HOUSE_SAHEL"])))
+
+
+class Composition(unittest.TestCase):
+    def test_nothing_is_left_alone_on_the_plot(self):
+        """Every prop stands near a structure or another prop: a building is one place."""
+        for key, params in building.PRESETS.items():
+            if params.style != "AFRICAN":
+                continue
+            p = african.clamp(dataclasses.replace(params, detail="MEDIUM"))
+            S = 2 * sizes.court_half(p.building_type) + 0.2
+            pieces = layouts.structure(p, S, True)
+            ground = compose.survey(pieces, S)
+            done = layouts.layout(p, S, True)
+            props = done[len([q for q in pieces if q["kind"] != "yard"]):]
+            base = ground.solid.copy()
+            for q in props:
+                if q["kind"] == "boat" or q.get("z"):
+                    continue
+                d = compose.reach(base)
+                i = abs(ground.X[0] - q["x"]).argmin()
+                j = abs(ground.Y[:, 0] - q["y"]).argmin()
+                with self.subTest(key=key, prop=q["kind"]):
+                    self.assertLessEqual(float(d[j, i]), compose.MAX_REACH + 1.5)
+                base |= ground.disc(q["x"], q["y"], 0.3)
+
+    def test_the_same_parameters_give_the_same_building(self):
+        p = african.clamp(building.PRESETS["AFRICAN_ARMORY_SAHEL"])
+        S = sizes.side_m(p.building_type)
+        self.assertEqual(layouts.layout(p, S, True), layouts.layout(p, S, True))
+
+    def test_an_armory_is_an_armory_and_a_quarry_a_quarry(self):
+        want = {"ARMORY": {"anvil", "bellows", "rack", "shields", "trough"}, "QUARRY": {"crate", "barrel", "stones", "crane"},
+                "CUSTOMS": {"weigh", "crate"}, "WAR_CAMP": {"dummy", "rack", "fire"}, "DOCK": {"boat"}}
+        for key, params in building.PRESETS.items():
+            if params.style == "AFRICAN" and params.building_type in want:
+                p = african.clamp(params)
+                kinds = {q["kind"] for q in layouts.layout(p, sizes.side_m(p.building_type), True)}
+                with self.subTest(key):
+                    self.assertLessEqual(want[params.building_type], kinds)
 
 
 if __name__ == "__main__":

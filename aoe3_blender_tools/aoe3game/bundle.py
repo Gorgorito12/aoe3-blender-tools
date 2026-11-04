@@ -26,8 +26,12 @@ FLAT_BUMP_TEXTURE = r"C:\aoe3bt\art\shadows_selections\flat_normal_black_spec.dd
 # own large buildings do: the stock outpost's damage skeleton and template. It also gives the
 # model references their `shape`, without which the game never draws the low-poly model.
 DAMAGE_SKELETON = (r"buildings\outpost\outpost_generic_damaged", r"buildings\outpost\outpost_generic.dmg")
+COLLISION_SHAPE = DAMAGE_SKELETON[0].split("\\")[-1].replace("_damaged", "")   # what the model references name
 RUBBLE = {"2x2": "BuildingRubble2x2", "3x3": "BuildingRubble3x3", "4x4": "BuildingRubble4x4",
           "5x5": "BuildingRubble5x5", "6x6": "BuildingRubble6x6"}
+
+
+GROUND_MARGIN = 1.2
 
 
 def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None, obstruction=None):
@@ -59,7 +63,8 @@ def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None, obstru
 def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba, bones=(),
           footprint_m, icon_rgba=None, portrait_rgba=None, display_name=None, rollover="",
           template="House", v_flip=True, player_colour=None, chimney_bone=None, profile=None,
-          texture_format="DXT3", variants=None, death_animation=True, relief=True, obstruction=None):
+          texture_format="DXT3", variants=None, death_animation=True, relief=True, obstruction=None,
+          ground_rgba=None):
     """Writes the bundle into `out` and returns the bundle description.
 
     variants: {"lowpoly": {...}, "damaged": {...}}, each with positions, normals, uvs and
@@ -142,7 +147,13 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
             f.write(ddt.write(portrait_rgba, ddt.DXT1, alpha=0, usage=0, mips=True))
         unit["PortraitIcon"] = f"{rel_dir}\\{low}_portrait"
     bone_names = [b for b, _ in bones]
-    anim = animxml.building(name, f"{rel_dir}\\{low}", decal=size["decal"],
+    ground = {}
+    if ground_rgba is not None:                          # its own ground, wider than the game's: it thins out
+        with open(os.path.join(art_dir, low + "_ground.ddt"), "wb") as f:
+            f.write(ddt.write(ground_rgba, ddt.DXT3, alpha=8, usage=0, mips=True))
+        ground["ground"] = f"{rel_dir}\\{low}_ground"
+        size["decal"] = tuple(round(v * GROUND_MARGIN, 2) for v in size["decal"])
+    anim = animxml.building(name, f"{rel_dir}\\{low}", decal=size["decal"], **ground,
                             stages=size["stages"],
                             bones=[b for b in bone_names if b != chimney_bone],
                             chimney_bone=chimney_bone if chimney_bone in bone_names else None,

@@ -68,7 +68,10 @@ def on_roof(top, base):
 
 
 def classify(a, b):
-    """"apart", "embedded" or "bad" for two shapes."""
+    """"apart", "embedded" or "bad" for two shapes. Pieces drawn as one stepped mass say so with
+    the same "mass": they are one volume (the coplanar check still holds them)."""
+    if a.get("mass") and a.get("mass") == b.get("mass"):
+        return "embedded"
     if a["z0"] >= b["z1"] - EPS or b["z0"] >= a["z1"] - EPS or on_roof(a, b) or on_roof(b, a):
         return "apart"
     if plan_gap(a, b) >= MIN_GAP - EPS:
