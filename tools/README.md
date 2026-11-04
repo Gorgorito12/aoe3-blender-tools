@@ -13,4 +13,5 @@ root.
 | `fetch_materials.py` | Downloads the material swatches (CC0 photos), checks each source's licence page states CC0 before writing anything, removes their baked lighting, resizes them and writes them with `MATERIALS.md` into `aoe3_blender_tools/materials/`. Needs numpy (the venv). `venv\Scripts\python -I tools/fetch_materials.py [name ...] [--cache <folder>]` |
 | `palette_survey.py` | Measures the mean colour and local contrast of the stock building textures in `.bar` archives (the target the swatches' grain is fitted to); prints, writes nothing. Needs numpy. |
 | `shape_survey.py` | Studies how buildings are built: mass, levels, parts, where the triangles go, in numbers per class that the generators are held to. |
+| `spec_sheets.py` | Writes the technical sheet of every preset into `docs/specs/`: sizes, triangles, texture, collision, shape against the real models. `--proto` adds the game's data (only with `--out` outside the repository). |
 | `gr2_tree.py` | Reads an uncompressed Granny model: the data tree, `--stats`, `--types` or `--shape`. |

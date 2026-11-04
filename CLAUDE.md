@@ -38,6 +38,8 @@ venv/bin/python scripts/generate.py --preset ALL   # regenerates examples/ (abou
 venv/bin/python scripts/sweep.py --count 200       # random option sets through the checks: 0 failures
 python tools/build_zip.py                          # dist/ zips (extension and legacy)
 python -I tests/test_game_formats.py               # game formats, plain Python (venv for numpy parts)
+venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
+venv/bin/python -I tests/test_specs.py             # every building has its sheet and it is current
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
 python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
@@ -110,9 +112,14 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   cost and licences (to verify), and the order to try them.
 - `docs/game-formats.md`: the formats as measured, and how the writer was proven.
 - `docs/game-test.md`: the test copy, deployment, what to check in game, and the status.
+- `docs/specs/`: the technical sheet of every building, generated, with an index.
 
 ## Working rules
 
+- **Every building has its technical sheet.** `docs/specs/<Name>.md`, computed from the model by
+  `tools/spec_sheets.py` (`core/specs.py`); a game export also writes `SPECS.md` beside its bundle.
+  A new or changed building is not done until its sheet is regenerated: `tests/test_specs.py` fails
+  on a missing or old sheet. The numbers of a game's data (`--proto`) never go into the repository.
 - **Learn from the real models first.** Before designing or changing a building type, open the
   game's and the target mod's models of that function, render them and measure them
   (`tools/shape_survey.py`; the numbers per class are the `shape` of

@@ -22,7 +22,8 @@ from . import ai_panel  # noqa: E402
 from .aoe3game import bundle  # noqa: E402
 from .core import blender_io, building, paint, validate  # noqa: E402
 from .core import profile as calibration  # noqa: E402
-from .core import render  # noqa: E402
+from .core import render, specs  # noqa: E402
+from .core.styles.african import sizes as african_sizes  # noqa: E402
 
 COLOR_KEYS = building.COLOR_KEYS
 PRESET_ITEMS = [(k, k.replace("_", " ").title(), "") for k in building.PRESETS]
@@ -324,6 +325,16 @@ class AOE3_OT_export_game(bpy.types.Operator):
                 icon_rgba=icon, portrait_rgba=portrait, variants=variants,
                 template=template, texture_format=s.game_texture, obstruction=obstruction,
                 profile=calibration.load() if s.use_profile else None)
+            if params is not None:                         # the building's technical sheet, beside its bundle
+                out = bpy.path.abspath(s.game_dir)
+                files = [(os.path.basename(f), os.path.getsize(os.path.join(out, f))) for f in desc["files"]]
+                scale = (african_sizes.scale(params.building_type, params.architecture)
+                         if params.style == "AFRICAN" else 1.0)
+                with open(os.path.join(out, "SPECS.md"), "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write(specs.render(specs.facts(params, desc["size"], template, bundle.UNITS_PER_METER,
+                                                      collision=bundle.COLLISION_SHAPE, scale=scale),
+                                          {"vertices": len(positions), "triangles": len(tris),
+                                           "format": desc["texture"]["format"], "files": files}))
         except (ValueError, OSError) as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}

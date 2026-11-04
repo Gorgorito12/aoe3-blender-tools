@@ -26,6 +26,7 @@ FLAT_BUMP_TEXTURE = r"C:\aoe3bt\art\shadows_selections\flat_normal_black_spec.dd
 # own large buildings do: the stock outpost's damage skeleton and template. It also gives the
 # model references their `shape`, without which the game never draws the low-poly model.
 DAMAGE_SKELETON = (r"buildings\outpost\outpost_generic_damaged", r"buildings\outpost\outpost_generic.dmg")
+COLLISION_SHAPE = DAMAGE_SKELETON[0].split("\\")[-1].replace("_damaged", "")   # what the model references name
 RUBBLE = {"2x2": "BuildingRubble2x2", "3x3": "BuildingRubble3x3", "4x4": "BuildingRubble4x4",
           "5x5": "BuildingRubble5x5", "6x6": "BuildingRubble6x6"}
 
