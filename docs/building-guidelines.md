@@ -45,6 +45,39 @@ profile's `shape`; `tests/test_shape.py` holds every African preset to them). In
   with a job (`bone_smoke`, `bone_sparks`, launch points, the flag), and a ground decal larger than the
   footprint (10 x 10 under an 8x8) that blends the base into the terrain.
 
+## Budgets for a new building
+
+Check a new building against these before calling it done, and against the real models of its
+function. Its technical sheet in `docs/specs/` shows each number.
+
+**Triangles.** The stock fort, 12 x 12: 1,589 for the normal model, 961 low-poly, 4,179 damaged. The
+Sahel palace, the same class: 1,610, 608, 1,610. Palaces and wonders of real mods run from about 1,300
+to 4,400. The normal model is what is always on screen, so it carries the budget.
+
+**Textures.** Cost is what most often goes unseen: a building of 1,600 triangles can carry 20 MB of
+textures. Real wonders use 0.3 to 2.7 MB. A 2048 colour texture with its mips is 5.3 MB, a 1024 one 1.3
+MB, a 512 one 0.33 MB; a DXT5 bump without mips is 4, 1 and 0.25 MB.
+
+- Paint large and export small: `sizes.TEXTURE_BUDGET` paints at 2048 and halves to 1024, with a 512
+  bump. Halving gives exactly the mip level the game would show. Painting at 1024 instead gives another
+  picture (28 dB), because stones and patches come out differently.
+- Compare texels with screen pixels: 1024 on this palace is 31 texels per game unit, and the game shows
+  about 21 pixels per unit at 1080p, 29 at 1440p and 43 at 4K at its normal zoom. Above 1:1 nothing is
+  lost. Seen in game, 2048 against 1024: 34 dB at normal zoom, 31 dB close up, with no visible change.
+- With a budget the damaged model shares the main texture. It only shows while the building falls, and
+  it was half of all the weight.
+- Compress. Uncompressed 256 x 256 BGRA costs as much as 512 x 512 DXT5 and looks worse.
+- Fine detail under about 5 cm is gone at the game's camera whatever the size: paint broad.
+
+**Collision.** Real models stand past their obstruction: the stock fort's reaches 7.3 from the centre on
+a square of 12, and 11.9 % of what stands is outside it. Keep about that share, and measure it
+(`outside` in the sheet). A square much larger than the model is as wrong: units stop in empty ground.
+See "Collision" in [game-formats.md](game-formats.md).
+
+**Rubble and ground.** Choose rubble by the model's size and not only its class: 6x6 for a palace of 12 x
+12, where the class gave 4x4. Stock ground decals bring their own debris: a building that needs clean
+ground gets its own.
+
 ## Pitfalls
 
 - A buttress is not a wedge stuck on a wall. Over a corner, it touches both walls: its foot wraps the

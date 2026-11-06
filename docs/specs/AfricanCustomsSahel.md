@@ -53,6 +53,9 @@ Where they go, at medium detail:
 | Field | Value |
 |---|---|
 | Size | 1024 x 1024 |
+| Painted at | 1024 x 1024 |
+| Bump map | 1024 x 1024 |
+| All its textures | 5.25 MB |
 | Texels per game unit | 47 |
 | Swatches under the paint | yes |
 

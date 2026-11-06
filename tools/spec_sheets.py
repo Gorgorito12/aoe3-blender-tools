@@ -29,8 +29,8 @@ def game_side(params, prof):
     from dataclasses import replace
     model = building.build(replace(params, detail="MEDIUM"))
     ref = building.reference(params)
-    obstruction = (ref[0], ref[0]) if ref else None
-    size = bundle.game_size(model.dims["footprint"], profile=prof, obstruction=obstruction)
+    size = bundle.game_size(model.dims["footprint"], profile=prof, obstruction=building.obstruction(params),
+                            rubble=building.rubble(params))
     if params.style == "AFRICAN" and african.ground_decal(african.clamp(params), 8) is not None:
         size["decal"] = tuple(round(v * bundle.GROUND_MARGIN, 2) for v in size["decal"])
     return size, (ref[1] if ref else "House"), model
@@ -65,7 +65,8 @@ def facts_of(key, prof):
     size, template, model = game_side(params, prof)
     band, scale = style_side(params)
     return specs.facts(params, size, template, bundle.UNITS_PER_METER, key=key, collision=bundle.COLLISION_SHAPE,
-                       shape=shape_of(model, size, prof), band=band, scale=scale)
+                       shape=shape_of(model, size, prof), band=band, scale=scale,
+                       budget=building.texture_budget(params))
 
 
 def sheet(key, prof=None, proto=None):

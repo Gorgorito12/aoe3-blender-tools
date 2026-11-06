@@ -40,6 +40,7 @@ class Model:
     facades: dict             # region -> {"bays": [...], "door": u or None}
     dims: dict                # computed sizes, for the painter and the stats
     notes: list = field(default_factory=list)   # values the geometry had to change
+    boxes: list = field(default_factory=list)   # its own collision: (x0, x1, y0, y1, z0, z1), metres
 
 
 
@@ -207,6 +208,7 @@ class Builder:
         self.atlas = None
         self.faces = []
         self.attach = {}
+        self.boxes = []
 
     def region(self, name, world_w, world_h):
         """Declares an atlas region (phase 1). Order matters: see the module's rule."""
@@ -392,10 +394,11 @@ class Builder:
         for f in faces:
             f.pts = [(q[0] + sx, q[1] + sy, q[2]) for q in f.pts]
         self.attach = {k: (v[0] + sx, v[1] + sy, v[2]) for k, v in attach.items()}
+        self.boxes = [(b[0] + sx, b[1] + sx, b[2] + sy, b[3] + sy, b[4], b[5]) for b in self.boxes]
         dims = {"footprint": (max(xs) - min(xs), max(ys) - min(ys)),
                 "height": max(q[2] for f in faces for q in f.pts)}
         dims.update(dims_extra or {})
-        return Model(params, faces, self.attach, self.atlas, facades, dims, list(notes or []))
+        return Model(params, faces, self.attach, self.atlas, facades, dims, list(notes or []), self.boxes)
 
     # ----------------------------------------------------------------------------------------------
     # Pieces for the other styles: gable and shed roofs, ridge caps, dormers, bell gables,

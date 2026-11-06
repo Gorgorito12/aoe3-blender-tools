@@ -16,7 +16,7 @@ the stock and mod buildings; the survey's profile can override them):
 import json
 import os
 
-from . import animxml, ddt, gr2_write
+from . import animxml, collision, ddt, gr2_write
 
 UNITS_PER_METER = gr2_write.STOCK_BASIS["units_per_meter"]
 OBSTRUCTION_RATIO = 0.85
@@ -34,7 +34,7 @@ RUBBLE = {"2x2": "BuildingRubble2x2", "3x3": "BuildingRubble3x3", "4x4": "Buildi
 GROUND_MARGIN = 1.2
 
 
-def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None, obstruction=None):
+def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None, obstruction=None, rubble=None):
     """Obstruction radii, decal size, stage set and rubble for a footprint in metres. With a
     calibration profile (an object with footprint_class, obstruction_ratio, decal_ratio,
     stages and rubble, as core.profile.Profile), its measured ratios replace the defaults.
@@ -45,7 +45,8 @@ def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None, obstru
     w, d = (footprint_m[0] * units_per_meter, footprint_m[1] * units_per_meter)
     cls = profile.footprint_class(*footprint_m) if profile is not None else None
     if obstruction is not None and profile is not None:
-        key = f"{2 * obstruction[0]:g}x{2 * obstruction[1]:g}"
+        side = 2 * min(obstruction)                      # an oblong one belongs to its shorter side's class
+        key = f"{side:g}x{side:g}"
         if key in getattr(profile, "classes", {}):
             cls = key
     ratio = (profile.obstruction_ratio(cls) if cls else None) or OBSTRUCTION_RATIO
@@ -54,7 +55,7 @@ def game_size(footprint_m, units_per_meter=UNITS_PER_METER, profile=None, obstru
     if obstruction is not None:
         rx, rz = float(obstruction[0]), float(obstruction[1])
     stages = (profile.stages(cls) if cls else None) or animxml.stage_class(2 * rx, 2 * rz)
-    rubble = (profile.rubble(cls) if cls else None) or RUBBLE.get(stages, "BuildingRubble4x4")
+    rubble = rubble or (profile.rubble(cls) if cls else None) or RUBBLE.get(stages, "BuildingRubble4x4")
     return {"radius": (rx, rz), "decal": (round(w * dratio, 2), round(d * dratio, 2)),
             "stages": stages, "rubble": rubble, "class": cls,
             "placement": "buildinglarge.xml" if max(rx, rz) >= 3 else "buildingsmall.xml"}
@@ -64,7 +65,7 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
           footprint_m, icon_rgba=None, portrait_rgba=None, display_name=None, rollover="",
           template="House", v_flip=True, player_colour=None, chimney_bone=None, profile=None,
           texture_format="DXT3", variants=None, death_animation=True, relief=True, obstruction=None,
-          ground_rgba=None):
+          ground_rgba=None, collision_boxes=None, rubble=None, texture_max=None, bump_max=None):
     """Writes the bundle into `out` and returns the bundle description.
 
     variants: {"lowpoly": {...}, "damaged": {...}}, each with positions, normals, uvs and
@@ -95,7 +96,7 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
     rel_dir = f"{prefix}\\buildings\\{low}"
     art_dir = os.path.join(out, "art", prefix, "buildings", low)
     os.makedirs(art_dir, exist_ok=True)
-    size = game_size(footprint_m, profile=profile, obstruction=obstruction)
+    size = game_size(footprint_m, profile=profile, obstruction=obstruction, rubble=rubble)
     def model_file(base, mesh, textures):
         texture, bump = textures
         model = gr2_write.static_model(name, mesh["positions"], mesh["normals"], mesh["uvs"],
@@ -106,13 +107,15 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
             f.write(model)
 
     def texture_file(base, pixels):
-        """Writes the texture and, with `relief`, its bump map; returns both stored names."""
+        """Writes the texture and, with `relief`, its bump map; returns both stored names.
+        `texture_max`, `bump_max`: the largest side of each, reached by halving the painting."""
+        pixels = np.asarray(pixels)
         with open(os.path.join(art_dir, base + ".ddt"), "wb") as f:
-            f.write(ddt.write(np.asarray(pixels), fmt, alpha=1, usage=0, mips=True))
+            f.write(ddt.write(ddt.fitted(pixels, texture_max) if texture_max else pixels, fmt, alpha=1, usage=0, mips=True))
         bump = FLAT_BUMP_TEXTURE
         if relief:
             with open(os.path.join(art_dir, base + "_b.ddt"), "wb") as f:
-                f.write(ddt.write_normal_map(ddt.normal_from_texture(pixels)))
+                f.write(ddt.write_normal_map(ddt.normal_from_texture(ddt.fitted(pixels, bump_max) if bump_max else pixels)))
             bump = f"C:\\aoe3bt\\art\\{rel_dir}\\{base}_b.ddt"
         return f"C:\\aoe3bt\\art\\{rel_dir}\\{base}.ddt", bump
 
@@ -153,6 +156,14 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
             f.write(ddt.write(ground_rgba, ddt.DXT3, alpha=8, usage=0, mips=True))
         ground["ground"] = f"{rel_dir}\\{low}_ground"
         size["decal"] = tuple(round(v * GROUND_MARGIN, 2) for v in size["decal"])
+    shape_file = None
+    if collision_boxes:                                  # its own boxes, beside the game's physics data
+        phys_dir = os.path.join(out, "data", "physics")
+        os.makedirs(phys_dir, exist_ok=True)
+        shape_file = os.path.join(phys_dir, low + ".shp")
+        with open(shape_file, "w", encoding="utf-8", newline="") as f:
+            f.write(collision.shape_xml(collision_boxes, UNITS_PER_METER))
+        ground["shape"] = low
     anim = animxml.building(name, f"{rel_dir}\\{low}", decal=size["decal"], **ground,
                             stages=size["stages"],
                             bones=[b for b in bone_names if b != chimney_bone],
@@ -168,8 +179,8 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
             "strings": {"DisplayNameID": display, "EditorNameID": display,
                         "RolloverTextID": rollover or display,
                         "ShortRolloverTextID": rollover or display},
-            "files": sorted(os.path.relpath(os.path.join(art_dir, f), out)
-                            for f in os.listdir(art_dir))}
+            "files": sorted([os.path.relpath(os.path.join(art_dir, f), out) for f in os.listdir(art_dir)]
+                            + ([os.path.relpath(shape_file, out)] if shape_file else []))}
     with open(os.path.join(out, "bundle.json"), "w", encoding="utf-8") as f:
         json.dump(desc, f, indent=1)
     write_readme(out, desc, rel_dir=rel_dir, low=low, has=refs)

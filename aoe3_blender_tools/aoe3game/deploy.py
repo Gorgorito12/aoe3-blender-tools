@@ -106,19 +106,19 @@ class Deployment:
         m["bundle"] = os.path.abspath(bundle_dir)
         m["bundles"] = m.get("bundles", []) + [os.path.abspath(bundle_dir)]
         try:
-            for dp, _dn, fn in os.walk(os.path.join(bundle_dir, "art")):
-                for f in fn:
-                    src = os.path.join(dp, f)
-                    rel = os.path.relpath(src, bundle_dir)
-                    dst = os.path.join(self.install, rel)
-                    refuse_steam(dst)
-                    if os.path.exists(dst):
-                        self._backup(m, dst)
-                    else:
-                        m["created"].append(rel)
-                    os.makedirs(os.path.dirname(dst), exist_ok=True)
-                    shutil.copy2(src, dst)
-                    log(f"art   {rel}")
+            found = [os.path.join(dp, f) for top in ("art", os.path.join("data", "physics"))
+                     for dp, _dn, fn in os.walk(os.path.join(bundle_dir, top)) for f in fn]
+            for src in found:
+                rel = os.path.relpath(src, bundle_dir)
+                dst = os.path.join(self.install, rel)
+                refuse_steam(dst)
+                if os.path.exists(dst):
+                    self._backup(m, dst)
+                else:
+                    m["created"].append(rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy2(src, dst)
+                log(f"art   {rel}")
             data = os.path.join(self.install, "data")
             spath = os.path.join(data, "stringtabley.xml")
             stext, senc = proto.read_text(spath)

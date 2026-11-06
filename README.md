@@ -35,9 +35,21 @@ two dormers, a sign) 725. Each has one 1024 × 1024 texture.
 The African style, all 30 presets (13 building types in two architectures, the stone stockade and
 the two-storey customs house), each sized to the obstruction radius of the building it stands for
 and, at medium detail, within 15 % of the median triangles of the target mod's own models of
-its footprint class (602 for the Sahel granary to 4,776 for the Sahel palace):
+its footprint class (602 for the Sahel granary up), with the Sahel palace at its own 1,610:
 
 ![African presets](examples/african_gallery.jpg)
+
+**Sahel palace in the game** (preset `AFRICAN_PALACE_SAHEL`): 1,610 triangles, painted at 2048 and
+exported at 1024, 2.5 MB of textures, 10 piers on its corners, its own ground and collision boxes. Every building has a technical sheet,
+this one in [docs/specs/AfricanPalaceSahel.md](docs/specs/AfricanPalaceSahel.md). Filmed at the game's
+own pixels, [30 seconds as MP4](examples/african_palace_sahel/ingame.mp4):
+
+![The Sahel palace in the game](examples/african_palace_sahel/ingame.gif)
+
+Destroyed, it sinks in its dust with the stock collapse effects and leaves the rubble of a fort,
+[30 seconds as MP4](examples/african_palace_sahel/ingame_collapse.mp4):
+
+![The Sahel palace collapsing](examples/african_palace_sahel/ingame_collapse.gif)
 
 **White House, 1914** (preset `WHITE_HOUSE_1914`, built from a reference picture): north and south
 elevations, then views from the south-west and the north-east. 3,035 triangles at medium detail,

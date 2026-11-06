@@ -64,12 +64,12 @@ What a static building model holds (as the stock files):
   `bumpspec_mask_pixelxform` with `pixelxformColor = playerColor` for player colour.
 - Texture names: the model stores a full path; the engine uses the part after `\art\`.
 
-**Scale** (**measured**, to confirm in game): the survey measured 657 building models. 507 in the
-stock basis and 70 in 3ds Max inches have a size that agrees with their obstruction once their
-declared units are applied, which means the engine converts each file's basis. The 27 models
-that declare 1,000 units per metre would be about 0.5 m wide by the same rule: either the engine
-handles that basis differently or those models look wrong in game (to verify). The writer uses
-the stock basis, so no conversion is involved.
+**Scale** (**measured**, confirmed in game 2026-11-04): the survey measured 657 building models. 507
+in the stock basis and 70 in 3ds Max inches have a size that agrees with their obstruction once
+their declared units are applied. The 27 that declare 1,000 units per metre would be about 0.5 m
+wide by that rule, and they are not: in game they stand at full size, their stored coordinates
+scaled as if they were inches (x 0.015625: 1,280 stored units are 20 game units). A survey must not
+trust that declaration. The writer uses the stock basis, so no conversion is involved.
 
 ## Textures (.ddt)
 
@@ -135,6 +135,51 @@ compiled (`.xml.xmb`, plain `X1`, inside the art archives); mods ship plain XML.
   build progress (`p0`, `p33`, `p66`, `p100`).
 - Logic types measured in the mod: LowPoly, Tech, BuildingCompletion, Destruction, Variation,
   Civ, Culture.
+
+## Collision
+
+A building's hitbox is three things, none of them its visible mesh:
+
+- **Obstruction**, in the proto: `ObstructionRadiusX` and `Z`, half-sides of a rectangle. With the
+  flag `SelectWithObstruction` it is also what a click selects. The stock fort's is 12 x 12 while its
+  model reaches 7.3 from the centre: real models stand past their obstruction.
+- **Collision shape**: `shape="<name>"` on a model reference in the anim file names
+  `Data\\PHYSICS\\<name>.shp`. A plain Havok XML file (CRLF, sdk 20300): an `hkListShape` of
+  `hkTransformShape`s, each around an `hkBoxShape`, in the model file's coordinates. The stock fort
+  has 16 boxes. `aoe3game/collision.py` writes them, into `data\\physics\\` of the copy.
+- **Physics body**: the proto's `PhysicsInfo` names `Data\\PHYSICS\\<name>.physics.xmb`, whose blueprint
+  gives mass, friction and a shape of its own. Generated buildings inherit `house` from the template.
+
+A generated building without boxes of its own points at the stock outpost's shape, 2 boxes
+3.3 x 4.3 x 8.85, because it borrows that building's damage system (`bundle.DAMAGE_SKELETON`).
+
+Seen in game (2026-11-04) with a generated shape of 17 boxes: the game loads it from
+`data\\physics\\`, the building takes cannon fire, and it collapses and clears normally. What a shape
+does to a shot aimed past a building is still unclear: four cannons firing at a target behind a
+wing did no damage to either with these boxes; with the outpost's shape the building lost 2,000 hit
+points and the target none. One run each, with the cannons in different places: repeat it before
+relying on it.
+
+## Damage
+
+Large buildings do not change with their hit points: they break where they are hit. Measured on the
+stock fort; a test building made this way worked in game.
+
+- The anim file's `Idle` has a `<simskeleton>` with the `_damaged` model and a `<damagetemplate>`, and a
+  `Destruction` logic swaps models (`p1` the damaged one, `p99` the intact one).
+- The template is XML (`.dmg`, plain text or compiled `.dmg.xmb`): `<model name=...>`, then
+  `<impactpoint name bone impacttype motionstopfadetime motionstopfadedelay splasheffect>` holding
+  `<part mesh bone halfextents effect blueprint>`. The stock fort has 6 impact points and 24 parts.
+- The damaged model is the body plus one mesh per part, each bound whole to its own bone
+  (`debris_1a` to `bone_debris_1a`), its vertices in the model's coordinates, plus `boneimpactNN` bones.
+- A hit near an impact point throws its parts off for good, so the building loses pieces under fire.
+  Hand attacks and torches did not show it on the houses tried.
+
+Cost: the stock fort goes from 1,589 triangles to 4,179. Our test cut a palace with boxes (faces clipped
+with their UVs, 22 parts) and went from 1,610 to 3,214. It was dropped for that cost. Two things to solve
+if it comes back: a hollow building shows the ground through its holes, so it needs a dark core inside;
+and a part that rests on another one stays in the air when the lower one goes. Check that every part a
+template names exists in its model: real mods ship templates whose models are empty, and nothing breaks.
 
 ## Protos and strings
 

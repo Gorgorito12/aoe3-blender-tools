@@ -42,6 +42,11 @@ class Sheets(unittest.TestCase):
             self.assertIn(title, text)
         self.assertNotIn("## Game data", text)              # the game's numbers stay out of the repository
 
+    def test_the_palaces_textures_stay_under_3_mb(self):
+        f = spec_sheets.sheet("AFRICAN_PALACE_SAHEL")[1]
+        self.assertEqual((f["texture"], f["bump"], f["painted"]), (1024, 512, 2048))
+        self.assertLess(f["texture_mb"], 3.0)
+
     def test_the_numbers_are_the_models(self):
         f = spec_sheets.sheet("AFRICAN_PALACE_SAHEL")[1]
         self.assertEqual(sum(c for _, c in f["parts"]), f["tris"])

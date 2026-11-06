@@ -71,6 +71,18 @@ def reference(p):
     return sizes.radius(p.building_type), sizes.template(p.building_type)
 
 
+def obstruction(p):
+    return sizes.obstruction(p.building_type, p.architecture)
+
+
+def texture_budget(p):
+    return sizes.TEXTURE_BUDGET.get((p.building_type, p.architecture))
+
+
+def rubble(p):
+    return sizes.RUBBLES.get((p.building_type, p.architecture))
+
+
 def opening_tops(spec, p):
     return spec.get("tops", [])
 
@@ -92,6 +104,8 @@ def build(p, params):
     for f in b.faces:
         f.pts = [(x * k, y * k, z * k) for x, y, z in f.pts]
     b.attach = {name: tuple(c * k for c in at) for name, at in b.attach.items()}
+    if (p.building_type, p.architecture) == ("PALACE", "SAHEL"):   # fitted boxes; the others share a stock shape
+        b.boxes = [tuple(c * k for c in box) for box in parts.collision(layout)]
     notes = []
     if int(params.storeys) != p.storeys and p.building_type != "CUSTOMS":
         notes.append(f"Storeys {params.storeys} -> {p.storeys}: only the customs house has an upper floor.")

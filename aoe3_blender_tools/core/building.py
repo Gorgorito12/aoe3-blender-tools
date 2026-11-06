@@ -188,6 +188,31 @@ def reference(params):
     return fn(p) if fn else None
 
 
+def obstruction(params):
+    """(radius x, radius z) in game units the style fixes for this building, or None."""
+    p = clamp_params(params)
+    fn = getattr(STYLES[p.style], "obstruction", None)
+    if fn:
+        return fn(p)
+    ref = reference(p)
+    return (ref[0], ref[0]) if ref else None
+
+
+def texture_budget(params):
+    """(largest side of the texture, of its bump) a style allows a building, or None for no limit.
+    With a budget the damaged model shares the main texture."""
+    p = clamp_params(params)
+    fn = getattr(STYLES[p.style], "texture_budget", None)
+    return fn(p) if fn else None
+
+
+def rubble(params):
+    """The proto of what the building leaves, when the style fixes it; None leaves it to its class."""
+    p = clamp_params(params)
+    fn = getattr(STYLES[p.style], "rubble", None)
+    return fn(p) if fn else None
+
+
 def build(params):
     p = clamp_params(params)
     return STYLES[p.style].build(p, params)

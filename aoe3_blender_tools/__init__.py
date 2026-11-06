@@ -315,8 +315,9 @@ class AOE3_OT_export_game(bpy.types.Operator):
             variants = blender_io.game_variants(obj, lowpoly=s.game_lowpoly, damaged=s.game_damaged)
             params = blender_io.params_of(obj)
             ref = building.reference(params) if params is not None else None
-            obstruction = (ref[0], ref[0]) if ref else None
+            obstruction = building.obstruction(params) if params is not None else None
             template = (ref[1] if ref and s.game_template in ("", "House") else s.game_template) or "House"
+            budget = building.texture_budget(params) if params is not None else None
             desc = bundle.write(
                 bpy.path.abspath(s.game_dir), name=obj.name, prefix=s.game_prefix or "mod",
                 positions=positions, normals=normals, uvs=uvs, triangles=tris,
@@ -324,6 +325,9 @@ class AOE3_OT_export_game(bpy.types.Operator):
                 footprint_m=footprint, display_name=s.game_display or None,
                 icon_rgba=icon, portrait_rgba=portrait, variants=variants,
                 template=template, texture_format=s.game_texture, obstruction=obstruction,
+                collision_boxes=building.build(params).boxes if params is not None else None,
+                rubble=building.rubble(params) if params is not None else None,
+                texture_max=(budget or (None, None))[0], bump_max=(budget or (None, None))[1],
                 profile=calibration.load() if s.use_profile else None)
             if params is not None:                         # the building's technical sheet, beside its bundle
                 out = bpy.path.abspath(s.game_dir)
@@ -332,7 +336,7 @@ class AOE3_OT_export_game(bpy.types.Operator):
                          if params.style == "AFRICAN" else 1.0)
                 with open(os.path.join(out, "SPECS.md"), "w", encoding="utf-8", newline="\n") as fh:
                     fh.write(specs.render(specs.facts(params, desc["size"], template, bundle.UNITS_PER_METER,
-                                                      collision=bundle.COLLISION_SHAPE, scale=scale),
+                                                      collision=bundle.COLLISION_SHAPE, scale=scale, budget=budget),
                                           {"vertices": len(positions), "triangles": len(tris),
                                            "format": desc["texture"]["format"], "files": files}))
         except (ValueError, OSError) as exc:

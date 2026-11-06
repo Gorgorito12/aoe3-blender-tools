@@ -23,7 +23,7 @@ Sizes are game units.
 | [AfricanHouseSubSaharan](AfricanHouseSubSaharan.md) | 626 | 92 | 4.94 | 4.94 | 6.83 | 4 x 4 |
 | [AfricanMarketSahel](AfricanMarketSahel.md) | 1,916 | 210 | 10.94 | 11.25 | 6.79 | 10 x 10 |
 | [AfricanMarketSubSaharan](AfricanMarketSubSaharan.md) | 1,896 | 150 | 10.94 | 10.94 | 8.07 | 10 x 10 |
-| [AfricanPalaceSahel](AfricanPalaceSahel.md) | 1,610 | 608 | 16.81 | 12.57 | 10.86 | 12 x 12 |
+| [AfricanPalaceSahel](AfricanPalaceSahel.md) | 1,610 | 608 | 16.81 | 12.57 | 10.86 | 13 x 12 |
 | [AfricanPalaceSubSaharan](AfricanPalaceSubSaharan.md) | 3,996 | 444 | 12.94 | 13.70 | 9.69 | 12 x 12 |
 | [AfricanPlotSahel](AfricanPlotSahel.md) | 971 | 112 | 6.05 | 6.19 | 1.54 | 6 x 6 |
 | [AfricanPlotSubSaharan](AfricanPlotSubSaharan.md) | 971 | 112 | 6.05 | 6.19 | 1.83 | 6 x 6 |

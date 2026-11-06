@@ -81,7 +81,7 @@ def _model_block(tab, model, lowpoly=None, damaged=None, shape=None):
 
 def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUND_DECAL,
              bones=("bone_flag_civ",), chimney_bone=None, lowpoly=None, damaged=None,
-             death_anim=None, simskeleton=None):
+             death_anim=None, simskeleton=None, shape=None):
     """The text of a building's anim file.
 
     name: the building's name (submodel and component names).
@@ -100,6 +100,7 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
     simskeleton: (damaged model, damage template) of a stock building whose damage system
         this one borrows, as the mod's own buildings do (e.g. the stock outpost's), or None.
         The model references then carry that model's name as their `shape`.
+    shape: the building's own collision shape (Data\\PHYSICS\\<shape>.shp), in its place.
     """
     model = art_path(model)
     sw, sh = stage_decal or decal
@@ -139,8 +140,7 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
             out.append(f"\t\t\t<anim>\n\t\t\t\tIdle\n\t\t\t\t<component>{component}</component>\n")
             out.append("\t\t\t</anim>\n\t\t</attachment>\n")
     out.append(f"\t\t<component>\n\t\t\t{escape(main)}\n")
-    shape = None
-    if simskeleton:
+    if simskeleton and not shape:
         shape = art_path(simskeleton[0]).split("\\")[-1]
         if shape.lower().endswith("_damaged"):
             shape = shape[:-len("_damaged")]

@@ -49,7 +49,8 @@ def write_sheet(out, p, desc, vertices, triangles):
     key = next((k for k, v in building.PRESETS.items() if v.name == p.name), None)
     band, scale = spec_sheets.style_side(p)
     facts = specs.facts(p, size, desc["template"], bundle.UNITS_PER_METER, key=key, collision=bundle.COLLISION_SHAPE,
-                        shape=spec_sheets.shape_of(model, size, prof), band=band, scale=scale)
+                        shape=spec_sheets.shape_of(model, size, prof), band=band, scale=scale,
+                        budget=building.texture_budget(p))
     files = [(os.path.basename(f), os.path.getsize(os.path.join(out, f))) for f in desc["files"]]
     export = {"vertices": vertices, "triangles": triangles, "format": desc["texture"]["format"], "files": files}
     proto = None
@@ -88,7 +89,7 @@ def main():
     positions, normals, uvs, tris = blender_io.game_mesh(obj)
     icon = portrait = None
     ref = building.reference(p)          # a style guide's reference size and proto template
-    obstruction = (ref[0], ref[0]) if ref else None
+    obstruction = building.obstruction(p)
     if ref and not opt("--template"):
         argv.extend(["--template", ref[1]])
     if "--no-icons" not in argv:
@@ -96,6 +97,7 @@ def main():
     variants = blender_io.game_variants(obj, lowpoly="--no-lowpoly" not in argv,
                                         damaged="--no-damaged" not in argv)
     ground = african.ground_decal(p) if p.style == "AFRICAN" else None
+    texture_max, bump_max = building.texture_budget(p) or (None, None)
     desc = bundle.write(
         out, name=p.name, prefix=opt("--prefix", "mod"), positions=positions, normals=normals,
         uvs=uvs, triangles=tris, texture_rgba=blender_io.texture_rgba(obj),
@@ -103,7 +105,7 @@ def main():
         icon_rgba=icon, portrait_rgba=portrait, variants=variants,
         display_name=opt("--display"), template=opt("--template", "House"),
         v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"), obstruction=obstruction,
-        ground_rgba=ground, profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
+        ground_rgba=ground, collision_boxes=building.build(p).boxes, rubble=building.rubble(p), texture_max=texture_max, bump_max=bump_max, profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
     write_sheet(out, p, desc, len(positions), len(tris))
     print(f"{p.name}: {len(tris)} triangles, {len(positions)} vertices; "
           f"obstruction {desc['size']['radius']}, decal {desc['size']['decal']}, "

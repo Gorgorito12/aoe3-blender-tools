@@ -58,6 +58,20 @@ Check, in this order:
 A unit a test map creates does not take the heading of a placed building. For the front toward
 the camera use the trigger effect `Unit Heading` with `Heading=225`; console `tr*` calls do nothing.
 
+### Filming
+
+For a sharp clip: set the zoom by console before the scenario loads (`configSetFloat("minZoom", 15)`,
+`configSetFloat("normalZoom", 38)`), keep the camera still, crop at the window's own pixels, and make
+the GIF from a lossless master, never from the MP4, at its native size:
+
+```
+ffmpeg -t 12 -i master.mkv -vf "fps=12,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" -loop 0 clip.gif
+```
+
+Do not move the game window once the camera is set: with the cursor left at its edge the camera
+scrolls away. A rollover label shows while the cursor rests on the building: centre the camera on a
+unit beside it instead, so the cursor falls on open ground.
+
 ## Status (2026-11-03)
 
 Seen in game, in a copy of the target mod (White House, medium detail, DXT3 texture with the

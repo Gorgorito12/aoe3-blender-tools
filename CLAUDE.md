@@ -113,9 +113,16 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 - `docs/game-formats.md`: the formats as measured, and how the writer was proven.
 - `docs/game-test.md`: the test copy, deployment, what to check in game, and the status.
 - `docs/specs/`: the technical sheet of every building, generated, with an index.
+- `aoe3_blender_tools/aoe3game/collision.py`: a building's own collision shape (`.shp`, Havok XML),
+  written into `data/physics/` of the bundle; `Model.boxes` holds the boxes, `building.obstruction`
+  a style's own obstruction. See "Collision" in `docs/game-formats.md`.
 
 ## Working rules
 
+- **Check the budgets.** A new building is compared with "Budgets for a new building" in
+  `docs/building-guidelines.md` and with the real models of its function: triangles, megabytes of
+  texture, collision, rubble. The owner cares about optimisation: ask before anything that raises a
+  building's cost, even in a variant that only shows sometimes.
 - **Every building has its technical sheet.** `docs/specs/<Name>.md`, computed from the model by
   `tools/spec_sheets.py` (`core/specs.py`); a game export also writes `SPECS.md` beside its bundle.
   A new or changed building is not done until its sheet is regenerated: `tests/test_specs.py` fails
