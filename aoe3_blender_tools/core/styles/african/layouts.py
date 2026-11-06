@@ -84,8 +84,8 @@ def shed(x0, x1, y0, y1, z_hi, z_lo, slope="-y", rafters=4, z=0.0, posts=(True, 
             "rafters": rafters, "z": z, "posts": posts, "boards": boards}
 
 
-def pier(fx0, fx1, fy0, fy1, tx0, tx1, ty0, ty1, h, into):
-    return {"kind": "pier", "foot": (fx0, fx1, fy0, fy1), "top": (tx0, tx1, ty0, ty1), "h": h, "into": into}
+def pier(fx0, fx1, fy0, fy1, tx0, tx1, ty0, ty1, h, into, climb=(1, 1)):
+    return {"kind": "pier", "foot": (fx0, fx1, fy0, fy1), "top": (tx0, tx1, ty0, ty1), "h": h, "into": into, "climb": climb}
 
 
 def stairs(x, y, z1, d="+x", w=0.7, run=2.8, n=7):
@@ -341,23 +341,38 @@ def palace(p, P, medium):
     piers = []
     for m in (-1, 1):                                     # the left side's piers, drawn once, and their mirror
 
-        def corner(fx, fy0, fy1, tx, ty0, ty1, h, into):
+        def corner(fx, fy0, fy1, tx, ty0, ty1, h, into, climb=(1, 1)):
             fx, tx = sorted((m * fx[0], m * fx[1])), sorted((m * tx[0], m * tx[1]))
-            piers.append(pier(*fx, fy0, fy1, *tx, ty0, ty1, h, (-m * into[0], into[1])))
+            piers.append(pier(*fx, fy0, fy1, *tx, ty0, ty1, h, (-m * into[0], into[1]), climb))
 
         corner((W + 0.42, W - 0.72), front - 0.6, front + 0.6, (W, W - 0.66), front - 0.14, front + 0.5, 3.1 / t, (1, 1))
-        corner((bx + 0.4, bx - 0.5), bay - 0.5, bay + 0.5, (bx, bx - 0.5), bay - 0.12, bay + 0.35, 3.35 / t, (1, 1))
+        corner((bx + 0.4, bx - 0.5), bay - 0.5, bay + 0.5, (bx + 0.02, bx - 0.5), bay - 0.14, bay + 0.1, 3.24 / t, (1, 1), (0, 1))
         corner((T + 0.85, T - 0.3), tower_y - 0.55, tower_y + 0.56, (T + 0.1, T - 0.3), tower_y - 0.12, tower_y + 0.5, 4.85 / t, (1, 1))
         corner((T + 0.85, T - 0.45), lb - 0.5, lb + 0.68, (T + 0.1, T - 0.42), lb - 0.47, lb + 0.12, 4.85 / t, (1, -1))
         corner((ti + 0.45, ti - 0.45), lb - 0.45, lb + 0.68, (ti + 0.42, ti - 0.12), lb - 0.42, lb + 0.12, 4.85 / t, (-1, -1))
-    return [block(-W, W, front, tower_y, Hw, parapet=0.32, foot=True, pinnacles="stepped", windows=0, joined=("back",),
-                  win={"front": [(1.38, 1.6, 0.46, 0.8, False), (2 * W - 1.38, 1.6, 0.46, 0.8, False)],
-                       "left": [(L - 2.4, 1.3, 0.8, 1.3, True)], "right": [(2.4, 1.3, 0.8, 1.3, True)]}, **K),
-            block(-bx, bx, bay, front + 0.2, Hg, parapet=0.2, coping="coping", door=True, foot=True, gate=(1.6, 2.5),
+    # beside the balcony the stairs climb in a recess cut into the terrace: its walls are the front of
+    # each wing, kept short for that, and the side of the balcony
+    D, rise, sb = 0.8, 3.87 - 3.3, bx - 0.17                # how far back it goes, how high, where its outer wall stands
+    pit = (D / 2, 3.3, D, rise, "shade")
+    far = hall_y + 0.1 - (bay + 0.08)                      # the length of the balcony's sides
+    return [block(-W, -sb, front, front + D, Hw, parapet=0.32, foot=True, pinnacles="stepped", windows=0, joined=("back",),
+                  runs_on=(("-x", "+y"),), win={"front": [(1.38, 1.6, 0.46, 0.8, False)], "right": [pit]}, **K),
+            block(sb, W, front, front + D, Hw, parapet=0.32, foot=True, pinnacles="stepped", windows=0, joined=("back",),
+                  runs_on=(("+x", "+y"),), win={"front": [(W - sb - 1.38, 1.6, 0.46, 0.8, False)], "left": [pit]}, **K),
+            block(-W, -bx, front + D, tower_y, Hw, parapet=0.32, foot=True, windows=0, joined=("front", "back", "right"),
+                  runs_on=(("-x", "-y"),), win={"left": [(L - 2.4, 1.3, 0.8, 1.3, True)]}, **K),
+            block(bx, W, front + D, tower_y, Hw, parapet=0.32, foot=True, windows=0, joined=("front", "back", "left"),
+                  runs_on=(("+x", "-y"),), win={"right": [(2.4 - D, 1.3, 0.8, 1.3, True)]}, **K),
+            block(-ux, ux, front, tower_y, Hw, windows=0, band=False, joined=("back", "front", "left", "right"), **K),
+            block(-bx, -ux, front + D, tower_y, Hw, windows=0, band=False, joined=("back", "front", "left", "right"), **K),
+            block(ux, bx, front + D, tower_y, Hw, windows=0, band=False, joined=("back", "front", "left", "right"), **K),
+            block(-bx, bx, bay, front, Hg, parapet=0.14, coping="coping", door=True, foot=True, gate=(1.6, 2.5),
                   windows=0, joined=("back",), band=False, **K),
             # over its shoulders the bay's middle goes on up as the balcony, back to the hall, in low walls
             block(-ux, ux, bay + 0.08, hall_y + 0.1, Hb - Hg, z=Hg, parapet=0.34, coping="coping", windows=0,
-                  art={"front": "frieze"}, joined=("back",), band=False, **K),
+                  art={"front": "frieze"}, joined=("back",), band=False,
+                  win={"right": [(far - 0.8 - (D + 0.3) / 2, 0.01, D + 0.3, rise, "shade")],
+                       "left": [(0.8 + (D + 0.3) / 2, 0.01, D + 0.3, rise, "shade")]}, **K),
             block(-hx, hx, hall_y, back, Hh - Hw, z=Hw, parapet=0.34, beams=("-y", "+y"), beam_gap=0.5, pinnacles="stepped",
                   windows=0, win={"front": [(0.8, 0.12, 0.95, 1.12, True), (2 * hx - 0.8, 0.12, 0.95, 1.12, True),
                                                        (hx, 0.23, 2 * ax, 1.75, "recess")],
@@ -374,15 +389,23 @@ def palace(p, P, medium):
             block(-ti - 0.2, ti + 0.2, tower_y, back, Hw, windows=0, band=False, joined=("front",), **K),
             *piers,
             # the awning over the balcony, the jars, banners by the gate, steps up to the door
-            {**canopy(-ax, ax, hall_y - 1.7, hall_y - 0.02, 5.85 / t, 5.65 / t, cloth=True), "z": Hb,
-             "scallops": False, "nu": 12, "nv": 5, "post": 0.055, "on_wall": True},
+            {**canopy(-ax, ax, hall_y - 1.4, hall_y - 0.02, 5.95 / t, 5.85 / t, cloth=True), "z": Hb,
+             "scallops": False, "nu": 10, "nv": 6, "post": 0.06, "on_wall": True, "post_region": "frame", "curl": 0.26},
             {"kind": "pot", "x": 0.74, "y": -2.75, "r": 0.42, "h": 0.92, "z": Hb, "n": 12, "belly": True},
             {"kind": "pot", "x": 1.17, "y": -3.3, "r": 0.31, "h": 0.64, "z": Hb, "n": 12, "belly": True},
             {"kind": "banner", "x": -2.09, "y": bay - 0.02, "w": 0.54, "z1": 3.0, "h": 1.35},
             {"kind": "banner", "x": 1.55, "y": bay - 0.02, "w": 0.54, "z1": 3.0, "h": 1.35},
             {"kind": "door_frame", "x": 0.0, "y": bay, "w": 1.6, "h": 2.5},
+            {**stairs(-(sb + ux) / 2, front - 0.3, rise / t, d="+y", w=sb - ux - 0.02, run=D + 0.3, n=2),
+             "region": "pit_step", "top": "pit_tread", "z": 3.3},
+            {"kind": "ledge", "box": (-bx - 0.03, -bx + 0.5, bay - 0.03, front - 0.3, 3.3, 3.62)},
+            {"kind": "ledge", "box": (bx - 0.5, bx + 0.03, bay - 0.03, front - 0.3, 3.3, 3.62)},
+            {"kind": "batter", "x": -sb, "side": 1, "d": 0.2, "y0": front, "y1": front + D, "z0": 3.3, "z1": 4.19},
+            {"kind": "batter", "x": sb, "side": -1, "d": 0.2, "y0": front, "y1": front + D, "z0": 3.3, "z1": 4.19},
+            {**stairs((sb + ux) / 2, front - 0.3, rise / t, d="+y", w=sb - ux - 0.02, run=D + 0.3, n=2),
+             "region": "pit_step", "top": "pit_tread", "z": 3.3},
             {"kind": "mast", "x": 1.1, "y": back - 0.3, "z": 6.55, "h": 2.5, "flag": True},   # the owner's flag flies from it
-            {**stairs(0.0, bay - 0.8, 0.34, d="+y", w=2.9, run=0.8, n=2), "region": "step"}]
+            {**stairs(0.0, bay - 0.8, 0.34, d="+y", w=2.9, run=0.8, n=2), "region": "step", "top": "tread"}]
 
 
 TYPES = {"HOUSE": house, "TOWN_CENTER": town_center, "GRANARY": granary_type, "MARKET": market,

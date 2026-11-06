@@ -18,7 +18,8 @@ from ...kit import cone_roof_size, dome_size, ring_size
 
 DOOR_ANGLE = 1.5 * math.pi          # the round walls' doors face -Y
 SIDE_OF = {"front": "-y", "back": "+y", "left": "-x", "right": "+x"}
-PIER_FACE = (1.3, 0.1, 1.2, 4.8, 1.5)  # a pier's side painted: foot's width, top's two ends, height, its chamfer
+PIER_FACE = (1.3, 0.1, 1.2, 4.8, 4.2)  # a pier's side painted: foot's width, top's two ends, height, its chamfer
+PIER_LANES = (0.0, 1.4, 2.8)           # the painted sides, so no two faces beside each other match
 
 
 def sides(medium, big=False):
@@ -89,13 +90,13 @@ def declare(b, layout, medium):
                                  "gate": bool(door and piece.get("gate")), "foot": piece.get("foot", False),
                                  "shutters": piece.get("shutters", False),
                                  "band": piece.get("band", True), "art": piece.get("art", {}).get(face),
-                                 "closed": [],
+                                 "closed": {},
                                  "openings": _block_openings(bays, length / 2 if door else None, h,
                                                              piece.get("gate", (1.1, 2.1)), piece.get("sill"))}
                 for u, v, ww, wh, closed in piece.get("win", {}).get(face, ()):
                     facades[name]["openings"].append((u - ww / 2, v, u + ww / 2, v + wh))
                     if closed:
-                        facades[name]["closed"].append(u - ww / 2)
+                        facades[name]["closed"][u - ww / 2] = closed
             want("roof_flat", max(w, d) + 0.2, min(w, d) + 0.2)
             want("trim", 2.0, h + 1.2)
             if piece.get("parapet"):
@@ -124,6 +125,12 @@ def declare(b, layout, medium):
             want("planks", piece["y1"] - piece["y0"] + 0.2, piece["x1"] - piece["x0"] + 0.2)
         elif k == "stairs":
             want(piece.get("region", "trim"), 3.2, 1.2)
+            if piece.get("top"):
+                want(piece["top"], 3.2, 0.9)
+        elif k == "ledge":
+            want("parapet", 1.6, 1.0)
+        elif k == "batter":
+            want("pit_wall", 1.6, 1.6)
         elif k == "door_frame":
             want("frame", 2.2, 3.0)
         elif k == "mast":
@@ -283,6 +290,13 @@ def emit(b, layout, medium):
         elif k == "pier":
             _pier(b, piece)
             at = (piece["foot"][0], piece["foot"][2], piece["h"])
+        elif k == "ledge":                                 # a solid step on a roof
+            x0, x1, y0, y1, z0, z1 = piece["box"]
+            b.box(x0, x1, y0, y1, z0, z1, "parapet", "parapet")
+            at = (x0, y0, z1)
+        elif k == "batter":
+            _batter(b, piece)
+            at = (piece["x"], piece["y0"], piece["z1"])
         elif k == "door_frame":
             _door_frame(b, piece)
             at = (piece["x"], piece["y"], piece["h"])
@@ -308,10 +322,11 @@ def emit(b, layout, medium):
         elif k == "canopy":
             if medium and piece.get("cloth", True):
                 b.draped_cloth(piece["x0"], piece["x1"], piece["y0"], piece["y1"], piece["z_hi"], piece["z_lo"],
-                               "cloth", "wood", slope=piece.get("slope", "-y"), rafters=piece.get("rafters", 0),
+                               "cloth", piece.get("post_region", "wood"), slope=piece.get("slope", "-y"),
+                               rafters=piece.get("rafters", 0),
                                z_base=piece.get("z", 0.0), scallops=piece.get("scallops", True),
                                nu=piece.get("nu", 5), nv=piece.get("nv", 3), post=piece.get("post", 0.07),
-                               on_wall=piece.get("on_wall", False))
+                               on_wall=piece.get("on_wall", False), curl=piece.get("curl", 0.0))
             else:
                 b.canopy(piece["x0"], piece["x1"], piece["y0"], piece["y1"], piece["z_hi"], piece["z_lo"],
                          "cloth" if piece.get("cloth", True) else "thatch", "wood", slope=piece.get("slope", "-y"))
@@ -500,7 +515,8 @@ def _block(b, p, medium):
     else:
         top = b.flat_roof(x0, x1, y0, y1, zt, "roof_flat", parapet_h=p.get("parapet", 0.0),
                           parapet_region=p.get("coping", "parapet") if p.get("parapet") else None,
-                          merlons=(p.get("merlons", 0.0) if medium else 0.0), open_sides=open_sides)
+                          merlons=(p.get("merlons", 0.0) if medium else 0.0), open_sides=open_sides,
+                          runs_on=p.get("runs_on", ()))
     if medium and p.get("sahel", True) and roof != "thatch" and not p.get("plain"):
         _buttresses(b, p, z0, h, top)
     if p.get("pinnacles"):                                 # finials on the parapet's corners
@@ -527,14 +543,15 @@ def _block(b, p, medium):
         a0, a1 = y0 + (1.2 if "-y" in open_sides else 0.337), y1 - (1.2 if "+y" in open_sides else 0.3)
         c0, c1 = x0 + (1.2 if "-x" in open_sides else 0.337), x1 - (1.2 if "+x" in open_sides else 0.3)
         gap = p.get("beam_gap", 0.9)
-        ln, sz = (0.15, 0.11) if p.get("painted") else (0.35, 0.14)
+        ln, sz = (0.2, 0.15) if p.get("painted") else (0.35, 0.14)
+        beam = "frame" if p.get("painted") else "wood"
         sides = p["beams"] if isinstance(p["beams"], tuple) else ("-y", "-x", "+x")
         if "-y" not in open_sides and "-y" in sides:
-            b.beam_ends("-y", y0, c0, c1, zb, max(3, int((c1 - c0) / gap)), ln, "wood", size=sz)
+            b.beam_ends("-y", y0, c0, c1, zb, max(3, int((c1 - c0) / gap)), ln, beam, size=sz)
         if "-x" not in open_sides and "-x" in sides:
-            b.beam_ends("-x", x0, a0, a1, zb, max(2, int((a1 - a0) / gap)), ln, "wood", size=sz)
+            b.beam_ends("-x", x0, a0, a1, zb, max(2, int((a1 - a0) / gap)), ln, beam, size=sz)
         if "+x" not in open_sides and "+x" in sides:
-            b.beam_ends("+x", x1, a0, a1, zb, max(2, int((a1 - a0) / gap)), ln, "wood", size=sz)
+            b.beam_ends("+x", x1, a0, a1, zb, max(2, int((a1 - a0) / gap)), ln, beam, size=sz)
         if "+y" in sides:                                  # few at the back, where they cost and show least
             b.beam_ends("+y", y1, c0, c1, zb, max(2, int((c1 - c0) / (gap * 1.7))), ln, "wood", size=sz)
     return top
@@ -599,7 +616,7 @@ def _pier(b, p):
     """A pier over a corner of the walls, `foot` and `top` both (x0, x1, y0, y1), the walls lying
     the way `into` says, (sx, sy). It leans into both walls until little stands out, a thin cap
     climbs from its edge into them, and a narrow chamfer down its outer corner divides it, the
-    one line that says what it is. Its sides share one painted side, the chamfer has its own."""
+    one line that says what it is. Its sides take turns on the painted sides, the chamfer has its own."""
     sx, sy = p["into"]
     tx0, tx1, ty0, ty1 = p["top"]
     z0, z1 = p.get("z", 0.0), p.get("z", 0.0) + p["h"]
@@ -624,10 +641,11 @@ def _pier(b, p):
 
     def cap(x, y):
         ox, oy = tx0 if sx > 0 else tx1, ty0 if sy > 0 else ty1
-        return z1 + rise * (abs(x - ox) / (tx1 - tx0) + abs(y - oy) / (ty1 - ty0))
+        wx, wy = p.get("climb", (1, 1))
+        return z1 + rise * (wx * abs(x - ox) / (tx1 - tx0) + wy * abs(y - oy) / (ty1 - ty0))
 
-    foot, tags = ring(p["foot"], p.get("chamfer", 0.14))
-    top = [(x, y, cap(x, y)) for x, y in ring(p["top"], p.get("chamfer", 0.14) * 0.55)[0]]
+    foot, tags = ring(p["foot"], p.get("chamfer", 0.17))
+    top = [(x, y, cap(x, y)) for x, y in ring(p["top"], p.get("chamfer", 0.17) * 0.7)[0]]
     w, a, c, h, lane = PIER_FACE
     cx, cy = sum(q[0] for q in foot) / len(foot), sum(q[1] for q in foot) / len(foot)
     for i, q in enumerate(foot):
@@ -636,7 +654,7 @@ def _pier(b, p):
         if tags[i] and tags[j]:
             u, uvs = lane, ((0.0, 0.0), (0.3, 0.0), (0.24, h), (0.06, h))
         else:
-            u, uvs = 0.0, ((0.0, 0.0), (w, 0.0), (c, h), (a, h))
+            u, uvs = PIER_LANES[(p["id"] + i) % len(PIER_LANES)], ((0.0, 0.0), (w, 0.0), (c, h), (a, h))
         b.facing([(*q, z0), (*foot[j], z0), top[j], top[i]], [(u + e, f) for e, f in uvs], "pier", (mx, my, 0.1))
     b.face_out(top, "pier_cap", (0.0, 0.0, 1.0))
 
@@ -654,6 +672,14 @@ def collision(pieces):
             m = [(a + c) / 2 for a, c in zip(f, t)]
             boxes.append((m[0], m[1], m[2], m[3], 0.0, q["h"]))
     return boxes
+
+
+def _batter(b, p):
+    """A wall leaning back as it rises, against the wall at `x`: `d` out of it at its foot, `side`
+    (+1 or -1) the way that is, from y0 to y1 and z0 to z1. Its end shows at y0."""
+    x, s, d, y0, y1, z0, z1 = p["x"], p["side"], p["d"], p["y0"], p["y1"], p["z0"], p["z1"]
+    b.face_out([(x + s * d, y0, z0), (x + s * d, y1, z0), (x, y1, z1), (x, y0, z1)], "pit_wall", (s, 0.0, d / (z1 - z0)))
+    b.face_out([(x, y0, z0), (x + s * d, y0, z0), (x, y0, z1)], "pit_wall", (0.0, -1.0, 0.0))
 
 
 def _door_frame(b, p):
@@ -694,7 +720,7 @@ def _stairs(b, p, medium):
     """Earthen stairs up a wall: `n` steps from (x, y), rising in `dir` to z1, `w` wide."""
     x, y, w, z1, n, d = p["x"], p["y"], p["w"], p["z1"], p.get("n", 7) if medium else 3, p.get("dir", "+x")
     run = p.get("run", 2.8) / n
-    r, zb = p.get("region", "trim"), p.get("z", 0.0)
+    r, zb, t = p.get("region", "trim"), p.get("z", 0.0), p.get("top", p.get("region", "trim"))
     for k in range(n):
         a, c, z = k * run, (k + 1) * run, zb + z1 * (k + 1) / n
         if d == "+x":
@@ -702,7 +728,7 @@ def _stairs(b, p, medium):
         elif d == "-x":
             b.box(x - c, x - a, y - w / 2, y + w / 2, zb, z, r, r, skip=() if k == n - 1 else ("-x",))
         elif d == "+y":
-            b.box(x - w / 2, x + w / 2, y + a, y + c, zb, z, r, r, skip=() if k == n - 1 else ("+y",))
+            b.box(x - w / 2, x + w / 2, y + a, y + c, zb, z, r, t, skip=() if k == n - 1 else ("+y",))
         else:
             b.box(x - w / 2, x + w / 2, y - c, y - a, zb, z, r, r, skip=() if k == n - 1 else ("-y",))
 

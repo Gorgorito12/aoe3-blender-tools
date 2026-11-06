@@ -24,28 +24,32 @@ One game unit is 1.626 m in Blender.
 
 | Model | Count |
 |---|---|
-| Medium detail | 1,610 |
-| Low detail, the game's low-poly model | 608 |
-| Faces at medium detail | 889 |
+| Medium detail | 1,666 |
+| Low detail, the game's low-poly model | 722 |
+| Faces at medium detail | 912 |
 | Target and accepted range | 1,600 (1,450 to 1,720) |
 
 Where they go, at medium detail:
 
 | Part | Triangles | Share |
 |---|---|---|
-| parapet | 496 | 31 % |
-| wood | 364 | 23 % |
-| pot | 308 | 19 % |
+| parapet | 488 | 29 % |
+| pot | 308 | 18 % |
+| frame | 282 | 17 % |
 | cloth | 120 | 7 % |
+| wood | 112 | 7 % |
 | pier | 100 | 6 % |
-| walls | 54 | 3 % |
+| walls | 64 | 4 % |
 | coping | 52 | 3 % |
-| frame | 30 | 2 % |
 | pier_cap | 30 | 2 % |
+| pit_step | 28 | 2 % |
+| roof_flat | 26 | 2 % |
 | banner | 20 | 1 % |
-| step | 18 | 1 % |
-| roof_flat | 14 | 1 % |
+| step | 14 | 1 % |
+| pit_tread | 8 | 0 % |
+| pit_wall | 6 | 0 % |
 | reveal | 4 | 0 % |
+| tread | 4 | 0 % |
 
 ## Texture
 
@@ -64,7 +68,7 @@ Where they go, at medium detail:
 |---|---|
 | Obstruction: units path around it, buildings place against it | 13.00 x 12.00 |
 | Model past the obstruction, on each side | 1.91 wide, 0.29 deep |
-| Collision shape | `africanpalacesahel`, its own: 17 boxes covering 15.91 x 11.65 x 9.72 |
+| Collision shape | `africanpalacesahel`, its own: 23 boxes covering 15.91 x 11.66 x 9.72 |
 | Ground decal | 23.40 x 17.50 |
 | Construction stages | 6x6 |
 | Rubble | BuildingRubble6x6 |
@@ -78,13 +82,13 @@ Where they go, at medium detail:
 | Height, game units | 10.86 | 9.18 | 11.09 | 14.4 |
 | Height over longest side | 0.646 | 0.765 | 0.855 | 1.006 |
 | Share of the obstruction covered | 0.841 | 0.527 | 0.636 | 0.712 |
-| Share of what stands outside it | 0.125 | 0.0 | 0.0 | 0.001 |
+| Share of what stands outside it | 0.128 | 0.0 | 0.0 | 0.001 |
 | Share in its largest part | 1.0 | 0.99 | 1.0 | 1.0 |
-| Share of the edge lined | 0.671 | 0.007 | 0.13 | 0.263 |
-| Flat levels | 8 | 5.0 | 5.0 | 6.0 |
-| Triangles in the lower third | 0.104 | 0.146 | 0.308 | 0.521 |
-| Triangles in the middle third | 0.437 | 0.301 | 0.369 | 0.432 |
-| Triangles in the upper third | 0.46 | 0.073 | 0.263 | 0.442 |
+| Share of the edge lined | 0.672 | 0.007 | 0.13 | 0.263 |
+| Flat levels | 9 | 5.0 | 5.0 | 6.0 |
+| Triangles in the lower third | 0.106 | 0.146 | 0.308 | 0.521 |
+| Triangles in the middle third | 0.45 | 0.301 | 0.369 | 0.432 |
+| Triangles in the upper third | 0.444 | 0.073 | 0.263 | 0.442 |
 
 ## Attach points
 
