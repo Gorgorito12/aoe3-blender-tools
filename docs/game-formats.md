@@ -71,6 +71,35 @@ wide by that rule, and they are not: in game they stand at full size, their stor
 scaled as if they were inches (x 0.015625: 1,280 stored units are 20 game units). A survey must not
 trust that declaration. The writer uses the stock basis, so no conversion is involved.
 
+**Bone scale** (**measured**): a bone's world frame is its parent's world frame times its local
+transform, local = translate(Position) x rotate(Orientation, a quaternion x y z w) x ScaleShear (a
+3 x 3, used only when bit 4 of the transform's flags is set; bit 1 position, bit 2 orientation). The
+stored InverseWorldTransform is the inverse of that frame in row-vector form (translation in the
+last row): their product is the identity to 1e-6 on stock and mod buildings. On skinned units it is
+the bind pose instead and does not match the rest pose.
+
+- Stock buildings: the impact bones (`boneimpactNN`) and attach bones have world axes of length 1;
+  some helper bones are 0.918, and across all stock models helper bones from 0.24 to 4 are common.
+- Some mods export in centimetres: the root `bone_main` carries ScaleShear 100 (flags 7) and every
+  other bone a unit local scale, so every bone's world axes are 100 long. Meshes bound to these
+  bones draw right (their inverse takes the 100 out again).
+- The game hangs an impact effect whose particle set names an `.xml` visual (the stock
+  `cannon.impacteffect`'s `<wood>`) on the impact point's bone with the bone's whole world frame,
+  scale included; a plain particle set name is placed at the hit point and does not read the bone.
+  On a bone of axes 100 the visual is drawn 100 times too big (**in game**).
+- `tools/fix_bone_scale.py` gives such bones a local ScaleShear of 1/100 (flag bit 4 set), so their
+  world axes are 1 while their world position and direction stay, and scales their inverse to
+  match; mesh-bound bones are never changed. The Granny runtime reads a file patched this way and
+  its CRC check passes (**measured**). **In game** (2026-11-13): a mod building of this kind, its
+  damage template set to `wood`, threw the visual across the whole view when hit by cannon; with its
+  models fixed by the tool the splinters, smoke and fire stay on its walls, and it stands, burns and
+  collapses as before. The construction and collapse models had no bone to change.
+- Measured on a large mod: 341 of 18,501 Granny files have such bones (2,558 bones: 2,307 at 100,
+  140 at 60, the rest between 0.026 and 41); 74 more have one the tool must leave (a scaled root
+  over its debris meshes, or a bone scaled unevenly). In the stock archives only 4 of about 12,300
+  models have one (wheel links at 0.1 on a mortar, a bone at 0.012 on the low-poly war dogs), none
+  of them an impact or flag bone: run the tool on a mod's own folders.
+
 ## Textures (.ddt)
 
 | Offset | Content |
