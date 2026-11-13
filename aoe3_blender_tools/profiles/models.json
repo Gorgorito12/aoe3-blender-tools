@@ -1,0 +1,2667 @@
+{
+ "schema": 1,
+ "source": "target mod",
+ "files": 19428,
+ "distinct": 18164,
+ "unread": {
+  "RuntimeError": 9
+ },
+ "groups": [
+  {
+   "origin": "own",
+   "category": "*",
+   "count": 5993,
+   "models": 5378,
+   "tris": [
+    198.25,
+    302.0,
+    1316.5
+   ],
+   "verts": [
+    341.0,
+    1858.0,
+    9552.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    2.0
+   ],
+   "bones": [
+    1.0,
+    9.0,
+    26.0
+   ],
+   "bone_depth": [
+    0.0,
+    1.0,
+    7.0
+   ],
+   "materials": [
+    3.0,
+    5.0,
+    7.0
+   ],
+   "skinned": 0.067,
+   "bound_to_many": 0.357,
+   "index_32": 0.366,
+   "uv_repeats": 0.319,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     2003
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     1669
+    ],
+    [
+     "FD:u81 (1 B)",
+     1559
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     323
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,TextureCoordinates0:f2 (40 B)",
+     39
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (48 B)",
+     17
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask_pixelxform",
+     3391
+    ],
+    [
+     "bumpspec_mask",
+     1575
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     1483
+    ],
+    [
+     "alphatest",
+     173
+    ],
+    [
+     "pixelxform",
+     118
+    ],
+    [
+     "emissive",
+     62
+    ],
+    [
+     "tree",
+     35
+    ],
+    [
+     "alphablend",
+     28
+    ]
+   ],
+   "size": {
+    "width": [
+     1.047,
+     5.317,
+     9.342
+    ],
+    "height": [
+     2.082,
+     4.179,
+     7.78
+    ]
+   },
+   "pixels_per_unit": [
+    30.3366,
+    58.3475,
+    91.2333
+   ],
+   "animations": {
+    "count": 1677,
+    "duration": [
+     3.3333,
+     3.3333,
+     3.3333
+    ],
+    "tracks": [
+     1.0,
+     5.0,
+     20.0
+    ],
+    "timestep": [
+     [
+      60,
+      1572
+     ],
+     [
+      30,
+      63
+     ],
+     [
+      120,
+      41
+     ],
+     [
+      50,
+      1
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      1608
+     ],
+     [
+      "[0]",
+      58
+     ],
+     [
+      "[1]",
+      5
+     ],
+     [
+      "[]",
+      3
+     ],
+     [
+      "[3]",
+      3
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.001
+   }
+  },
+  {
+   "origin": "own",
+   "category": "buildings",
+   "count": 1419,
+   "models": 1293,
+   "tris": [
+    312.0,
+    1020.0,
+    2015.0
+   ],
+   "verts": [
+    590.0,
+    1842.0,
+    3826.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    9.0
+   ],
+   "bones": [
+    1.0,
+    3.0,
+    20.0
+   ],
+   "bone_depth": [
+    0.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    3.0,
+    6.0,
+    11.0
+   ],
+   "skinned": 0.001,
+   "bound_to_many": 0.044,
+   "index_32": 0.309,
+   "uv_repeats": 0.486,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     799
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     481
+    ],
+    [
+     "FD:u81 (1 B)",
+     56
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     1
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask_pixelxform",
+     950
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     688
+    ],
+    [
+     "bumpspec_mask",
+     253
+    ],
+    [
+     "alphatest",
+     94
+    ],
+    [
+     "tree",
+     22
+    ],
+    [
+     "bumpspec_alphatest",
+     6
+    ],
+    [
+     "water_nocolor",
+     5
+    ],
+    [
+     "alphablend",
+     4
+    ]
+   ],
+   "size": {
+    "width": [
+     5.04,
+     7.773,
+     9.514
+    ],
+    "height": [
+     4.0,
+     6.05,
+     8.481
+    ]
+   },
+   "pixels_per_unit": [
+    22.1798,
+    44.9613,
+    75.4458
+   ],
+   "animations": {
+    "count": 233,
+    "duration": [
+     2.0,
+     3.3333,
+     3.3333
+    ],
+    "tracks": [
+     2.0,
+     6.0,
+     23.0
+    ],
+    "timestep": [
+     [
+      60,
+      192
+     ],
+     [
+      120,
+      41
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      200
+     ],
+     [
+      "[0]",
+      30
+     ],
+     [
+      "[]",
+      3
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "own",
+   "category": "buildingsets",
+   "count": 65,
+   "models": 57,
+   "tris": [
+    200.0,
+    461.0,
+    997.0
+   ],
+   "verts": [
+    239.0,
+    705.0,
+    1779.0
+   ],
+   "meshes": [
+    2.0,
+    7.0,
+    11.0
+   ],
+   "bones": [
+    3.0,
+    8.0,
+    14.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    2.0
+   ],
+   "materials": [
+    2.0,
+    4.0,
+    6.0
+   ],
+   "skinned": 0.0,
+   "bound_to_many": 0.0,
+   "index_32": 1.0,
+   "uv_repeats": 0.386,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     57
+    ]
+   ],
+   "effects": [],
+   "animations": {
+    "count": 65,
+    "duration": [
+     3.3333,
+     3.3333,
+     3.3333
+    ],
+    "tracks": [
+     4.0,
+     9.0,
+     16.0
+    ],
+    "timestep": [
+     [
+      60,
+      65
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      65
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "own",
+   "category": "effects",
+   "count": 62,
+   "models": 62,
+   "tris": [
+    16.0,
+    54.0,
+    108.0
+   ],
+   "verts": [
+    32.0,
+    72.0,
+    122.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    2.0,
+    2.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    6.0,
+    8.0,
+    10.0
+   ],
+   "skinned": 0.0,
+   "bound_to_many": 0.0,
+   "index_32": 0.0,
+   "uv_repeats": 0.113,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     60
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     2
+    ]
+   ],
+   "effects": [
+    [
+     "emissive",
+     54
+    ],
+    [
+     "alphatest",
+     7
+    ],
+    [
+     "bumpspec_mask",
+     3
+    ]
+   ],
+   "size": {
+    "width": [
+     81.187,
+     87.399,
+     132.187
+    ],
+    "height": [
+     18.433,
+     22.4205,
+     30.876
+    ]
+   },
+   "pixels_per_unit": [
+    19.1232,
+    24.1869,
+    29.2762
+   ]
+  },
+  {
+   "origin": "own",
+   "category": "homecity",
+   "count": 143,
+   "models": 142,
+   "tris": [
+    584.0,
+    1191.0,
+    3113.25
+   ],
+   "verts": [
+    884.25,
+    1912.5,
+    5398.5
+   ],
+   "meshes": [
+    1.0,
+    2.0,
+    6.0
+   ],
+   "bones": [
+    2.0,
+    4.0,
+    15.75
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    2.25,
+    4.0,
+    10.0
+   ],
+   "skinned": 0.0,
+   "bound_to_many": 0.028,
+   "index_32": 0.62,
+   "uv_repeats": 0.289,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     92
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     30
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (48 B)",
+     17
+    ],
+    [
+     "FD:u81 (1 B)",
+     4
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask_alphatest",
+     41
+    ],
+    [
+     "bumpspec_mask_ambientocclusion",
+     13
+    ],
+    [
+     "emissive",
+     8
+    ],
+    [
+     "bumpspec_mask",
+     8
+    ],
+    [
+     "bumpspec_mask_alphatest_ambientocclusion",
+     8
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     7
+    ],
+    [
+     "tree",
+     3
+    ],
+    [
+     "alphablend",
+     3
+    ]
+   ],
+   "size": {
+    "width": [
+     37.296,
+     82.798,
+     194.9963
+    ],
+    "height": [
+     9.155,
+     15.116,
+     25.7608
+    ]
+   },
+   "pixels_per_unit": [
+    18.9005,
+    20.4902,
+    42.4243
+   ],
+   "animations": {
+    "count": 88,
+    "duration": [
+     3.3333,
+     3.3333,
+     3.3333
+    ],
+    "tracks": [
+     3.0,
+     5.0,
+     16.0
+    ],
+    "timestep": [
+     [
+      60,
+      88
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      88
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "own",
+   "category": "other",
+   "count": 943,
+   "models": 911,
+   "tris": [
+    224.0,
+    576.0,
+    1621.5
+   ],
+   "verts": [
+    321.5,
+    1052.0,
+    3026.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    6.5
+   ],
+   "bones": [
+    1.0,
+    4.0,
+    18.0
+   ],
+   "bone_depth": [
+    0.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    2.0,
+    4.0,
+    8.0
+   ],
+   "skinned": 0.013,
+   "bound_to_many": 0.046,
+   "index_32": 0.659,
+   "uv_repeats": 0.295,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     605
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     266
+    ],
+    [
+     "FD:u81 (1 B)",
+     30
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     7
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,TextureCoordinates0:f2 (40 B)",
+     5
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask_pixelxform",
+     336
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     298
+    ],
+    [
+     "bumpspec_mask",
+     226
+    ],
+    [
+     "alphatest",
+     61
+    ],
+    [
+     "bumpspec_alphatest",
+     2
+    ],
+    [
+     "pixelxform",
+     1
+    ]
+   ],
+   "size": {
+    "width": [
+     5.317,
+     6.926,
+     10.176
+    ],
+    "height": [
+     4.893,
+     6.337,
+     9.599
+    ]
+   },
+   "pixels_per_unit": [
+    29.6358,
+    32.9075,
+    44.199
+   ],
+   "animations": {
+    "count": 376,
+    "duration": [
+     3.3333,
+     3.3333,
+     3.3333
+    ],
+    "tracks": [
+     2.0,
+     4.0,
+     7.0
+    ],
+    "timestep": [
+     [
+      60,
+      370
+     ],
+     [
+      30,
+      6
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      374
+     ],
+     [
+      "[0]",
+      2
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "own",
+   "category": "terrain",
+   "count": 21,
+   "models": 21,
+   "tris": [
+    60.0,
+    76.0,
+    136.0
+   ],
+   "verts": [
+    84.0,
+    142.0,
+    191.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    2.0,
+    2.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    4.0,
+    5.0,
+    5.0
+   ],
+   "skinned": 0.0,
+   "bound_to_many": 0.0,
+   "index_32": 0.143,
+   "uv_repeats": 0.095,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     13
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     8
+    ]
+   ],
+   "effects": [
+    [
+     "tree",
+     10
+    ],
+    [
+     "alphatest",
+     6
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     2
+    ]
+   ],
+   "size": {
+    "width": [
+     3.057,
+     3.86,
+     5.448
+    ],
+    "height": [
+     1.34,
+     2.723,
+     9.207
+    ]
+   },
+   "pixels_per_unit": [
+    42.3296,
+    48.0986,
+    59.0541
+   ],
+   "animations": {
+    "count": 3,
+    "duration": [
+     3.3333,
+     3.3333,
+     3.3333
+    ],
+    "tracks": [
+     2.0,
+     2.0,
+     2.0
+    ],
+    "timestep": [
+     [
+      30,
+      3
+     ]
+    ],
+    "flags": [
+     [
+      "[3]",
+      3
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "own",
+   "category": "units",
+   "count": 3333,
+   "models": 2885,
+   "tris": [
+    194.0,
+    226.0,
+    658.0
+   ],
+   "verts": [
+    339.0,
+    8128.0,
+    10864.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    22.0,
+    30.0
+   ],
+   "bone_depth": [
+    1.0,
+    7.0,
+    8.0
+   ],
+   "materials": [
+    3.0,
+    5.0,
+    6.0
+   ],
+   "skinned": 0.121,
+   "bound_to_many": 0.63,
+   "index_32": 0.284,
+   "uv_repeats": 0.257,
+   "layouts": [
+    [
+     "FD:u81 (1 B)",
+     1469
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     752
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     500
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     315
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,TextureCoordinates0:f2 (40 B)",
+     34
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask_pixelxform",
+     2098
+    ],
+    [
+     "bumpspec_mask",
+     1085
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     448
+    ],
+    [
+     "pixelxform",
+     113
+    ],
+    [
+     "alphablend",
+     21
+    ],
+    [
+     "bumpspec_alphatest",
+     8
+    ],
+    [
+     "bump_pixelxform",
+     6
+    ],
+    [
+     "bumpspec",
+     6
+    ]
+   ],
+   "size": {
+    "width": [
+     0.45,
+     1.025,
+     1.205
+    ],
+    "height": [
+     0.389,
+     2.082,
+     2.113
+    ]
+   },
+   "pixels_per_unit": [
+    62.7546,
+    123.4739,
+    255.2627
+   ],
+   "animations": {
+    "count": 912,
+    "duration": [
+     3.0,
+     3.3333,
+     3.3333
+    ],
+    "tracks": [
+     1.0,
+     6.0,
+     25.0
+    ],
+    "timestep": [
+     [
+      60,
+      857
+     ],
+     [
+      30,
+      54
+     ],
+     [
+      50,
+      1
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      881
+     ],
+     [
+      "[0]",
+      26
+     ],
+     [
+      "[1]",
+      5
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.002
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "*",
+   "count": 12165,
+   "models": 8595,
+   "tris": [
+    90.0,
+    253.0,
+    830.0
+   ],
+   "verts": [
+    152.0,
+    864.0,
+    3801.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    3.0,
+    22.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    2.0
+   ],
+   "materials": [
+    4.0,
+    6.0,
+    10.0
+   ],
+   "skinned": 0.039,
+   "bound_to_many": 0.21,
+   "index_32": 0.22,
+   "uv_repeats": 0.177,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     3796
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     2784
+    ],
+    [
+     "FD:u81 (1 B)",
+     1470
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (48 B)",
+     580
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     204
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,TextureCoordinates0:f2 (40 B)",
+     128
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (56 B)",
+     3
+    ],
+    [
+     "Position:f3,Normal:f3,DiffuseColor:u84,TextureCoordinates0:f2 (36 B)",
+     2
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask",
+     3318
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     3218
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     2675
+    ],
+    [
+     "alphatest",
+     1168
+    ],
+    [
+     "tree",
+     694
+    ],
+    [
+     "pixelxform",
+     623
+    ],
+    [
+     "bumpspec_mask_ambientocclusion",
+     488
+    ],
+    [
+     "bumpspec_mask_alphatest_ambientocclusion",
+     367
+    ]
+   ],
+   "size": {
+    "width": [
+     1.911,
+     5.151,
+     9.613
+    ],
+    "height": [
+     1.411,
+     4.188,
+     8.798
+    ]
+   },
+   "pixels_per_unit": [
+    31.9397,
+    43.5238,
+    66.5107
+   ],
+   "animations": {
+    "count": 4368,
+    "duration": [
+     1.3333,
+     2.3333,
+     3.3333
+    ],
+    "tracks": [
+     21.0,
+     24.0,
+     32.0
+    ],
+    "timestep": [
+     [
+      60,
+      3646
+     ],
+     [
+      30,
+      657
+     ],
+     [
+      40,
+      59
+     ],
+     [
+      48,
+      5
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      4025
+     ],
+     [
+      "[3]",
+      161
+     ],
+     [
+      "[]",
+      143
+     ],
+     [
+      "[1]",
+      35
+     ],
+     [
+      "[0]",
+      4
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "animation_library",
+   "count": 1856,
+   "models": 293,
+   "tris": [
+    893.0,
+    893.0,
+    1517.0
+   ],
+   "verts": [
+    911.0,
+    911.0,
+    2183.0
+   ],
+   "meshes": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "bones": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "bone_depth": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "materials": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "skinned": 0.007,
+   "bound_to_many": 0.044,
+   "index_32": 0.949,
+   "uv_repeats": 0.0,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     282
+    ],
+    [
+     "FD:u81 (1 B)",
+     11
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     3
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     1
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,TextureCoordinates0:f2 (40 B)",
+     1
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask",
+     10
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     5
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     4
+    ],
+    [
+     "pixelxform",
+     2
+    ],
+    [
+     "alphablend",
+     1
+    ]
+   ],
+   "size": {
+    "width": [
+     1.704,
+     1.704,
+     1.796
+    ],
+    "height": [
+     0.159,
+     0.159,
+     1.956
+    ]
+   },
+   "pixels_per_unit": [
+    36.5442,
+    66.8957,
+    144.5683
+   ],
+   "animations": {
+    "count": 1836,
+    "duration": [
+     1.0,
+     1.6667,
+     3.0
+    ],
+    "tracks": [
+     23.0,
+     24.0,
+     31.0
+    ],
+    "timestep": [
+     [
+      60,
+      1678
+     ],
+     [
+      30,
+      151
+     ],
+     [
+      40,
+      7
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      1808
+     ],
+     [
+      "[3]",
+      20
+     ],
+     [
+      "[1]",
+      7
+     ],
+     [
+      "[0]",
+      1
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "buildings",
+   "count": 3353,
+   "models": 2705,
+   "tris": [
+    228.0,
+    576.0,
+    1125.0
+   ],
+   "verts": [
+    538.0,
+    1397.0,
+    2855.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    13.0
+   ],
+   "bones": [
+    2.0,
+    4.0,
+    32.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    4.0,
+    9.0,
+    13.0
+   ],
+   "skinned": 0.002,
+   "bound_to_many": 0.041,
+   "index_32": 0.078,
+   "uv_repeats": 0.328,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     2243
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     435
+    ],
+    [
+     "FD:u81 (1 B)",
+     105
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     4
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (48 B)",
+     2
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,TextureCoordinates0:f2 (40 B)",
+     1
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask_alphatest",
+     1917
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     1370
+    ],
+    [
+     "bumpspec_mask",
+     1098
+    ],
+    [
+     "alphatest",
+     465
+    ],
+    [
+     "pixelxform",
+     129
+    ],
+    [
+     "bumpspec_alphatest",
+     38
+    ],
+    [
+     "tree",
+     17
+    ],
+    [
+     "water_nocolor",
+     13
+    ]
+   ],
+   "size": {
+    "width": [
+     4.873,
+     8.225,
+     10.2755
+    ],
+    "height": [
+     4.375,
+     6.2215,
+     10.258
+    ]
+   },
+   "pixels_per_unit": [
+    30.6632,
+    37.0176,
+    49.1034
+   ],
+   "animations": {
+    "count": 704,
+    "duration": [
+     3.3333,
+     3.3333,
+     4.1667
+    ],
+    "tracks": [
+     14.75,
+     28.0,
+     41.0
+    ],
+    "timestep": [
+     [
+      60,
+      647
+     ],
+     [
+      30,
+      57
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      656
+     ],
+     [
+      "[3]",
+      20
+     ],
+     [
+      "[]",
+      20
+     ],
+     [
+      "[1]",
+      8
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "effects",
+   "count": 104,
+   "models": 88,
+   "tris": [
+    4.0,
+    20.0,
+    49.5
+   ],
+   "verts": [
+    11.5,
+    27.0,
+    72.25
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    2.0,
+    3.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    2.0,
+    3.0,
+    4.0
+   ],
+   "skinned": 0.0,
+   "bound_to_many": 0.011,
+   "index_32": 0.489,
+   "uv_repeats": 0.034,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     72
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     15
+    ],
+    [
+     "FD:u81 (1 B)",
+     1
+    ]
+   ],
+   "effects": [
+    [
+     "alphatest",
+     16
+    ],
+    [
+     "bumpspec_mask",
+     14
+    ],
+    [
+     "emissive",
+     2
+    ],
+    [
+     "bumpspec",
+     1
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     1
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     1
+    ]
+   ],
+   "size": {
+    "width": [
+     0.4215,
+     0.972,
+     2.535
+    ],
+    "height": [
+     0.1,
+     0.258,
+     0.877
+    ]
+   },
+   "pixels_per_unit": [
+    29.6627,
+    58.04,
+    80.9613
+   ],
+   "animations": {
+    "count": 37,
+    "duration": [
+     0.3333,
+     0.6667,
+     3.0
+    ],
+    "tracks": [
+     0.0,
+     1.0,
+     2.0
+    ],
+    "timestep": [
+     [
+      30,
+      27
+     ],
+     [
+      60,
+      10
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      18
+     ],
+     [
+      "[]",
+      15
+     ],
+     [
+      "[3]",
+      2
+     ],
+     [
+      "[1]",
+      2
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "homecity",
+   "count": 1236,
+   "models": 981,
+   "tris": [
+    314.0,
+    946.0,
+    1923.0
+   ],
+   "verts": [
+    668.0,
+    2290.0,
+    5274.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    2.0
+   ],
+   "bones": [
+    2.0,
+    2.0,
+    5.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    5.0,
+    7.0,
+    11.0
+   ],
+   "skinned": 0.007,
+   "bound_to_many": 0.097,
+   "index_32": 0.064,
+   "uv_repeats": 0.321,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (48 B)",
+     558
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     234
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     188
+    ],
+    [
+     "FD:u81 (1 B)",
+     88
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     4
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (56 B)",
+     3
+    ],
+    [
+     "Position:f3,Normal:f3,DiffuseColor:u84,TextureCoordinates0:f2 (36 B)",
+     1
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,Binormal:f3,TextureCoordinates0:f2 (56 B)",
+     1
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask_ambientocclusion",
+     480
+    ],
+    [
+     "bumpspec_mask_alphatest_ambientocclusion",
+     351
+    ],
+    [
+     "bumpspec_mask",
+     257
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     232
+    ],
+    [
+     "emissive",
+     67
+    ],
+    [
+     "alphatest",
+     62
+    ],
+    [
+     "water_nocolor",
+     26
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     17
+    ]
+   ],
+   "size": {
+    "width": [
+     10.768,
+     21.683,
+     66.3945
+    ],
+    "height": [
+     2.9425,
+     8.153,
+     16.3792
+    ]
+   },
+   "pixels_per_unit": [
+    30.4627,
+    52.4992,
+    82.3488
+   ],
+   "animations": {
+    "count": 265,
+    "duration": [
+     1.8333,
+     2.6333,
+     4.0
+    ],
+    "tracks": [
+     21.0,
+     24.0,
+     30.0
+    ],
+    "timestep": [
+     [
+      60,
+      249
+     ],
+     [
+      30,
+      9
+     ],
+     [
+      48,
+      5
+     ],
+     [
+      40,
+      2
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      259
+     ],
+     [
+      "[]",
+      6
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "nuggets",
+   "count": 182,
+   "models": 65,
+   "tris": [
+    266.0,
+    320.0,
+    846.0
+   ],
+   "verts": [
+    563.0,
+    678.0,
+    2943.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    2.0,
+    7.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    7.0,
+    12.0,
+    16.0
+   ],
+   "skinned": 0.0,
+   "bound_to_many": 0.108,
+   "index_32": 0.062,
+   "uv_repeats": 0.323,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     54
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     10
+    ],
+    [
+     "FD:u81 (1 B)",
+     7
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask_alphatest",
+     51
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     29
+    ],
+    [
+     "bumpspec_mask",
+     21
+    ],
+    [
+     "alphatest",
+     9
+    ],
+    [
+     "bump",
+     3
+    ],
+    [
+     "tree",
+     2
+    ],
+    [
+     "bumpspec_alphatest",
+     2
+    ]
+   ],
+   "size": {
+    "width": [
+     4.278,
+     4.697,
+     7.696
+    ],
+    "height": [
+     1.897,
+     2.159,
+     4.286
+    ]
+   },
+   "pixels_per_unit": [
+    47.5802,
+    71.273,
+    89.1648
+   ],
+   "animations": {
+    "count": 115,
+    "duration": [
+     2.0,
+     3.3333,
+     4.0
+    ],
+    "tracks": [
+     22.0,
+     25.0,
+     30.0
+    ],
+    "timestep": [
+     [
+      60,
+      114
+     ],
+     [
+      30,
+      1
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      115
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "objects",
+   "count": 177,
+   "models": 154,
+   "tris": [
+    30.0,
+    105.5,
+    348.0
+   ],
+   "verts": [
+    64.75,
+    186.0,
+    597.5
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    2.0,
+    3.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    3.0,
+    5.0,
+    8.0
+   ],
+   "skinned": 0.026,
+   "bound_to_many": 0.052,
+   "index_32": 0.24,
+   "uv_repeats": 0.136,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     104
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     38
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (48 B)",
+     6
+    ],
+    [
+     "FD:u81 (1 B)",
+     4
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     4
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask",
+     95
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     43
+    ],
+    [
+     "alphatest",
+     13
+    ],
+    [
+     "bumpspec_mask_ambientocclusion",
+     7
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     5
+    ],
+    [
+     "bumpspec_alphatest",
+     4
+    ],
+    [
+     "bump",
+     4
+    ],
+    [
+     "fabric",
+     3
+    ]
+   ],
+   "size": {
+    "width": [
+     1.1687,
+     3.0555,
+     6.8373
+    ],
+    "height": [
+     0.6738,
+     1.7435,
+     2.772
+    ]
+   },
+   "pixels_per_unit": [
+    32.6184,
+    51.8029,
+    91.7795
+   ],
+   "animations": {
+    "count": 39,
+    "duration": [
+     1.6667,
+     2.0,
+     2.9166
+    ],
+    "tracks": [
+     0.0,
+     2.0,
+     14.0
+    ],
+    "timestep": [
+     [
+      60,
+      22
+     ],
+     [
+      30,
+      17
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      24
+     ],
+     [
+      "[]",
+      12
+     ],
+     [
+      "[3]",
+      3
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "other",
+   "count": 18,
+   "models": 18,
+   "tris": [
+    116.25,
+    225.0,
+    339.5
+   ],
+   "verts": [
+    127.0,
+    342.5,
+    538.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bone_depth": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "materials": [
+    3.5,
+    6.0,
+    6.0
+   ],
+   "skinned": 0.0,
+   "bound_to_many": 0.111,
+   "index_32": 0.0,
+   "uv_repeats": 0.0,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     15
+    ],
+    [
+     "FD:u81 (1 B)",
+     2
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     1
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask_alphatest",
+     13
+    ],
+    [
+     "bumpspec_mask",
+     7
+    ],
+    [
+     "alphatest",
+     1
+    ]
+   ],
+   "size": {
+    "width": [
+     1.637,
+     3.6115,
+     3.855
+    ],
+    "height": [
+     1.373,
+     1.817,
+     3.0377
+    ]
+   },
+   "pixels_per_unit": [
+    47.1462,
+    61.664,
+    62.0691
+   ]
+  },
+  {
+   "origin": "stock",
+   "category": "terrain",
+   "count": 1879,
+   "models": 1863,
+   "tris": [
+    41.0,
+    86.0,
+    148.0
+   ],
+   "verts": [
+    54.0,
+    137.0,
+    242.5
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    2.0,
+    3.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    3.0,
+    5.0,
+    6.0
+   ],
+   "skinned": 0.008,
+   "bound_to_many": 0.02,
+   "index_32": 0.468,
+   "uv_repeats": 0.085,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     1420
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     405
+    ],
+    [
+     "FD:u81 (1 B)",
+     23
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,TextureCoordinates0:f2 (40 B)",
+     14
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (48 B)",
+     12
+    ],
+    [
+     "Position:f3,Normal:f3,DiffuseColor0:f4,TextureCoordinates0:f2 (48 B)",
+     1
+    ]
+   ],
+   "effects": [
+    [
+     "tree",
+     668
+    ],
+    [
+     "alphatest",
+     512
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     246
+    ],
+    [
+     "bumpspec_mask",
+     241
+    ],
+    [
+     "bump",
+     89
+    ],
+    [
+     "flat_alphatest",
+     36
+    ],
+    [
+     "bump alphatest",
+     21
+    ],
+    [
+     "bumpspec_mask_alphatest_ambientocclusion",
+     12
+    ]
+   ],
+   "size": {
+    "width": [
+     2.029,
+     4.14,
+     6.174
+    ],
+    "height": [
+     1.103,
+     2.755,
+     8.717
+    ]
+   },
+   "pixels_per_unit": [
+    37.4336,
+    52.2701,
+    81.9021
+   ],
+   "animations": {
+    "count": 286,
+    "duration": [
+     3.3333,
+     3.3333,
+     3.3333
+    ],
+    "tracks": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "timestep": [
+     [
+      30,
+      279
+     ],
+     [
+      60,
+      7
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      121
+     ],
+     [
+      "[3]",
+      102
+     ],
+     [
+      "[]",
+      49
+     ],
+     [
+      "[1]",
+      14
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.003
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "ui",
+   "count": 109,
+   "models": 98,
+   "tris": [
+    12.25,
+    24.0,
+    284.0
+   ],
+   "verts": [
+    24.0,
+    228.0,
+    672.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    2.0,
+    2.0
+   ],
+   "bone_depth": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "materials": [
+    3.0,
+    4.0,
+    5.0
+   ],
+   "skinned": 0.01,
+   "bound_to_many": 0.133,
+   "index_32": 0.857,
+   "uv_repeats": 0.02,
+   "layouts": [
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     76
+    ],
+    [
+     "FD:u81 (1 B)",
+     12
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     10
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,TextureCoordinates0:f2 (40 B)",
+     1
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask",
+     13
+    ],
+    [
+     "pixelxform",
+     9
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     3
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     2
+    ],
+    [
+     "flat",
+     2
+    ],
+    [
+     "alphatest",
+     1
+    ]
+   ],
+   "size": {
+    "width": [
+     0.6335,
+     1.208,
+     1.864
+    ],
+    "height": [
+     0.604,
+     0.932,
+     1.492
+    ]
+   },
+   "pixels_per_unit": [
+    27.2486,
+    35.7114,
+    61.0269
+   ],
+   "animations": {
+    "count": 28,
+    "duration": [
+     2.0,
+     3.6666,
+     4.0
+    ],
+    "tracks": [
+     1.0,
+     2.0,
+     2.0
+    ],
+    "timestep": [
+     [
+      30,
+      17
+     ],
+     [
+      60,
+      11
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      21
+     ],
+     [
+      "[3]",
+      4
+     ],
+     [
+      "[]",
+      2
+     ],
+     [
+      "[1]",
+      1
+     ]
+    ],
+    "loop_translation": 0.036,
+    "periodic": 0.0
+   }
+  },
+  {
+   "origin": "stock",
+   "category": "units",
+   "count": 3250,
+   "models": 2329,
+   "tris": [
+    140.0,
+    232.0,
+    305.0
+   ],
+   "verts": [
+    196.0,
+    5264.0,
+    11382.0
+   ],
+   "meshes": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "bones": [
+    2.0,
+    22.0,
+    30.0
+   ],
+   "bone_depth": [
+    1.0,
+    7.0,
+    7.0
+   ],
+   "materials": [
+    5.0,
+    6.0,
+    9.0
+   ],
+   "skinned": 0.13,
+   "bound_to_many": 0.651,
+   "index_32": 0.128,
+   "uv_repeats": 0.05,
+   "layouts": [
+    [
+     "FD:u81 (1 B)",
+     1217
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (44 B)",
+     713
+    ],
+    [
+     "Position:f3,Normal:f3,TextureCoordinates0:f2 (32 B)",
+     262
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,Tangent:f3,TextureCoordinates0:f2 (52 B)",
+     191
+    ],
+    [
+     "Position:f3,BoneWeights:nu84,BoneIndices:u84,Normal:f3,TextureCoordinates0:f2 (40 B)",
+     111
+    ],
+    [
+     "Position:f3,Normal:f3,Tangent:f3,DiffuseColor:u84,TextureCoordinates0:f2 (48 B)",
+     1
+    ]
+   ],
+   "effects": [
+    [
+     "bumpspec_mask",
+     1562
+    ],
+    [
+     "bumpspec_mask_pixelxform",
+     1245
+    ],
+    [
+     "bumpspec_mask_alphatest",
+     709
+    ],
+    [
+     "pixelxform",
+     483
+    ],
+    [
+     "alphatest",
+     89
+    ],
+    [
+     "alphablend",
+     37
+    ],
+    [
+     "bumpspec_alphatest",
+     17
+    ],
+    [
+     "bumpspec",
+     14
+    ]
+   ],
+   "size": {
+    "width": [
+     0.312,
+     1.0255,
+     2.871
+    ],
+    "height": [
+     0.6838,
+     1.913,
+     2.5232
+    ]
+   },
+   "pixels_per_unit": [
+    31.9088,
+    43.9283,
+    69.3427
+   ],
+   "animations": {
+    "count": 1058,
+    "duration": [
+     1.3333,
+     2.1667,
+     3.6667
+    ],
+    "tracks": [
+     20.0,
+     26.0,
+     50.0
+    ],
+    "timestep": [
+     [
+      60,
+      908
+     ],
+     [
+      30,
+      99
+     ],
+     [
+      40,
+      50
+     ],
+     [
+      20,
+      1
+     ]
+    ],
+    "flags": [
+     [
+      "[2]",
+      1003
+     ],
+     [
+      "[]",
+      39
+     ],
+     [
+      "[3]",
+      10
+     ],
+     [
+      "[1]",
+      3
+     ],
+     [
+      "[0]",
+      3
+     ]
+    ],
+    "loop_translation": 0.0,
+    "periodic": 0.0
+   }
+  }
+ ]
+}

@@ -143,19 +143,26 @@ def town_center(p, P, medium):
     if p.architecture == "SUBSAHARAN":                    # the great hut, the wives' huts, one wall round all
         out = [hut(0.0, 0.3, 2.5, 2.8, 3.6, overhang=0.4, finial=0.7, door=True, door_w=1.3, door_h=2.1,
                    base=0.25, big=True, flag=True)]
+        # the small huts and the gate towers at 20 sides, not 16: the court has no room left for
+        # props, and the class's real town centers carry over 3,083 triangles (rounder huts, +216)
         for x, y in ((-3.3, 3.3), (3.3, 3.3)):
-            out.append(hut(x, y, 1.0, 1.7, 1.7, overhang=0.2, finial=0.25, door=True, door_w=0.7, door_h=1.3, big=True))
-        out += [hut(-3.3, -3.0, 0.9, 1.6, 1.6, overhang=0.2, door=True, door_w=0.7, door_h=1.2, big=True),
-                hut(3.3, -3.0, 0.9, 1.6, 1.6, overhang=0.2, door=True, door_w=0.7, door_h=1.2, big=True)]
+            out.append(hut(x, y, 1.0, 1.7, 1.7, overhang=0.2, finial=0.25, door=True, door_w=0.7, door_h=1.3, big=True,
+                           sides=20))
+        # y -2.65, not -3.0: closer to the gate the eave of each hut comes within 0.08 m of a gate
+        # tower's, which is neither apart (0.25 m) nor embedded - the rule in core/joints.py
+        out += [hut(-3.3, -2.65, 0.9, 1.6, 1.6, overhang=0.2, door=True, door_w=0.7, door_h=1.2, big=True, sides=20),
+                hut(3.3, -2.65, 0.9, 1.6, 1.6, overhang=0.2, door=True, door_w=0.7, door_h=1.2, big=True, sides=20)]
         out += court(P, 1.2, 0.0, 1.8, kind="PALISADE", width=2.2)
-        out += [tower(-1.65, -P + 0.3, 0.55, 2.8, roof="cone", roof_h=1.3, overhang=0.2),   # the gate's towers
-                tower(1.65, -P + 0.3, 0.55, 2.8, roof="cone", roof_h=1.3, overhang=0.2)]
+        out += [tower(-1.65, -P + 0.3, 0.55, 2.8, roof="cone", roof_h=1.3, overhang=0.2, sides=20),   # the gate's towers
+                tower(1.65, -P + 0.3, 0.55, 2.8, roof="cone", roof_h=1.3, overhang=0.2, sides=20)]
         return out + [yard(x0=-P + 0.2, y0=-P + 0.2, x1=P - 0.2, y1=P)]
     # a keep with four wings, walled round, round towers at the corners
     t = {"kind": "tower", "r": 0.8, "wall_h": 3.4, "roof_h": 0.0, "roof": "crenel", "bands": True, "sahel": True}
     c = P - 0.8
+    # two rows of beam ends (toron) round the keep, above the wings' merlons: the court has no room
+    # left for props, and the class's real town centers carry over 3,083 triangles (+192)
     out = [{"kind": "tower", "x": 0.0, "y": 0.0, "r": 2.3, "wall_h": 5.7, "roof_h": 0.0, "roof": "crenel",
-            "bands": True, "big": True, "flag": True, "sahel": True}]
+            "bands": True, "big": True, "flag": True, "sahel": True, "beams": (0.74, 0.93), "beam_n": 12}]
     out += [block(-1.3, 1.3, -P, -1.7, 2.8, door=True, parapet=0.4, merlons=0.8, beams=True, windows=0, joined=("back",)),
             block(-1.3, 1.3, 1.7, P, 2.8, parapet=0.4, merlons=0.8, beams=True, windows=0, joined=("front",)),
             block(-P, -1.7, -1.3, 1.3, 2.8, parapet=0.4, merlons=0.8, beams=True, windows=0, joined=("right",)),
@@ -164,7 +171,9 @@ def town_center(p, P, medium):
         out.append({**t, "x": cx, "y": cy})
     for sx, sy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):   # a wall from wing to wing through each corner
         out.append(earth_wall([(sx * 1.3, sy * c), (sx * c, sy * c), (sx * c, sy * 1.3)], 1.8, crenels=True))
-    out += [stairs(-2.9, 3.2, 2.8, d="-y", w=0.7, run=1.8, n=7), stairs(2.9, 3.2, 2.8, d="-y", w=0.7, run=1.8, n=7)]
+    # x 2.8, not 2.9: at 2.9 the outer side of each flight lands in the plane of a merlon on
+    # the wing's parapet (3 mm apart) and the two faces flicker against each other in game
+    out += [stairs(-2.8, 3.2, 2.8, d="-y", w=0.7, run=1.8, n=7), stairs(2.8, 3.2, 2.8, d="-y", w=0.7, run=1.8, n=7)]
     return out + [yard(x0=-c, y0=-c, x1=c, y1=c)]
 
 
@@ -201,7 +210,7 @@ def market(p, P, medium):
 def war_camp(p, P, medium):
     if p.architecture == "SUBSAHARAN":                    # a palisade on the edge, a watchtower at its corner
         return [block(-P + 0.3, 0.8, 0.9, P - 0.3, 3.0, door=True, roof="thatch", sahel=False, windows=0, flag=True),
-                lookout(2.6, 2.6, 1.3, 3.8),
+                lookout(2.6, 2.6, 1.3, 3.9),                 # 3.9: at 3.8 it stood under the class's lowest height
                 {"kind": "fence", "points": [(-0.3, -P), (P, -P), (P, P), (-P, P), (-P, -P), (-2.3, -P)], "h": 2.3,
                  "type": "PALISADE"},
                 yard(x0=-P + 0.3, y0=-P + 0.3, x1=P - 0.3, y1=P - 0.3)]
@@ -293,7 +302,7 @@ def customs(p, P, medium):
     h = 5.0 if two else 3.6
     if p.architecture == "SUBSAHARAN":                    # a colonial hall under thatch, its porch of timber
         out = [block(-2.7, 2.7, -1.4, P, h, door=True, roof="thatch", sahel=False, windows=3, flag=True),
-               shed(-2.7, 2.7, -3.2, -1.5, 2.7, 2.3, rafters=13, posts=(False, True)),
+               shed(-2.7, 2.7, -3.2, -1.5, 2.7, 2.3, rafters=14, posts=(False, True)),   # 14: 13 left it under its class
                shed(2.8, P, -1.4, P, 2.3, 1.9, slope="+x", rafters=6, posts=(False, True)),
                shed(-P, -2.8, -1.4, P, 2.3, 1.9, slope="-x", rafters=6, posts=(False, True))] +             court(P, -2.0, 0.0, 1.0, kind="RAILS", width=2.4)
     else:

@@ -84,6 +84,19 @@ From the command line: `scripts/game_export.py ... --ai 0.45 [--ai-seed N]`, and
 `tools/ai_sweep.py` repaints presets at several strengths and measures each result (edge
 shift, colour drift, local contrast).
 
+## A model the generator did not make
+
+The same button repaints a mesh brought in from elsewhere: its **material slots** become the
+regions (the bounding box of each slot's UVs), and since there are no built-in materials for
+them, **your prompt is required**. What the mesh must satisfy, and how it is then exported as a
+prop, is in [external-meshes.md](external-meshes.md).
+
+## A tileable swatch, not a texture of a model
+
+The repaint keeps every edge where the geometry needs it. When what you want is the **material**
+itself - a square of stone or planks that repeats without a join - that is the texture maker:
+[texture-maker.md](texture-maker.md).
+
 ## In the game (2026-11-03)
 
 The colonial house repainted at 0.45 (`scripts/game_export.py --ai 0.45`) beside the drawn one,

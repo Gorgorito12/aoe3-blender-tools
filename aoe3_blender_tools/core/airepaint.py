@@ -89,6 +89,9 @@ GROUND = {"STONE": "grey rubble stone wall with small windows and a plank door",
 
 def material_of(region, params):
     """The prompt material of a region, or None (not repainted)."""
+    own = getattr(params, "prompts", None)
+    if own is not None:              # a mesh we did not generate: its zones carry their own text
+        return own.get(region)
     style = str(getattr(params, "style", "NEOCLASSICAL")).upper()
     if style == "TIMBER" and region in ("front_g", "back_g", "side_g"):
         return GROUND.get(str(getattr(params, "ground_floor", "STONE")).upper())

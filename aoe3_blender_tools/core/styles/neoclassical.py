@@ -7,6 +7,7 @@ from dataclasses import replace
 
 import numpy as np
 
+from .. import resolution
 from ..atlas import Region
 from ..kit import Builder, Face
 from ..painter import PLAYER_GREY, _shade
@@ -140,7 +141,7 @@ def build(p, params):
     bow = p.back_portico == "BOW"
     R_bow = p.bow_radius
     R_col = R_bow + 2.0
-    N_BOW = 5                                   # wall segments of the bowed bay
+    N_BOW = resolution.sides(5, p.poly, lowest=2)   # wall segments of the bowed bay
     bow_seg = 2 * R_bow * math.sin(math.pi / (2 * N_BOW))
     if bow:
         side = flank(R_bow + 0.6, W / 2 - 1.2)
@@ -203,7 +204,11 @@ def build(p, params):
     if p.wings:
         regions += [Region("wing_long", p.wing_width, STOREY_H), Region("wing_short", p.wing_depth, STOREY_H)]
 
-    b = Builder(p.texture_size, medium)
+    b = Builder(p.texture_size, medium, p.poly)
+    # the bodies that are not boxes, through the one multiplier (core/resolution.py)
+    n_oct = b.sides(8, lowest=4)        # eight-sided members: column plinths, the cupola
+    n_col = b.sides(10, lowest=5)       # a column's shaft
+    n_arc = b.sides(12, lowest=4)       # the arcs of the bow and its balustrade
     for r in regions:
         b.region(r.name, r.world_w, r.world_h)
     b.pack()
@@ -212,16 +217,18 @@ def build(p, params):
         """A column from z0 to its abacus top z1, as the portico's."""
         if medium:      # square plinth and torus, shaft, echinus and abacus
             b.box(cx - 0.45, cx + 0.45, cy - 0.45, cy + 0.45, z0, z0 + 0.18, "white", "white")
-            oct_ = [2 * math.pi * (i + 0.5) / 8 for i in range(8)]
-            b.ring(cx, cy, 0.42, z0 + 0.18, z0 + 0.3, 8, "white", per_face=True, phase=math.pi / 8)
+            oct_ = [2 * math.pi * (i + 0.5) / n_oct for i in range(n_oct)]
+            b.ring(cx, cy, 0.42, z0 + 0.18, z0 + 0.3, n_oct, "white", per_face=True,
+                   phase=math.pi / n_oct)
             b.faces.append(Face([(cx + 0.42 * math.cos(a), cy + 0.42 * math.sin(a), z0 + 0.3) for a in oct_],
                               "white", [(0.9 + 0.42 * math.cos(a), 0.8 + 0.42 * math.sin(a)) for a in oct_]))
-            b.ring(cx, cy, col_r, z0 + 0.3, z1 - 0.32, 10, "column", smooth=True)
-            b.ring(cx, cy, 0.43, z1 - 0.32, z1 - 0.16, 8, "white", per_face=True, phase=math.pi / 8)
+            b.ring(cx, cy, col_r, z0 + 0.3, z1 - 0.32, n_col, "column", smooth=True)
+            b.ring(cx, cy, 0.43, z1 - 0.32, z1 - 0.16, n_oct, "white", per_face=True,
+                   phase=math.pi / n_oct)
             b.box(cx - 0.5, cx + 0.5, cy - 0.5, cy + 0.5, z1 - 0.16, z1, "white", "white", skip=("top",))
         else:
             b.box(cx - 0.45, cx + 0.45, cy - 0.45, cy + 0.45, z0, z0 + 0.25, "white", "white")
-            b.ring(cx, cy, col_r, z0 + 0.25, z1 - 0.3, 10, "column", smooth=True)
+            b.ring(cx, cy, col_r, z0 + 0.25, z1 - 0.3, n_col, "column", smooth=True)
             b.box(cx - 0.48, cx + 0.48, cy - 0.48, cy + 0.48, z1 - 0.3, z1, "white", "white", skip=("top",))
 
     def make_wall(origin, ua, length, height, region, spec, uoff=0.0):
@@ -270,14 +277,14 @@ def build(p, params):
             make_wall((ax, ay, plinth), ((bx - ax) / seg, (by - ay) / seg, 0.0), seg, wall_h + CORNICE_H, "bow",
                       facades["bow"])
         R_plat = R_col + 0.7
-        t_p = b.chord_cap(0.0, cyb, R_plat, D / 2 + 0.2, 12, plinth, "stone")
-        b.arc_band(0.0, cyb, R_plat, t_p, math.pi - t_p, 12, 0.0, plinth, "plinth")
+        t_p = b.chord_cap(0.0, cyb, R_plat, D / 2 + 0.2, n_arc, plinth, "stone")
+        b.arc_band(0.0, cyb, R_plat, t_p, math.pi - t_p, n_arc, 0.0, plinth, "plinth")
         t0 = 0.35
         for i in range(p.bow_columns):
             t = t0 + (math.pi - 2 * t0) * i / max(1, p.bow_columns - 1)
             column(R_col * math.cos(t), cyb + R_col * math.sin(t), plinth, ent_bottom)
-        t_r = b.chord_cap(0.0, cyb, R_ent, ey, 12, eave_z, "lead")
-        b.arc_band(0.0, cyb, R_ent, t_r, math.pi - t_r, 12, ent_bottom, eave_z, "trim")
+        t_r = b.chord_cap(0.0, cyb, R_ent, ey, n_arc, eave_z, "lead")
+        b.arc_band(0.0, cyb, R_ent, t_r, math.pi - t_r, n_arc, ent_bottom, eave_z, "trim")
         # steps from the platform's arc, with cheek walls at medium detail
         sh2 = 1.6
         y0 = cyb + math.sqrt(R_plat ** 2 - sh2 ** 2)
@@ -317,7 +324,7 @@ def build(p, params):
             for i in range(n):
                 cx = x_in + 0.45 + (length - 0.9) * i / (n - 1)
                 for cy in (-1.15, 1.15):
-                    b.ring(cx, cy, 0.17, 0.25, 2.75, 8, "column", smooth=True)
+                    b.ring(cx, cy, 0.17, 0.25, 2.75, n_oct, "column", smooth=True)
 
     # balustrade on the cornice: straight segments that never overlap at the corners (the side
     # ones stop at the inner face of the front and back ones), posts at the corners, at the ends
@@ -341,10 +348,11 @@ def build(p, params):
             posts += [(-xg, ey - 0.2), (xg, ey - 0.2)]
             # the bow's balustrade, on the colonnade's flat roof
             t_b = math.asin(min(1.0, 0.3 / (R_ent - 0.05)))
-            b.arc_band(0.0, D / 2, R_ent - 0.05, t_b, math.pi - t_b, 12, eave_z, eave_z + PH, "balus")
-            b.arc_band(0.0, D / 2, R_ent - 0.3, t_b, math.pi - t_b, 12, eave_z, eave_z + PH, "balus", inward=True)
-            outer = b.arc_pts(0.0, D / 2, R_ent - 0.05, t_b, math.pi - t_b, 12)
-            inner = b.arc_pts(0.0, D / 2, R_ent - 0.3, t_b, math.pi - t_b, 12)
+            b.arc_band(0.0, D / 2, R_ent - 0.05, t_b, math.pi - t_b, n_arc, eave_z, eave_z + PH, "balus")
+            b.arc_band(0.0, D / 2, R_ent - 0.3, t_b, math.pi - t_b, n_arc, eave_z, eave_z + PH, "balus",
+                       inward=True)
+            outer = b.arc_pts(0.0, D / 2, R_ent - 0.05, t_b, math.pi - t_b, n_arc)
+            inner = b.arc_pts(0.0, D / 2, R_ent - 0.3, t_b, math.pi - t_b, n_arc)
             for (ax, ay), (bx, by), (cx_, cy_), (dx, dy) in zip(outer, outer[1:], inner[1:], inner):
                 b.facing([(ax, ay, eave_z + PH), (bx, by, eave_z + PH), (cx_, cy_, eave_z + PH), (dx, dy, eave_z + PH)],
                          [(0, 0), (0.6, 0), (0.6, 0.25), (0, 0.25)], "white", (0.0, 0.0, 1.0))
@@ -386,8 +394,9 @@ def build(p, params):
     if p.cupola:
         z0 = ridge_z - 0.6
         z1 = ridge_z + 1.0
-        b.ring(0, 0, drum_r, z0, z1, 8, "cupwin", per_face=True, phase=math.pi / 8)
-        b.ring(0, 0, drum_r * 1.18, z1, z1 + 0.15, 8, "white", per_face=True, phase=math.pi / 8)
+        b.ring(0, 0, drum_r, z0, z1, n_oct, "cupwin", per_face=True, phase=math.pi / n_oct)
+        b.ring(0, 0, drum_r * 1.18, z1, z1 + 0.15, n_oct, "white", per_face=True,
+               phase=math.pi / n_oct)
         dome_r, dome_h, dome_z = drum_r * 1.1, drum_r, z1 + 0.15
         pts = []
         for ang in (0, 25, 50, 72):
@@ -398,23 +407,25 @@ def build(p, params):
         for j in range(len(pts) - 1):
             (r0, za), (r1, zb) = pts[j], pts[j + 1]
             arc1 = arc + math.hypot(r1 - r0, zb - za)
-            for i in range(8):
-                a0 = math.pi / 8 + 2 * math.pi * i / 8
-                a1 = a0 + 2 * math.pi / 8
-                u0, u1 = i * lead.world_w / 8, (i + 1) * lead.world_w / 8
+            for i in range(n_oct):
+                a0 = math.pi / n_oct + 2 * math.pi * i / n_oct
+                a1 = a0 + 2 * math.pi / n_oct
+                u0, u1 = i * lead.world_w / n_oct, (i + 1) * lead.world_w / n_oct
                 b.faces.append(Face([(r0 * math.cos(a0), r0 * math.sin(a0), za), (r0 * math.cos(a1), r0 * math.sin(a1), za),
                                    (r1 * math.cos(a1), r1 * math.sin(a1), zb), (r1 * math.cos(a0), r1 * math.sin(a0), zb)],
                                   "lead", [(u0, arc), (u1, arc), (u1, arc1), (u0, arc1)], True))
             arc = arc1
         lan_r, lan_z = pts[-1]
-        b.ring(0, 0, lan_r, lan_z, lan_z + 0.45, 8, "white", per_face=True, phase=math.pi / 8)
+        b.ring(0, 0, lan_r, lan_z, lan_z + 0.45, n_oct, "white", per_face=True,
+               phase=math.pi / n_oct)
         top = lan_z + 0.45 + 0.75 * drum_r / 0.95
-        for i in range(8):
-            a0 = math.pi / 8 + 2 * math.pi * i / 8
-            a1 = a0 + 2 * math.pi / 8
+        du = 0.4 * 8 / n_oct                     # the spire's u, so its girth is the same 3.2 m
+        for i in range(n_oct):
+            a0 = math.pi / n_oct + 2 * math.pi * i / n_oct
+            a1 = a0 + 2 * math.pi / n_oct
             zb = lan_z + 0.45
             b.faces.append(Face([(lan_r * math.cos(a0), lan_r * math.sin(a0), zb), (lan_r * math.cos(a1), lan_r * math.sin(a1), zb),
-                               (0, 0, top)], "lead", [(i * 0.4, 0), ((i + 1) * 0.4, 0), ((i + 0.5) * 0.4, 0.8)]))
+                               (0, 0, top)], "lead", [(i * du, 0), ((i + 1) * du, 0), ((i + 0.5) * du, 0.8)]))
         attach["flag_attach"] = (0.0, 0.0, top)
     elif p.flagpole:
         top = ridge_z + 4.5

@@ -183,3 +183,28 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   must pass.
 - The profile keeps measurements and stock names only (rubble `BuildingRubbleNxN`, placement
   `buildingsmall/large.xml`); regenerate it with the survey command in the README.
+- **The art of the target mod is measured, not guessed** (`docs/art-findings.md`):
+  `tools/texture_survey.py` and `tools/model_survey.py` open every texture and every Granny file,
+  tell the mod's own from the original game's, and write `profiles/textures.json` and
+  `profiles/models.json` (`core/profile.art(...)`). Before choosing a grain, a palette, a texture
+  size or a triangle budget, read the group it belongs to; `tools/style_check.py` says how far
+  the presets' textures are from the mod's. A profile names no file and no folder of the mod
+  (`tests/test_profile.py`); reports, contact sheets, LoRA datasets and LoRAs name or contain its
+  art and live outside the repository (`survey/` is ignored, the rest in the cache).
+- Props, sets and settlements: `core/styles/props/` (the PROP style: `recipes.py` declares map
+  objects and treasures, `__init__.py` places their cargo with the African composer and holds
+  them to the game's own prop budgets, `sets.py` builds prop sets on one atlas) reuses
+  `african/parts.py` (its pieces take a pose: `turn`, `tilt`, `lean`); `core/group.py` packs
+  several meshes into one texture; `aoe3game/grouping.py` reads and writes groupings exactly
+  (every real one round-trips); `core/settlement.py` composes one round a socket from
+  `profiles/groupings.json` (`tools/grouping_survey.py`). A settlement is **measured**, not
+  imagined: only a third of the buildings face the socket and a fifth of the units are invisible
+  obstructions. Grouping axes and set variations are still **to verify** in game.
+- The African painter is calibrated to the mod (`materials.MATERIALS["AFRICAN"]`'s fifth value,
+  `tools/style_check.py --fit`; `tests/test_materials.py` holds every African preset within half a
+  quartile of the mod's grain and saturation). Refit after changing an African painting, and keep
+  the flat roofs smoother than the walls (`tests/test_african_skin.py`).
+- `aoe3game/gr2_mesh.py` and `core/gr2_import.py` (Import a Game Model) read an uncompressed
+  model back; `core/resolution.py` is the one place a round body's segments are decided;
+  `core/texmaker.py`, `core/texlib.py`, `core/meshtex.py` are the texture maker, its library and
+  the repaint of a mesh the generator did not make.

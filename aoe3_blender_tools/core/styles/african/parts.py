@@ -13,7 +13,7 @@ largest piece. Layouts face -Y like every style (the front, with the door, is at
 building must have comes from the real models: see CLAUDE.md and tests/test_shape.py."""
 import math
 
-from ... import joints
+from ... import joints, resolution
 from ...kit import cone_roof_size, dome_size, ring_size
 
 DOOR_ANGLE = 1.5 * math.pi          # the round walls' doors face -Y
@@ -22,10 +22,18 @@ PIER_FACE = (1.3, 0.1, 1.2, 4.8, 4.2)  # a pier's side painted: foot's width, to
 PIER_LANES = (0.0, 1.4, 2.8)           # the painted sides, so no two faces beside each other match
 
 
-def sides(medium, big=False):
-    if big:
-        return 32 if medium else 10
-    return 24 if medium else 8
+def sides(medium, big=False, poly=1.0):
+    """The sides of a round wall or roof. `poly` is BuildingParams.poly, the multiplier every
+    body that is not a box goes through (core/resolution.py); 1.0 keeps these counts exactly.
+
+    It never goes below the count the **low** detail model uses, because that polygon is the one
+    core/joints.py measures an embedding on (`solids`): below it, a wing that is inside a hut
+    today would poke out of it, and every layout would have to be proved again. So `poly` makes
+    the medium model cheaper - which is the one that is always on screen and carries the budget -
+    and leaves the low one alone."""
+    low = 10 if big else 8
+    base = (32 if medium else 10) if big else (24 if medium else 8)
+    return max(low, resolution.sides(base, poly, lowest=low))
 
 
 def door_u(r, n):
@@ -53,9 +61,9 @@ def declare(b, layout, medium):
         k = piece["kind"]
         piece["id"] = i
         if k in ("hut", "granary", "tower"):
-            n = sides(medium, piece.get("big", False))
+            n = sides(medium, piece.get("big", False), b.poly)
             if medium and piece["r"] < 1.6:
-                n = 16
+                n = b.sides(piece.get("sides", 16))
             piece["n"] = n
             wall = f"rw{i}"
             piece["wall_region"] = wall
@@ -182,7 +190,12 @@ PROPS = {"balcony": [("slab", 6.0, 1.2), ("rail", 6.0, 1.0)], "basket": [("thatc
          "trough": [("stone", 4.0, 1.2), ("iron", 0.8, 0.8)], "shields": [("hide", 1.4, 1.4), ("wood", 2.0, 3.0)],
          "hide_rack": [("hide", 1.4, 1.4), ("wood", 2.0, 3.0)], "dummy": [("wood", 2.0, 3.0), ("thatch", 2.0, 1.0)],
          "weigh": [("wood", 2.0, 3.0), ("iron", 0.8, 0.8)], "boat": [("planks", 3.2, 1.6), ("wood", 2.0, 3.0)],
-         "fish_rack": [("wood", 2.0, 3.0), ("hide", 1.4, 1.4)], "wheel": [("wood", 2.0, 3.0)]}
+         "fish_rack": [("wood", 2.0, 3.0), ("hide", 1.4, 1.4)], "wheel": [("wood", 2.0, 3.0)],
+         # the pieces of props and treasures (core/styles/props)
+         "cart": [("planks", 3.2, 1.6), ("wood", 2.0, 3.0)], "chest": [("chest", 1.6, 1.2), ("iron", 0.8, 0.8)],
+         "rock": [("stone", 4.0, 1.2)], "tent": [("canvas", 3.0, 2.4), ("wood", 2.0, 3.0)],
+         "heap": [("fruit", 1.6, 1.2)], "ruin": [("char", 4.0, 2.0), ("wood", 2.0, 3.0)],
+         "pole": [("wood", 2.0, 3.0), ("cloth", 1.6, 1.2)]}
 
 
 def _bays(length, windows, door):
@@ -215,7 +228,12 @@ def _block_openings(bays, door, h, size=(1.1, 2.1), sill=None):
 
 def solids(layout):
     """The solid volumes of a layout as shapes for core/joints.py: what a neighbour can collide
-    with, from the widest it gets (the plinth or the eave) to its highest point."""
+    with, from the widest it gets (the plinth or the eave) to its highest point.
+
+    A round volume is measured on the polygon of the **low** detail model, the fewest sides it
+    will ever have, because that is the one a wing can poke out of (core/joints.py, `inside`).
+    BuildingParams.poly never takes a wall below those counts (`sides`), so this is still the
+    worst case whatever the multiplier."""
     out = []
     for i, p in enumerate(layout):
         k = p["kind"]
@@ -277,6 +295,9 @@ def emit(b, layout, medium):
                 b.frustum(x, y, r * 0.55, r * 0.6, z + h * 0.8, z + h, n, "pot")
             b.disc(x, y, r * 0.6, z + h, n, "pot")
             _smooth(b, start)
+            if _pose(b.faces[start:], piece) and z:        # a pot on its side, on a deck
+                for f in b.faces[start:]:
+                    f.pts = [(px, py, pz + z) for px, py, pz in f.pts]
             at = (piece["x"], piece["y"], piece["h"])
         elif k == "fence":
             if piece.get("medium_only") and not medium:
@@ -373,10 +394,14 @@ def emit(b, layout, medium):
                 continue
             start = len(b.faces)
             _prop(b, piece)
-            if k in ("basket", "sack", "drum", "well"):
+            if k in ("basket", "sack", "drum", "well", "heap"):
                 _smooth(b, start)
+            posed = _pose(b.faces[start:], piece)
             dz = piece.get("z", 0.0) if k != "balcony" else 0.0
-            if dz:                                         # standing on a deck or a plinth
+            if dz and posed:                               # leaning: its bottom shows, keep it
+                for f in b.faces[start:]:
+                    f.pts = [(x, y, z + dz) for x, y, z in f.pts]
+            elif dz:                                       # standing on a deck or a plinth
                 for f in b.faces[start:]:
                     f.pts = [(x, y, z + dz) for x, y, z in f.pts]
                 b.faces[start:] = [f for f in b.faces[start:]          # bottoms lying on the deck are hidden
@@ -385,6 +410,33 @@ def emit(b, layout, medium):
         if at[2] > top[2]:
             top = at
     return top
+
+
+def _pose(faces, piece):
+    """Leans a piece by `tilt` radians over toward the direction `lean` (radians in its own plan,
+    0 is its +x), turns it about its vertical axis by `turn`, then sets it down on its lowest
+    point: a barrel on its side, a cart on its broken axle. False, and nothing moved, without a
+    tilt or a turn."""
+    turn, tilt = float(piece.get("turn", 0.0)), float(piece.get("tilt", 0.0))
+    if not faces or (abs(turn) < 1e-9 and abs(tilt) < 1e-9):
+        return False
+    x, y = piece.get("x", 0.0), piece.get("y", 0.0)
+    lean = float(piece.get("lean", 0.0))
+    ct, st, cl, sl = math.cos(turn), math.sin(turn), math.cos(tilt), math.sin(tilt)
+    cd, sd = math.cos(lean), math.sin(lean)
+
+    def move(q):
+        u, v, z = q[0] - x, q[1] - y, q[2]
+        a, c = u * cd + v * sd, v * cd - u * sd              # along the lean, across it
+        a, z = a * cl + z * sl, z * cl - a * sl              # lean over
+        u, v = a * cd - c * sd, a * sd + c * cd
+        return (x + u * ct - v * st, y + u * st + v * ct, z)
+    for f in faces:
+        f.pts = [move(q) for q in f.pts]
+    low = min(q[2] for f in faces for q in f.pts)
+    for f in faces:
+        f.pts = [(px, py, pz - low) for px, py, pz in f.pts]
+    return True
 
 
 def _smooth(b, start):
@@ -430,7 +482,7 @@ def _round(b, p, medium):
     if roof == "cone":
         fin = p.get("finial", 0.0) if medium else 0.0
         if medium:
-            tiers = 6 if r >= 2.0 else (5 if r >= 1.3 else 4)
+            tiers = b.rings(6 if r >= 2.0 else (5 if r >= 1.3 else 4))
             top = b.thatch_cone(x, y, r, z1, p["roof_h"], n, "thatch", overhang=p.get("overhang", 0.4),
                                 tiers=tiers, lip=0.1 + 0.03 * r, finial=fin, finial_region="wood")
         else:
@@ -442,7 +494,7 @@ def _round(b, p, medium):
             slope = p["roof_h"] / r
             rp = r + ov * 0.7
             zp = z1 - slope * (rp - r) - 0.06
-            m = 8 if r < 3 else 12
+            m = b.sides(8 if r < 3 else 12, lowest=4)
             for j in range(m):
                 a = 2 * math.pi * (j + 0.5) / m
                 if abs(math.sin(a) + 1) < 0.08:             # keep the door clear
@@ -451,10 +503,16 @@ def _round(b, p, medium):
                 b.box(px - 0.06, px + 0.06, py - 0.06, py + 0.06, z0 - p.get("base", 0.0), zp, "wood", "wood",
                       skip=("top",))
     elif roof == "dome":
-        top = b.dome(x, y, r, z1, p["roof_h"], n, "dome", rings=6 if medium else 2)
+        top = b.dome(x, y, r, z1, p["roof_h"], n, "dome", rings=b.rings(6 if medium else 2))
         _smooth(b, start)
     else:
         top = _crenel(b, x, y, r, z1, n, p["wall_region"])
+    if medium and p.get("beams"):                          # toron: rows of beam ends round a Sahel keep
+        inner = r * math.cos(math.pi / n) - 0.05             # starts inside the wall's flat sides
+        m = p.get("beam_n", 12)
+        for f in p["beams"]:                               # each row at a share of the wall's height
+            for j in range(m):
+                _radial_beam(b, x, y, 2 * math.pi * (j + 0.5) / m, inner, r + 0.35, z0 + f * p["wall_h"], 0.14)
     if medium and p.get("door"):                           # the door's frame: jambs and lintel
         dx, dy = x, y - r
         w = p.get("door_w", 1.0) / 2
@@ -470,6 +528,19 @@ def _round(b, p, medium):
         for k in range(1, int(zt / 0.35)):
             b.box(lx - 0.2, lx + 0.2, ly + 0.005, ly + 0.045, k * 0.35, k * 0.35 + 0.04, "wood", "wood")
     return top
+
+
+def _radial_beam(b, x, y, a, r0, r1, z, size, region="wood"):
+    """A beam end sticking out of a round wall along the angle `a`, from r0 (inside the wall) to
+    r1: its top, two sides and end; no bottom, which the game's camera never sees."""
+    c, s, h = math.cos(a), math.sin(a), size / 2
+
+    def at(rr, side, dz):
+        return (x + rr * c - side * s, y + rr * s + side * c, z + dz)
+    b.face_out([at(r0, -h, h), at(r1, -h, h), at(r1, h, h), at(r0, h, h)], region, (0.0, 0.0, 1.0))
+    b.face_out([at(r0, -h, -h), at(r1, -h, -h), at(r1, -h, h), at(r0, -h, h)], region, (s, -c, 0.0))
+    b.face_out([at(r0, h, -h), at(r1, h, -h), at(r1, h, h), at(r0, h, h)], region, (-s, c, 0.0))
+    b.face_out([at(r1, -h, -h), at(r1, h, -h), at(r1, h, h), at(r1, -h, h)], region, (c, s, 0.0))
 
 
 def _crenel(b, x, y, r, z1, n, region):
@@ -919,6 +990,84 @@ def _prop(b, p):
             bx = x + (col - 1) * 0.62 + (0.15 if layer % 2 else 0.0)
             bz = layer * 0.42
             b.box(bx - 0.28, bx + 0.28, y - 0.3, y + 0.3, bz, bz + 0.4, "stone", "stone")
+    elif k == "cart":                                      # a two-wheeled cart; `broken`: a wheel off
+        L, w, r = p.get("length", 2.4), p.get("w", 1.2), p.get("r", 0.45)
+        zb = r + 0.05
+        b.box(x - L / 2, x + L / 2, y - w / 2, y + w / 2, zb, zb + 0.1, "planks", "planks")
+        for side in (-1, 1):                               # its side boards
+            yy = y + side * (w / 2 - 0.03)
+            b.box(x - L / 2, x + L / 2, yy - 0.03, yy + 0.03, zb + 0.1, zb + 0.42, "planks", "planks", skip=("bottom",))
+        for side in (-1, 1):                               # the shafts
+            b.log(x + L / 2, y + side * 0.35, x + L / 2 + 1.5, y + side * 0.3, zb - 0.05, 0.04, 4, "wood")
+        b.log(x, y - w / 2 - 0.12, x, y + w / 2 + 0.12, r, 0.05, 4, "wood", caps=False)   # the axle
+        for side in ((-1,) if p.get("broken") else (-1, 1)):
+            b.log(x, y + side * (w / 2 + 0.1), x, y + side * (w / 2 + 0.2), r, r, 10, "wood")
+    elif k == "chest":                                     # a chest with a rounded lid and iron straps
+        cw, cd, ch = p.get("w", 0.8), p.get("d", 0.5), p.get("h", 0.42)
+        b.box(x - cw / 2, x + cw / 2, y - cd / 2, y + cd / 2, 0.0, ch, "chest", "chest", skip=("top",))
+        top = [(math.cos(math.pi * j / 4), math.sin(math.pi * j / 4)) for j in range(5)]
+        for (c0, s0), (c1, s1) in zip(top, top[1:]):       # the lid: half a log along the chest
+            q = [(x - cw / 2, y + cd / 2 * c0, ch + cd / 2 * s0), (x - cw / 2, y + cd / 2 * c1, ch + cd / 2 * s1),
+                 (x + cw / 2, y + cd / 2 * c1, ch + cd / 2 * s1), (x + cw / 2, y + cd / 2 * c0, ch + cd / 2 * s0)]
+            b.face_out(q, "chest", (0.0, (c0 + c1) / 2, (s0 + s1) / 2))
+        for ex, nx in ((x - cw / 2, -1.0), (x + cw / 2, 1.0)):
+            b.face_out([(ex, y + cd / 2 * c, ch + cd / 2 * sn) for c, sn in top], "chest", (nx, 0.0, 0.0))
+        for sx in (x - cw * 0.3, x + cw * 0.3):            # straps up the front
+            b.box(sx - 0.03, sx + 0.03, y - cd / 2 - 0.015, y - cd / 2, 0.0, ch, "iron", "iron", skip=("bottom", "+y"))
+    elif k == "rock":                                      # a boulder: uneven rings, a flat top
+        r, h, n = p.get("r", 0.8), p.get("h", 0.7), p.get("n", 7)
+        seed = int(p.get("seed", 1))
+        jit = [0.78 + 0.32 * ((j * 7 + seed * 3) % 5) / 4 for j in range(n)]
+        rings = [(0.0, 1.0), (0.55 * h, 0.82), (h, 0.4)]
+        pts = [[(x + r * f * jit[j] * math.cos(2 * math.pi * j / n), y + r * f * jit[j] * math.sin(2 * math.pi * j / n), z)
+                for j in range(n)] for z, f in rings]
+        for lo, hi in zip(pts, pts[1:]):
+            for j in range(n):
+                a0, a1, c1, c0 = lo[j], lo[(j + 1) % n], hi[(j + 1) % n], hi[j]
+                mx, my = (a0[0] + a1[0]) / 2 - x, (a0[1] + a1[1]) / 2 - y
+                b.face_out([a0, a1, c1], "stone", (mx, my, 0.3))
+                b.face_out([a0, c1, c0], "stone", (mx, my, 0.3))
+        b.face_out(pts[-1], "stone", (0.0, 0.0, 1.0))
+    elif k == "tent":                                      # a ridge tent of canvas on two poles
+        L, w, h = p.get("length", 2.4), p.get("w", 2.0), p.get("h", 1.7)
+        for side in (-1, 1):
+            b.face_out([(x - L / 2, y + side * w / 2, 0.0), (x + L / 2, y + side * w / 2, 0.0), (x + L / 2, y, h),
+                        (x - L / 2, y, h)], "canvas", (0.0, side * 1.0, 0.8))
+        for end in (-1, 1):
+            ex = x + end * L / 2
+            b.face_out([(ex, y - w / 2, 0.0), (ex, y + w / 2, 0.0), (ex, y, h)], "canvas", (end * 1.0, 0.0, 0.0))
+            px = ex + end * 0.08
+            b.box(px - 0.03, px + 0.03, y - 0.03, y + 0.03, 0.0, h + 0.2, "wood", "wood", skip=("bottom",))
+    elif k == "heap":                                      # fruit or grain heaped on the ground
+        r, h = p.get("r", 0.45), p.get("h", 0.3)
+        b.frustum(x, y, r, r * 0.55, 0.0, h * 0.7, 8, "fruit")
+        b.frustum(x, y, r * 0.55, r * 0.15, h * 0.7, h, 8, "fruit")
+        b.disc(x, y, r * 0.15, h, 8, "fruit")
+    elif k == "ruin":                                      # a round hut burnt down: a broken wall, charred beams
+        r, h, n = p.get("r", 1.4), p.get("h", 1.2), p.get("n", 10)
+        seed, t = int(p.get("seed", 1)), 0.18
+        tops = [h * (0.35 + 0.65 * ((j * 5 + seed) % 7) / 6) for j in range(n)]
+        for j in range(n - 1):                             # the last side fell: an opening
+            a0, a1 = 2 * math.pi * j / n, 2 * math.pi * (j + 1) / n
+            z0, z1 = tops[j], tops[j + 1]
+            am = (a0 + a1) / 2
+            for rr, sign in ((r, 1.0), (r - t, -1.0)):
+                q = [(x + rr * math.cos(a0), y + rr * math.sin(a0), 0.0), (x + rr * math.cos(a1), y + rr * math.sin(a1), 0.0),
+                     (x + rr * math.cos(a1), y + rr * math.sin(a1), z1), (x + rr * math.cos(a0), y + rr * math.sin(a0), z0)]
+                b.face_out(q, "char", (sign * math.cos(am), sign * math.sin(am), 0.0))
+            b.face_out([(x + r * math.cos(a0), y + r * math.sin(a0), z0), (x + r * math.cos(a1), y + r * math.sin(a1), z1),
+                        (x + (r - t) * math.cos(a1), y + (r - t) * math.sin(a1), z1),
+                        (x + (r - t) * math.cos(a0), y + (r - t) * math.sin(a0), z0)], "char", (0.0, 0.0, 1.0))
+        for a, za, zb in ((0.4, 0.0, h + 0.6), (2.3, 0.0, h + 0.2), (4.2, 0.1, h * 0.8)):   # beams fallen in
+            b.log_sloped((x + 0.9 * r * math.cos(a), y + 0.9 * r * math.sin(a)), zb,
+                         (x - 0.5 * r * math.cos(a + 0.5), y - 0.5 * r * math.sin(a + 0.5)), za, 0.07, 4, "char")
+    elif k == "pole":                                      # a post with a pennant
+        h = p.get("h", 3.2)
+        b.box(x - 0.06, x + 0.06, y - 0.06, y + 0.06, 0.0, h, "wood", "wood", skip=("bottom",))
+        for side in (-1, 1):                               # two faces 2 cm apart: seen from both sides
+            yy = y + side * 0.01
+            b.face_out([(x + 0.06, yy, h - 0.05), (x + 0.06, yy, h - 0.75), (x + 1.0, yy, h - 0.45)], "cloth",
+                       (0.0, side * 1.0, 0.0))
     elif k == "frame":                                     # a timber frame (a siege engine being built)
         w, d, h = p.get("w", 3.0), p.get("d", 1.6), p.get("h", 2.4)
         for px in (x - w / 2, x + w / 2):
@@ -1018,7 +1167,7 @@ def _plot(b, p, medium):
     def noise(i, m):
         return ((i * 2654435761 + seed * 97) >> 8) % m
 
-    n = 16 if medium else 8
+    n = b.sides(16 if medium else 8, lowest=5)
     rim = []
     for i in range(n):
         a = 2 * math.pi * i / n

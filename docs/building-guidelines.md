@@ -54,6 +54,35 @@ function. Its technical sheet in `docs/specs/` shows each number.
 Sahel palace, the same class: 1,610, 608, 1,610. Palaces and wonders of real mods run from about 1,300
 to 4,400. The normal model is what is always on screen, so it carries the budget.
 
+**Segments of the bodies that are not boxes.** A box costs five quads whatever its size; a round
+wall, a cone, a dome, an arch cost what is asked of them. `BuildingParams.poly` is the multiplier
+of every one of those counts (`core/resolution.py`, the panel's **Segments**): 1.0 is exactly what
+the style always asked for, 0.6 a cheaper building, 1.5 a finer one. Measured 2026-11-10 at
+medium detail: the Sub-Saharan house 626 triangles at 1.0, 458 at 0.75, 290 at 0.5; the
+Sub-Saharan town center 2,968 / 2,368 / 1,960; the Sahel granary (a dome) 660 / 360 / 204; the
+White House 1914 3,035 / 2,587 at 0.6. A building of boxes alone (the colonial house) does not
+move at all.
+
+Two things to know before using it:
+
+- it **never takes a round wall below the sides the low-detail model already uses** (8, or 10 for
+  a big one), because `core/joints.py` measures an embedding on that polygon: below it a wing
+  that sits inside a hut today would poke out, and every layout would have to be proved again.
+  So it makes the medium model cheaper - the one that is always on screen - and leaves the low
+  one alone;
+- on a **composed** building (the African layouts) the budget decides the total: the composer
+  fills up to `sizes.tris_target`, so a cheaper shape buys more props rather than fewer
+  triangles. Lower the target, not the segments, to spend less there.
+
+What it does not reach: the roofs. `hipped_roof`, `gable_roof`, `shed_roof`, `dormer`,
+`bell_gable` and `pyramid` are built from 1 to 7 faces by construction and have no subdivision to
+scale. The timber style has no round body at all, so nothing there changes either.
+
+`resolution.chord_error(radius, n)` says how far a polygon of n sides sags inside the circle, and
+`sides_for(radius, error)` the fewest sides that keep that sag under a given one. At the game's
+camera (about 21 pixels per unit at 1080p, 43 at 4K, a unit being 1.63 m) a sag under about 4 cm
+is under a pixel: **to verify** in game, it is geometry, not a measurement of the engine.
+
 **Textures.** Cost is what most often goes unseen: a building of 1,600 triangles can carry 20 MB of
 textures. Real wonders use 0.3 to 2.7 MB. A 2048 colour texture with its mips is 5.3 MB, a 1024 one 1.3
 MB, a 512 one 0.33 MB; a DXT5 bump without mips is 4, 1 and 0.25 MB.
@@ -68,6 +97,13 @@ MB, a 512 one 0.33 MB; a DXT5 bump without mips is 4, 1 and 0.25 MB.
   it was half of all the weight.
 - Compress. Uncompressed 256 x 256 BGRA costs as much as 512 x 512 DXT5 and looks worse.
 - Fine detail under about 5 cm is gone at the game's camera whatever the size: paint broad.
+
+**Props and treasures** (measured on the original game's own, `profiles/models.json`; the mod made
+too few to measure): a map object is one thing at 30 / 106 / 348 triangles (quartiles), a treasure
+an accident and its spilled cargo at 266 / 320 / 846, each with two bones and a 256 or 512 texture
+at 50 to 70 pixels a unit. A settlement piece of the game is 63 / 95 / 268 triangles and 2.0 / 3.2 /
+5.4 units wide. The PROP style fills a prop up to its group's median and never past its upper
+quartile; its technical sheet shows the band. Its low model drops the cargo under 40 triangles.
 
 **Collision.** Real models stand past their obstruction: the stock fort's reaches 7.3 from the centre on
 a square of 12, and 11.9 % of what stands is outside it. Keep about that share, and measure it

@@ -3,7 +3,7 @@
 on each. It found the edge cases the fixed tests missed (overlapping posts, chimneys, windows and
 column bases on small or narrow buildings).
 
-    python scripts/sweep.py [--count N] [--seeds 2026,7,99] [--style NEOCLASSICAL|COLONIAL|TIMBER|AFRICAN|ALL]
+    python scripts/sweep.py [--count N] [--seeds 2026,7,99] [--style NEOCLASSICAL|COLONIAL|TIMBER|AFRICAN|PROP|ALL]
 
 Prints the failing cases (at most 10) and exits with status 1 when any fails. About 0.25 s a case.
 """
@@ -38,6 +38,7 @@ def random_params(rng, i):
     if rng.random() < 0.1:           # square plans: the hipped roofs become pyramids
         p.depth, p.wing_depth = p.width, p.wing_width
     p.materials = rng.random() < 0.3      # swatches under the painting
+    p.poly = rng.choice([1.0, 1.0, 0.5, 0.75, 1.3])    # segments of every round body
     return p
 
 
@@ -47,7 +48,7 @@ def main():
     for seed in seeds:
         rng = random.Random(seed)
         for i in range(count):
-            pick = style if style != "ALL" else ("NEOCLASSICAL", "TIMBER", "COLONIAL", "AFRICAN")[i % 4]
+            pick = style if style != "ALL" else ("NEOCLASSICAL", "TIMBER", "COLONIAL", "AFRICAN", "PROP")[i % 5]
             if pick in ("COLONIAL", "TIMBER", "AFRICAN"):
                 p = building.STYLES[pick].random_params(rng, i, building.BuildingParams)
             else:

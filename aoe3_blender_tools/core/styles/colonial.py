@@ -166,7 +166,7 @@ def build(p, params):
     bell_peak = 0.35 * bell_w
 
     # --- atlas ------------------------------------------------------------------------------------
-    b = Builder(p.texture_size, medium)
+    b = Builder(p.texture_size, medium, p.poly)
     b.region("front", W, wall_h)
     b.region("back", W, wall_h)
     b.region("side", D, wall_h)
@@ -240,7 +240,7 @@ def build(p, params):
     if arcade:
         b.box(-W / 2, W / 2, ya - 0.15, -D / 2 - 0.1, 0, z0, "plinth", "plinth", skip=("+y",))
         b.arcade(-W / 2, W / 2, ya, z0, arc_h, n_arch, 0.35, post_half, "post", "arcade", kind=kind,
-                 lintel_h=0.45, arch_rise=rise)
+                 lintel_h=0.45, arch_rise=rise, segments=b.segments(6))
         b.shed_roof((-W / 2, -D / 2, 0.0), (1.0, 0.0, 0.0), W, p.arcade_depth + 0.15, shed_top, SHED_PITCH,
                     "shed")
 
@@ -482,4 +482,5 @@ def random_params(rng, i, BuildingParams):
         arcade_depth=rng.uniform(1.6, 3.5), balcony=rng.random() < 0.5, bell_gable=rng.random() < 0.4,
         plan=rng.choice(["BLOCK", "L"]), wing_width=rng.uniform(3, 9), wing_depth=rng.uniform(3, 9),
         rejas=rng.random() < 0.7, detail=rng.choice(["LOW", "MEDIUM"]), texture_size=256,
+        poly=rng.choice([1.0, 1.0, 0.5, 0.75, 1.3]),
         player_colour=rng.random() < 0.3, materials=rng.random() < 0.3)

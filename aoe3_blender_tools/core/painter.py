@@ -30,6 +30,7 @@ class Painter:
         self.use_materials = bool(getattr(p, "materials", False))
         self.layers = []            # (x, y, block) of each swatch laid: the coverage at the end
         self.swatched = {}          # region -> the colour its swatch was tinted with
+        self.roles = {}             # region -> the material role of its swatch (tools/style_check.py)
         self.bleeds = False         # spread the regions over the empty atlas at the end
         self._factors = {}
 
@@ -69,16 +70,17 @@ class Painter:
         sw = materials.load(entry[0]) if entry else None
         if sw is None:
             return
-        name, tile_m, _, contrast = entry
+        name, tile_m, _, contrast, grain = entry
         px = max(4, int(round(tile_m * self.px_per_m)))
-        if (name, px, contrast) not in self._factors:
-            self._factors[(name, px, contrast)] = materials.normalise(sw, px, contrast)
+        if (name, px, contrast, grain) not in self._factors:
+            self._factors[(name, px, contrast, grain)] = materials.normalise(sw, px, contrast, grain)
         r = self.at[region]
-        block = materials.tile(self.cv.a, (r.x, r.y, r.x + r.w, r.y + r.h), self._factors[(name, px, contrast)],
+        block = materials.tile(self.cv.a, (r.x, r.y, r.x + r.w, r.y + r.h), self._factors[(name, px, contrast, grain)],
                                color, offset=(r.x, r.y))
         if block is not None:
             self.layers.append((max(0, r.x), max(0, r.y), block.copy()))
             self.swatched[region] = (tuple(float(c) for c in color), len(self.layers) - 1)
+            self.roles[region] = role
 
     def paint_on(self, region, u0, v0, u1, v1, color, outline=None, width=1):
         """A rect of `color`; on a region with a swatch, the colour is laid by multiplying the

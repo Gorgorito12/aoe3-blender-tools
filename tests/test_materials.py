@@ -31,7 +31,7 @@ class Swatches(unittest.TestCase):
 
     def test_every_mapped_swatch_ships(self):
         for style, roles in materials.MATERIALS.items():
-            for role, (name, tile_m, key, contrast) in materials.plan(style).items():
+            for role, (name, tile_m, key, contrast, grain) in materials.plan(style).items():
                 with self.subTest(style=style, role=role):
                     self.assertIsNotNone(materials.load(name), f"{name}.png is missing")
                     self.assertGreater(tile_m, 0.2)
@@ -126,6 +126,35 @@ class ColonialPainting(unittest.TestCase):
         mean = f[:top, :, :3][cf[:top] == 255].reshape(-1, 3).mean(axis=0)
         want = np.array(on.params.colors["plaster"], np.float32)
         self.assertLess(float(np.abs(mean - want).max()), 6.0, (mean, want))
+
+
+class FitToTheMod(unittest.TestCase):
+    """The African presets painted as the game export paints them, against the mod's own building
+    textures (aoe3_blender_tools/profiles/textures.json): grain and saturation within half a
+    quartile width of their median (docs/art-findings.md)."""
+
+    def test_every_african_preset_is_within_the_mods_middle_half(self):
+        from core import profile, texmaker
+        art = profile.art("textures")
+        if art is None:
+            self.skipTest("no texture profile")
+        group = art.group("own", "buildings", "diffuse", "*")
+        for key, p in building.PRESETS.items():
+            if p.style != "AFRICAN":
+                continue
+            with self.subTest(key=key):
+                d = texmaker.distance(paint.paint(building.build(p))[:, :, :3], group)
+                self.assertLessEqual(abs(d["grain"]), 0.5, d)
+                self.assertLessEqual(abs(d["saturation"]), 0.5, d)
+
+    def test_a_fine_band_is_laid_apart_and_keeps_the_mean(self):
+        sw = np.random.default_rng(3).uniform(60, 200, (64, 64, 3)).astype(np.float32)
+        one = materials.normalise(sw, 64, 0.05)
+        two = materials.normalise(sw, 64, 0.05, grain=0.2)
+        self.assertAlmostEqual(float(two.mean()), 1.0, delta=0.02)
+        self.assertGreater(materials.fine_contrast(two), 2 * materials.fine_contrast(one))
+        self.assertEqual(materials.plan("AFRICAN")["timber"][4], None)
+        self.assertEqual(materials.plan("NEOCLASSICAL")["wall"][4], None)
 
 
 if __name__ == "__main__":

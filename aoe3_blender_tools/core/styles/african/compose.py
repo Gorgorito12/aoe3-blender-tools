@@ -21,13 +21,17 @@ SIZE = {"pot": (0.7, 0.7), "basket": (0.7, 0.7), "sack": (0.6, 0.6), "drum": (0.
         "barrel": (0.6, 0.6), "barrow": (1.6, 0.7), "ore": (1.4, 1.1), "anvil": (0.8, 0.5), "bellows": (0.9, 0.6),
         "furnace": (1.3, 1.4), "forge": (1.7, 1.4), "trough": (1.3, 0.6), "shields": (2.0, 0.4), "hide_rack": (1.3, 0.3),
         "dummy": (1.1, 0.4), "weigh": (1.7, 0.7), "boat": (3.1, 0.9), "fish_rack": (1.8, 0.3), "wheel": (0.9, 0.3),
-        "rack": (1.8, 0.4), "fire": (1.2, 1.2), "well": (1.6, 1.6), "stones": (2.0, 0.7), "crane": (1.9, 2.0)}
+        "rack": (1.8, 0.4), "fire": (1.2, 1.2), "well": (1.6, 1.6), "stones": (2.0, 0.7), "crane": (1.9, 2.0),
+        "cart": (4.1, 1.7), "chest": (0.9, 0.7), "rock": (1.8, 1.8), "tent": (2.7, 2.2), "heap": (1.0, 1.0),
+        "ruin": (3.0, 3.0), "pole": (1.2, 0.3)}
 _costs = {}
 
 
 def size_of(item):
     kw = item["kw"]
     k = item["kind"]
+    if "size" in kw:                                      # its own footprint (a barrel on its side)
+        return tuple(kw["size"])
     if k == "logs":
         L, w = kw.get("length", 2.0) + 0.2, 2.2 * kw.get("n", 4) * kw.get("r", 0.12) + 0.2
         return (w, L) if kw.get("along") == "y" else (L, w)

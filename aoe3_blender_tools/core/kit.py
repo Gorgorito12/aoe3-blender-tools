@@ -20,6 +20,7 @@ Nothing here imports Blender.
 import math
 from dataclasses import dataclass, field
 
+from . import resolution
 from .atlas import Atlas, Region
 
 
@@ -201,14 +202,28 @@ def wall_triangles(length, height, holes):
 class Builder:
     """Regions, atlas, faces and attach points of one building, and the pieces that make it."""
 
-    def __init__(self, texture_size, medium=False):
+    def __init__(self, texture_size, medium=False, poly=1.0):
         self.texture_size = texture_size
         self.medium = medium
+        self.poly = 1.0 if poly is None else float(poly)
         self.regions = []
         self.atlas = None
         self.faces = []
         self.attach = {}
         self.boxes = []
+
+    # -- how many segments a round body gets (core/resolution.py; 1.0 keeps every count) --
+
+    def sides(self, base, lowest=resolution.MIN_SIDES):
+        """The sides of a round body. Use the same number for the piece and for its region size,
+        or the region no longer matches its girth and face_auto quietly shrinks the faces."""
+        return resolution.sides(base, self.poly, lowest)
+
+    def rings(self, base):
+        return resolution.rings(base, self.poly)
+
+    def segments(self, base):
+        return resolution.segments(base, self.poly)
 
     def region(self, name, world_w, world_h):
         """Declares an atlas region (phase 1). Order matters: see the module's rule."""

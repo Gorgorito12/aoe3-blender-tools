@@ -24,30 +24,45 @@ from .pngio import read_png
 TARGET_CONTRAST = 0.045
 FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "materials")
 
-# style -> role -> (swatch, metres per tile, colour key[, grain contrast]); a small drawn pattern
-# (tiles, slates) takes less grain than a plain wall, or it glitters
+# style -> role -> (swatch, metres per tile, colour key[, contrast[, grain]]); a small drawn
+# pattern (tiles, slates) takes less grain than a plain wall, or it glitters. `contrast` is the
+# swatch's blotches and pores together; `grain`, when given, sets its finest band apart (what the
+# texture survey measures as grain, below about 17 pixels): the blotches keep `contrast` and the
+# grain is laid to `grain`, so a surface gains the mod's grain without dark patches
 MATERIALS = {
     "NEOCLASSICAL": {"wall": ("ashlar", 2.5, "wall"), "roof": ("stone_rough", 1.5, "roof", 0.03),
                      "plinth": ("stone_rough", 2.0, "plinth"), "stone": ("stone_rough", 2.0, "stone")},
     "COLONIAL": {"wall": ("plaster", 2.0, "plaster"), "roof": ("clay", 1.5, "tile", 0.025),
                  "plinth": ("stone_rough", 2.0, "plinth"), "timber": ("timber", 1.0, "timber")},
-    # the grain of the target mod's own African textures, measured per material (2026-11-03): mud
-    # 0.19, adobe 0.10, thatch 0.28, wood 0.30, stone 0.26 (the stock European ones carry less)
-    # (the cracks of the mud walls and the straw are drawn on top: the walls take a smooth grain)
-    "AFRICAN": {"wall": ("plaster", 3.0, "mud", 0.05), "adobe": ("plaster", 3.0, "adobe", 0.08),
-                "roofmud": ("plaster", 4.0, "adobe", 0.015),
-                "roof": ("thatch", 1.2, "thatch", 0.3), "plinth": ("mud", 3.0, "mud", 0.2),
-                "stone": ("stone_rough", 1.5, "stone", 0.13), "timber": ("timber@90", 1.0, "timber", 0.4)},
+    # the fine band (fifth value) fitted on 2026-11-10 with tools/style_check.py --fit: the median
+    # grain of each role's regions against the mod's own building textures (0.13 / 0.25 / 0.35;
+    # stone and wood 0.33). Before it: walls 0.14, adobe 0.13, flat roofs 0.02, plinths 0.15,
+    # thatch 0.20, stone 0.14, timber 0.33 (already there: no band). The walls and adobe take 0.22
+    # (at 0.25 the plaster turns mottled), the flat roofs 0.19, still smoother than the walls they
+    # cover (tests/test_african_skin.py), the rest 0.25; a whole texture then lands within half a
+    # quartile width of the mod's (tests/test_materials.py). The blotches keep their old, soft
+    # contrast: the cracks and the straw are drawn on top.
+    "AFRICAN": {"wall": ("plaster", 3.0, "mud", 0.05, 0.22), "adobe": ("plaster", 3.0, "adobe", 0.08, 0.22),
+                "roofmud": ("plaster", 4.0, "adobe", 0.015, 0.19),
+                "roof": ("thatch", 1.2, "thatch", 0.3, 0.25), "plinth": ("mud", 3.0, "mud", 0.2, 0.25),
+                "stone": ("stone_rough", 1.5, "stone", 0.13, 0.25), "timber": ("timber@90", 1.0, "timber", 0.4)},
     "TIMBER": {"stone": ("stone_rough", 2.0, "stone"), "infill": ("plaster", 2.0, "plaster"),
                "roof": ("clay", 1.5, "tile", 0.025), "timber": ("timber", 1.0, "timber")},
 }
+
+MATERIALS["PROP"] = MATERIALS["AFRICAN"]     # props are built and painted with the African kit
 
 _cache = {}
 
 
 def plan(style):
-    """The roles of a style that have a swatch: {role: (swatch, tile_m, colour key, contrast)}."""
-    return {role: tuple(e) + (TARGET_CONTRAST,) * (4 - len(e)) for role, e in MATERIALS.get(style, {}).items()}
+    """The roles of a style that have a swatch: {role: (swatch, tile_m, colour key, contrast,
+    grain)}, grain None when the role sets no fine band apart."""
+    out = {}
+    for role, e in MATERIALS.get(style, {}).items():
+        e = tuple(e)
+        out[role] = e[:3] + (e[3] if len(e) > 3 else TARGET_CONTRAST, e[4] if len(e) > 4 else None)
+    return out
 
 
 def load(name, folder=None):
@@ -87,11 +102,15 @@ def fine_contrast(factor):
 LOW_MAX = 0.04          # the largest broad variation (std) kept: stronger blotches show the tiling
 
 
-def normalise(sw, px, target_contrast=TARGET_CONTRAST):
+def normalise(sw, px, target_contrast=TARGET_CONTRAST, grain=None):
     """A brightness factor (px x px, mean 1.0) from a swatch at `px` pixels per tile: its grain
     (what the 8 x 8 view leaves) scaled to a standard deviation of `target_contrast` (smoothed
     3 x 3 first, so no pixel noise glitters; the 9 x 9 measure then reads a little less), its
-    broad variation (the swatch seen at 8 x 8) kept up to LOW_MAX, clipped to 0.5 .. 1.5."""
+    broad variation (the swatch seen at 8 x 8) kept up to LOW_MAX, clipped to 0.5 .. 1.5.
+
+    grain: the finest band (the swatch minus its 17 x 17 blur, which the texture survey's 9 x 9
+    at half size sees) scaled apart to this standard deviation, the rest of the grain keeping
+    `target_contrast`. None: one band, as before."""
     lum = sw @ np.array([0.299, 0.587, 0.114], np.float32)
     f = lum / max(float(lum.mean()), 1e-6)
     f = resample(f[:, :, None], px)[:, :, 0]
@@ -103,7 +122,14 @@ def normalise(sw, px, target_contrast=TARGET_CONTRAST):
     s_fine = target_contrast / c if c > 1e-6 else 0.0
     sd = float((low - 1.0).std())
     s_low = min(1.0, LOW_MAX / sd) if sd > 1e-6 else 0.0
-    out = 1.0 + fine * s_fine + (low - 1.0) * s_low
+    if grain is None:
+        out = 1.0 + fine * s_fine + (low - 1.0) * s_low
+    else:
+        high = f - _blur(f, 8)
+        mid = fine - high
+        cm, ch = float(mid.std()), float(high.std())
+        out = (1.0 + mid * (target_contrast / cm if cm > 1e-6 else 0.0)
+               + high * (grain / ch if ch > 1e-6 else 0.0) + (low - 1.0) * s_low)
     return np.clip(out, 0.5, 1.5).astype(np.float32)
 
 

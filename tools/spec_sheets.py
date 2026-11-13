@@ -38,6 +38,9 @@ def game_side(params, prof):
 
 def style_side(params):
     """A style's triangle target and how much it scales its plan."""
+    if params.style == "PROP":                            # the quartiles of the game's own props of its kind
+        lo, target, hi = building.STYLES["PROP"].budget(building.clamp_params(params).prop_type)
+        return (target, lo, hi), sizes.SCALE
     if params.style != "AFRICAN":
         return None, 1.0
     return (sizes.tris_target(params.building_type, params.architecture),
@@ -64,8 +67,10 @@ def facts_of(key, prof):
     params = building.PRESETS[key]
     size, template, model = game_side(params, prof)
     band, scale = style_side(params)
-    return specs.facts(params, size, template, bundle.UNITS_PER_METER, key=key, collision=bundle.COLLISION_SHAPE,
-                       shape=shape_of(model, size, prof), band=band, scale=scale,
+    prop = params.style == "PROP"                         # no building class to hold a prop's shape to
+    return specs.facts(params, size, template, bundle.UNITS_PER_METER, key=key,
+                       collision=None if prop else bundle.COLLISION_SHAPE,
+                       shape=None if prop else shape_of(model, size, prof), band=band, scale=scale,
                        budget=building.texture_budget(params))
 
 

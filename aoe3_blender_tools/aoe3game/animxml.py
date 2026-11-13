@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Anim files (the art XML a proto names in <AnimFile>) for a building.
+"""Anim files (the art XML a proto names in <AnimFile>) for a building or a prop.
 
 Layout taken from the game's own building files: construction stages reuse the stock stage
 models of the footprint class, the finished building is its own submodel with a ground decal,
 and the root component picks the submodel by build progress (BuildingCompletion, inside a
-Variation logic). Paths are relative to the art folder, with backslashes; model and texture
+Variation logic). A prop (a map object, a treasure, a decoration) has none of that: one
+component with the model, one Idle anim naming it, and at most a decal; see `prop`.
+Paths are relative to the art folder, with backslashes; model and texture
 paths have no extension; particle files keep theirs. Never writes a compiled .xmb.
 """
 from xml.sax.saxutils import escape
@@ -77,6 +79,114 @@ def _model_block(tab, model, lowpoly=None, damaged=None, shape=None):
             f"{tab}\t<normal>\n{inner}{tab}\t</normal>\n"
             f"{tab}\t<lowpoly>\n{_asset(tab + chr(9) * 2, lowpoly, shape)}{tab}\t</lowpoly>\n"
             f"{tab}</logic>\n")
+
+
+def _prop_decal(tab, *, width, height, texture=None, bump=FLAT_BUMP, selection=None):
+    r"""A prop's decal as the stock files write it: a ground texture (with its bump) and/or the
+    selection square, then the size. Measured 2026-11-10 on nuggets\bear_campsite (a ground
+    texture, no selection) and objects\el_dorado (a selection square alone)."""
+    out = [f"{tab}<decal>\n"]
+    if texture:
+        out.append(f"{tab}\t<effecttype>bump</effecttype>\n")
+        out.append(f"{tab}\t<texture>{escape(art_path(texture))}</texture>\n")
+    if selection:
+        out.append(f"{tab}\t<selectedtexture>{SELECTION.format(selection)}</selectedtexture>\n")
+    if texture:
+        out.append(f"{tab}\t<bumptexture>{escape(art_path(bump))}</bumptexture>\n")
+    out.append(f"{tab}\t<width>{width:.2f}</width>\n{tab}\t<height>{height:.2f}</height>\n")
+    out.append(f"{tab}</decal>\n")
+    return "".join(out)
+
+
+def prop(name, model, *, decal=None, ground=None, selection=True, bones=(), lowpoly=None,
+         death_model=None, death_anim=None, shape=None):
+    r"""The text of a prop's anim file: a map object, a treasure or a decoration.
+
+    Measured on the stock files (2026-11-10): a prop has no construction stages, no submodel and
+    no BuildingCompletion logic. Its component sits at the top level and the Idle anim names it.
+    `nuggets\bear_campsite\nugget_bear_campsite.xml`: five bones, one component with the model
+    and a ground decal, one Idle anim. `objects\el_dorado\el_dorado.xml`: the same with only a
+    selection square. `nuggets\abandoned_cabin\abandoned_cabin.xml` adds a second component
+    (its death model) and a Death anim with the collapse smoke, which death_model and death_anim
+    write here.
+
+    decal: (width, height) in game units, or None for no decal at all.
+    ground: the ground decal's texture (an art path), or None for the selection square alone.
+    selection: add the selection square (the game draws it when the prop is selected).
+    lowpoly: a simpler model for the low model detail setting, or None.
+    death_model, death_anim: the model and the Granny animation the prop plays when it is
+        destroyed, with the stock collapse dust; both or neither.
+    shape: the prop's own collision shape (Data\PHYSICS\<shape>.shp), in its place.
+    """
+    model = art_path(model)
+    death = bool(death_anim and death_model)
+    out = ['<?xml version="1.0" encoding="utf-8"?>\n', "<animfile>\n"]
+    for b in bones:
+        out.append(f"\t<definebone>{escape(b)}</definebone>\n")
+    if death:
+        for attachment, component, particle in COLLAPSE_SMOKE:
+            out.append(f"\t<attachment>\n\t\t{attachment}\n\t\t<component>\n\t\t\t{component}\n")
+            out.append('\t\t\t<assetreference type="ParticleSystem">\n')
+            out.append(f"\t\t\t\t<file>{particle}</file>\n")
+            out.append("\t\t\t</assetreference>\n\t\t</component>\n")
+            out.append(f"\t\t<anim>\n\t\t\tIdle\n\t\t\t<component>{component}</component>\n")
+            out.append("\t\t</anim>\n\t</attachment>\n")
+    sel = (128 if max(decal) > 10 else 64) if (decal and selection) else None
+    parts = [(name, model, lowpoly)]
+    if death:
+        parts.append((f"{name}Death", art_path(death_model), None))
+    for comp, ref, lp in parts:
+        out.append(f"\t<component>\n\t\t{escape(comp)}\n")
+        out.append(_model_block("\t\t\t", ref, lowpoly=lp, shape=shape))
+        if decal:
+            out.append(_prop_decal("\t\t\t", width=decal[0], height=decal[1], texture=ground,
+                                   selection=sel))
+        out.append("\t</component>\n")
+    out.append(f"\t<anim>\n\t\tIdle\n\t\t<component>{escape(name)}</component>\n\t</anim>\n")
+    if death:
+        out.append('\t<anim>\n\t\tDeath\n\t\t<assetreference type="GrannyAnim">\n')
+        out.append(f"\t\t\t<file>{escape(art_path(death_anim))}</file>\n")
+        out.append("\t\t</assetreference>\n")
+        out.append(f"\t\t<component>{escape(name)}Death</component>\n")
+        for attachment, _component, _particle in COLLAPSE_SMOKE:
+            out.append(f'\t\t<attach a="{attachment}" frombone="ATTACHPOINT" '
+                       'tobone="ATTACHPOINT" syncanims="0"/>\n')
+        out.append("\t</anim>\n")
+    out.append("</animfile>\n")
+    return "".join(out)
+
+
+def prop_set(name, models, *, bones=(), decal=None, selection=False):
+    r"""The text of a prop set's anim file: one unit whose models are its variations.
+
+    Measured on the stock files (2026-11-10): buildings\props_colony\props_colony.xml is one
+    component holding a `logic type="Variation"` with a `<data>` per model (13 of them: barrels,
+    boxes, goods, baskets), and one Idle anim with an empty GrannyAnim. 525 anim files of the
+    game and the mod have a Variation logic; a set holds 5 / 9 / 20 models (quartiles). A
+    grouping's `variation` attribute (0 to 255) picks one: how a number above the count is
+    resolved is still to verify in game.
+
+    models: the art paths of the models, in order. decal: (width, height) in game units, or
+    None (the stock set has none). selection: a selection square with the decal."""
+    if not models:
+        raise ValueError("a prop set needs at least one model")
+    out = ['<?xml version="1.0" encoding="utf-8"?>\n', "<animfile>\n"]
+    for b in bones:
+        out.append(f"\t<definebone>{escape(b)}</definebone>\n")
+    out.append(f"\t<component>\n\t\t{escape(name)}\n\t\t<logic type=\"Variation\">\n")
+    for m in models:
+        out.append("\t\t\t<data>\n")
+        out.append(_asset("\t\t\t\t", m))
+        out.append("\t\t\t</data>\n")
+    out.append("\t\t</logic>\n")
+    if decal:
+        out.append(_prop_decal("\t\t", width=decal[0], height=decal[1],
+                               selection=(128 if max(decal) > 10 else 64) if selection else None))
+    out.append("\t</component>\n")
+    out.append(f"\t<anim>\n\t\tIdle\n\t\t<assetreference type=\"GrannyAnim\"/>\n"
+               f"\t\t<component>{escape(name)}</component>\n\t</anim>\n")
+    out.append("</animfile>\n")
+    return "".join(out)
 
 
 def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUND_DECAL,

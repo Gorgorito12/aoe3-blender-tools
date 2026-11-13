@@ -20,9 +20,11 @@ from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProp
 
 from . import ai_panel  # noqa: E402
 from .aoe3game import bundle  # noqa: E402
+from .aoe3game import grouping as grouping_xml  # noqa: E402
 from .core import blender_io, building, paint, validate  # noqa: E402
 from .core import profile as calibration  # noqa: E402
-from .core import render, specs  # noqa: E402
+from .core import gr2_import, group, render, settlement, specs  # noqa: E402
+from .core.styles.props import sets as prop_sets  # noqa: E402
 from .core.styles.african import sizes as african_sizes  # noqa: E402
 
 COLOR_KEYS = building.COLOR_KEYS
@@ -82,6 +84,22 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     architecture: EnumProperty(name="Architecture", items=[
         ("SUBSAHARAN", "Sub-Saharan", "Round mud huts with thatched cones, log fences"),
         ("SAHEL", "Sahel / Horn", "Adobe blocks with flat roofs, parapets and beam ends")], default="SUBSAHARAN")
+    grouping_path: StringProperty(name="Grouping", subtype="FILE_PATH", default="//grouping.xml",
+                                  description="The grouping file to write or read (RM*/groupings/<name>.xml of a test copy)")
+    grouping_socket: StringProperty(name="Socket proto", default="SocketTradeRoute",
+                                    description="The proto unit of the socket the settlement is built round "
+                                                "(the mod's native socket)")
+    grouping_obstruction: StringProperty(name="Obstruction proto", default="",
+                                         description="An invisible unit that keeps the ground round the socket clear, "
+                                                     "as a fifth of the units of the mod's own settlements are "
+                                                     "(empty: none)")
+    prop_set: EnumProperty(name="Prop set", items=[(k, k.replace("_", " ").title(), "") for k in prop_sets.SETS],
+                           description="A set of small props: one unit of the game whose models are its "
+                                       "variations, on one texture")
+    prop_type: EnumProperty(name="Prop", items=[(t, t.replace("_", " ").title(), "A treasure: an accident and its "
+                                                  "spilled cargo" if t in building.STYLES["PROP"].recipes.TREASURES
+                                                  else "A map object: one thing")
+                                                 for t in building.STYLES["PROP"].recipes.TYPES], default="ROCKS")
     wall_upgrade: EnumProperty(name="Stockade wall", items=[("WOOD", "Wood", "A palisade"),
                                                             ("STONE", "Stone", "The upgraded stone wall")],
                                default="WOOD")
@@ -100,6 +118,11 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
         ("LOW", "Low", "Flat walls with painted windows (about 350 triangles)"),
         ("MEDIUM", "Medium", "Recessed windows and doors, balustrade, profiled cornice, finer columns "
                              "(about 1,200 triangles)")], default="LOW")
+    poly: FloatProperty(name="Segments", default=1.0, min=0.3, max=2.0, step=5, precision=2,
+                        description="How many segments every body that is not a box gets (round "
+                                    "walls, cones, domes, arches), as a multiplier of what the "
+                                    "style asks for: 1.0 is the style's own numbers, 0.6 a cheaper "
+                                    "building, 1.5 a finer one")
     portico: BoolProperty(name="Portico", default=True)
     columns: IntProperty(name="Columns", default=4, min=2, max=8, step=2)
     column_spacing: FloatProperty(name="Column spacing", default=1.8, min=1.2, max=4.0, unit="LENGTH")
@@ -120,7 +143,7 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     window_caps: EnumProperty(name="Window caps", items=[
         ("PEDIMENT", "Pediments", "Triangular pediments over the ground floor windows"),
         ("ALTERNATE", "Alternate", "Triangular and arched caps in turn on the front")], default="PEDIMENT")
-    texture_size: EnumProperty(name="Texture", items=[("512", "512", ""), ("1024", "1024", ""),
+    texture_size: EnumProperty(name="Texture", items=[("256", "256", ""), ("512", "512", ""), ("1024", "1024", ""),
                                                       ("2048", "2048", "")], default="1024")
     seed: IntProperty(name="Seed", default=1870)
     show_colors: BoolProperty(name="Colours", default=False)
@@ -132,6 +155,14 @@ class AOE3_PG_building(bpy.types.PropertyGroup):
     game_prefix: StringProperty(name="Mod folder", default="mod",
                                 description="The mod's own folder under art (the model goes to "
                                             "art/<mod folder>/buildings/<name>/)")
+    game_kind: EnumProperty(name="Kind", items=[
+        ("BUILDING", "Building", "Construction stages, rubble and a placement file: a building a "
+                                 "villager puts up"),
+        ("PROP", "Prop", "A map object, a treasure or a decoration: the model and an Idle anim, "
+                         "none of the building logic")], default="BUILDING")
+    game_folder: StringProperty(name="Art folder", default="",
+                                description="The folder under the mod's art folder (empty: buildings, "
+                                            "or objects for a prop; the game keeps treasures in nuggets)")
     game_display: StringProperty(name="Name in game", default="",
                                  description="The name players see (empty: the object's name)")
     game_texture: EnumProperty(name="Texture format", items=[
@@ -186,7 +217,7 @@ def params_from_props(s):
     p = building.BuildingParams(
         name=s.name.strip() or "Building", width=s.width, depth=s.depth, storeys=s.storeys,
         plinth=s.plinth, roof_pitch=s.roof_pitch, bay_spacing=s.bay_spacing, side_bays=s.side_bays,
-        detail=s.detail, portico=s.portico,
+        detail=s.detail, poly=s.poly, portico=s.portico,
         columns=s.columns, column_spacing=s.column_spacing, portico_depth=s.portico_depth,
         cupola=s.cupola, chimneys=s.chimneys, texture_size=int(s.texture_size), seed=s.seed,
         flagpole=s.flagpole, back_portico=s.back_portico, bow_radius=s.bow_radius, bow_columns=s.bow_columns,
@@ -197,20 +228,20 @@ def params_from_props(s):
         rejas=s.rejas, materials=s.materials, jetty=s.jetty, jetty_depth=s.jetty_depth,
         dormers=s.dormers, ground_floor=s.ground_floor, infill=s.infill, bracing=s.bracing,
         signboard=s.signboard, building_type=s.building_type, architecture=s.architecture,
-        wall_upgrade=s.wall_upgrade)
+        wall_upgrade=s.wall_upgrade, prop_type=s.prop_type)
     p.colors = {k: tuple(int(round(c * 255)) for c in getattr(s, "color_" + k)) for k in COLOR_KEYS}
     return p
 
 
 def props_from_params(s, p):
     for attr in ("name", "width", "depth", "storeys", "plinth", "roof_pitch", "bay_spacing", "side_bays",
-                 "detail", "portico",
+                 "detail", "poly", "portico",
                  "columns", "column_spacing", "portico_depth", "cupola", "chimneys", "seed", "flagpole",
                  "back_portico", "bow_radius", "bow_columns", "wings", "wing_gap", "wing_width", "wing_depth",
                  "shutters", "window_caps", "style", "roof_type", "ridge", "arcade", "arcade_posts",
                  "arcade_depth", "balcony", "bell_gable", "plan", "rejas", "materials", "jetty",
                  "jetty_depth", "dormers", "ground_floor", "infill", "bracing", "signboard",
-                 "building_type", "architecture", "wall_upgrade"):
+                 "building_type", "architecture", "wall_upgrade", "prop_type"):
         setattr(s, attr, getattr(p, attr))
     s.game_player_colour = p.player_colour
     s.texture_size = str(p.texture_size)
@@ -262,7 +293,9 @@ class AOE3_OT_check_building(bpy.types.Operator):
     def execute(self, context):
         s = context.scene.aoe3_building
         prof = calibration.load() if s.use_profile else None
-        res = validate.check(context.active_object, s.tri_budget, prof)
+        prop = (calibration.prop_group(s.game_folder or "objects")
+                if s.game_kind == "PROP" and s.use_profile else None)
+        res = validate.check(context.active_object, s.tri_budget, prof, prop)
         s.results.clear()
         for level, msg in res:
             item = s.results.add()
@@ -312,12 +345,17 @@ class AOE3_OT_export_game(bpy.types.Operator):
         try:
             positions, normals, uvs, tris = blender_io.game_mesh(obj)
             icon, portrait = render.icon_and_portrait(obj) if s.game_icons else (None, None)
-            variants = blender_io.game_variants(obj, lowpoly=s.game_lowpoly, damaged=s.game_damaged)
             params = blender_io.params_of(obj)
+            variants = blender_io.game_variants(obj, lowpoly=s.game_lowpoly,      # a prop is never damaged
+                                                damaged=s.game_damaged and (params is None or params.style != "PROP"))
             ref = building.reference(params) if params is not None else None
             obstruction = building.obstruction(params) if params is not None else None
             template = (ref[1] if ref and s.game_template in ("", "House") else s.game_template) or "House"
             budget = building.texture_budget(params) if params is not None else None
+            kind, folder = s.game_kind, s.game_folder or None
+            if params is not None and params.style == "PROP":    # a generated prop is exported as one
+                kind, style_folder = building.STYLES["PROP"].game(building.clamp_params(params))
+                folder = folder or style_folder
             desc = bundle.write(
                 bpy.path.abspath(s.game_dir), name=obj.name, prefix=s.game_prefix or "mod",
                 positions=positions, normals=normals, uvs=uvs, triangles=tris,
@@ -325,6 +363,7 @@ class AOE3_OT_export_game(bpy.types.Operator):
                 footprint_m=footprint, display_name=s.game_display or None,
                 icon_rgba=icon, portrait_rgba=portrait, variants=variants,
                 template=template, texture_format=s.game_texture, obstruction=obstruction,
+                kind=kind, folder=folder,
                 collision_boxes=building.build(params).boxes if params is not None else None,
                 rubble=building.rubble(params) if params is not None else None,
                 texture_max=(budget or (None, None))[0], bump_max=(budget or (None, None))[1],
@@ -332,8 +371,8 @@ class AOE3_OT_export_game(bpy.types.Operator):
             if params is not None:                         # the building's technical sheet, beside its bundle
                 out = bpy.path.abspath(s.game_dir)
                 files = [(os.path.basename(f), os.path.getsize(os.path.join(out, f))) for f in desc["files"]]
-                scale = (african_sizes.scale(params.building_type, params.architecture)
-                         if params.style == "AFRICAN" else 1.0)
+                scale = (african_sizes.scale(params.building_type, params.architecture) if params.style == "AFRICAN"
+                         else african_sizes.SCALE if params.style == "PROP" else 1.0)
                 with open(os.path.join(out, "SPECS.md"), "w", encoding="utf-8", newline="\n") as fh:
                     fh.write(specs.render(specs.facts(params, desc["size"], template, bundle.UNITS_PER_METER,
                                                       collision=bundle.COLLISION_SHAPE, scale=scale, budget=budget),
@@ -363,8 +402,14 @@ class AOE3_PT_building(bpy.types.Panel):
         lay.prop(s, "name")
         lay.prop(s, "style")
         lay.prop(s, "detail", expand=True)
+        lay.prop(s, "poly")
         if s.style == "AFRICAN":
             self.draw_african(s, lay)
+        elif s.style == "PROP":
+            lay.prop(s, "prop_type")
+            row = lay.row(align=True)
+            row.prop(s, "prop_set", text="")
+            row.operator("aoe3.generate_set", text="Generate Set", icon="OUTLINER_OB_GROUP_INSTANCE")
         else:
             col = lay.column(align=True)
             col.prop(s, "width")
@@ -372,7 +417,7 @@ class AOE3_PT_building(bpy.types.Panel):
             col.prop(s, "storeys")
             col.prop(s, "plinth")
             col.prop(s, "bay_spacing")
-        if s.style == "AFRICAN":
+        if s.style in ("AFRICAN", "PROP"):
             pass
         elif s.style == "COLONIAL":
             self.draw_colonial(s, lay)
@@ -504,6 +549,8 @@ class AOE3_PT_game_export(bpy.types.Panel):
         lay = self.layout
         lay.prop(s, "game_dir")
         lay.prop(s, "game_prefix")
+        lay.prop(s, "game_kind")
+        lay.prop(s, "game_folder")
         lay.prop(s, "game_display")
         lay.prop(s, "game_template")
         lay.prop(s, "game_texture")
@@ -511,7 +558,22 @@ class AOE3_PT_game_export(bpy.types.Panel):
         row = lay.row(align=True)
         row.prop(s, "game_lowpoly", toggle=True)
         row.prop(s, "game_damaged", toggle=True)
+        if s.game_kind == "PROP":
+            lay.label(text="Prop: no stages, no rubble; the template must be a prop's", icon="INFO")
         lay.operator("aoe3.export_game", icon="EXPORT")
+        row = lay.row(align=True)
+        row.operator("aoe3.pack_set", icon="TEXTURE")
+        row.operator("aoe3.export_set", icon="EXPORT")
+        lay.operator("aoe3.import_gr2", icon="IMPORT")
+        box = lay.box()
+        box.label(text="Settlement (a grouping)")
+        box.prop(s, "grouping_socket")
+        box.prop(s, "grouping_obstruction")
+        box.prop(s, "grouping_path")
+        box.operator("aoe3.compose_settlement", icon="COMMUNITY")
+        row = box.row(align=True)
+        row.operator("aoe3.export_grouping", icon="EXPORT")
+        row.operator("aoe3.import_grouping", icon="IMPORT")
         lay.separator()
         lay.prop(s, "game_install")
         lay.prop(s, "game_builder")
@@ -561,9 +623,282 @@ class AOE3_OT_undo_deploy(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class AOE3_OT_import_gr2(bpy.types.Operator):
+    bl_idname = "aoe3.import_gr2"
+    bl_label = "Import a Game Model"
+    bl_description = ("Bring an uncompressed Granny model (.gr2) into the scene: its mesh, its UVs and "
+                      "an Empty for each bone. Compressed files need to be written uncompressed first")
+    filepath: StringProperty(subtype="FILE_PATH")
+    filter_glob: StringProperty(default="*.gr2", options={"HIDDEN"})
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        try:
+            obj = gr2_import.load(bpy.path.abspath(self.filepath))
+        except (ValueError, OSError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        for o in context.selected_objects:
+            o.select_set(False)
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+        tris, _verts = blender_io.triangle_count(obj)
+        d = obj.dimensions
+        self.report({"INFO"}, f"{obj.name}: {tris} triangles, {d.x:.1f} x {d.y:.1f} x {d.z:.1f} m, "
+                              f"{len(obj.children)} bones")
+        return {"FINISHED"}
+
+
+def _selected_meshes(context):
+    return sorted((o for o in context.selected_objects if o.type == "MESH"), key=lambda o: o.name)
+
+
+class AOE3_OT_generate_set(bpy.types.Operator):
+    bl_idname = "aoe3.generate_set"
+    bl_label = "Generate Prop Set"
+    bl_description = ("Build the chosen set of small props, one object per model, in a row and on one "
+                      "texture: select them all and Export Prop Set")
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        import dataclasses
+        s = context.scene.aoe3_building
+        models, combined = prop_sets.build_set(s.prop_set, texture_size=int(s.texture_size), seed=s.seed,
+                                               materials=s.materials)
+        texture = paint.paint_rgba(combined)
+        base = combined.params.name
+        objs, x = [], 0.0
+        for i, m in enumerate(models):
+            named = dataclasses.replace(m, params=dataclasses.replace(m.params, name=f"{base}_{i}"))
+            obj = blender_io.create_object(named, texture)
+            for key in ("aoe3_params",):                  # a model of a set, not a generator's building
+                if key in obj:
+                    del obj[key]
+            obj["aoe3_set"] = base
+            w = m.dims["footprint"][0]
+            obj.location.x = x + w / 2
+            x += w + 1.0
+            objs.append(obj)
+        shared = objs[0].data.materials[0]               # one texture for the set: the first object's
+        for obj in objs[1:]:
+            old = obj.data.materials[0]
+            obj.data.materials[0] = shared
+            if old is not None and old.users == 0:
+                for n in old.node_tree.nodes if old.node_tree else ():
+                    if n.type == "TEX_IMAGE" and n.image is not None and n.image.users <= 1:
+                        bpy.data.images.remove(n.image)
+                bpy.data.materials.remove(old)
+        for o in context.selected_objects:
+            o.select_set(False)
+        for obj in objs:
+            obj.select_set(True)
+        context.view_layer.objects.active = objs[0]
+        self.report({"INFO"}, f"{base}: {len(objs)} models on one {s.texture_size} texture")
+        return {"FINISHED"}
+
+
+class AOE3_OT_pack_set(bpy.types.Operator):
+    bl_idname = "aoe3.pack_set"
+    bl_label = "Pack into One Texture"
+    bl_description = ("Put the textures of the selected meshes into one atlas at one texel density and point "
+                      "them all at it (their UVs move): what a prop set needs, and what lets the AI repaint "
+                      "texture them all in one go")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return len(_selected_meshes(context)) >= 2
+
+    def execute(self, context):
+        s = context.scene.aoe3_building
+        objs = _selected_meshes(context)
+        name = (s.game_display or objs[0].name).split(".")[0]
+        try:
+            _image, atlas = group.pack_objects(objs, int(s.texture_size), name)
+        except ValueError as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"{len(objs)} meshes on one {s.texture_size} texture "
+                              f"({atlas.density:.0f} pixels per metre)")
+        return {"FINISHED"}
+
+
+class AOE3_OT_export_set(bpy.types.Operator):
+    bl_idname = "aoe3.export_set"
+    bl_label = "Export Prop Set"
+    bl_description = ("Write the selected meshes as one unit of the game whose models are its variations "
+                      "(they must share one texture: Pack into One Texture first)")
+
+    @classmethod
+    def poll(cls, context):
+        return len(_selected_meshes(context)) >= 1
+
+    def execute(self, context):
+        s = context.scene.aoe3_building
+        objs = _selected_meshes(context)
+        images = {blender_io._object_image(o) for o in objs}
+        if None in images:
+            self.report({"ERROR"}, "every mesh of a set needs an image texture")
+            return {"CANCELLED"}
+        if len(images) > 1:
+            self.report({"ERROR"}, f"the {len(objs)} meshes use {len(images)} textures: Pack into One Texture first")
+            return {"CANCELLED"}
+        name = objs[0].get("aoe3_set") or objs[0].name.split(".")[0].rsplit("_", 1)[0]
+        models, widest = [], (0.0, 0.0)
+        try:
+            for o in objs:
+                positions, normals, uvs, tris = blender_io.game_mesh(o)
+                models.append({"positions": positions, "normals": normals, "uvs": uvs, "triangles": tris})
+                d = (o.dimensions.x, o.dimensions.y)
+                widest = d if d[0] * d[1] > widest[0] * widest[1] else widest
+            icon = portrait = None
+            if s.game_icons:
+                icon, portrait = render.icon_and_portrait(objs[0])
+            template = s.game_template if s.game_template not in ("", "House") else "PropsColony"
+            desc = bundle.write_set(bpy.path.abspath(s.game_dir), name=name, prefix=s.game_prefix or "mod",
+                                    models=models, texture_rgba=blender_io.texture_rgba(objs[0]),
+                                    footprint_m=widest, icon_rgba=icon, portrait_rgba=portrait,
+                                    display_name=s.game_display or None, template=template,
+                                    texture_format=s.game_texture, folder=s.game_folder or "objects",
+                                    bones=blender_io.game_bones(objs[0]))
+        except (ValueError, OSError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"{name}: a set of {desc['set']} models, {len(desc['files'])} files")
+        return {"FINISHED"}
+
+
+UPM = bundle.UNITS_PER_METER
+
+
+def _catalog_entry(obj):
+    """(class, proto, the objects of its variations in order, footprint radius in game units)."""
+    proto = obj.get("aoe3_proto") or obj.get("aoe3_set") or obj.name.split(".")[0]
+    r = max(obj.dimensions.x, obj.dimensions.y) / 2 * UPM
+    cls = obj.get("aoe3_class") or ("prop" if obj.get("aoe3_set") or r < 1.5 else "building")
+    return cls, proto, r
+
+
+class AOE3_OT_compose_settlement(bpy.types.Operator):
+    bl_idname = "aoe3.compose_settlement"
+    bl_label = "Compose Settlement"
+    bl_description = ("Lay copies of the selected meshes round a socket as the mod's own settlements are laid "
+                      "out (distances, counts and a free lane, measured): move and turn them by hand, then "
+                      "Export Grouping. A mesh's proto is its aoe3_proto property (or its set's name); "
+                      "its aoe3_class (building, prop, plant, nature) is guessed from its size when missing")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_selected_meshes(context))
+
+    def execute(self, context):
+        s = context.scene.aoe3_building
+        protos = {}
+        for obj in _selected_meshes(context):
+            cls_, proto, r = _catalog_entry(obj)
+            e = protos.setdefault(proto, {"class": cls_, "objects": [], "r": 0.0})
+            e["objects"].append(obj)
+            e["r"] = max(e["r"], r)
+        catalog = {"socket": [(s.grouping_socket or "Socket", 1, 3.0)]}
+        for proto, e in protos.items():
+            e["objects"].sort(key=lambda o: o.name)
+            catalog.setdefault(e["class"], []).append((proto, len(e["objects"]), e["r"]))
+        if s.grouping_obstruction:
+            catalog["obstruction"] = [(s.grouping_obstruction, 1, 1.0)]
+        placed = settlement.compose(catalog, seed=s.seed)
+        coll = bpy.data.collections.new(f"Settlement_{s.seed}")
+        context.scene.collection.children.link(coll)
+        for p in placed:
+            x, y, turn = grouping_xml.to_blender(p["x"], p["z"], grouping_xml.orient(p["turn"]))
+            if p["class"] in ("socket", "obstruction"):
+                obj = bpy.data.objects.new(p["proto"], None)
+                obj.empty_display_type = "CIRCLE" if p["class"] == "socket" else "CUBE"
+                obj.empty_display_size = p["r"] / UPM
+            else:
+                src = protos[p["proto"]]["objects"]
+                obj = src[min(p["variation"], len(src) - 1)].copy()       # shares the mesh: a light copy
+            obj.location = (x, y, 0.0)
+            obj.rotation_euler = (0.0, 0.0, turn)
+            obj["aoe3_proto"], obj["aoe3_variation"], obj["aoe3_class"] = p["proto"], int(p["variation"]), p["class"]
+            coll.objects.link(obj)
+        self.report({"INFO"}, f"{len(placed)} units round {s.grouping_socket} in {coll.name}")
+        return {"FINISHED"}
+
+
+def _grouping_objects(context):
+    objs = [o for o in context.selected_objects if "aoe3_proto" in o]
+    if not objs and context.active_object is not None:                 # the active object's collection
+        objs = [o for c in context.active_object.users_collection for o in c.objects if "aoe3_proto" in o]
+    return objs
+
+
+class AOE3_OT_export_grouping(bpy.types.Operator):
+    bl_idname = "aoe3.export_grouping"
+    bl_label = "Export Grouping"
+    bl_description = ("Write the selected units (objects with an aoe3_proto) as a grouping file, where they "
+                      "stand now, round the socket's marker")
+
+    def execute(self, context):
+        s = context.scene.aoe3_building
+        objs = _grouping_objects(context)
+        if not objs:
+            self.report({"ERROR"}, "select the settlement's units (objects with an aoe3_proto)")
+            return {"CANCELLED"}
+        socket = next((o for o in objs if o.get("aoe3_class") == "socket"), None)
+        ox, oy = (socket.location.x, socket.location.y) if socket else (0.0, 0.0)
+        objs.sort(key=lambda o: (o.get("aoe3_class") != "socket", o.name))
+        units = []
+        for o in objs:
+            x, z, orient = grouping_xml.from_blender(o.location.x - ox, o.location.y - oy, o.rotation_euler.z)
+            units.append({"proto": o["aoe3_proto"], "variation": int(o.get("aoe3_variation", 0)),
+                          "x": x, "z": z, "orient": orient})
+        path = bpy.path.abspath(s.grouping_path)
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\r\n") as fh:
+            fh.write(grouping_xml.write({"width": 0, "height": 0, "flags": None, "tiles": "", "units": units}))
+        self.report({"INFO"}, f"{len(units)} units -> {path}")
+        return {"FINISHED"}
+
+
+class AOE3_OT_import_grouping(bpy.types.Operator):
+    bl_idname = "aoe3.import_grouping"
+    bl_label = "Import Grouping"
+    bl_description = "Bring a grouping file in as named markers, one per unit, to study it or start from it"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        s = context.scene.aoe3_building
+        path = bpy.path.abspath(s.grouping_path)
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                g = grouping_xml.read(fh.read())
+        except (OSError, ValueError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        coll = bpy.data.collections.new(os.path.splitext(os.path.basename(path))[0])
+        context.scene.collection.children.link(coll)
+        for u in g["units"]:
+            x, y, turn = grouping_xml.to_blender(u["x"], u["z"], u["orient"])
+            obj = bpy.data.objects.new(u["proto"], None)
+            obj.empty_display_type = "SINGLE_ARROW"
+            obj.location, obj.rotation_euler = (x, y, 0.0), (0.0, 0.0, turn)
+            obj["aoe3_proto"], obj["aoe3_variation"] = u["proto"], u["variation"]
+            if "socket" in u["proto"].lower():
+                obj["aoe3_class"] = "socket"
+            coll.objects.link(obj)
+        self.report({"INFO"}, f"{len(g['units'])} units from {os.path.basename(path)}")
+        return {"FINISHED"}
+
+
 CLASSES = (AOE3_PG_result, AOE3_PG_building, AOE3_OT_load_preset, AOE3_OT_generate_building,
-           AOE3_OT_check_building, AOE3_OT_export_building, AOE3_OT_export_game,
-           AOE3_OT_deploy_game, AOE3_OT_undo_deploy, AOE3_PT_building, AOE3_PT_check_export,
+           AOE3_OT_check_building, AOE3_OT_export_building, AOE3_OT_export_game, AOE3_OT_import_gr2,
+           AOE3_OT_deploy_game, AOE3_OT_undo_deploy, AOE3_OT_generate_set, AOE3_OT_pack_set, AOE3_OT_export_set,
+           AOE3_OT_compose_settlement, AOE3_OT_export_grouping, AOE3_OT_import_grouping,
+           AOE3_PT_building, AOE3_PT_check_export,
            AOE3_PT_game_export)
 
 

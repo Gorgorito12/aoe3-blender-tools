@@ -12,6 +12,7 @@ changes is kept as <file>.aoe3bt-orig and never overwritten; every created file 
 `aoe3bt-manifest.json` at the root of the copy, which `undo` reads to restore the copy; a
 compiled .xmb next to an edited data file is an error (the engine would read it instead).
 """
+import glob
 import hashlib
 import json
 import os
@@ -156,6 +157,33 @@ class Deployment:
         finally:
             self.save_manifest(m)
         return m
+
+    def add_grouping(self, path, log=print):
+        """Copies a grouping file into every RM*/groupings folder of the copy (which of them the
+        mod's map scripts read is still to verify), noted in the manifest so that `undo` takes
+        it out or puts back the file it replaced. Returns the paths written, relative."""
+        name = os.path.basename(path)
+        folders = sorted(d for d in glob.glob(os.path.join(self.install, "RM*", "groupings")) if os.path.isdir(d))
+        if not folders:
+            raise RefusedPath(f"{self.install} has no RM*/groupings folder")
+        m = self.manifest()
+        written = []
+        try:
+            for folder in folders:
+                dst = os.path.join(folder, name)
+                refuse_steam(dst)
+                rel = os.path.relpath(dst, self.install)
+                if os.path.exists(dst):
+                    self._backup(m, dst)
+                elif rel not in m["created"]:
+                    m["created"].append(rel)
+                shutil.copy2(path, dst)
+                written.append(rel)
+                log(f"group {rel}")
+            m["groupings"] = m.get("groupings", []) + [name]
+        finally:
+            self.save_manifest(m)
+        return written
 
     def undo(self, log=print):
         m = self.manifest()

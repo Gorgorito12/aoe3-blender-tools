@@ -6,6 +6,7 @@
 or with Blender: blender -b --factory-startup -P tests/run_tests.py
 Exits with status 1 when a test fails.
 """
+import json
 import os
 import random
 import sys
@@ -59,7 +60,8 @@ def presets_generate_and_pass_checks():
             from aoe3_blender_tools.core import profile
             cls = profile.load().classes.get(f"{2 * ref[0]:g}x{2 * ref[0]:g}")
             cap = cls["tris"]["p90"] if cls else cap
-        assert 50 < tris <= cap, (key, tris, cap)
+        floor = 20 if building.PRESETS[key].style == "PROP" else 50   # a map object can be one pole
+        assert floor < tris <= cap, (key, tris, cap)
 
 
 @test
@@ -92,7 +94,8 @@ def medium_detail_presets_pass_checks():
         assert not problems(res), (key, problems(res))
         low = sum(len(f.pts) - 2 for f in building.build(building.BuildingParams(**{**prm.__dict__, "detail": "LOW"})).faces)
         tris, _ = blender_io.triangle_count(obj)
-        assert tris > 2 * low, (key, low, tris)
+        if prm.style != "PROP":                    # a prop's low model only drops its small cargo
+            assert tris > 2 * low, (key, low, tris)
     wh = building.build(building.BuildingParams(**{**building.PRESETS["WHITE_HOUSE"].__dict__, "detail": "MEDIUM"}))
     tris = sum(len(f.pts) - 2 for f in wh.faces)
     assert 1000 <= tris <= 1400, tris
@@ -554,6 +557,314 @@ def ai_repaint_and_revert():
     assert len(seen) == 2 and (seen[0] != seen[1]).any()
 
 
+@test
+def a_mesh_we_did_not_make_is_repainted_and_exported_as_a_prop():
+    """Someone else's model: no aoe3_params, their own UVs and texture. The AI panel repaints it
+    from the user's prompt, and the game export writes a prop bundle (no construction stages, no
+    rubble, no placement file)."""
+    import bmesh
+    import numpy as np
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    from fake_comfy import FakeComfy
+
+    def grain(rgb):
+        """Grain, as a repaint leaves: it must not move the edges, or the guard keeps the region."""
+        rng = np.random.default_rng(7)
+        return np.clip(rgb.astype(np.int32) + rng.integers(-10, 11, rgb.shape), 0, 255).astype(np.uint8)
+
+    mesh = bpy.data.meshes.new("barrel")
+    obj = bpy.data.objects.new("Barrel", mesh)
+    bpy.context.collection.objects.link(obj)
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=2)
+    bmesh.ops.translate(bm, verts=bm.verts, vec=(0, 0, 1))
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.uv_layers.new(name="UVMap")
+    uvs = mesh.uv_layers.active.data
+    for poly in mesh.polygons:
+        for li, c in zip(poly.loop_indices, [(0.02, 0.02), (0.98, 0.02), (0.98, 0.98), (0.02, 0.98)]):
+            uvs[li].uv = c
+    # staves and hoops: edges for the guard to follow, irregular (a perfectly repeating pattern
+    # lines up with itself at several shifts and the guard then reads it as moved)
+    tex = np.full((256, 256, 4), 180, np.uint8)
+    for x in np.random.default_rng(1).choice(np.arange(4, 250), 18, replace=False):
+        tex[:, x:x + 2] = 90
+    for y in (40, 41, 42, 190, 191, 192):
+        tex[y] = 60
+    tex[:, :, 3] = 255
+    img = blender_io._image_from_array("barrel_diffuse", tex)
+    mesh.materials.append(blender_io._material("barrel_mat", img))
+    bpy.context.view_layer.objects.active = obj
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
+    obj.select_set(True)
+
+    assert blender_io.params_of(obj) is None
+    assert bpy.ops.aoe3.ai_repaint.poll(), "the AI repaint must reach a mesh we did not generate"
+    a = bpy.context.scene.aoe3_ai
+    a.regions, a.prompt = "ALL", ""
+    before = blender_io.texture_rgba(obj)
+    with FakeComfy(transform=grain) as fake:
+        a.url = fake.url
+        try:                                   # without a prompt there is nothing to paint with
+            assert bpy.ops.aoe3.ai_repaint() == {"CANCELLED"}
+        except RuntimeError as e:
+            assert "prompt" in str(e), e
+        assert (blender_io.texture_rgba(obj) == before).all()
+        a.prompt = "weathered oak barrel staves with iron hoops"
+        assert bpy.ops.aoe3.ai_repaint() == {"FINISHED"}
+        texts = [v["inputs"].get("text", "") for wf in fake.prompts for v in wf.values()]
+        assert any("weathered oak barrel" in t for t in texts), texts
+    after = blender_io.texture_rgba(obj)
+    assert (after[:, :, :3] != before[:, :, :3]).any(axis=2).mean() > 0.2
+    assert (after[:, :, 3] == 255).all()
+    assert bpy.ops.aoe3.ai_revert() == {"FINISHED"}
+    assert (blender_io.texture_rgba(obj) == before).all()
+    a.prompt = ""
+
+    s = bpy.context.scene.aoe3_building
+    with tempfile.TemporaryDirectory() as d:
+        s.game_dir, s.game_icons, s.game_kind, s.game_folder = d, False, "PROP", ""
+        assert bpy.ops.aoe3.export_game() == {"FINISHED"}
+        art = os.path.join(d, "art", "mod", "objects", "barrel")
+        written = sorted(os.listdir(art))
+        assert "barrel.gr2" in written and "barrel.ddt" in written, written
+        assert not any(f.endswith("_death.gr2") or f.endswith("_lp.gr2") for f in written), written
+        with open(os.path.join(art, "barrel.xml"), encoding="utf-8") as f:
+            anim = f.read()
+        assert "BuildingCompletion" not in anim and "construction" not in anim
+        with open(os.path.join(d, "bundle.json"), encoding="utf-8") as f:
+            desc = json.load(f)
+        assert desc["kind"] == "PROP" and "DeadReplacement" not in desc["unit"]
+    s.game_kind = "BUILDING"
+    bpy.data.objects.remove(obj)
+
+
+@test
+def the_texture_maker_makes_a_tileable_swatch_and_keeps_it():
+    """The Texture Maker panel: a reference picture without ComfyUI, a prompt with it, the
+    library beside the result, and a texture laid under the painting in place of a swatch."""
+    import numpy as np
+    sys.path.insert(0, os.path.join(ROOT, "tests"))
+    from fake_comfy import FakeComfy
+
+    from aoe3_blender_tools.core import materials, texlib, texmaker
+
+    a = bpy.context.scene.aoe3_ai
+    with tempfile.TemporaryDirectory() as d:
+        rng = np.random.default_rng(0)                 # a photograph: light across it, no tiling
+        ramp = np.linspace(40, 215, 256, dtype=np.float32)[None, :, None]
+        photo = np.clip(ramp + rng.integers(-12, 13, (256, 256, 3)), 0, 255).astype(np.uint8)
+        path = os.path.join(d, "factory.png")
+        paint.save_png(photo, path)
+        a.tex_source, a.tex_prompt, a.tex_name = path, "", "factory_roof"
+        a.tex_licence, a.tex_folder, a.tex_size = "my own photograph", d, "128"
+        a.tex_style, a.tex_role = "", ""
+        assert bpy.ops.aoe3.make_texture() == {"FINISHED"}      # no ComfyUI for this one
+        img = texlib.image("factory_roof", d)
+        assert img.shape == (128, 128, 3), img.shape
+        assert texmaker.seam(img) < texmaker.SEAM_OK, texmaker.seam(img)
+        entry = texlib.read("factory_roof", d)
+        assert entry["licence"] == "my own photograph" and entry["mode"] == "photo"
+        assert os.path.exists(os.path.join(d, "factory_roof_x3.png"))
+        assert bpy.data.images.get("factory_roof") is not None
+        a.tex_name, a.tex_licence = "nameless", ""             # the licence is required
+        try:
+            assert bpy.ops.aoe3.make_texture() == {"CANCELLED"}
+        except RuntimeError as e:
+            assert "licence" in str(e), e
+        assert texlib.read("nameless", d) is None
+        with FakeComfy() as fake:                              # from the prompt alone
+            a.url = fake.url
+            a.tex_source, a.tex_prompt = "", "dry golden grass thatch"
+            a.tex_name, a.tex_licence = "thatch_own", "generated locally"
+            a.tex_style, a.tex_role, a.tex_tile_m = "COLONIAL", "roof", 1.4
+            assert bpy.ops.aoe3.make_texture() == {"FINISHED"}
+            texts = [v["inputs"].get("text", "") for wf in fake.prompts for v in wf.values()]
+            assert any("dry golden grass thatch" in t for t in texts), texts
+        assert texlib.read("thatch_own", d)["mode"] == "prompt"
+        plan = materials.plan("COLONIAL")                      # it is what the painter lays now
+        assert os.path.basename(plan["roof"][0]) == "thatch_own", plan["roof"]
+        assert round(plan["roof"][1], 3) == 1.4 and plan["roof"][2] == "tile", plan["roof"]
+        assert bpy.ops.aoe3.use_textures() == {"FINISHED"}     # and back to the add-on's own
+        assert materials.plan("COLONIAL")["roof"][0] == "clay"
+    a.tex_source, a.tex_prompt, a.tex_name, a.tex_licence, a.tex_folder = "", "", "", "", ""
+    a.tex_style, a.tex_role = "", ""
+
+
+@test
+def a_game_model_is_imported_and_exports_again():
+    """Import a Game Model: what the game export wrote comes back as a mesh with its UVs and an
+    Empty per socket, and goes out again with the same triangles and the same bone."""
+    from aoe3_blender_tools.aoe3game import gr2_write
+    from aoe3_blender_tools.core import gr2_import
+    s = bpy.context.scene.aoe3_building
+    s.preset = "MANSION"
+    bpy.ops.aoe3.load_preset()
+    assert bpy.ops.aoe3.generate_building() == {"FINISHED"}
+    src = bpy.context.active_object
+    P, N, UV, T = blender_io.game_mesh(src)
+    bones = blender_io.game_bones(src)
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "mansion.gr2")
+        with open(path, "wb") as f:
+            f.write(gr2_write.static_model("Mansion", P, N, UV, T, texture="m.ddt", bump="m_b.ddt", bones=bones))
+        assert bpy.ops.aoe3.import_gr2(filepath=path) == {"FINISHED"}
+        obj = bpy.context.active_object
+        assert obj.get("aoe3_imported") and obj.name.startswith("mansion")
+        assert blender_io.triangle_count(obj)[0] == len(T)
+        for a, b in zip(obj.dimensions, src.dimensions):
+            assert abs(a - b) < 0.02, (tuple(obj.dimensions), tuple(src.dimensions))
+        back = blender_io.game_bones(obj)
+        assert sorted(n for n, _ in back) == sorted(n for n, _ in bones), (back, bones)
+        P2, _N2, UV2, T2 = blender_io.game_mesh(obj)                  # and out again
+        assert len(T2) == len(T) and len(UV2) > 0
+        with open(os.path.join(d, "broken.gr2"), "wb") as f:
+            f.write(b"not a model")
+        try:
+            assert bpy.ops.aoe3.import_gr2(filepath=os.path.join(d, "broken.gr2")) == {"CANCELLED"}
+        except RuntimeError as e:
+            assert "broken.gr2" in str(e), e
+        try:
+            gr2_import.load(os.path.join(d, "broken.gr2"))
+            raise AssertionError("a broken file was imported")
+        except ValueError:
+            pass
+
+
+@test
+def three_meshes_are_packed_into_one_texture_and_exported_as_a_set():
+    """Three cubes with three textures: one atlas, every UV inside it, no two boxes overlapping,
+    each cube's colour found again through its new UVs; then a set bundle of three models on one
+    texture. A generated set comes out already on one texture."""
+    import tempfile
+
+    import bmesh
+    import numpy as np
+    colours = {"Crate_a": (200, 40, 40), "Crate_b": (40, 200, 40), "Crate_c": (40, 40, 200)}
+    objs = []
+    for i, (name, colour) in enumerate(colours.items()):
+        mesh = bpy.data.meshes.new(name)
+        obj = bpy.data.objects.new(name, mesh)
+        bpy.context.collection.objects.link(obj)
+        bm = bmesh.new()
+        bmesh.ops.create_cube(bm, size=1.0 + i)
+        bmesh.ops.translate(bm, verts=bm.verts, vec=(0, 0, (1.0 + i) / 2))
+        bm.to_mesh(mesh)
+        bm.free()
+        mesh.uv_layers.new(name="UVMap")
+        for poly in mesh.polygons:
+            for li, c in zip(poly.loop_indices, [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]):
+                mesh.uv_layers.active.data[li].uv = c
+        tex = np.zeros((64, 64, 4), np.uint8)
+        tex[:, :, :3] = colour
+        tex[:, :, 3] = 255
+        mesh.materials.append(blender_io._material(name + "_mat", blender_io._image_from_array(name + "_img", tex)))
+        obj.location.x = 4.0 * i
+        objs.append(obj)
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    s = bpy.context.scene.aoe3_building
+    s.texture_size = "256"
+    try:                                                       # three textures: refused
+        refused = bpy.ops.aoe3.export_set()
+    except RuntimeError:                                       # an operator's error report raises
+        refused = {"CANCELLED"}
+    assert refused == {"CANCELLED"}, refused
+    assert bpy.ops.aoe3.pack_set() == {"FINISHED"}
+    atlas = blender_io.texture_rgba(objs[0])
+    assert {blender_io._object_image(o) for o in objs} == {blender_io._object_image(objs[0])}
+    boxes = []
+    for o in objs:
+        uv = np.array([d.uv[:] for d in o.data.uv_layers.active.data])
+        assert (uv >= 0).all() and (uv <= 1).all(), o.name
+        boxes.append((uv[:, 0].min(), uv[:, 1].min(), uv[:, 0].max(), uv[:, 1].max()))
+        u, v = uv.mean(axis=0)
+        px = atlas[int((1 - v) * 256), int(u * 256), :3]
+        assert np.abs(px.astype(int) - colours[o.name]).max() < 6, (o.name, px)
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1:]:
+            assert a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1], (a, b)
+    widths = sorted(b[2] - b[0] for b in boxes)                # one density: a bigger cube, a bigger box
+    assert widths[0] < widths[1] < widths[2], widths
+    with tempfile.TemporaryDirectory() as tmp:
+        s.game_dir, s.game_prefix, s.game_icons = tmp, "mod", False
+        assert bpy.ops.aoe3.export_set() == {"FINISHED"}
+        desc = json.load(open(os.path.join(tmp, "bundle.json"), encoding="utf-8"))
+        assert desc["set"] == 3 and desc["kind"] == "PROP", desc
+        art = os.path.join(tmp, "art", "mod", "objects", desc["name"].lower())
+        assert sorted(f for f in os.listdir(art) if f.endswith(".gr2")) == [
+            f"{desc['name'].lower()}_{i}.gr2" for i in range(3)]
+    # a generated set: its models already share one texture
+    for o in list(bpy.data.objects):
+        bpy.data.objects.remove(o)
+    s.style, s.prop_set = "PROP", "GOODS"
+    assert bpy.ops.aoe3.generate_set() == {"FINISHED"}
+    made = [o for o in bpy.data.objects if o.get("aoe3_set")]
+    assert len(made) == 10, len(made)
+    assert len({blender_io._object_image(o) for o in made}) == 1
+    assert all("aoe3_params" not in o for o in made)
+
+
+@test
+def a_settlement_is_composed_moved_and_written_as_a_grouping():
+    """Compose round a socket from a house and a generated set, move one unit by hand, export the
+    grouping, read it back; then import it as markers."""
+    import bmesh
+    from aoe3_blender_tools.aoe3game import grouping
+    s = bpy.context.scene.aoe3_building
+    s.style, s.prop_set, s.seed = "PROP", "GOODS", 5
+    assert bpy.ops.aoe3.generate_set() == {"FINISHED"}
+    goods = [o for o in bpy.data.objects if o.get("aoe3_set")]
+    mesh = bpy.data.meshes.new("hut")
+    hut = bpy.data.objects.new("NativeHut", mesh)
+    bpy.context.collection.objects.link(hut)
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=6.0)
+    bm.to_mesh(mesh)
+    bm.free()
+    hut["aoe3_proto"], hut["aoe3_class"] = "NativeHut", "building"
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
+    for o in goods + [hut]:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = hut
+    s.grouping_socket, s.grouping_obstruction = "SocketNative", "TownObstruction"
+    assert bpy.ops.aoe3.compose_settlement() == {"FINISHED"}
+    coll = bpy.data.collections[f"Settlement_{s.seed}"]
+    placed = list(coll.objects)
+    classes = [o["aoe3_class"] for o in placed]
+    assert classes.count("socket") == 1 and "building" in classes and "prop" in classes, classes
+    assert all(o["aoe3_variation"] < 10 for o in placed if o["aoe3_proto"] == goods[0].get("aoe3_set"))
+    mover = next(o for o in placed if o["aoe3_class"] == "building")
+    mover.location.x += 2.0
+    with tempfile.TemporaryDirectory() as tmp:
+        s.grouping_path = os.path.join(tmp, "Native Test 1.xml")
+        for o in bpy.context.selected_objects:
+            o.select_set(False)
+        for o in placed:
+            o.select_set(True)
+        assert bpy.ops.aoe3.export_grouping() == {"FINISHED"}
+        g = grouping.read(open(s.grouping_path, encoding="utf-8").read())
+        assert len(g["units"]) == len(placed), (len(g["units"]), len(placed))
+        assert g["units"][0]["proto"] == "SocketNative"
+        moved = [u for u in g["units"] if u["proto"] == "NativeHut"]
+        want = mover.location.x * bundle_upm()
+        assert any(abs(u["x"] - want) < 1e-3 for u in moved), (want, [u["x"] for u in moved])
+        before = len(bpy.data.objects)
+        assert bpy.ops.aoe3.import_grouping() == {"FINISHED"}
+        assert len(bpy.data.objects) == before + len(placed)
+
+
+def bundle_upm():
+    from aoe3_blender_tools.aoe3game import bundle
+    return bundle.UNITS_PER_METER
+
+
 def main():
     addon.register()
     try:
@@ -565,7 +876,12 @@ def main():
                   game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo,
                   square_hipped_roof_builds, roof_kit_parts_have_no_overlaps,
                   ui_has_a_property_for_every_param_field, ai_repaint_and_revert,
-                  round_kit_parts_have_no_overlaps, round_roofs_export_smooth_normals):
+                  round_kit_parts_have_no_overlaps, round_roofs_export_smooth_normals,
+                  a_mesh_we_did_not_make_is_repainted_and_exported_as_a_prop,
+                  the_texture_maker_makes_a_tileable_swatch_and_keeps_it,
+                  a_game_model_is_imported_and_exports_again,
+                  three_meshes_are_packed_into_one_texture_and_exported_as_a_set,
+                  a_settlement_is_composed_moved_and_written_as_a_grouping):
             t()
     finally:
         addon.unregister()

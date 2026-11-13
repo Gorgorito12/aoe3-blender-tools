@@ -90,7 +90,7 @@ def opening_tops(spec, p):
 def build(p, params):
     medium = p.detail == "MEDIUM"
     layout = layouts.layout(p, sizes.side_m(p.building_type), medium)
-    b = Builder(p.texture_size, medium)
+    b = Builder(p.texture_size, medium, p.poly)
     facades = parts.declare(b, layout, medium)
     b.pack()
     b._african_facades = facades
@@ -119,7 +119,8 @@ def random_params(rng, i, BuildingParams):
         name=f"African{i}", style=NAME, building_type=rng.choice(sizes.TYPES),
         architecture=rng.choice(CHOICES["architecture"]), wall_upgrade=rng.choice(CHOICES["wall_upgrade"]),
         storeys=rng.randint(1, 2), detail=rng.choice(["LOW", "MEDIUM"]), texture_size=256,
-        player_colour=rng.random() < 0.4, materials=rng.random() < 0.3, seed=rng.randint(1, 9999))
+        player_colour=rng.random() < 0.4, materials=rng.random() < 0.3, seed=rng.randint(1, 9999),
+        poly=rng.choice([1.0, 1.0, 0.5, 0.75, 1.3]))
 
 
 # --------------------------------------------------------------------------------------------------
@@ -390,7 +391,9 @@ def paint(pr, model):
             v += hh
     if "field" in at:
         rfi = at["field"]
-        SOIL = (62, 44, 32)                                   # worked, watered earth
+        # worked, watered earth; (62, 44, 32) until 2026-11-10 put the plot's saturation at 0.48,
+        # past the mod's own building textures' upper quartile (0.43)
+        SOIL = (60, 47, 37)
         pr.base("field", SOIL, role="plinth")
         pr.cracks("field", 0.3, 0.3, keep=0.5)
         for _ in range(int(rfi.world_w * rfi.world_h * 4)):   # clods and straw left in it

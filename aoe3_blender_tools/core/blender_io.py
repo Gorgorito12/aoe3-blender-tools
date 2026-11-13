@@ -236,12 +236,52 @@ def game_bones(obj):
     return out
 
 
+def uv_zones(obj):
+    """(name, u0, v0, u1, v1) per material slot of a mesh: the bounding box of that slot's UVs in
+    0..1, for repainting a texture this add-on did not draw. One zone over the whole image when
+    the mesh has a single material (or none): there is nothing to tell its parts apart by."""
+    from .meshtex import WHOLE
+    m = obj.data
+    if not m.uv_layers:
+        raise ValueError(f"{obj.name} has no UV map")
+    uv = m.uv_layers.active.data
+    names, seen = [], {}
+    for i, slot in enumerate(obj.material_slots):
+        name = slot.material.name if slot.material else f"slot{i + 1}"
+        seen[name] = seen.get(name, 0) + 1
+        names.append(name if seen[name] == 1 else f"{name}.{seen[name]}")
+    if len(names) <= 1:
+        return [(WHOLE, 0.0, 0.0, 1.0, 1.0)]
+    boxes = {}
+    for poly in m.polygons:
+        name = names[poly.material_index] if poly.material_index < len(names) else names[0]
+        for li in poly.loop_indices:
+            u, v = uv[li].uv
+            b = boxes.get(name)
+            boxes[name] = (u, v, u, v) if b is None else (min(b[0], u), min(b[1], v),
+                                                          max(b[2], u), max(b[3], v))
+    return [(n, *b) for n, b in boxes.items()]
+
+
 def texture_rgba(obj):
     """The object's image as an H x W x 4 uint8 array, top row first."""
     img = _object_image(obj)
     if img is None:
         raise ValueError(f"{obj.name} has no image texture")
     return image_rgba(img)
+
+
+def image_rgb(path):
+    """A picture file (JPEG, PNG, TGA, BMP...) as an H x W x 3 uint8 array, top row first.
+    Blender decodes it: the add-on carries no image library of its own (core/pngio.py reads PNG
+    only, and Blender has no Pillow)."""
+    img = bpy.data.images.load(bpy.path.abspath(path), check_existing=False)
+    try:
+        if not tuple(img.size) or not img.has_data:
+            raise ValueError(f"{path}: Blender could not read this picture")
+        return image_rgba(img)[:, :, :3].copy()
+    finally:
+        bpy.data.images.remove(img)
 
 
 def image_rgba(img):

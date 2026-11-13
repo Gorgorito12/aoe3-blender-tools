@@ -16,7 +16,7 @@ Computed from the model by `tools/spec_sheets.py`. Do not edit: regenerate it.
 |---|---|---|
 | Width, with everything on it | 14.53 | 8.94 |
 | Depth | 14.53 | 8.94 |
-| Height, to the highest point | 9.93 | 6.11 |
+| Height, to the highest point | 10.15 | 6.24 |
 
 One game unit is 1.626 m in Blender.
 
@@ -71,15 +71,15 @@ Where they go, at medium detail:
 
 | Measure | This building | Low | Median | High |
 |---|---|---|---|---|
-| Height, game units | 6.11 | 6.17 | 8.5 | 10.785 |
-| Height over longest side | 0.683 | 0.589 | 0.852 | 1.01 |
+| Height, game units | 6.24 | 6.17 | 8.5 | 10.785 |
+| Height over longest side | 0.698 | 0.589 | 0.852 | 1.01 |
 | Share of the obstruction covered | 1.0 | 0.575 | 0.712 | 0.811 |
 | Share of what stands outside it | 0.199 | 0.017 | 0.119 | 0.278 |
 | Share in its largest part | 1.0 | 0.979 | 0.999 | 1.0 |
 | Share of the edge lined | 0.897 | 0.28 | 0.661 | 0.851 |
 | Flat levels | 1 | 2.0 | 3.0 | 6.5 |
-| Triangles in the lower third | 0.599 | 0.334 | 0.477 | 0.622 |
-| Triangles in the middle third | 0.336 | 0.207 | 0.349 | 0.466 |
+| Triangles in the lower third | 0.606 | 0.334 | 0.477 | 0.622 |
+| Triangles in the middle third | 0.329 | 0.207 | 0.349 | 0.466 |
 | Triangles in the upper third | 0.065 | 0.085 | 0.156 | 0.215 |
 
 ## Attach points
