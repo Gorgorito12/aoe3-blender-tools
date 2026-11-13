@@ -181,6 +181,41 @@ if it comes back: a hollow building shows the ground through its holes, so it ne
 and a part that rests on another one stays in the air when the lower one goes. Check that every part a
 template names exists in its model: real mods ship templates whose models are empty, and nothing breaks.
 
+## Impact effects
+
+What a hit plays (particles, sounds) by the impact type of the surface it lands on. Measured on the
+stock files (2026-11-13).
+
+- **Files:** `art\effects\impacts\<weapon>.impacteffect`, compiled to `<weapon>.impacteffect.xmb`.
+  The base game ships 14 of them, only compiled, plain `X1` (no `l33t` zlib), inside `Art1.bar`
+  (arrow, cannon, dynamite, grenade, gun, hoop, melee, mortar, torch) and `Art5.bar` (chakram,
+  crow, melee_no_weapon, sabotage, shuriken).
+- **Layout:** a root `<impacteffect metercount=... meterlength=...>`, then one element per impact
+  type (`wood`, `stone`, `flesh`, `rooftile`, `terraingrass`, `exitbuilding`, ...), each holding
+  `particleset` and `soundset` children (several of each; `weight` and `fireexisttime` occur as
+  attributes). The impact type of a surface comes from `impacttype` in a damage template (`.dmg`),
+  a proto's `<ImpactType>` or a terrain type.
+- **A loose file:** a compiled `.xmb` in the game's `art\effects\impacts\` is read instead of the
+  archive's (seen in game with an edited `cannon.impacteffect.xmb`). An edited XML without its
+  compiled twin is not enough: compile it.
+- **Compile and decompile:** `python -I tools/xmbedit.py from-xml cannon.impacteffect` writes
+  `cannon.impacteffect.xmb` next to it (a source saved as `cannon.impacteffect.xml` gives the same
+  name); `python -I tools/xmbedit.py to-xml cannon.impacteffect.xmb` writes `cannon.impacteffect`.
+  `to-xml` puts each element on the source line stored in the file, so the stored line numbers
+  survive the text: for all 14 stock impact effects, `to-xml` then `from-xml` gives the original
+  `.xmb` byte for byte, and `xmbedit.py check` proves it for any file.
+- **Tested in game (2026-11-13):** the stock `cannon` impact effect, decompiled with `to-xml`, one
+  element of an impact type of its own added (a water splash particle set, a metal sound), compiled
+  with `from-xml` and put loose in `art\effects\impacts\`; a building whose `.dmg` names that type,
+  hit by cannons: each hit threw the splash off its walls. A type outside the game's 15 needs the
+  engine to know its name; with one of the 15 (`metal` is one no stock file uses), the data alone
+  is enough.
+- **Coverage of the text round trip:** over every `.xmb` in the base game's archives and the
+  compiled protos and tech tree (about 6,000 files), all but 48 come back byte for byte. Of those, 47
+  are anim and terrain files whose stored text keeps tabs after an element's text, before its
+  children, which the XML text drops, and one repeats an attribute, which XML forbids. `check`
+  reports such a file; its binary round trip still holds.
+
 ## Protos and strings
 
 - `data\protoy.xml`: `<Unit id=... name=...>` blocks (both quote styles occur), CRLF line ends.
