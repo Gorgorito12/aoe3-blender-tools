@@ -15,8 +15,8 @@ and destroyed in game (`docs/game-test.md`), then more styles and units (README,
 
 ## Public repository rules
 
-- The repository is **public**. Keep every text neutral: do not name other mods, their teams, or
-  the private projects this tool came from, and do not link private documents.
+- The repository is **public**. Naming mods, their teams or the projects this tool serves is fine
+  (the owner's decision, 2026-11-13); still do not link private documents.
 - Never commit survey reports (`report.json`, `summary.md`) of a mod: they name its files. They
   belong to the user's private repository.
 - Reference images of a style guide may come from other games: they guide the composition only.
