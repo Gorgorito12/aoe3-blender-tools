@@ -209,6 +209,49 @@ Measured on 2026-11-10 over every grouping of the original game (577 files) and 
 | A `variation` above a set's model count | **to verify** | |
 | Which `RM*` folders the mod's map scripts read | **to verify** | `tools/game_deploy.py --grouping` copies into every one of the test copy |
 
+## Animation tags (.gr2.precomp)
+
+Next to a Granny animation `x.gr2` the game keeps `x.gr2.precomp`: the positions of a few named
+bones of the model, sampled over the animation. These are the animation's **tags**. The anim
+file does not hold them: its `<tag type="Attack">` and the like are timed events, a separate
+thing. Reader and writer: `aoe3game/precomp.py` (layout in its docstring).
+
+- **Measured:** the base game's archives hold 6,211 `.gr2.precomp` files; every one parses and
+  re-encodes byte for byte. The names seen are bones such as `MASTER`, `HEAD`, `NECK`, `PELVIS`,
+  `ATTACHPOINT` and `HITPOINTBAR`; 2,278 files have `HITPOINTBAR`. A track holds one position
+  (3 floats, model space) and one rotation per key, with the keys spread evenly over the
+  animation. 6,175 files hold one block of tags, sampled on one model whose path ends the file;
+  36 hold up to 10.
+- **Engine:** the game's reader of the "MS" block fills the tag table of the animation (names,
+  position tracks, duration), and the floating health bar is placed on the `HITPOINTBAR` track of
+  the animation the unit plays, interpolated at the animation's clock. When that animation has
+  no `HITPOINTBAR`, the bar goes to a height of the game's own, usually lower (inside a rider).
+  So a unit whose animations do not all have the tag sees its bar jump at every change of
+  animation, several times a minute when it stands, since idles are picked at random among
+  variants.
+- **The base game has the bug too:** its horse idles `animation_library\cavalry\horse_idle_a` to
+  `_g` lack the tag while `_h`, `_i`, the walks, gallops and attacks have it (4.15 model units
+  up), so every cavalry unit that uses them shows it; so do many villager and stance animations.
+- **Seen in game (2026-11-13):** a loose `art\<path>.gr2.precomp` wins over the one in the
+  archives (put there before the game starts). With the tag added at the idle's height to the animations
+  of three units that lacked it (a light cavalry unit, an explorer, a line infantry unit), their
+  bars stayed at one height through idles, a charge and a melee fight; without it, the light
+  cavalry bars dropped by 12 to 14 pixels (at the default close zoom) at each change of idle,
+  about once every two seconds.
+- **To verify:** an animation with no `.gr2.precomp` at all (common in mods, whose own `.gr2`
+  files come without one) must get its tags from the `.gr2` itself, which needs a
+  `HITPOINTBAR` bone; not traced. Which block a file with several blocks gives to a given
+  model is not known either.
+
+`tools/fix_hitpointbar_tags.py` adds the missing tag: for each anim file, the median height of
+the tag over the unit's Idle animations (or over all of its animations), as a constant track
+with the file's number of keys; nothing else of the file changes. An animation shared by units
+of different heights gets the height most of their anim files use. Its dry run over a large mod
+(2,443 anim files of the units of its proto file): 533 anim files have animations without the
+tag, 243 tag files to fix, 214 fixable, 29 refused (16 ties between heights, 12 files with no
+tracks to take the number of keys from, 1 sampled on several models), and 390 uses of animations
+with no tag file at all (367 of a loose `.gr2`, 23 of a missing one).
+
 ## Collision
 
 A building's hitbox is three things, none of them its visible mesh:

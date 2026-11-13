@@ -45,6 +45,8 @@ venv/bin/python -I tests/test_specs.py             # every building has its shee
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
 python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
+python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
+python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
 ```
 
 On Windows the venv interpreter is `venv/Scripts/python`. `-X utf8` matters: the mod's
@@ -80,7 +82,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
-  portrait framing; numpy), `animxml.py`, `proto.py` (unit list
+  portrait framing; numpy), `animxml.py`, `precomp.py` (an animation's tag file,
+  `.gr2.precomp`: the sampled tag bones such as `HITPOINTBAR`), `proto.py` (unit list
   and string table at the text level), `bundle.py` (the files for one building), `deploy.py`
   (test copy: Steam refused, backups, manifest, undo, validators).
 - `aoe3_blender_tools/core/render.py`: Workbench render of a building for its icon and portrait
