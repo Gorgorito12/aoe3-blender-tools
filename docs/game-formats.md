@@ -100,6 +100,50 @@ the bind pose instead and does not match the rest pose.
   models have one (wheel links at 0.1 on a mortar, a bone at 0.012 on the low-poly war dogs), none
   of them an impact or flag bone: run the tool on a mod's own folders.
 
+### Uncompressed copies
+
+- **Why** (**measured** by sampling the stack of the game's main thread): the
+  game reads a model or an animation the first time it meets one, on its main thread, and most of
+  that time is the Oodle1 decoder of the compressed sections. A section stored uncompressed is read
+  straight into its buffer; fixups and the byte order are separate steps, the same for any format,
+  so an uncompressed file skips only the decoder.
+- **Loose files override the archives** (**measured**): a `.gr2` under `art\` with the stored name
+  of an archived one is the one the game opens, and the game reads it like any other.
+- **The stock archives** (`Art1.bar`, `Art4.bar`, `Art5.bar`): 12,319 `.gr2` names (13,086 entries, 551 MB); 105
+  names are stored in two archives with different bytes (which one the game reads is not
+  measured, so the tool leaves them out), 1,776 have no compressed section, and 10,438 have one. In
+  a copy of Wars of Liberty 17 of those are the mod's own loose models; the other 10,421 are 397 MB
+  as stored and 1,041 MB uncompressed (2.6 times).
+- **The root type reference.** The runtime's own `GrannyRecompressFile` keeps the sections, their
+  bytes and their fixups, but writes the root object's type reference (header words 5 and 6, at
+  0x34) as 0:0. A model whose type tag is older than the runtime's is then read with the wrong
+  type, and the game exits at its main menu (exit code 0, no message). Copying the two words back
+  from the original and recomputing the CRC fixes it. The bridge's `rebake --noop` rebuilds the
+  file as bytes and keeps them (0 of 10,421 needed the fix), and the tool checks them anyway.
+- **What `tools/uncompress_models.py` checks** before it writes a copy: the bridge reads the
+  original and the copy back through the runtime and refuses any difference in their data trees,
+  and the runtime says the copy's CRC is valid; then the tool compares the containers itself: the
+  same header but for the total size and the CRC, every section uncompressed and stored at its
+  expanded size, the same section records (expanded size, alignment, stops, fixup counts), the
+  relocation and marshalling tables byte for byte, the sections the original stored uncompressed
+  byte for byte, and the CRC. After writing it reads the file back (SHA-256).
+- **Cost** (**measured**, 16 logical cores, the bridge run in 8 processes at a time): 10,421 models in 252 s
+  (about 41 per second), 1,041 MB written. `--check` of the whole set: 4 s with the files cached.
+- **In game** (**measured**, a saved late game replayed for 150 s, runs with and without the copies
+  in turns): stock game, frames over 50 ms 2 → 0, longest frame 92–98 → 42 ms, load 1.1–1.9 s
+  shorter; Wars of Liberty (its own cfg, three pairs), load 11.6 → 9.5 s in every pair, and the one
+  frame per run that loaded a new model (72–80 ms) gone; the mod's other slow frames are not model
+  loads and stay. FPS does not change. With the copies installed, 14 of 14 new game
+  processes loaded that save, played and closed cleanly (a cache that served the same bytes from
+  a DLL at runtime had hung the load in 11 of 22). `--only-used` with one session's file list kept
+  1,263 copies, 177 MB.
+- **The manifest** `uncompressed-models.jsonl` at the root of the copy is append-only while the
+  tool runs (a folder is recorded before it is created, a file before it is renamed into place
+  from `<name>.uncompressing`), so an interrupted run leaves nothing `--undo` cannot find; it is
+  rewritten compactly at the end. A copy whose content changed since it was written is no longer
+  the tool's: it is left in place and forgotten.
+- Tests: `python -I tests/test_uncompress_models.py` (synthetic archives and models, a fake bridge).
+
 ## Textures (.ddt)
 
 | Offset | Content |
