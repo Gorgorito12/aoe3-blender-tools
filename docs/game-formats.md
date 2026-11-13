@@ -135,6 +135,50 @@ compiled (`.xml.xmb`, plain `X1`, inside the art archives); mods ship plain XML.
   build progress (`p0`, `p33`, `p66`, `p100`).
 - Logic types measured in the mod: LowPoly, Tech, BuildingCompletion, Destruction, Variation,
   Civ, Culture.
+- A **prop** (measured on `nuggets\bear_campsite`, `objects\el_dorado`, `nuggets\abandoned_cabin`):
+  no construction stages, no submodel, no BuildingCompletion; one component with the model and
+  a decal (a ground texture or the selection square), one `Idle` anim; a death model and a `Death`
+  anim with the collapse smoke when it can be destroyed. `animxml.prop` writes it.
+- A **prop set** (measured on `buildings\props_colony\props_colony.xml` and 525 anim files with a
+  Variation): one component holding `logic type="Variation"` with a `<data>` per model, and an
+  `Idle` anim with an empty `<assetreference type="GrannyAnim"/>`. A set holds 5 / 9 / 20 models.
+  `animxml.prop_set` writes it; `bundle.write_set` writes the models (`<name>_<n>.gr2`) on one
+  texture.
+
+## Groupings
+
+What a map script or the scenario editor places as one: a settlement, a camp, a ruin.
+`RM*/groupings/<name>.xml` of the game folder; read and written by `aoe3game/grouping.py`.
+Measured on 2026-11-10 over every grouping of the original game (577 files) and of a mod's copy
+(1,483): all are well-formed XML, and both read and write back to the same units, flags and tiles.
+
+```xml
+<grouping>
+	<width>19</width>
+	<height>12</height>
+	<ignoreplacementrules>1</ignoreplacementrules>
+	<selectassingleunit>0</selectassingleunit>
+	<units>
+		<unit variation ="109" posx ="7.7374" posz ="-7.9860" orientx ="0.7071" orienty ="0.0000" orientz ="-0.7071">PropsColony</unit>
+	</units>
+	<tiles>
+		<tileGroup type ="NonPassableLand" subtype ="terrain\texas\river1_tex">
+			<block startX ="-6" startZ ="0" endX ="-6" endZ ="0"></block>
+		</tileGroup>
+	</tiles>
+</grouping>
+```
+
+| | | |
+|---|---|---|
+| Spelling | **measured** | lower case (`posx`, `variation`, `ignoreplacementrules`) in 68,571 units of 1,339 files; camel case (`posX`, `Variation`, `ignorePlacementRules`) in 4,228 of 140. Both are read; lower case is written |
+| `posx`, `posz` | **measured** | game units from the grouping's centre |
+| `orientx/y/z` | **measured** | a direction on the ground: `orienty` is 0 in 99.9 % of the units |
+| `variation` | **measured** | 0 to 255: picks a model of a prop set |
+| `tiles` | **measured** | terrain and passability under the grouping (`tileGroup` of `block`s, and `heights`): read and written back unchanged, never generated. 4 files have none |
+| Which way `posx`/`posz` run against Blender's axes, which way an orientation turns | **to verify** | `grouping.axes_grouping` writes an asymmetric test: units along +x, each turned a quarter more, one alone at +z |
+| A `variation` above a set's model count | **to verify** | |
+| Which `RM*` folders the mod's map scripts read | **to verify** | `tools/game_deploy.py --grouping` copies into every one of the test copy |
 
 ## Collision
 

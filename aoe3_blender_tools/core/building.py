@@ -58,6 +58,10 @@ class BuildingParams:
     window_caps: str = "PEDIMENT"   # ground floor window caps: PEDIMENT, or ALTERNATE (with arches)
     detail: str = "LOW"             # LOW (flat walls, ~350 tris) or MEDIUM (~1,200 tris: recessed
                                     # windows, balustrade, profiled cornice, finer columns)
+    poly: float = 1.0               # segments of every body that is not a box (round walls, cones,
+                                    # domes, arches), as a multiplier of what the style asks for:
+                                    # 1.0 is exactly that, 0.6 a cheaper building, 1.5 a finer one
+                                    # (core/resolution.py)
     texture_size: int = 1024        # final size; painted at twice that and filtered down
     seed: int = 1870
     player_colour: bool = False     # string courses and shutters show the owner's colour in game
@@ -85,6 +89,8 @@ class BuildingParams:
                                     # GRANARY, PLOT, QUARRY, CUSTOMS, PALACE
     architecture: str = "SUBSAHARAN"  # SUBSAHARAN (round, thatched) or SAHEL (adobe, flat roofs)
     wall_upgrade: str = "WOOD"      # the stockade's fence: WOOD, or STONE once upgraded
+    # props and treasures (core/styles/props)
+    prop_type: str = "ROCKS"        # a key of styles/props/recipes.RECIPES: a map object or a treasure
     colors: dict = field(default_factory=lambda: dict(DEFAULT_COLORS))
 
 
@@ -116,9 +122,11 @@ AFRICAN_COLORS = {**DEFAULT_COLORS, "mud": (140, 110, 74), "adobe": (164, 134, 1
                   "timber": (84, 58, 32), "stone": (132, 120, 96), "tile": (150, 82, 50)}
 
 
-# a palace is kept up: fresh warm plaster
-PALACE_COLORS = {"adobe": (160, 112, 64), "mud": (152, 108, 66), "cloth": (60, 66, 150), "timber": (122, 74, 40),
-                 "tile": (128, 88, 60)}
+# a palace is kept up: fresh warm plaster. Muted on 2026-11-10 to 0.65 of their colour about the
+# grey of the same lightness: the Sahel palace's texture had a saturation of 0.59, past the mod's
+# own building textures' upper quartile (0.43; median 0.37); now 0.41 (tools/style_check.py)
+PALACE_COLORS = {"adobe": (146, 115, 84), "mud": (140, 111, 84), "cloth": (60, 66, 150), "timber": (109, 78, 56),
+                 "tile": (117, 91, 73)}
 
 
 def african(building_type, architecture, **kw):
@@ -170,6 +178,19 @@ PRESETS.update({
         wing_width=4.5, wing_depth=3.5, rejas=True, chimneys=2, portico=False, cupola=False,
         detail="MEDIUM", colors=dict(COLONIAL_COLORS)),
 })
+
+
+def prop(prop_type, **kw):
+    """A prop or treasure preset (core/styles/props): the African palette the mod was measured to,
+    a 256 texture for a map object and 512 for a treasure, which is about five units across."""
+    from .styles.props import recipes
+    words = "".join(w.title() for w in prop_type.split("_"))
+    kw.setdefault("texture_size", 512 if prop_type in recipes.TREASURES else 256)
+    return BuildingParams(name=f"Prop{words}", style="PROP", prop_type=prop_type, portico=False, cupola=False,
+                          detail="MEDIUM", colors=dict(AFRICAN_COLORS), materials=True, **kw)
+
+
+PRESETS.update({f"PROP_{t}": prop(t) for t in STYLES["PROP"].recipes.TYPES})
 
 
 def clamp_params(p):

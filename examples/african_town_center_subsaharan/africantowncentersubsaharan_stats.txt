@@ -1,1 +1,1 @@
-AfricanTownCenterSubSaharan: 3456 triangles, 2791 vertices; footprint 16.9 x 15.1 m; texture 1024 x 1024
+AfricanTownCenterSubSaharan: 3116 triangles, 2592 vertices; footprint 16.2 x 16.2 m; texture 1024 x 1024

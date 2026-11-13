@@ -3,6 +3,7 @@
 
     python -I tools/game_deploy.py --install <copy> --bundle <folder> [--bundle <folder> ...]
                                    [--validate] [--show-as <Unit>] [--builder <Unit>]
+    python -I tools/game_deploy.py --install <copy> --grouping <file.xml> [--grouping ...]
     python -I tools/game_deploy.py --install <copy> --undo
     python -I tools/game_deploy.py --install <copy> --validate
 
@@ -26,7 +27,7 @@ def main(argv):
         return argv[argv.index(name) + 1] if name in argv else None
 
     install = opt("--install")
-    if not install or not (opt("--bundle") or "--undo" in argv or "--validate" in argv):
+    if not install or not (opt("--bundle") or opt("--grouping") or "--undo" in argv or "--validate" in argv):
         print(__doc__)
         return 2
     try:
@@ -41,6 +42,12 @@ def main(argv):
     if bundles:
         m = d.apply_many(bundles, show_as=opt("--show-as"), builder=opt("--builder"))
         print(f"deployed: units {m.get('units')} ids {m.get('unit_ids')}, strings {m.get('strings')}")
+    for g in [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--grouping"]:
+        try:                                               # a settlement: into every RM*/groupings
+            print(f"grouping {os.path.basename(g)}: {len(d.add_grouping(g, log=lambda s: None))} folders")
+        except deploy.RefusedPath as e:
+            print(e)
+            return 1
     if "--validate" in argv:
         bad = 0
         for script, (code, errors, _lines) in d.validate(log=lambda s: None).items():

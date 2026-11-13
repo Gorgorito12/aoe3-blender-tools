@@ -39,6 +39,14 @@ its footprint class (602 for the Sahel granary up), with the Sahel palace at its
 
 ![African presets](examples/african_gallery.jpg)
 
+**Props and treasures** (style `PROP`), held to the original game's own: map objects (one thing,
+about 100 triangles: rocks, crates, barrels, logs, a well, a campfire, a pole with a pennant) and
+treasures (a small accident and its spilled cargo, about 320: a broken cart, an abandoned camp, a
+burnt hut, a wrecked boat, a lost chest), 35 to 398 triangles, the cargo turned, laid on its side
+and tipped at random by the seed:
+
+![Props and treasures](examples/props_gallery.jpg)
+
 **Sahel palace in the game** (preset `AFRICAN_PALACE_SAHEL`): 1,610 triangles, painted at 2048 and
 exported at 1024, 2.5 MB of textures, 10 piers on its corners, its own ground and collision boxes. Every building has a technical sheet,
 this one in [docs/specs/AfricanPalaceSahel.md](docs/specs/AfricanPalaceSahel.md). Filmed at the game's
@@ -130,13 +138,72 @@ target mod's.
 python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\protoy.xml" --granny <tool> --cache <folder> --out survey/mod --profile-out aoe3_blender_tools/profiles/buildings.json
 ```
 
+The first survey measures the buildings. Two more open **everything**: every texture
+(`tools/texture_survey.py`: palette, grain, the join, alpha, painted light; about two minutes for
+39,000 textures on 13 cores) and every Granny file (`tools/model_survey.py`: triangles, bones,
+vertex layouts, sizes, texture pixels per unit, how animations are written; six minutes for
+19,000 files through the same external tool). `--reference <original game>` tells the mod's own
+art from the original game's by its bytes. Their profiles are `profiles/textures.json` and
+`profiles/models.json`; what they found is in [docs/art-findings.md](docs/art-findings.md).
+
+Settlements are groupings, not models: `tools/grouping_survey.py` reads every
+`RM*/groupings/*.xml`, classes each placed unit by its proto's unit types and measures how a
+settlement is laid out round its socket (`profiles/groupings.json`).
+
+```
+python -I tools\grouping_survey.py "<game copy>" --proto "<game copy>\data\protoy.xml" --reference "<original game>\bin" --out survey/mod/groupings.json --profile-out aoe3_blender_tools/profiles/groupings.json
+venv\Scripts\python -I tools\texture_survey.py "<game copy>" --reference "<original game>" --out survey/mod
+venv\Scripts\python -I tools\model_survey.py "<game copy>" --reference "<original game>" --out survey/mod --granny <tool> --cache <folder>
+venv\Scripts\python -I tools\texture_survey.py --from survey/mod/textures.json --models survey/mod/models.json --profile-out aoe3_blender_tools/profiles/textures.json --sheets <folder outside the repository>
+venv\Scripts\python -I tools\model_survey.py --from survey/mod/models.json --textures survey/mod/textures.json --profile-out aoe3_blender_tools/profiles/models.json
+```
+
 ## Features
 
+- **It has measured the art it imitates**: every texture and every model of the target mod was
+  opened (39,210 textures, 19,428 models and animations), told apart from the original game's,
+  and measured; the numbers ship as profiles that name no file. The mod's own hand is half as
+  grainy as the original game's (0.25 against 0.51), paints its units at three times the texture
+  density, and never marks a cyclic animation as one. See
+  [docs/art-findings.md](docs/art-findings.md).
+- **Props and treasures**: the `PROP` style builds map objects and treasures from the kit's
+  pieces (a cart that can lose a wheel, a chest, boulders, a ridge tent, heaps of fruit, a burnt
+  hut, a pole with a pennant, and every African prop) by recipe: a main piece, leaning or broken,
+  and its cargo placed by the composer, turned, laid on its side or tipped, up to the median
+  triangles of the game's own props of its kind and never past their upper quartile. Exported as
+  a prop (no stages, rubble or damaged model; treasures go to `nuggets`), with a technical sheet.
+- **Prop sets**: one unit whose models are its variations, on **one** texture, as the game keeps
+  its small props (the stock colony set is 13 models). Generated (Goods, Camp), or made from
+  meshes modelled one by one: **Pack into One Texture** puts their textures into one atlas at one
+  texel density and moves their UVs; **Export Prop Set** writes the bundle.
+- **Settlements**: **Compose Settlement** lays copies of your buildings and sets round a socket as
+  the mod's own 246 settlements are laid out (nothing within 5.6 units of the socket, buildings at
+  12 to 20, a lane left free, a third of them facing it), to move by hand; **Export Grouping**
+  writes the grouping file, **Import Grouping** reads one, `tools/game_deploy.py --grouping` puts
+  it into a test copy.
+- **Import a Game Model**: an uncompressed `.gr2` comes into Blender as a mesh with its UVs and an
+  Empty for each bone, and goes out again through the game export.
+- **Texture maker** (optional, local): a seamless, tileable texture from a picture you give it
+  ("a 256 texture of this roof") or from the material in words, kept in a library with its
+  licence and what it was made from, and laid under the painting in place of one of the add-on's
+  own swatches (the painter takes its grain, never its colours: the drawing stays where the
+  geometry needs it). It tiles by construction: the borders are pixels that were neighbours, so
+  whatever the AI draws, the texture still repeats. Measured on an RTX 4090 at 256 px: 24 to 38 s
+  with ComfyUI, about a second without it (a picture is then only tiled and de-lit, no GPU and no
+  model needed). Each texture is measured against the mod's own textures of its kind and, by
+  default, **fitted** to their grain and saturation (Stable Diffusion paints at 0.69 of saturation
+  where the mod is at 0.37); a LoRA trained on the mod's own textures can do the drawing.
+  See [docs/texture-maker.md](docs/texture-maker.md).
 - **AI repaint** (optional, local): a button repaints the texture with Stable Diffusion XL and a
   ControlNet in a local ComfyUI, region by region, for a hand-painted look; the edges, the
   player colour and the alpha stay where they were (a guard keeps any region whose edges move).
   See [docs/ai-textures.md](docs/ai-textures.md) for the install, the licences and the settings.
   ![AI repaint, before and after](examples/ai_before_after.jpg)
+- **A model someone else made**: the AI repaint and the game export also work on a mesh the
+  generator did not build - its material slots become the regions to repaint, and it is written
+  as a **prop** bundle (no construction stages, no rubble, no placement file) or as a building.
+  Any Empty parented to it becomes a named bone, so a custom socket costs nothing. The checklist
+  it must meet is in [docs/external-meshes.md](docs/external-meshes.md).
 - **Spanish colonial style**: whitewashed walls on a low plinth with a coloured dado, small
   windows with iron grilles, shutters and a plank door in the owner's colour, a clay tile roof
   (two slopes along or across, or hipped) with a wide eave, and as options a wooden balcony, a
@@ -165,6 +232,13 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 - **Values that cannot be built are reduced, with a warning**: more columns than the front holds,
   a bow too large for the back, chimneys that would overlap. A random sweep of 1,200 option sets
   passes the checks.
+- **Polygon optimisation, parametric**: one multiplier (**Segments**, `poly`) sets how many
+  segments every body that is not a box gets - round walls, cones, domes, arches, arcades. 1.0 is
+  exactly what the style always built (the recorded output does not move); 0.5 takes the
+  Sub-Saharan house from 626 triangles to 290 and the Sahel granary from 660 to 204; 1.5 makes
+  them finer. It never lowers a round wall below the sides the low-poly model uses, so no joint
+  that was sound becomes unsound. See "Budgets for a new building" in
+  [docs/building-guidelines.md](docs/building-guidelines.md).
 - **Two detail levels.** Low: flat walls with painted windows (about 350 triangles). Medium
   (about 1,200): windows and doors recessed into the walls, a balustrade with posts on the roof
   edge, a profiled cornice, columns with a base and a capital, cheek walls beside the steps and
@@ -175,7 +249,10 @@ python -I tools/art_survey.py "<game copy>" --bar --proto "<game copy>\data\prot
 - **Material swatches** (option, off by default; `--materials` on the command line): small
   tileable CC0 photos under the painting give the walls their grain while every drawn detail
   and the colours stay; the swatch's lighting is removed and its grain scaled to a measured
-  target (less on tiles and slates). Five swatches: plaster and ashlar for walls, rough stone for
+  target (less on tiles and slates). The African styles are **calibrated to the mod**: each
+  material's fine grain is fitted to the mod's own textures of its kind (walls from 0.14 to about
+  0.20, the median being 0.25) and the palace's palette is muted (saturation 0.59 to 0.41), so
+  every African preset sits within half a quartile of the mod's grain and colour. Five swatches: plaster and ashlar for walls, rough stone for
   plinths and slate, clay for tiles, wood grain for timber. The bump map is made from the
   finished texture, so it carries the grain too. Credits in
   [aoe3_blender_tools/materials/MATERIALS.md](aoe3_blender_tools/materials/MATERIALS.md).
@@ -259,6 +336,12 @@ venv/bin/python -I tests/test_golden.py               # presets byte for byte (-
 venv/bin/python -I tests/test_materials.py            # material swatches and their layer
 venv/bin/python -I tests/test_comfy.py                # ComfyUI client (a stand-in server, no GPU)
 venv/bin/python -I tests/test_airepaint.py            # AI repaint by regions (no GPU)
+venv/bin/python -I tests/test_props.py                # props and treasures against the game's own
+venv/bin/python -I tests/test_group.py                # several meshes on one texture, generated sets
+python -I tests/test_settlement.py                    # the settlement composer and the grouping format
+venv/bin/python scripts/game_export.py --out out/cart --preset PROP_BROKEN_CART
+venv/bin/python scripts/game_export.py --out out/goods --set GOODS     # a prop set: one unit, 10 models
+venv/bin/python tools/gallery.py --style PROP --cols 4 --out examples/props_gallery.jpg
 ```
 
 On Windows the venv's interpreter is `venv\Scripts\python`.
@@ -294,8 +377,21 @@ see [tools/README.md](tools/README.md).
    styles (done, seen in game), material swatches (done) and death models (done). Next: Asian and
    native styles, forts, walls and gates, baking a detailed model's texture onto a clean mesh,
    and the other texture options in [docs/texture-plan.md](docs/texture-plan.md).
-4. **Units:** reuse the stock skeletons and animations; build the body from parts or fit a
-   detailed mesh to a stock skeleton; textures with the player-colour mask.
+4. **Textures** (in progress): the painter, the swatches, the AI repaint and the texture maker
+   are done, and so is the parametric polygon optimisation of every body that is not a box.
+   Next: a texture made here seen in game on a real building, and the roofs, which have no
+   subdivision to scale.
+5. **Props and treasures** (in progress): a mesh anyone modelled can be textured and written as a
+   prop bundle; a generator of map objects and treasures held to the game's own budgets; prop
+   sets on one texture, generated or packed from separate meshes; settlements composed round a
+   socket as the mod's own are, written as groupings (all done, to be seen in game: the axes of a
+   grouping and how a set's variation is chosen are still to verify). Next: native buildings for
+   the settlements, a custom socket's model.
+6. **Units:** reuse the stock skeletons and animations. The importer is done (mesh, UVs, bones
+   as Empties). Measured since: a cyclic animation carries no loop flag at all, and the skinned
+   layout is four weights and four indices a vertex. Next: bones in a hierarchy and that layout
+   in the writer; the packed vertex stream more than half of the units use, which the reader
+   cannot open yet; an armature in the importer.
 
 ## License
 

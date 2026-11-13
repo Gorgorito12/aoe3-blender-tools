@@ -548,5 +548,205 @@ class DdtTest(unittest.TestCase):
         self.assertAlmostEqual(s["radius"][0], round(14.6 * 0.615157485 / 2 * bundle.OBSTRUCTION_RATIO, 2))
 
 
+class PropAnim(unittest.TestCase):
+    """A prop's anim file, against the layout measured on the stock files (2026-11-10):
+    Art\\nuggets\\bear_campsite\\nugget_bear_campsite.xml and Art\\objects\\el_dorado\\el_dorado.xml."""
+
+    def test_a_prop_has_a_component_and_an_idle_anim_and_nothing_of_a_building(self):
+        text = animxml.prop("Barrel", "mod\\objects\\barrel\\barrel", decal=(4.0, 4.0))
+        root = ET.fromstring(text)
+        self.assertEqual([e.tag for e in root], ["component", "anim"])
+        self.assertNotIn("BuildingCompletion", text)
+        self.assertNotIn("submodel", text)
+        self.assertNotIn("construction", text)
+        self.assertEqual(root.find("component/assetreference/file").text,
+                         "mod\\objects\\barrel\\barrel")
+        self.assertEqual(root.find("anim").text.strip(), "Idle")
+
+    def test_the_decal_is_a_selection_square_without_a_ground_texture(self):
+        root = ET.fromstring(animxml.prop("Barrel", "mod\\objects\\barrel\\barrel", decal=(8.0, 8.0)))
+        decal = root.find("component/decal")
+        self.assertIsNone(decal.find("texture"))
+        self.assertIsNotNone(decal.find("selectedtexture"))
+        self.assertEqual(decal.find("width").text, "8.00")
+
+    def test_a_ground_texture_is_written_with_its_bump_as_the_stock_nuggets_do(self):
+        root = ET.fromstring(animxml.prop("Barrel", "mod\\objects\\barrel\\barrel", decal=(4.0, 4.0),
+                                          ground="mod\\objects\\barrel\\barrel_ground"))
+        decal = root.find("component/decal")
+        self.assertEqual(decal.find("effecttype").text, "bump")
+        self.assertEqual(decal.find("texture").text, "mod\\objects\\barrel\\barrel_ground")
+        self.assertIsNotNone(decal.find("bumptexture"))
+
+    def test_no_decal_at_all(self):
+        root = ET.fromstring(animxml.prop("Barrel", "mod\\objects\\barrel\\barrel"))
+        self.assertIsNone(root.find("component/decal"))
+
+    def test_a_death_model_adds_its_component_and_a_death_anim(self):
+        text = animxml.prop("Barrel", "mod\\objects\\barrel\\barrel",
+                            death_model="mod\\objects\\barrel\\barrel_dead",
+                            death_anim="mod\\objects\\barrel\\barrel_deathanim")
+        root = ET.fromstring(text)
+        self.assertEqual([e.get("a") for e in root.findall("anim/attach")],
+                         [a for a, _c, _p in animxml.COLLAPSE_SMOKE])
+        self.assertEqual([e.text.strip() for e in root.findall("anim")], ["Idle", "Death"])
+        self.assertEqual([e.text.strip() for e in root.findall("component")], ["Barrel", "BarrelDeath"])
+
+    def test_a_death_animation_alone_is_ignored(self):
+        root = ET.fromstring(animxml.prop("Barrel", "mod\\objects\\barrel\\barrel",
+                                          death_anim="mod\\objects\\barrel\\x"))
+        self.assertEqual([e.text.strip() for e in root.findall("anim")], ["Idle"])
+
+    def test_bones_are_defined_so_a_socket_reaches_the_game(self):
+        root = ET.fromstring(animxml.prop("Barrel", "mod\\objects\\barrel\\barrel",
+                                          bones=("bone_main", "bone_smoke")))
+        self.assertEqual([e.text for e in root.findall("definebone")], ["bone_main", "bone_smoke"])
+
+
+@unittest.skipIf(np is None, "needs numpy")
+class GroupingDeploy(unittest.TestCase):
+    def test_a_grouping_goes_into_every_groupings_folder_and_undo_takes_it_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for d in ("art", "data", os.path.join("RM", "groupings"), os.path.join("RM3", "groupings")):
+                os.makedirs(os.path.join(tmp, d))
+            old = os.path.join(tmp, "RM3", "groupings", "Native Test 1.xml")
+            with open(old, "w", encoding="utf-8") as fh:
+                fh.write("<grouping/>")
+            src = os.path.join(tmp, "Native Test 1.xml")
+            with open(src, "w", encoding="utf-8") as fh:
+                fh.write("<grouping><units/></grouping>")
+            d = deploy.Deployment(tmp)
+            written = d.add_grouping(src, log=lambda s: None)
+            self.assertEqual(len(written), 2)
+            self.assertEqual(open(old, encoding="utf-8").read(), "<grouping><units/></grouping>")
+            d.undo(log=lambda s: None)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "RM", "groupings", "Native Test 1.xml")))
+            self.assertEqual(open(old, encoding="utf-8").read(), "<grouping/>")
+
+
+class PropSet(unittest.TestCase):
+    """One unit, many models on one texture: the Variation layout of the stock colony props."""
+
+    def test_the_anim_file_is_one_component_with_a_variation_per_model(self):
+        text = animxml.prop_set("Goods", ["mod\\objects\\goods\\goods_0", "mod\\objects\\goods\\goods_1"])
+        root = ET.fromstring(text.split("?>", 1)[1])
+        comps = root.findall("component")
+        self.assertEqual(len(comps), 1)
+        logic = comps[0].find("logic")
+        self.assertEqual(logic.get("type"), "Variation")
+        files = [d.find("assetreference/file").text for d in logic.findall("data")]
+        self.assertEqual(files, ["mod\\objects\\goods\\goods_0", "mod\\objects\\goods\\goods_1"])
+        idle = root.find("anim")
+        self.assertEqual(idle.text.strip(), "Idle")
+        self.assertEqual(idle.find("assetreference").get("type"), "GrannyAnim")
+        self.assertEqual(idle.find("component").text, "Goods")
+        with self.assertRaises(ValueError):
+            animxml.prop_set("Empty", [])
+
+    def test_a_set_bundle_writes_every_model_on_one_texture_and_reads_back(self):
+        P, N, UV, T = box()
+        tex = np.full((32, 32, 4), 255, np.uint8)
+        models = [{"positions": P, "normals": N, "uvs": UV, "triangles": T}] * 3
+        with tempfile.TemporaryDirectory() as tmp:
+            desc = bundle.write_set(tmp, name="Goods", prefix="mod", models=models, texture_rgba=tex,
+                                    footprint_m=(2, 2))
+            art = os.path.join(tmp, "art", "mod", "objects", "goods")
+            names = sorted(os.listdir(art))
+            for i in range(3):
+                data = open(os.path.join(art, f"goods_{i}.gr2"), "rb").read()
+                doc = gr2.load(data)
+                tex_names = [t.get("FromFileName") for t in doc.root().get("Textures")]
+                self.assertIn("C:\\aoe3bt\\art\\mod\\objects\\goods\\goods.ddt", tex_names)
+            readme = open(os.path.join(tmp, "README.txt"), encoding="utf-8").read()
+        self.assertEqual([n for n in names if n.endswith(".ddt") and not n.endswith("_b.ddt")], ["goods.ddt"])
+        self.assertEqual(desc["kind"], "PROP")
+        self.assertEqual(desc["set"], 3)
+        self.assertEqual(desc["unit"]["AnimFile"], "mod\\objects\\goods\\goods.xml")
+        self.assertNotIn("DeadReplacement", desc["unit"])
+        self.assertIn("variation", readme)
+
+
+class PropBundle(unittest.TestCase):
+    def _write(self, tmp, **kw):
+        P, N, UV, T = box()
+        tex = np.full((32, 32, 4), 255, np.uint8)
+        return bundle.write(tmp, name="Barrel", prefix="mod", positions=P, normals=N, uvs=UV,
+                            triangles=T, texture_rgba=tex, footprint_m=(4, 3), **kw)
+
+    def test_a_prop_goes_to_the_objects_folder_with_no_building_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            desc = self._write(tmp, kind="PROP")
+        self.assertEqual(desc["kind"], "PROP")
+        names = [os.path.basename(f) for f in desc["files"]]
+        self.assertIn(os.path.join("art", "mod", "objects", "barrel", "barrel.gr2"), desc["files"])
+        self.assertNotIn("barrel_death.gr2", names)             # a prop does not sink when killed
+        self.assertNotIn("DeadReplacement", desc["unit"])       # and leaves no rubble
+        self.assertNotIn("PlacementFile", desc["unit"])
+        self.assertIn("AnimFile", desc["unit"])
+        self.assertIn("ObstructionRadiusX", desc["unit"])
+
+    def test_the_folder_can_be_chosen_for_a_treasure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            desc = self._write(tmp, kind="PROP", folder="nuggets")
+        self.assertTrue(desc["unit"]["AnimFile"].startswith("mod\\nuggets\\barrel"))
+
+    def test_a_building_is_unchanged_and_still_the_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            desc = self._write(tmp)
+        self.assertEqual(desc["kind"], "BUILDING")
+        self.assertIn("DeadReplacement", desc["unit"])
+        self.assertIn(os.path.join("art", "mod", "buildings", "barrel", "barrel_death.gr2"),
+                      desc["files"])
+
+    def test_an_unknown_kind_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                self._write(tmp, kind="TREASURE")
+
+    def test_the_prop_readme_does_not_talk_about_building_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, kind="PROP")
+            text = open(os.path.join(tmp, "README.txt"), encoding="utf-8").read()
+        self.assertIn("map object", text)
+        self.assertNotIn("construction stages", text)
+        self.assertNotIn("<Train>", text)
+
+
+@unittest.skipIf(np is None, "needs numpy")
+class ReadBack(unittest.TestCase):
+    """aoe3game/gr2_mesh.py: a model written here comes back as it went."""
+
+    def setUp(self):
+        from aoe3game import gr2_mesh
+        self.gr2_mesh = gr2_mesh
+        self.P, self.N, self.UV, self.T = box()
+        self.data = gr2_write.static_model("Crate", self.P, self.N, self.UV, self.T, texture="t.ddt",
+                                           bump="t_b.ddt", bones=[("bone_smoke", (0.5, -1.0, 2.0))])
+
+    def test_positions_uvs_and_triangles_come_back(self):
+        m = self.gr2_mesh.read(self.data)
+        part = m["meshes"][0]
+        key = lambda rows: sorted(tuple(round(float(v), 3) for v in r) for r in rows)   # noqa: E731
+        self.assertEqual(key(part["positions"]), key(self.P))
+        self.assertEqual(key(part["uvs"]), key(self.UV))
+        self.assertEqual(len(part["triangles"]), len(self.T))
+        self.assertEqual(m["skipped"], [])
+
+    def test_the_winding_faces_the_way_the_normals_do(self):
+        part = self.gr2_mesh.read(self.data)["meshes"][0]
+        p, t = part["positions"], part["triangles"]
+        face = np.cross(p[t[:, 1]] - p[t[:, 0]], p[t[:, 2]] - p[t[:, 0]])
+        self.assertTrue(((face * part["normals"][t[:, 0]]).sum(1) > 0).all())
+
+    def test_a_socket_comes_back_where_it_was_put(self):
+        bones = {name: at for name, _parent, at in self.gr2_mesh.read(self.data)["bones"]}
+        self.assertEqual(tuple(round(v, 3) for v in bones["bone_smoke"]), (0.5, -1.0, 2.0))
+        self.assertIn("bone_main", bones)
+
+    def test_an_animation_has_no_mesh(self):
+        anim = gr2_write.sink_animation("Crate", [], 2.0)
+        self.assertEqual(self.gr2_mesh.read(anim)["meshes"], [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -71,7 +71,7 @@ def facts(params, size, template, upm, key=None, collision=None, shape=None, ban
         "texture_mb": texture_mb(main, bump, budget is None, bool(medium.boxes)),
         "density": at.density * main / at.size / scale / upm, "materials": bool(getattr(p, "materials", False)),
         "game": dict(size), "collision": collision, "shape": shape, "attach": dict(medium.attach),
-        "notes": list(medium.notes), "boxes": list(medium.boxes),
+        "notes": list(medium.notes), "boxes": list(medium.boxes), "group": medium.dims.get("group"),
     }
 
 
@@ -121,7 +121,9 @@ def render(f, export=None, proto=None):
         rows.append(("Type", f["type"]))
     if f["architecture"]:
         rows.append(("Architecture", f["architecture"]))
-    rows.append(("Proto template", f"`{f['template']}`"))
+    prop = f["style"] == "PROP"
+    rows.append(("Proto template", "a map object or a treasure of the mod (set it on export)" if prop
+                 else f"`{f['template']}`"))
     if f["notes"]:
         rows.append(("Notes", "; ".join(f["notes"])))
     out += _table(("Field", "Value"), rows)
@@ -161,9 +163,14 @@ def render(f, export=None, proto=None):
     elif f["collision"]:
         rows.append(("Collision shape", f"`{f['collision']}`, a stock shape shared by every generated "
                      "building, not fitted to this model"))
-    rows += [("Ground decal", f"{_n(g['decal'][0])} x {_n(g['decal'][1])}"),
-             ("Construction stages", g.get("stages")), ("Rubble", g.get("rubble")),
-             ("Placement file", g.get("placement") or "the template's"), ("Footprint class", g.get("class") or "none")]
+    rows += [("Ground decal", f"{_n(g['decal'][0])} x {_n(g['decal'][1])}")]
+    if prop:                                               # a prop is not built, does not fall, is not placed
+        rows += [("Kind", f"a prop: no construction stages, no rubble, no placement file "
+                          f"(`{'nuggets' if f.get('group') == 'nuggets' else 'objects'}` art folder)")]
+    else:
+        rows += [("Construction stages", g.get("stages")), ("Rubble", g.get("rubble")),
+                 ("Placement file", g.get("placement") or "the template's"),
+                 ("Footprint class", g.get("class") or "none")]
     out += _table(("Field", "Value"), rows)
 
     if f["shape"]:

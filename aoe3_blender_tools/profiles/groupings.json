@@ -1,0 +1,542 @@
+{
+ "measured": "with tools/grouping_survey.py",
+ "groups": [
+  {
+   "origin": "own",
+   "kind": "settlement",
+   "files": 246,
+   "units": [
+    50,
+    60,
+    72
+   ],
+   "width": [
+    14.0,
+    16.0,
+    18.0
+   ],
+   "height": [
+    15.0,
+    18.0,
+    19.0
+   ],
+   "share": {
+    "socket": 0.016,
+    "building": 0.136,
+    "nature": 0.334,
+    "plant": 0.065,
+    "prop": 0.242,
+    "people": 0.001,
+    "obstruction": 0.206,
+    "other": 0.0
+   },
+   "per_file": {
+    "socket": [
+     1,
+     1,
+     1
+    ],
+    "building": [
+     4,
+     6,
+     14
+    ],
+    "nature": [
+     11,
+     19,
+     28
+    ],
+    "plant": [
+     1,
+     2,
+     5
+    ],
+    "prop": [
+     4,
+     14,
+     23
+    ],
+    "people": [
+     0,
+     0,
+     0
+    ],
+    "obstruction": [
+     11,
+     14,
+     15
+    ],
+    "other": [
+     0,
+     0,
+     0
+    ]
+   },
+   "clear": [
+    5.25,
+    5.61,
+    6.33
+   ],
+   "building_d": [
+    11.62,
+    16.15,
+    19.67
+   ],
+   "prop_d": [
+    10.45,
+    14.27,
+    18.77
+   ],
+   "plant_d": [
+    9.63,
+    13.15,
+    17.86
+   ],
+   "obstruction_d": [
+    9.23,
+    16.1,
+    20.92
+   ],
+   "facing_socket": 0.367,
+   "facing_away": 0.162,
+   "variants": [
+    3,
+    3,
+    3
+   ]
+  },
+  {
+   "origin": "own",
+   "kind": "*",
+   "files": 316,
+   "units": [
+    46,
+    58,
+    73
+   ],
+   "width": [
+    14.0,
+    17.0,
+    18.0
+   ],
+   "height": [
+    15.0,
+    18.0,
+    20.0
+   ],
+   "share": {
+    "socket": 0.012,
+    "building": 0.15,
+    "nature": 0.302,
+    "plant": 0.106,
+    "prop": 0.26,
+    "people": 0.002,
+    "obstruction": 0.168,
+    "other": 0.0
+   },
+   "per_file": {
+    "socket": [
+     1,
+     1,
+     1
+    ],
+    "building": [
+     3,
+     6,
+     13
+    ],
+    "nature": [
+     8,
+     17,
+     27
+    ],
+    "plant": [
+     1,
+     2,
+     7
+    ],
+    "prop": [
+     4,
+     13,
+     23
+    ],
+    "people": [
+     0,
+     0,
+     0
+    ],
+    "obstruction": [
+     9,
+     13,
+     15
+    ],
+    "other": [
+     0,
+     0,
+     0
+    ]
+   },
+   "variants": [
+    1,
+    3,
+    3
+   ]
+  },
+  {
+   "origin": "stock",
+   "kind": "settlement",
+   "files": 189,
+   "units": [
+    33,
+    39,
+    49
+   ],
+   "width": [
+    11.0,
+    13.0,
+    15.0
+   ],
+   "height": [
+    11.0,
+    12.0,
+    13.0
+   ],
+   "share": {
+    "socket": 0.024,
+    "building": 0.143,
+    "nature": 0.235,
+    "plant": 0.128,
+    "prop": 0.321,
+    "obstruction": 0.149,
+    "other": 0.001
+   },
+   "per_file": {
+    "socket": [
+     1,
+     1,
+     1
+    ],
+    "building": [
+     3,
+     5,
+     7
+    ],
+    "nature": [
+     5,
+     10,
+     14
+    ],
+    "plant": [
+     1,
+     5,
+     10
+    ],
+    "prop": [
+     0,
+     9,
+     22
+    ],
+    "obstruction": [
+     4,
+     7,
+     9
+    ],
+    "other": [
+     0,
+     0,
+     0
+    ]
+   },
+   "clear": [
+    4.62,
+    5.14,
+    6.05
+   ],
+   "building_d": [
+    7.54,
+    11.66,
+    14.27
+   ],
+   "prop_d": [
+    8.53,
+    11.98,
+    15.17
+   ],
+   "plant_d": [
+    9.91,
+    13.26,
+    16.74
+   ],
+   "obstruction_d": [
+    8.3,
+    10.57,
+    13.17
+   ],
+   "facing_socket": 0.369,
+   "facing_away": 0.148,
+   "variants": [
+    5,
+    5,
+    5
+   ]
+  },
+  {
+   "origin": "stock",
+   "kind": "*",
+   "files": 267,
+   "units": [
+    22,
+    34,
+    47
+   ],
+   "width": [
+    10.0,
+    12.0,
+    15.0
+   ],
+   "height": [
+    10.0,
+    12.0,
+    13.0
+   ],
+   "share": {
+    "socket": 0.019,
+    "building": 0.141,
+    "nature": 0.213,
+    "plant": 0.15,
+    "prop": 0.332,
+    "people": 0.015,
+    "obstruction": 0.121,
+    "other": 0.008
+   },
+   "per_file": {
+    "socket": [
+     0,
+     1,
+     1
+    ],
+    "building": [
+     0,
+     3,
+     6
+    ],
+    "nature": [
+     4,
+     6,
+     12
+    ],
+    "plant": [
+     0,
+     4,
+     10
+    ],
+    "prop": [
+     0,
+     8,
+     21
+    ],
+    "people": [
+     0,
+     0,
+     0
+    ],
+    "obstruction": [
+     0,
+     4,
+     8
+    ],
+    "other": [
+     0,
+     0,
+     0
+    ]
+   },
+   "variants": [
+    1,
+    5,
+    5
+   ]
+  },
+  {
+   "origin": "*",
+   "kind": "settlement",
+   "files": 435,
+   "units": [
+    37,
+    52,
+    67
+   ],
+   "width": [
+    13.0,
+    15.0,
+    17.0
+   ],
+   "height": [
+    12.0,
+    15.0,
+    18.0
+   ],
+   "share": {
+    "socket": 0.019,
+    "building": 0.138,
+    "nature": 0.3,
+    "plant": 0.086,
+    "prop": 0.269,
+    "people": 0.001,
+    "obstruction": 0.186,
+    "other": 0.0
+   },
+   "per_file": {
+    "socket": [
+     1,
+     1,
+     1
+    ],
+    "building": [
+     3,
+     6,
+     11
+    ],
+    "nature": [
+     7,
+     13,
+     21
+    ],
+    "plant": [
+     1,
+     2,
+     7
+    ],
+    "prop": [
+     2,
+     13,
+     23
+    ],
+    "people": [
+     0,
+     0,
+     0
+    ],
+    "obstruction": [
+     7,
+     11,
+     14
+    ],
+    "other": [
+     0,
+     0,
+     0
+    ]
+   },
+   "clear": [
+    5.09,
+    5.55,
+    6.33
+   ],
+   "building_d": [
+    9.84,
+    14.11,
+    17.89
+   ],
+   "prop_d": [
+    9.61,
+    13.22,
+    17.16
+   ],
+   "plant_d": [
+    9.73,
+    13.25,
+    17.5
+   ],
+   "obstruction_d": [
+    8.59,
+    13.17,
+    19.15
+   ],
+   "facing_socket": 0.368,
+   "facing_away": 0.157,
+   "variants": [
+    3,
+    3,
+    5
+   ]
+  },
+  {
+   "origin": "*",
+   "kind": "*",
+   "files": 583,
+   "units": [
+    32,
+    48,
+    65
+   ],
+   "width": [
+    12.0,
+    15.0,
+    17.0
+   ],
+   "height": [
+    12.0,
+    15.0,
+    18.0
+   ],
+   "share": {
+    "socket": 0.014,
+    "building": 0.147,
+    "nature": 0.273,
+    "plant": 0.12,
+    "prop": 0.283,
+    "people": 0.007,
+    "obstruction": 0.153,
+    "other": 0.003
+   },
+   "per_file": {
+    "socket": [
+     0,
+     1,
+     1
+    ],
+    "building": [
+     1,
+     5,
+     9
+    ],
+    "nature": [
+     5,
+     11,
+     20
+    ],
+    "plant": [
+     0,
+     2,
+     8
+    ],
+    "prop": [
+     2,
+     11,
+     22
+    ],
+    "people": [
+     0,
+     0,
+     0
+    ],
+    "obstruction": [
+     2,
+     8,
+     13
+    ],
+    "other": [
+     0,
+     0,
+     0
+    ]
+   },
+   "variants": [
+    1,
+    3,
+    4
+   ]
+  }
+ ]
+}

@@ -1,1 +1,1 @@
-AfricanTownCenterSahel: 3477 triangles, 2577 vertices; footprint 15.9 x 16.2 m; texture 1024 x 1024
+AfricanTownCenterSahel: 3134 triangles, 2248 vertices; footprint 16.2 x 16.7 m; texture 1024 x 1024

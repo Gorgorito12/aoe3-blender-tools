@@ -17,7 +17,13 @@ DEFAULT_URL = "http://127.0.0.1:8188"
 CHECKPOINT = "sd_xl_base_1.0.safetensors"
 CONTROLNET = "controlnet-union-sdxl-promax.safetensors"
 NODES = ("CheckpointLoaderSimple", "LoadImage", "Canny", "ControlNetLoader", "SetUnionControlNetType",
-         "ControlNetApplyAdvanced", "CLIPTextEncode", "VAEEncode", "KSampler", "VAEDecode", "SaveImage")
+         "ControlNetApplyAdvanced", "CLIPTextEncode", "VAEEncode", "EmptyLatentImage", "KSampler",
+         "VAEDecode", "SaveImage")
+
+
+# what training and using a LoRA needs on top: core nodes too (ComfyUI 0.43 and later)
+TRAIN_NODES = ("LoadImageTextDataSetFromFolder", "MakeTrainingDataset", "TrainLoraNode", "SaveLoRA")
+LORA_NODE = "LoraLoader"
 
 
 class ComfyError(RuntimeError):
@@ -113,14 +119,34 @@ class Client:
                 if status.get("status_str") == "error":
                     msgs = [m for m in status.get("messages", []) if m and m[0] == "execution_error"]
                     raise ComfyError(f"ComfyUI failed: {json.dumps(msgs)[:600]}")
-                if entry.get("outputs"):
-                    return entry
+                if entry.get("outputs") or status.get("status_str") == "success":
+                    return entry               # a training run finishes without an image
             time.sleep(poll)
         raise ComfyError(f"ComfyUI did not finish in {timeout:.0f} s")
 
     def fetch(self, filename, subfolder="", kind="output"):
         q = urllib.parse.urlencode({"filename": filename, "subfolder": subfolder, "type": kind})
         return self._open(f"/view?{q}")
+
+    def loras(self):
+        """The LoRA files ComfyUI can load ([] when it has none or cannot load any)."""
+        try:
+            spec = self.object_info()[LORA_NODE]["input"]["required"]["lora_name"]
+        except (KeyError, TypeError):
+            return []
+        if spec and isinstance(spec[0], list):
+            return spec[0]
+        return spec[1].get("options", []) if len(spec) > 1 else []
+
+    def can_train(self):
+        """Problems that stop a LoRA training ([] when the nodes are there)."""
+        info = self.object_info()
+        return [f"ComfyUI has no node {n} (it trains LoRAs from version 0.43)" for n in TRAIN_NODES
+                if n not in info]
+
+    def interrupt(self):
+        """Stops what ComfyUI is running now (a training run saves nothing)."""
+        self._open("/interrupt", b"")
 
     def run(self, workflow, timeout=300.0):
         """Queues a workflow and returns the PNG bytes of its first saved image."""
@@ -134,10 +160,12 @@ class Client:
 def repaint_workflow(image_name, *, prompt, negative, denoise, seed, checkpoint=CHECKPOINT,
                      controlnet=CONTROLNET, steps=24, cfg=5.5, control_strength=0.85,
                      canny=(0.15, 0.45), union_type="canny/lineart/anime_lineart/mlsd",
-                     sampler="dpmpp_2m", scheduler="karras", prefix="aoe3bt"):
+                     sampler="dpmpp_2m", scheduler="karras", prefix="aoe3bt", lora=None,
+                     lora_strength=0.8):
     """The repaint workflow in ComfyUI's API format: img2img of the uploaded region at `denoise`,
-    held by a ControlNet Union on the region's own Canny edges."""
-    return {
+    held by a ControlNet Union on the region's own Canny edges. lora: a file of ComfyUI's
+    models/loras to paint with (see `with_lora`), or None."""
+    return with_lora({
         "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
         "2": {"class_type": "LoadImage", "inputs": {"image": image_name}},
         "3": {"class_type": "Canny", "inputs": {"image": ["2", 0], "low_threshold": canny[0],
@@ -156,4 +184,69 @@ def repaint_workflow(image_name, *, prompt, negative, denoise, seed, checkpoint=
                           "negative": ["8", 1], "latent_image": ["9", 0], "denoise": float(denoise)}},
         "11": {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["1", 2]}},
         "12": {"class_type": "SaveImage", "inputs": {"images": ["11", 0], "filename_prefix": prefix}},
+    }, lora, lora_strength)
+
+
+def texture_workflow(*, prompt, negative, seed, width=1024, height=1024, checkpoint=CHECKPOINT,
+                     steps=28, cfg=6.0, denoise=1.0, sampler="dpmpp_2m", scheduler="karras",
+                     prefix="aoe3bt", lora=None, lora_strength=0.8):
+    """A texture from the prompt alone, in ComfyUI's API format: an empty latent sampled to the
+    end (no image in, no ControlNet). Core nodes only, like the repaint."""
+    return with_lora({
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
+        "2": {"class_type": "EmptyLatentImage",
+              "inputs": {"width": int(width), "height": int(height), "batch_size": 1}},
+        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["1", 1]}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["1", 1]}},
+        "5": {"class_type": "KSampler",
+              "inputs": {"model": ["1", 0], "seed": int(seed), "steps": int(steps), "cfg": float(cfg),
+                         "sampler_name": sampler, "scheduler": scheduler, "positive": ["3", 0],
+                         "negative": ["4", 0], "latent_image": ["2", 0], "denoise": float(denoise)}},
+        "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
+        "7": {"class_type": "SaveImage", "inputs": {"images": ["6", 0], "filename_prefix": prefix}},
+    }, lora, lora_strength)
+
+
+def with_lora(workflow, lora, strength=0.8, loader="1"):
+    """The workflow with a LoRA between its checkpoint and everything that used the checkpoint's
+    model or text encoder (the VAE is left alone). Without a LoRA the workflow comes back as it
+    was, key for key."""
+    if not lora:
+        return workflow
+    for node in workflow.values():
+        for key, value in node["inputs"].items():
+            if isinstance(value, list) and len(value) == 2 and value[0] == loader and value[1] in (0, 1):
+                node["inputs"][key] = ["lora", value[1]]
+    workflow["lora"] = {"class_type": LORA_NODE,
+                        "inputs": {"model": [loader, 0], "clip": [loader, 1], "lora_name": lora,
+                                   "strength_model": float(strength), "strength_clip": float(strength)}}
+    return workflow
+
+
+def train_lora_workflow(folder, *, prefix="loras/aoe3bt", checkpoint=CHECKPOINT, steps=1500, rank=16,
+                        learning_rate=1e-4, batch_size=2, seed=1, accumulate=1, existing_lora=None,
+                        offloading=False):
+    """Trains a LoRA on the pictures and captions of `folder` (a folder inside ComfyUI's input
+    folder, <n>.png with <n>.txt), in ComfyUI's API format, with its core nodes. The result is
+    saved under ComfyUI's output folder as <prefix>_<steps>_steps_<n>_.safetensors.
+
+    accumulate: gradient accumulation steps; batch 1 with 2 of them learns as batch 2 does with
+    less memory. existing_lora: a file of ComfyUI's models/loras to go on training (its name must
+    keep the "_<steps>_steps_" the saver wrote), so a long run can be cut into resumable chunks.
+    offloading: the node keeps the model's weights on the CPU (less GPU memory, more RAM)."""
+    return {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": checkpoint}},
+        "2": {"class_type": "LoadImageTextDataSetFromFolder", "inputs": {"folder": folder}},
+        "3": {"class_type": "MakeTrainingDataset",
+              "inputs": {"images": ["2", 0], "texts": ["2", 1], "vae": ["1", 2], "clip": ["1", 1]}},
+        "4": {"class_type": "TrainLoraNode",
+              "inputs": {"model": ["1", 0], "latents": ["3", 0], "positive": ["3", 1],
+                         "batch_size": int(batch_size), "grad_accumulation_steps": int(accumulate),
+                         "steps": int(steps),
+                         "learning_rate": float(learning_rate), "rank": int(rank), "optimizer": "AdamW",
+                         "loss_function": "MSE", "seed": int(seed), "training_dtype": "bf16",
+                         "lora_dtype": "bf16", "quantized_backward": False, "algorithm": "LoRA",
+                         "gradient_checkpointing": True, "checkpoint_depth": 1, "offloading": bool(offloading),
+                         "existing_lora": existing_lora or "[None]", "bucket_mode": False, "bypass_mode": False}},
+        "5": {"class_type": "SaveLoRA", "inputs": {"lora": ["4", 0], "prefix": prefix, "steps": ["4", 2]}},
     }

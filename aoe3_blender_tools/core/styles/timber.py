@@ -105,7 +105,7 @@ def build(p, params):
     sign_z = zg - 0.55
 
     # --- atlas ----------------------------------------------------------------------------------
-    b = Builder(p.texture_size, medium)
+    b = Builder(p.texture_size, medium, p.poly)
     b.region("front_g", W, ground_h)
     b.region("back_g", W, ground_h)
     b.region("side_g", D, ground_h)
@@ -418,4 +418,5 @@ def random_params(rng, i, BuildingParams):
         ground_floor=rng.choice(["STONE", "BRICK", "TIMBER"]), infill=rng.choice(["PLASTER", "BRICK"]),
         bracing=rng.choice(["CROSS", "CURVED", "PLAIN"]), signboard=rng.random() < 0.4,
         detail=rng.choice(["LOW", "MEDIUM"]), texture_size=256, player_colour=rng.random() < 0.3,
+        poly=rng.choice([1.0, 1.0, 0.5, 0.75, 1.3]),
         materials=rng.random() < 0.3)

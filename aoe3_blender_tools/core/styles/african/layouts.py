@@ -84,8 +84,8 @@ def shed(x0, x1, y0, y1, z_hi, z_lo, slope="-y", rafters=4, z=0.0, posts=(True, 
             "rafters": rafters, "z": z, "posts": posts, "boards": boards}
 
 
-def pier(fx0, fx1, fy0, fy1, tx0, tx1, ty0, ty1, h, into):
-    return {"kind": "pier", "foot": (fx0, fx1, fy0, fy1), "top": (tx0, tx1, ty0, ty1), "h": h, "into": into}
+def pier(fx0, fx1, fy0, fy1, tx0, tx1, ty0, ty1, h, into, climb=(1, 1)):
+    return {"kind": "pier", "foot": (fx0, fx1, fy0, fy1), "top": (tx0, tx1, ty0, ty1), "h": h, "into": into, "climb": climb}
 
 
 def stairs(x, y, z1, d="+x", w=0.7, run=2.8, n=7):
@@ -143,19 +143,26 @@ def town_center(p, P, medium):
     if p.architecture == "SUBSAHARAN":                    # the great hut, the wives' huts, one wall round all
         out = [hut(0.0, 0.3, 2.5, 2.8, 3.6, overhang=0.4, finial=0.7, door=True, door_w=1.3, door_h=2.1,
                    base=0.25, big=True, flag=True)]
+        # the small huts and the gate towers at 20 sides, not 16: the court has no room left for
+        # props, and the class's real town centers carry over 3,083 triangles (rounder huts, +216)
         for x, y in ((-3.3, 3.3), (3.3, 3.3)):
-            out.append(hut(x, y, 1.0, 1.7, 1.7, overhang=0.2, finial=0.25, door=True, door_w=0.7, door_h=1.3, big=True))
-        out += [hut(-3.3, -3.0, 0.9, 1.6, 1.6, overhang=0.2, door=True, door_w=0.7, door_h=1.2, big=True),
-                hut(3.3, -3.0, 0.9, 1.6, 1.6, overhang=0.2, door=True, door_w=0.7, door_h=1.2, big=True)]
+            out.append(hut(x, y, 1.0, 1.7, 1.7, overhang=0.2, finial=0.25, door=True, door_w=0.7, door_h=1.3, big=True,
+                           sides=20))
+        # y -2.65, not -3.0: closer to the gate the eave of each hut comes within 0.08 m of a gate
+        # tower's, which is neither apart (0.25 m) nor embedded - the rule in core/joints.py
+        out += [hut(-3.3, -2.65, 0.9, 1.6, 1.6, overhang=0.2, door=True, door_w=0.7, door_h=1.2, big=True, sides=20),
+                hut(3.3, -2.65, 0.9, 1.6, 1.6, overhang=0.2, door=True, door_w=0.7, door_h=1.2, big=True, sides=20)]
         out += court(P, 1.2, 0.0, 1.8, kind="PALISADE", width=2.2)
-        out += [tower(-1.65, -P + 0.3, 0.55, 2.8, roof="cone", roof_h=1.3, overhang=0.2),   # the gate's towers
-                tower(1.65, -P + 0.3, 0.55, 2.8, roof="cone", roof_h=1.3, overhang=0.2)]
+        out += [tower(-1.65, -P + 0.3, 0.55, 2.8, roof="cone", roof_h=1.3, overhang=0.2, sides=20),   # the gate's towers
+                tower(1.65, -P + 0.3, 0.55, 2.8, roof="cone", roof_h=1.3, overhang=0.2, sides=20)]
         return out + [yard(x0=-P + 0.2, y0=-P + 0.2, x1=P - 0.2, y1=P)]
     # a keep with four wings, walled round, round towers at the corners
     t = {"kind": "tower", "r": 0.8, "wall_h": 3.4, "roof_h": 0.0, "roof": "crenel", "bands": True, "sahel": True}
     c = P - 0.8
+    # two rows of beam ends (toron) round the keep, above the wings' merlons: the court has no room
+    # left for props, and the class's real town centers carry over 3,083 triangles (+192)
     out = [{"kind": "tower", "x": 0.0, "y": 0.0, "r": 2.3, "wall_h": 5.7, "roof_h": 0.0, "roof": "crenel",
-            "bands": True, "big": True, "flag": True, "sahel": True}]
+            "bands": True, "big": True, "flag": True, "sahel": True, "beams": (0.74, 0.93), "beam_n": 12}]
     out += [block(-1.3, 1.3, -P, -1.7, 2.8, door=True, parapet=0.4, merlons=0.8, beams=True, windows=0, joined=("back",)),
             block(-1.3, 1.3, 1.7, P, 2.8, parapet=0.4, merlons=0.8, beams=True, windows=0, joined=("front",)),
             block(-P, -1.7, -1.3, 1.3, 2.8, parapet=0.4, merlons=0.8, beams=True, windows=0, joined=("right",)),
@@ -164,7 +171,9 @@ def town_center(p, P, medium):
         out.append({**t, "x": cx, "y": cy})
     for sx, sy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):   # a wall from wing to wing through each corner
         out.append(earth_wall([(sx * 1.3, sy * c), (sx * c, sy * c), (sx * c, sy * 1.3)], 1.8, crenels=True))
-    out += [stairs(-2.9, 3.2, 2.8, d="-y", w=0.7, run=1.8, n=7), stairs(2.9, 3.2, 2.8, d="-y", w=0.7, run=1.8, n=7)]
+    # x 2.8, not 2.9: at 2.9 the outer side of each flight lands in the plane of a merlon on
+    # the wing's parapet (3 mm apart) and the two faces flicker against each other in game
+    out += [stairs(-2.8, 3.2, 2.8, d="-y", w=0.7, run=1.8, n=7), stairs(2.8, 3.2, 2.8, d="-y", w=0.7, run=1.8, n=7)]
     return out + [yard(x0=-c, y0=-c, x1=c, y1=c)]
 
 
@@ -201,7 +210,7 @@ def market(p, P, medium):
 def war_camp(p, P, medium):
     if p.architecture == "SUBSAHARAN":                    # a palisade on the edge, a watchtower at its corner
         return [block(-P + 0.3, 0.8, 0.9, P - 0.3, 3.0, door=True, roof="thatch", sahel=False, windows=0, flag=True),
-                lookout(2.6, 2.6, 1.3, 3.8),
+                lookout(2.6, 2.6, 1.3, 3.9),                 # 3.9: at 3.8 it stood under the class's lowest height
                 {"kind": "fence", "points": [(-0.3, -P), (P, -P), (P, P), (-P, P), (-P, -P), (-2.3, -P)], "h": 2.3,
                  "type": "PALISADE"},
                 yard(x0=-P + 0.3, y0=-P + 0.3, x1=P - 0.3, y1=P - 0.3)]
@@ -293,7 +302,7 @@ def customs(p, P, medium):
     h = 5.0 if two else 3.6
     if p.architecture == "SUBSAHARAN":                    # a colonial hall under thatch, its porch of timber
         out = [block(-2.7, 2.7, -1.4, P, h, door=True, roof="thatch", sahel=False, windows=3, flag=True),
-               shed(-2.7, 2.7, -3.2, -1.5, 2.7, 2.3, rafters=13, posts=(False, True)),
+               shed(-2.7, 2.7, -3.2, -1.5, 2.7, 2.3, rafters=14, posts=(False, True)),   # 14: 13 left it under its class
                shed(2.8, P, -1.4, P, 2.3, 1.9, slope="+x", rafters=6, posts=(False, True)),
                shed(-P, -2.8, -1.4, P, 2.3, 1.9, slope="-x", rafters=6, posts=(False, True))] +             court(P, -2.0, 0.0, 1.0, kind="RAILS", width=2.4)
     else:
@@ -341,23 +350,38 @@ def palace(p, P, medium):
     piers = []
     for m in (-1, 1):                                     # the left side's piers, drawn once, and their mirror
 
-        def corner(fx, fy0, fy1, tx, ty0, ty1, h, into):
+        def corner(fx, fy0, fy1, tx, ty0, ty1, h, into, climb=(1, 1)):
             fx, tx = sorted((m * fx[0], m * fx[1])), sorted((m * tx[0], m * tx[1]))
-            piers.append(pier(*fx, fy0, fy1, *tx, ty0, ty1, h, (-m * into[0], into[1])))
+            piers.append(pier(*fx, fy0, fy1, *tx, ty0, ty1, h, (-m * into[0], into[1]), climb))
 
         corner((W + 0.42, W - 0.72), front - 0.6, front + 0.6, (W, W - 0.66), front - 0.14, front + 0.5, 3.1 / t, (1, 1))
-        corner((bx + 0.4, bx - 0.5), bay - 0.5, bay + 0.5, (bx, bx - 0.5), bay - 0.12, bay + 0.35, 3.35 / t, (1, 1))
+        corner((bx + 0.4, bx - 0.5), bay - 0.5, bay + 0.5, (bx + 0.02, bx - 0.5), bay - 0.14, bay + 0.1, 3.24 / t, (1, 1), (0, 1))
         corner((T + 0.85, T - 0.3), tower_y - 0.55, tower_y + 0.56, (T + 0.1, T - 0.3), tower_y - 0.12, tower_y + 0.5, 4.85 / t, (1, 1))
         corner((T + 0.85, T - 0.45), lb - 0.5, lb + 0.68, (T + 0.1, T - 0.42), lb - 0.47, lb + 0.12, 4.85 / t, (1, -1))
         corner((ti + 0.45, ti - 0.45), lb - 0.45, lb + 0.68, (ti + 0.42, ti - 0.12), lb - 0.42, lb + 0.12, 4.85 / t, (-1, -1))
-    return [block(-W, W, front, tower_y, Hw, parapet=0.32, foot=True, pinnacles="stepped", windows=0, joined=("back",),
-                  win={"front": [(1.38, 1.6, 0.46, 0.8, False), (2 * W - 1.38, 1.6, 0.46, 0.8, False)],
-                       "left": [(L - 2.4, 1.3, 0.8, 1.3, True)], "right": [(2.4, 1.3, 0.8, 1.3, True)]}, **K),
-            block(-bx, bx, bay, front + 0.2, Hg, parapet=0.2, coping="coping", door=True, foot=True, gate=(1.6, 2.5),
+    # beside the balcony the stairs climb in a recess cut into the terrace: its walls are the front of
+    # each wing, kept short for that, and the side of the balcony
+    D, rise, sb = 0.8, 3.87 - 3.3, bx - 0.17                # how far back it goes, how high, where its outer wall stands
+    pit = (D / 2, 3.3, D, rise, "shade")
+    far = hall_y + 0.1 - (bay + 0.08)                      # the length of the balcony's sides
+    return [block(-W, -sb, front, front + D, Hw, parapet=0.32, foot=True, pinnacles="stepped", windows=0, joined=("back",),
+                  runs_on=(("-x", "+y"),), win={"front": [(1.38, 1.6, 0.46, 0.8, False)], "right": [pit]}, **K),
+            block(sb, W, front, front + D, Hw, parapet=0.32, foot=True, pinnacles="stepped", windows=0, joined=("back",),
+                  runs_on=(("+x", "+y"),), win={"front": [(W - sb - 1.38, 1.6, 0.46, 0.8, False)], "left": [pit]}, **K),
+            block(-W, -bx, front + D, tower_y, Hw, parapet=0.32, foot=True, windows=0, joined=("front", "back", "right"),
+                  runs_on=(("-x", "-y"),), win={"left": [(L - 2.4, 1.3, 0.8, 1.3, True)]}, **K),
+            block(bx, W, front + D, tower_y, Hw, parapet=0.32, foot=True, windows=0, joined=("front", "back", "left"),
+                  runs_on=(("+x", "-y"),), win={"right": [(2.4 - D, 1.3, 0.8, 1.3, True)]}, **K),
+            block(-ux, ux, front, tower_y, Hw, windows=0, band=False, joined=("back", "front", "left", "right"), **K),
+            block(-bx, -ux, front + D, tower_y, Hw, windows=0, band=False, joined=("back", "front", "left", "right"), **K),
+            block(ux, bx, front + D, tower_y, Hw, windows=0, band=False, joined=("back", "front", "left", "right"), **K),
+            block(-bx, bx, bay, front, Hg, parapet=0.14, coping="coping", door=True, foot=True, gate=(1.6, 2.5),
                   windows=0, joined=("back",), band=False, **K),
             # over its shoulders the bay's middle goes on up as the balcony, back to the hall, in low walls
             block(-ux, ux, bay + 0.08, hall_y + 0.1, Hb - Hg, z=Hg, parapet=0.34, coping="coping", windows=0,
-                  art={"front": "frieze"}, joined=("back",), band=False, **K),
+                  art={"front": "frieze"}, joined=("back",), band=False,
+                  win={"right": [(far - 0.8 - (D + 0.3) / 2, 0.01, D + 0.3, rise, "shade")],
+                       "left": [(0.8 + (D + 0.3) / 2, 0.01, D + 0.3, rise, "shade")]}, **K),
             block(-hx, hx, hall_y, back, Hh - Hw, z=Hw, parapet=0.34, beams=("-y", "+y"), beam_gap=0.5, pinnacles="stepped",
                   windows=0, win={"front": [(0.8, 0.12, 0.95, 1.12, True), (2 * hx - 0.8, 0.12, 0.95, 1.12, True),
                                                        (hx, 0.23, 2 * ax, 1.75, "recess")],
@@ -374,15 +398,23 @@ def palace(p, P, medium):
             block(-ti - 0.2, ti + 0.2, tower_y, back, Hw, windows=0, band=False, joined=("front",), **K),
             *piers,
             # the awning over the balcony, the jars, banners by the gate, steps up to the door
-            {**canopy(-ax, ax, hall_y - 1.7, hall_y - 0.02, 5.85 / t, 5.65 / t, cloth=True), "z": Hb,
-             "scallops": False, "nu": 12, "nv": 5, "post": 0.055, "on_wall": True},
+            {**canopy(-ax, ax, hall_y - 1.4, hall_y - 0.02, 5.95 / t, 5.85 / t, cloth=True), "z": Hb,
+             "scallops": False, "nu": 10, "nv": 6, "post": 0.06, "on_wall": True, "post_region": "frame", "curl": 0.26},
             {"kind": "pot", "x": 0.74, "y": -2.75, "r": 0.42, "h": 0.92, "z": Hb, "n": 12, "belly": True},
             {"kind": "pot", "x": 1.17, "y": -3.3, "r": 0.31, "h": 0.64, "z": Hb, "n": 12, "belly": True},
             {"kind": "banner", "x": -2.09, "y": bay - 0.02, "w": 0.54, "z1": 3.0, "h": 1.35},
             {"kind": "banner", "x": 1.55, "y": bay - 0.02, "w": 0.54, "z1": 3.0, "h": 1.35},
             {"kind": "door_frame", "x": 0.0, "y": bay, "w": 1.6, "h": 2.5},
+            {**stairs(-(sb + ux) / 2, front - 0.3, rise / t, d="+y", w=sb - ux - 0.02, run=D + 0.3, n=2),
+             "region": "pit_step", "top": "pit_tread", "z": 3.3},
+            {"kind": "ledge", "box": (-bx - 0.03, -bx + 0.5, bay - 0.03, front - 0.3, 3.3, 3.62)},
+            {"kind": "ledge", "box": (bx - 0.5, bx + 0.03, bay - 0.03, front - 0.3, 3.3, 3.62)},
+            {"kind": "batter", "x": -sb, "side": 1, "d": 0.2, "y0": front, "y1": front + D, "z0": 3.3, "z1": 4.19},
+            {"kind": "batter", "x": sb, "side": -1, "d": 0.2, "y0": front, "y1": front + D, "z0": 3.3, "z1": 4.19},
+            {**stairs((sb + ux) / 2, front - 0.3, rise / t, d="+y", w=sb - ux - 0.02, run=D + 0.3, n=2),
+             "region": "pit_step", "top": "pit_tread", "z": 3.3},
             {"kind": "mast", "x": 1.1, "y": back - 0.3, "z": 6.55, "h": 2.5, "flag": True},   # the owner's flag flies from it
-            {**stairs(0.0, bay - 0.8, 0.34, d="+y", w=2.9, run=0.8, n=2), "region": "step"}]
+            {**stairs(0.0, bay - 0.8, 0.34, d="+y", w=2.9, run=0.8, n=2), "region": "step", "top": "tread"}]
 
 
 TYPES = {"HOUSE": house, "TOWN_CENTER": town_center, "GRANARY": granary_type, "MARKET": market,

@@ -180,156 +180,161 @@ def gate(pr, region, u0, u1, v1, wall, wood, band):
     for sx in (-1, 1):
         pr.rect(region, cu + sx * (half + 0.1) - 0.13, v1 + 0.44, cu + sx * (half + 0.1) + 0.13, v1 + 0.6, pale)
     rng = random.Random(zlib.crc32(region.encode()) + 2)
-    worn(pr, region, cu - half - 0.5, 0.0, cu + half + 0.5, v1 + 0.62, rng, dirt=0.22)
+    worn(pr, region, cu - half - 0.5, 0.0, cu + half + 0.5, v1 + 0.62, rng, dirt=0.22, above=sum(_mix(wall, CREAM, 0.3)) / 3)
     pr.tone(region, u0 - 0.1, v1 + 0.1, u1 + 0.1, v1 + 0.18, 0.76)
     pr.rect(region, u0 - 0.1, 0.0, u1 + 0.1, v1 + 0.1, _shade(wood, 0.55))
     for s in (0, 1):                                          # the two leaves
         a, c = (u0, cu - 0.02) if s == 0 else (cu + 0.02, u1)
-        pr.rect(region, a, 0.0, c, v1, _shade(wood, 1.12), _shade(wood, 0.5), pr.lw)
-        uu = a + 0.12
-        while uu < c - 0.04:
-            pr.tone(region, uu, 0.0, min(c, uu + 0.12), v1, 0.9 + 0.2 * rng_plank(uu))
-            pr.vline(region, uu, 0.0, v1, _shade(wood, 0.55))
-            uu += 0.12
-        for vv in (v1 * 0.16, v1 * 0.5, v1 * 0.84):           # battens with iron studs
-            pr.rect(region, a + 0.02, vv - 0.05, c - 0.02, vv + 0.05, _shade(wood, 0.8))
-            uu = a + 0.09
-            while uu < c - 0.05:
-                pr.rect(region, uu, vv - 0.025, uu + 0.05, vv + 0.025, (46, 44, 48))
-                uu += 0.17
-        cx, cy = pr.P(region, (c if s == 0 else a) + (-0.14 if s == 0 else 0.14), v1 * 0.46)
-        r = 0.07 * pr.px_per_m
-        pr.cv.ellipse(cx, cy, r, r, (52, 50, 54))
+        pr.rect(region, a, 0.0, c, v1, _shade(wood, 0.8), _shade(wood, 0.42), pr.lw)
+        uu = a + 0.16
+        while uu < c - 0.06:                                  # wide planks, each its own tone
+            pr.tone(region, uu - 0.16, 0.0, min(c, uu), v1, 0.86 + 0.28 * rng_plank(uu))
+            pr.vline(region, uu, 0.0, v1, _shade(wood, 0.4))
+            uu += 0.16
+        pr.tone(region, a, v1 * 0.62, c, v1, 0.92)            # the head's shadow, fading down
+        for vv in (v1 * 0.17, v1 * 0.52, v1 * 0.85):          # iron bands, their edges cut, with studs
+            pr.rect(region, a + 0.05, vv - 0.085, c - 0.05, vv + 0.085, (54, 44, 40))
+            pr.tone(region, a + 0.05, vv + 0.05, c - 0.05, vv + 0.085, 1.45)
+            uu = a + 0.1
+            while uu < c - 0.08:
+                pr.rect(region, uu, vv - 0.035, uu + 0.055, vv + 0.035, (116, 104, 92))
+                uu += 0.15
+        cx, cy = pr.P(region, (c if s == 0 else a) + (-0.17 if s == 0 else 0.17), v1 * 0.38)
+        for r, col in ((0.13, (40, 34, 32)), (0.1, (118, 104, 90)), (0.07, _shade(wood, 0.62))):  # a ring to knock with
+            pr.cv.ellipse(cx, cy, r * pr.px_per_m, r * pr.px_per_m, col)
 
 
 def window(pr, region, u0, v0, u1, v1, wall, wood, closed):
     """A window in the plaster, painted: a pale frame stepped at the top, then shutters of planks
     or a dark hollow, with the false depth of a shadow under the head and a lit sill."""
+    if closed == "shade":                                     # the side of a recess, darkest at its foot
+        n = 4
+        for k in range(n):
+            a, c = v0 + (v1 - v0) * k / n, v0 + (v1 - v0) * (k + 1) / n
+            pr.tone(region, u0, a, u1, c, 0.46 + 0.09 * k)
+        return
     if closed == "recess":                                    # a loggia: plaster in shade, darkest at the top
         n = 5
         for k in range(n):
             a, c = v0 + (v1 - v0) * k / n, v0 + (v1 - v0) * (k + 1) / n
             pr.tone(region, u0, a, u1, c, 0.62 - 0.07 * k)
+        for cu in (u0 + (u1 - u0) * 0.2, u0 + (u1 - u0) * 0.72):  # two small windows on its back wall
+            pr.rect(region, cu - 0.26, v0 + 0.72, cu + 0.26, v0 + 1.4, _shade(DARK, 1.15))
         return
     pale = _mix(wall, CREAM, 0.34)
-    if closed:                                                # the good rooms have a pale stepped frame
-        pr.rect(region, u0 - 0.16, v0 - 0.12, u1 + 0.16, v1 + 0.14, pale)
-        pr.rect(region, u0 + 0.06, v1 + 0.14, u1 - 0.06, v1 + 0.26, pale)
-    pr.tone(region, u0 - 0.2, v0 - 0.2, u1 + 0.2, v0 - 0.14, 0.82)            # the sill's shadow
-    pr.rect(region, u0 - 0.03, v0 - 0.03, u1 + 0.03, v1 + 0.03, _shade(wall, 0.42))
-    if closed:
-        cu = (u0 + u1) / 2
-        for a, c in ((u0, cu - 0.015), (cu + 0.015, u1)):
-            pr.rect(region, a, v0, c, v1, _shade(wood, 1.15))
-            uu = a + 0.08
-            while uu < c - 0.02:
-                pr.vline(region, uu, v0, v1, _shade(wood, 0.62))
-                uu += 0.085
-            for vv in (v0 + (v1 - v0) * 0.22, v0 + (v1 - v0) * 0.72):         # the battens
-                pr.rect(region, a, vv, c, vv + 0.05, _shade(wood, 0.72))
-    else:
-        pr.rect(region, u0, v0, u1, v1, DARK)
-        pr.tone(region, u0, v0, u1, v0 + (v1 - v0) * 0.35, 1.7)               # the far side of the sill
-    pr.tone(region, u0, v1 - 0.12, u1, v1, 0.6)                               # the head's shadow
+    if not closed:                                            # a plain hole in the wall
+        rim = _mix(wall, CREAM, 0.26)                         # plaster turned into the hole, its edge rubbed pale
+        pr.tone(region, u0 - 0.1, v1 + 0.05, u1 + 0.1, v1 + 0.11, 0.86)
+        pr.rect(region, u0 - 0.05, v0 - 0.09, u1 + 0.05, v1 + 0.05, rim)
+        n = 6
+        for k in range(n):                                    # the dark inside, a little lit from the sill up
+            a, c = v0 + (v1 - v0) * k / n, v0 + (v1 - v0) * (k + 1) / n
+            f = (n - 1 - k) / (n - 1)
+            pr.rect(region, u0, a, u1, c, (int(20 + 34 * f * f), int(19 + 21 * f * f), int(17 + 12 * f * f)))
+        pr.rect(region, u0, v0 - 0.02, u1, v0 + 0.05, _shade(wall, 0.66))     # the sill, going in
+        pr.tone(region, u0 - 0.05, v0 - 0.09, u1 + 0.05, v0 - 0.03, 1.12)     # and its lit lip
+        return
+    pr.rect(region, u0 - 0.26, v0 - 0.2, u1 + 0.26, v1 + 0.24, pale)          # a stepped pale surround
+    pr.rect(region, (u0 + u1) / 2 - 0.3, v1 + 0.24, (u0 + u1) / 2 + 0.3, v1 + 0.38, pale)
+    worn(pr, region, u0 - 0.26, v0 - 0.2, u1 + 0.26, v1 + 0.38, random.Random(zlib.crc32(f"{region}{u0}".encode())))
+    pr.rect(region, u0 - 0.13, v0 - 0.1, u1 + 0.13, v1 + 0.14, _shade(wood, 0.9), _shade(wood, 0.55), pr.lw)  # the frame
+    pr.tone(region, u0 - 0.13, v1 + 0.08, u1 + 0.13, v1 + 0.14, 1.16)         # the light on its head
+    pr.tone(region, u0 - 0.13, v0 - 0.1, u0 - 0.07, v1 + 0.08, 1.1)
+    pr.rect(region, u0 - 0.02, v0 - 0.02, u1 + 0.02, v1 + 0.02, (38, 25, 18))
+    cu, mid = (u0 + u1) / 2, (v0 + v1) / 2 - 0.02
+    for a, c in ((u0, cu - 0.015), (cu + 0.015, u1)):                         # the two leaves
+        pr.rect(region, a, v0, c, v1, _shade(wood, 0.78))                     # stiles and rails
+        for lo, hi in ((v0 + 0.09, mid - 0.05), (mid + 0.05, v1 - 0.09)):     # a louvred panel over a louvred panel
+            pr.rect(region, a + 0.07, lo, c - 0.07, hi, _shade(wood, 0.36))
+            vv = lo + 0.03
+            while vv < hi - 0.04:
+                pr.rect(region, a + 0.07, vv, c - 0.07, vv + 0.05, _shade(wood, 0.68))
+                vv += 0.1
+        pr.tone(region, a, mid - 0.05, c, mid + 0.05, 1.14)                   # the rail catches the light
+    pr.rect(region, cu - 0.05, mid - 0.03, cu + 0.05, mid + 0.04, (34, 28, 26))     # the latch
+    pr.tone(region, u0, v1 - 0.1, u1, v1, 0.62)                               # the head's shadow
+    pr.tone(region, u0 - 0.13, v0 - 0.17, u1 + 0.13, v0 - 0.1, 0.84)          # the sill's
 
 
-def pier_side(pr, region, w, a, c, h):
-    """The painted side of a pier: a trapezium `w` wide at the foot and from `a` to `c` at the top
-    of height `h`. Its edges rubbed a little paler and earth up its foot. No baked shade: the
-    game's sun does that, and the chamfer draws the line that divides it."""
-    rng = random.Random(zlib.crc32(region.encode()))
-    u = 0.0
+def pier_side(pr, region, u, w, a, c, h, pale):
+    """A painted side of a pier from `u`: a trapezium `w` wide at the foot and from `a` to `c` at
+    the top of height `h`. Its edges rubbed paler, a worn lip of `pale` round its head and earth up
+    its foot. No baked shade: the game's sun does that, and the chamfer divides it."""
+    rng = random.Random(zlib.crc32(f"{region}{u}".encode()))
     n = 40
     for j in range(n):
         f = j / n
         v0, v1 = h * f, h * (f + 1 / n)
         left, right = u + a * f, u + w + (c - w) * f
-        for inset, wide, k in ((0.0, 0.05, 1.08), (0.05, 0.08, 1.04)):
+        for inset, wide, k in ((0.0, 0.06, 1.12), (0.06, 0.1, 1.06)):
             d = wide * rng.uniform(0.7, 1.3)                  # worn unevenly
             pr.tone(region, left + inset, v0, left + inset + d, v1, k)
             pr.tone(region, right - inset - d, v0, right - inset, v1, k)
     for v, k in ((0.0, 0.95), (0.14, 0.96), (0.3, 0.97), (0.5, 0.98), (0.7, 0.99)):
         pr.tone(region, u, v, u + w, v + 0.2, k)              # the ground's earth, splashed up
+    x = u
+    while x < u + w:                                          # the lip, its lower edge uneven
+        step = rng.uniform(0.05, 0.14)
+        pr.rect(region, x, h - rng.uniform(0.1, 0.2), min(u + w, x + step), h, pale)
+        x += step
+    pr.rough_stone(region, u, h - 0.22, u + w, h, 0.16, 0.06, 0.12)
 
 
-def pier_chamfer(pr, region, u, w, h):
-    """The strip down a pier's corner, `w` wide: the plaster worn by hands and weather, so a run
-    rubbed pale here, dull there, with its edge chipped and a grain of its own, never one clean
-    line."""
+def pier_chamfer(pr, region, u, w, h, pale):
+    """The strip down a pier's corner, `w` wide: pale stone worn by hands and weather, in runs
+    rubbed bright here and dull there, with its edge chipped, never one clean line."""
     rng = random.Random(zlib.crc32(f"{region}chamfer".encode()))
+    pr.rect(region, u, 0.0, u + w, h, pale)
+    pr.rough_stone(region, u, 0.0, u + w, h, 0.18, 0.08, 0.08)
     v = 0.0
     while v < h:
-        ln = rng.uniform(0.12, 0.5)
-        pr.tone(region, u, v, u + w, min(h, v + ln), rng.choice((1.16, 1.22, 1.27, 1.32, 1.38)))
+        ln = rng.uniform(0.2, 0.6)
+        pr.tone(region, u, v, u + w, min(h, v + ln), rng.choice((0.9, 0.95, 1.0, 1.04, 1.08)))
         v += ln
-    for _ in range(int(h * 60)):                              # its grain
-        uu, v = rng.uniform(u, u + w - 0.05), rng.uniform(0.0, h)
-        pr.tone(region, uu, v, uu + rng.uniform(0.03, 0.07), min(h, v + rng.uniform(0.03, 0.09)), rng.uniform(0.9, 1.08))
     for _ in range(int(h * 6)):                               # chips off its edges
         v = rng.uniform(0.0, h)
         side = rng.choice((0.0, w * 0.75))
-        pr.tone(region, u + side, v, u + side + w * 0.25, min(h, v + rng.uniform(0.04, 0.14)), rng.uniform(0.82, 0.92))
+        pr.tone(region, u + side, v, u + side + w * 0.25, min(h, v + rng.uniform(0.04, 0.14)), rng.uniform(0.92, 0.97))
 
 
-def weather(pr, region, w, h, top, wall, foot):
-    """What time does to a kept wall: shade under the parapet, rain streaks down from it, grime
-    rising over the foot, the corners worn back to the brick."""
-    rng = random.Random(zlib.crc32(region.encode()))
+def weather(pr, region, w, h, top, foot):
+    """What time does to a kept wall: shade under the parapet, grime rising over the foot, the
+    corners rubbed paler."""
     for j in range(5):                                        # shade under the eaves
         pr.tone(region, 0, top - 0.16 * (j + 1), w, top - 0.16 * j, 0.91 + 0.015 * j)
-    u = rng.uniform(0.1, 0.6)
-    while u < w:                                              # streaks, each fading as it runs
-        ln = rng.uniform(0.6, min(2.2, h * 0.5))
-        sw = rng.uniform(0.05, 0.16)
-        for j in range(4):
-            a = top - ln * (j + 1) / 4
-            pr.tone(region, u, max(0.0, a), min(w, u + sw), top - ln * j / 4, 0.97 - 0.015 * (3 - j))
-        u += rng.uniform(0.35, 0.95)
     base = 0.62 if foot else 0.0
     for j in range(4):                                        # splashed earth over the foot
         pr.tone(region, 0, base + 0.14 * j, w, base + 0.14 * (j + 1), 0.86 + 0.035 * j)
     for edge in (0.0, w - 0.14):                              # corners rubbed paler
         pr.tone(region, edge, base, edge + 0.14, top, 1.07)
-    for _ in range(int(w / 7.0)):                             # plaster fallen off, bricks showing
-        cu = rng.choice((rng.uniform(0.1, 0.5), w - rng.uniform(0.3, 0.8), rng.uniform(0.2, max(0.3, w - 0.8))))
-        cv = rng.uniform(base + 0.2, max(base + 0.3, h - 1.2))
-        pw, ph = rng.uniform(0.3, 0.6), rng.uniform(0.2, 0.42)
-        pr.rect(region, cu, cv, min(w, cu + pw), min(h, cv + ph), _shade(wall, 0.62))
-        vv, row = cv, 0
-        while vv < cv + ph - 0.03:
-            uu = cu - (row % 2) * 0.08
-            while uu < cu + pw:
-                a, c = max(cu, uu + 0.012), min(cu + pw, uu + 0.15)
-                if c > a:
-                    pr.rect(region, a, vv + 0.012, min(w, c), min(h, vv + 0.075), _shade(wall, rng.uniform(0.74, 0.96)))
-                uu += 0.16
-            vv += 0.09
-            row += 1
 
 
-def worn(pr, region, u0, v0, u1, v1, rng, dirt=0.0):
-    """Pale stone with years on it, inside a box: flat chips of paler and duller stone, hair cracks
-    and, with `dirt` (a height in metres), earth blotched up it from the ground in no straight line."""
+def worn(pr, region, u0, v0, u1, v1, rng, dirt=0.0, above=None, strength=1.0):
+    """Pale stone with years on it, inside a box: broad soft clouds of earth rubbed into it, scuffs,
+    a few hair cracks and, with `dirt` (a height in metres), earth blotched up it from the ground.
+    `above`: the brightness a pixel needs to wear, so a pale shape keeps its crisp edge. `strength`
+    below 1 keeps it quiet, for a long thin shape where blotches read as stains."""
     du, dv = u1 - u0, v1 - v0
 
     def tri(u, v, d, a=1.0):
         """Three corners round (u, v), never out of the box."""
         return [(min(u1, max(u0, u + rng.uniform(-d, d))), min(v1, max(v0, v + rng.uniform(-d * a, d * a)))) for _ in range(3)]
 
-    for _ in range(int(du * dv * 90) + 4):
-        pr.facet(region, tri(rng.uniform(u0, u1), rng.uniform(v0, v1), rng.uniform(0.06, 0.2)),
-                 rng.choice((0.88, 0.92, 0.96, 1.04, 1.08, 1.12)))
-    pr.soften(region, u0, v0, u1, v1, 0.02)                   # the chips melt into each other
+    pr.blotch(region, u0, v0, u1, v1, 0.42, 0.13 * strength, above)
+    pr.blotch(region, u0, v0, u1, v1, 0.16, 0.1 * strength, above)
+    for _ in range(int(du * dv * 26 * strength) + 3):         # scuffs, long and thin, earth in them
+        u, v, d = rng.uniform(u0, u1), rng.uniform(v0, v1), rng.uniform(0.05, 0.2)
+        pr.facet(region, tri(u, v, d, rng.uniform(0.2, 0.8)), rng.choice(((0.88, 0.83, 0.76), (0.92, 0.88, 0.82), (1.08, 1.07, 1.05))), above)
     for _ in range(int(du * dv * 5) + 1):                     # hair cracks
         u, v, ln = rng.uniform(u0, u1), rng.uniform(v0, v1), rng.uniform(0.12, 0.42)
         c, e = rng.uniform(-1, 1), rng.uniform(-1, 1)
         pts = [(u, v), (u + c * ln, v + e * ln), (u + c * ln + 0.018, v + e * ln + 0.018)]
-        pr.facet(region, [(min(u1, max(u0, a)), min(v1, max(v0, b))) for a, b in pts], 0.84)
+        pr.facet(region, [(min(u1, max(u0, a)), min(v1, max(v0, b))) for a, b in pts], 0.8, above)
     if dirt:
         for layer, count, k in ((1.0, 16, (0.92, 0.87, 0.78)), (0.7, 18, (0.92, 0.86, 0.77)), (0.4, 18, (0.9, 0.84, 0.74))):
             for _ in range(int(du * count)):
                 top = dirt * layer * rng.uniform(0.55, 1.15)
-                pr.facet(region, tri(rng.uniform(u0, u1), v0 + rng.uniform(0.0, top), rng.uniform(0.12, 0.34), 0.7), k)
+                pr.facet(region, tri(rng.uniform(u0, u1), v0 + rng.uniform(0.0, top), rng.uniform(0.12, 0.34), 0.7), k, above)
 
 
 def foot_stones(pr, region, w, wall):
@@ -337,19 +342,15 @@ def foot_stones(pr, region, w, wall):
     rng = random.Random(zlib.crc32(region.encode()) + 1)
     pale = _mix(wall, CREAM, 0.6)
     pr.rect(region, 0, 0, w, 0.72, pale)
-    u = -rng.uniform(0, 0.6)
-    while u < w:                                              # long blocks, their joints all but gone
-        bw = rng.uniform(0.9, 1.7)
-        pr.tone(region, max(0.0, u), 0.0, min(w, u + bw), 0.72, rng.uniform(0.95, 1.03))
-        u += bw
-    worn(pr, region, 0.0, 0.0, w, 0.72, rng, dirt=0.5)
+    pr.rough_stone(region, 0.0, 0.0, w, 0.72, 0.3, 0.05, 0.12)
+    worn(pr, region, 0.0, 0.0, w, 0.72, rng, strength=0.6)
     pr.tone(region, 0, 0.67, w, 0.72, 1.1)                    # its top edge, rubbed pale
     pr.hline(region, 0.73, 0, w, _shade(wall, 0.72), pr.lw)
 
 
 def pale_frieze(pr, region, u0, u1, v, wall):
     """The band of pale triangles over the gate, between two pale lines."""
-    pale = _mix(wall, CREAM, 0.72)
+    pale = _mix(wall, CREAM, 0.6)
     H, step = 0.36, 0.5
     pr.rect(region, u0, v - 0.1, u1, v, pale)
     pr.rect(region, u0, v + H, u1, v + H + 0.08, pale)
@@ -358,6 +359,7 @@ def pale_frieze(pr, region, u0, u1, v, wall):
         (x0, y0), (x1, y1) = pr.P(region, u, v), pr.P(region, u + step, v + H)
         pr.cv.triangle([(x0, y0), (x1, y0), ((x0 + x1) / 2, y1)], pale)
         u += step
+    worn(pr, region, u0, v - 0.1, u1, v + H + 0.08, random.Random(zlib.crc32(region.encode()) + 3), above=sum(_mix(wall, CREAM, 0.3)) / 3)
 
 
 def frieze(pr, region, w, v, wall, seed, style=None):

@@ -5,6 +5,8 @@
                                [--detail LOW|MEDIUM] [--out DIR]
                                [--views front34,back34,wire,front,back | --no-render]
                                [--materials]     (photo swatches under the painting)
+                               [--textures DIR]  (the texture maker's library, in their place)
+                               [--poly 0.6]      (segments of every body that is not a box)
 Presets: WHITE_HOUSE, COURTHOUSE, CAPITOL, MANSION, WHITE_HOUSE_1914 (or ALL).
 
 or with Blender: blender -b --factory-startup -P scripts/generate.py -- [same options]
@@ -130,10 +132,13 @@ def generate(key, out, views, detail):
                                      name=params.name + ("Medium" if detail == "MEDIUM" else "Low"))
     if "--materials" in argv:
         params = dataclasses.replace(params, materials=True)
+    if "--poly" in argv:
+        params = dataclasses.replace(params, poly=float(opt("--poly")))
     model = building.build(params)
     obj = blender_io.create_object(model, paint.paint(model))
     suffix = "" if not detail or detail == building.PRESETS[key].detail else "_" + detail.lower()
-    folder = out or os.path.join(ROOT, "examples", building.PRESETS[key].name.lower() + suffix)
+    # absolute: once the .blend is saved, Blender reads a relative render path from the drive's root
+    folder = os.path.abspath(out or os.path.join(ROOT, "examples", building.PRESETS[key].name.lower() + suffix))
     paths = blender_io.export(obj, folder)
     try:
         bpy.context.preferences.filepaths.save_version = 0     # no .blend1 backup
@@ -151,6 +156,10 @@ def generate(key, out, views, detail):
 
 
 def main():
+    if "--textures" in argv:        # a texture made here in place of a swatch of the add-on's
+        from aoe3_blender_tools.core import texlib
+        chosen = texlib.install(folder=opt("--textures"))
+        print("textures:", ", ".join(f"{s} {r}: {n}" for (s, r), n in sorted(chosen.items())) or "none")
     preset = opt("--preset", "WHITE_HOUSE").upper()
     keys = list(building.PRESETS) if preset == "ALL" else [preset]
     views = [] if "--no-render" in argv else opt("--views", "front34,back34,wire").split(",")
@@ -159,4 +168,5 @@ def main():
         generate(key, opt("--out") if len(keys) == 1 else None, views, detail)
 
 
-main()
+if __name__ == "__main__":            # tools/gallery.py imports the scene and the camera
+    main()

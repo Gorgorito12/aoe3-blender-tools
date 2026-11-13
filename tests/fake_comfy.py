@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """A stand-in for ComfyUI's HTTP API, for tests without a GPU: it stores uploads, "runs" a
 workflow by applying `transform` to the image its LoadImage node names, and serves the result
-through /history and /view.
+through /history and /view. A workflow without a LoadImage (the texture maker's prompt-only
+graph) gets an invented image of the size its EmptyLatentImage asks for: by default a left to
+right ramp with grain, which does not tile, so a seam is there to be measured and closed.
 
     with FakeComfy(transform=lambda rgb: 255 - rgb) as fake:
         client = comfy.Client(fake.url)
@@ -29,15 +31,30 @@ def _png(rgb):
             return f.read()
 
 
+def _ramp(width, height, seed):
+    """An image that does not tile: brighter to the right, with grain."""
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    x = np.linspace(40, 215, width, dtype=np.float32)[None, :, None]
+    grain = rng.integers(-12, 13, (height, width, 3))
+    return np.clip(x + grain, 0, 255).astype(np.uint8)
+
+
 class FakeComfy:
-    def __init__(self, transform=None, missing_nodes=(), models=True):
+    def __init__(self, transform=None, missing_nodes=(), models=True, generate=None):
         self.transform = transform or (lambda rgb: rgb)
+        self.generate = generate or _ramp
         self.inputs, self.outputs, self.history, self.prompts = {}, {}, {}, []
         self.missing_nodes = set(missing_nodes)
+        self.loras = ["own_hand.safetensors"]
+        self.interrupts = 0
         self.models = models
 
     def object_info(self):
-        info = {n: {"input": {"required": {}}} for n in comfy.NODES if n not in self.missing_nodes}
+        names = comfy.NODES + comfy.TRAIN_NODES + (comfy.LORA_NODE,)
+        info = {n: {"input": {"required": {}}} for n in names if n not in self.missing_nodes}
+        if comfy.LORA_NODE in info:
+            info[comfy.LORA_NODE]["input"]["required"]["lora_name"] = [list(self.loras)]
         if "CheckpointLoaderSimple" in info:
             info["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"] = [[comfy.CHECKPOINT] if self.models else []]
         if "ControlNetLoader" in info:
@@ -76,6 +93,9 @@ class FakeComfy:
             def do_POST(self):
                 n = int(self.headers.get("Content-Length", 0))
                 body = self.rfile.read(n)
+                if self.path == "/interrupt":
+                    fake.interrupts += 1
+                    return self.send(200, {})
                 if self.path == "/upload/image":
                     ctype = self.headers["Content-Type"]
                     boundary = ctype.split("boundary=")[1].encode()
@@ -89,8 +109,19 @@ class FakeComfy:
                 if self.path == "/prompt":
                     wf = json.loads(body)["prompt"]
                     fake.prompts.append(wf)
-                    load = next(v for v in wf.values() if v["class_type"] == "LoadImage")
-                    rgb = pngio.read_png(fake.inputs[load["inputs"]["image"]])[:, :, :3]
+                    if not any(v["class_type"] == "SaveImage" for v in wf.values()):
+                        pid = uuid.uuid4().hex          # a training run: it ends without a picture
+                        fake.history[pid] = {"outputs": {}, "status": {"status_str": "success"}}
+                        return self.send(200, {"prompt_id": pid, "node_errors": {}})
+                    load = next((v for v in wf.values() if v["class_type"] == "LoadImage"), None)
+                    if load is not None:
+                        rgb = pngio.read_png(fake.inputs[load["inputs"]["image"]])[:, :, :3]
+                    else:                       # prompt only: invent an image of the asked size
+                        empty = next(v for v in wf.values() if v["class_type"] == "EmptyLatentImage")
+                        ks = next((v for v in wf.values() if v["class_type"] == "KSampler"), None)
+                        rgb = fake.generate(int(empty["inputs"]["width"]),
+                                            int(empty["inputs"]["height"]),
+                                            int(ks["inputs"]["seed"]) if ks else 0)
                     out = fake.transform(rgb)
                     name = f"aoe3bt_{uuid.uuid4().hex[:8]}.png"
                     fake.outputs[name] = _png(out)

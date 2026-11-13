@@ -88,10 +88,14 @@ def coplanar_overlaps(mesh, min_area=0.005):
     return found
 
 
-def check(obj, tri_budget=6000, profile=None):
+def check(obj, tri_budget=6000, profile=None, prop=None):
     """Problems of a building object, as (level, message). With a calibration profile
     (core.profile) and the object's footprint, the budget is the one measured for buildings of
-    its footprint class: a warning above their 90th percentile, an error above their maximum."""
+    its footprint class: a warning above their 90th percentile, an error above their maximum.
+
+    prop: the group of the model profile a prop is held to (profile.prop_group(): the original
+    game's map objects or treasures); the object is then a prop, not a building: a warning above
+    their upper quartile of triangles, and a note of what they measure."""
     res = []
     if obj is None or obj.type != "MESH":
         return [(ERROR, "Select the building's mesh object.")]
@@ -104,7 +108,16 @@ def check(obj, tri_budget=6000, profile=None):
     # budget and index limits
     res.append((INFO, f"{tris} triangles, {verts} vertices."))
     budget = None
-    if profile is not None and "aoe3_footprint" in obj:
+    if prop is not None and prop.get("tris"):
+        q25, q50, q75 = prop["tris"]
+        res.append((INFO, f"A prop: the {prop['models']} measured have {q25:.0f} to {q75:.0f} triangles "
+                          f"(the middle half), {q50:.0f} at the median."))
+        if tris > 2 * q75:
+            res.append((WARNING, f"{tris} triangles is over twice the upper quartile of the measured "
+                                 f"props ({q75:.0f})."))
+        elif tris > q75:
+            res.append((INFO, f"{tris} triangles is above three quarters of the measured props ({q75:.0f})."))
+    elif profile is not None and "aoe3_footprint" in obj:
         w, d = obj["aoe3_footprint"][0], obj["aoe3_footprint"][1]
         cls = profile.footprint_class(w, d)
         budget = profile.tri_budget(cls) if cls else None

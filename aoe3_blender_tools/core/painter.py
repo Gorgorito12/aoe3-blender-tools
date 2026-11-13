@@ -30,6 +30,8 @@ class Painter:
         self.use_materials = bool(getattr(p, "materials", False))
         self.layers = []            # (x, y, block) of each swatch laid: the coverage at the end
         self.swatched = {}          # region -> the colour its swatch was tinted with
+        self.roles = {}             # region -> the material role of its swatch (tools/style_check.py)
+        self.bleeds = False         # spread the regions over the empty atlas at the end
         self._factors = {}
 
     def P(self, region, u, v):
@@ -68,16 +70,17 @@ class Painter:
         sw = materials.load(entry[0]) if entry else None
         if sw is None:
             return
-        name, tile_m, _, contrast = entry
+        name, tile_m, _, contrast, grain = entry
         px = max(4, int(round(tile_m * self.px_per_m)))
-        if (name, px, contrast) not in self._factors:
-            self._factors[(name, px, contrast)] = materials.normalise(sw, px, contrast)
+        if (name, px, contrast, grain) not in self._factors:
+            self._factors[(name, px, contrast, grain)] = materials.normalise(sw, px, contrast, grain)
         r = self.at[region]
-        block = materials.tile(self.cv.a, (r.x, r.y, r.x + r.w, r.y + r.h), self._factors[(name, px, contrast)],
+        block = materials.tile(self.cv.a, (r.x, r.y, r.x + r.w, r.y + r.h), self._factors[(name, px, contrast, grain)],
                                color, offset=(r.x, r.y))
         if block is not None:
             self.layers.append((max(0, r.x), max(0, r.y), block.copy()))
             self.swatched[region] = (tuple(float(c) for c in color), len(self.layers) - 1)
+            self.roles[region] = role
 
     def paint_on(self, region, u0, v0, u1, v1, color, outline=None, width=1):
         """A rect of `color`; on a region with a swatch, the colour is laid by multiplying the
@@ -106,9 +109,9 @@ class Painter:
         xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
         materials.multiply(self.cv.a, (xa, ya, xb, yb), k)
 
-    def facet(self, region, pts, k):
+    def facet(self, region, pts, k, above=None):
         """Multiplies a triangle by `k`, its corners in metres on the region: the flat chips and
-        trowel marks a rectangle cannot draw."""
+        trowel marks a rectangle cannot draw. `above`: only on pixels brighter than this."""
         (ax, ay), (bx, by), (cx, cy) = (self.P(region, u, v) for u, v in pts)
         h, w = self.cv.a.shape[:2]
         x0, x1 = max(0, int(min(ax, bx, cx))), min(w, int(max(ax, bx, cx)) + 1)
@@ -121,31 +124,12 @@ class Painter:
         e1 = ((cx - bx) * (ys - by) - (cy - by) * (xs - bx)) / area
         e2 = ((ax - cx) * (ys - cy) - (ay - cy) * (xs - cx)) / area
         inside = (e0 >= 0) & (e1 >= 0) & (e2 >= 0)
+        if above is not None:
+            inside &= self.cv.a[y0:y1, x0:x1].mean(axis=2) > above
         self.cv.a[y0:y1, x0:x1][inside] *= k
 
-    def soften(self, region, u0, v0, u1, v1, radius_m):
-        """A small box blur over a rect of a region."""
-        (x0, y0), (x1, y1) = self.P(region, u0, v1), self.P(region, u1, v0)
-        xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
-        r = max(1, int(radius_m * self.px_per_m))
-        if xb - xa <= 2 * r or yb - ya <= 2 * r:
-            return
-        a = self.cv.a[ya:yb, xa:xb].astype(float)
-        for axis in (0, 1):
-            total = np.cumsum(np.pad(a, [(r + 1, r) if i == axis else (0, 0) for i in range(3)], mode="edge"), axis=axis)
-            high = np.take(total, range(2 * r + 1, total.shape[axis]), axis=axis)
-            low = np.take(total, range(0, total.shape[axis] - 2 * r - 1), axis=axis)
-            a = (high - low) / (2 * r + 1)
-        self.cv.a[ya:yb, xa:xb] = a
-
-    def mottle(self, region, cell_m, k, hard=False):
-        """A soft uneven tone over a region, blobs about `cell_m` across, up to `k` either way: the
-        life of hand-laid plaster. `hard`: patches with an edge, lighter by `k`, as worn or
-        re-laid earth. Multiplies what is there."""
-        r = self.at[region]
-        x0, y0, w, h = int(r.x), int(r.y), int(r.w), int(r.h)
-        if w < 2 or h < 2:
-            return
+    def _noise(self, h, w, cell_m):
+        """Smooth noise from -1 to 1 for an area of h x w pixels, blobs about `cell_m` across."""
         c = max(2.0, cell_m * self.px_per_m)
         ny, nx = int(h / c) + 3, int(w / c) + 3
         g = self.rng.uniform(-1.0, 1.0, (ny, nx)).astype(np.float32)
@@ -155,10 +139,89 @@ class Painter:
         fy, fx = (fy * fy * (3 - 2 * fy))[:, None], (fx * fx * (3 - 2 * fx))[None, :]
         top = g[iy][:, ix] * (1 - fx) + g[iy][:, ix + 1] * fx
         bot = g[iy + 1][:, ix] * (1 - fx) + g[iy + 1][:, ix + 1] * fx
-        m = top * (1 - fy) + bot * fy
+        return top * (1 - fy) + bot * fy
+
+    def blotch(self, region, u0, v0, u1, v1, cell_m, k, above=None):
+        """Soft clouds of wear inside a box: up to `k` lighter, or that much darker and browner, as
+        earth rubbed into pale stone. `above`: only on pixels brighter than this, so a pale shape
+        wears inside its own edges."""
+        (x0, y0), (x1, y1) = self.P(region, u0, v1), self.P(region, u1, v0)
+        xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
+        if xb - xa < 2 or yb - ya < 2:
+            return
+        m = self._noise(yb - ya, xb - xa, cell_m)
+        dark = np.clip(-m, 0.0, 1.0)
+        f = np.stack([1.0 + k * m, (1.0 + k * m) * (1 - 0.05 * dark), (1.0 + k * m) * (1 - 0.13 * dark)], axis=2)
+        area = self.cv.a[ya:yb, xa:xb]
+        if above is None:
+            area *= f
+        else:
+            area[:] = np.where(area.mean(axis=2, keepdims=True) > above, area * f, area)
+
+    def mottle(self, region, cell_m, k, hard=False):
+        """A soft uneven tone over a region, blobs about `cell_m` across, up to `k` either way: the
+        life of hand-laid plaster. `hard`: patches with an edge, lighter by `k`, as worn or
+        re-laid earth. Multiplies what is there."""
+        r = self.at[region]
+        x0, y0, w, h = int(r.x), int(r.y), int(r.w), int(r.h)
+        if w < 2 or h < 2:
+            return
+        m = self._noise(h, w, cell_m)
         if hard:
             m = np.clip((m - 0.12) * 9.0, 0.0, 1.0)
         self.cv.a[y0:y0 + h, x0:x0 + w] *= (1.0 + k * m)[:, :, None]
+
+    def _cells(self, w, h, c, warp=None):
+        """Jittered cells about `c` pixels across over w x h pixels. `warp` (an (x, y) pair of arrays)
+        moves each pixel first, so the edges bend. Returns the distances to the nearest two centres,
+        the nearest one as (index, x from it, y from it), the grid cell of each pixel and the size
+        of the grid."""
+        nx, ny = int(w / c) + 3, int(h / c) + 3
+        pts = (np.stack(np.meshgrid(np.arange(nx), np.arange(ny)), -1) + self.rng.uniform(0.1, 0.9, (ny, nx, 2))) * c
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        if warp is not None:
+            xx, yy = xx + warp[0], yy + warp[1]
+        ix, iy = (xx / c).astype(int), (yy / c).astype(int)
+        d1 = np.full((h, w), 1e9, np.float32)
+        d2 = np.full((h, w), 1e9, np.float32)
+        near = np.zeros((h, w), np.int32)
+        for dy in (-1, 0, 1, 2):
+            for dx in (-1, 0, 1, 2):
+                jx, jy = np.clip(ix + dx, 0, nx - 1), np.clip(iy + dy, 0, ny - 1)
+                p = pts[jy, jx]
+                d = np.hypot(xx - p[..., 0], yy - p[..., 1])
+                closer = d < d1
+                d2 = np.where(closer, d1, np.minimum(d2, d))
+                d1 = np.where(closer, d, d1)
+                near = np.where(closer, jy * nx + jx, near)
+        return d1, d2, (near, xx - pts[..., 0].ravel()[near], yy - pts[..., 1].ravel()[near]), ix, iy, nx, ny
+
+    def rough_stone(self, region, u0, v0, u1, v1, cell_m, k, joint=0.18, width_m=0.028):
+        """Rough stone inside a box: small rounded stones about `cell_m` across, in no order, each
+        with a tone of its own and its upper side catching the light, about `k` either way. Thin
+        joints, darkened by up to `joint` and `width_m` wide, with a worn pale rim beside them, come
+        and go. Chips a third the size lie over all, a few of them pale flecks with a clear edge.
+        Warmest where pale. Multiplies what is there."""
+        (x0, y0), (x1, y1) = self.P(region, u0, v1), self.P(region, u1, v0)
+        xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
+        w, h = xb - xa, yb - ya
+        if w < 4 or h < 4:
+            return
+        c = max(3.0, cell_m * self.px_per_m)
+        warp = (self._noise(h, w, cell_m * 0.8) * c * 0.3, self._noise(h, w, cell_m * 0.8) * c * 0.3)
+        d1, d2, (near, _, oy), ix, iy, nx, ny = self._cells(w, h, c, warp)
+        tone = self.rng.uniform(-1.0, 1.0, nx * ny).astype(np.float32)
+        t = max(1.2, width_m * self.px_per_m) * (1.0 + 0.5 * self._noise(h, w, cell_m * 0.5))
+        gap = (d2 - d1) / t
+        gate = np.clip(0.45 + 1.2 * self._noise(h, w, cell_m * 1.2), 0.0, 1.0)
+        _, _, (small, _, _), _, _, sx, sy = self._cells(w, h, max(3.0, c / 3), warp)
+        chips = self.rng.uniform(-1.0, 1.0, sx * sy).astype(np.float32)
+        a = (k * (0.7 * tone[near] - 0.7 * np.clip(oy / c, -0.7, 0.7) + 0.6 * self._noise(h, w, cell_m * 3.0)
+                  + 0.45 * chips[small] + 0.7 * (chips[small] > 0.72))
+             + 0.7 * joint * np.clip(1.0 - np.abs(gap - 2.2) / 1.2, 0.0, 1.0) * gate
+             + 0.05 * self._noise(h, w, cell_m * 0.3))
+        dim = 1.0 - joint * np.clip(1.0 - gap, 0.0, 1.0) * gate
+        self.cv.a[ya:yb, xa:xb] *= np.stack([(1.0 + a) * dim, (1.0 + 1.1 * a) * dim, (1.0 + 1.3 * a) * dim], axis=2)
 
     def cracks(self, region, cell_m=0.16, depth=0.4, width_m=0.012, keep=0.75):
         """A network of fine cracks over a region, as dried mud or old plaster shows: the edges of
@@ -169,27 +232,28 @@ class Painter:
         if w < 4 or h < 4:
             return
         c = max(3.0, cell_m * self.px_per_m)
-        nx, ny = int(w / c) + 3, int(h / c) + 3
         rng = self.rng
-        pts = (np.stack(np.meshgrid(np.arange(nx), np.arange(ny)), -1) + rng.uniform(0.1, 0.9, (ny, nx, 2))) * c
-        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
-        ix, iy = (xx / c).astype(int), (yy / c).astype(int)
-        d1 = np.full((h, w), 1e9, np.float32)
-        d2 = np.full((h, w), 1e9, np.float32)
-        for dy in (-1, 0, 1, 2):
-            for dx in (-1, 0, 1, 2):
-                jx, jy = np.clip(ix + dx, 0, nx - 1), np.clip(iy + dy, 0, ny - 1)
-                p = pts[jy, jx]
-                d = np.hypot(xx - p[..., 0], yy - p[..., 1])
-                closer = d < d1
-                d2 = np.where(closer, d1, np.minimum(d2, d))
-                d1 = np.where(closer, d, d1)
+        d1, d2, _, ix, iy, nx, ny = self._cells(w, h, c)
         t = max(0.8, width_m * self.px_per_m)
         edge = np.clip(1.0 - (d2 - d1) / t, 0.0, 1.0)
         n = rng.uniform(0, 1, (ny // 2 + 2, nx // 2 + 2)).astype(np.float32)   # open some cells
         gate = n[np.clip(iy // 2, 0, n.shape[0] - 1), np.clip(ix // 2, 0, n.shape[1] - 1)] < keep
         k = 1.0 - depth * edge * gate
         self.cv.a[y0:y0 + h, x0:x0 + w] *= k[:, :, None]
+
+    def bleed(self, reach=32):
+        """Spreads the edge of each region over the empty atlas round it, picture and mask, so
+        that halving the texture and its mipmaps never brings the background into a seam."""
+        full = np.zeros(self.cv.a.shape[:2], bool)
+        for r in self.at.regions.values():
+            full[r.y:r.y + r.h, r.x:r.x + r.w] = True
+        for _ in range(reach):
+            for axis, step in ((0, 1), (0, -1), (1, 1), (1, -1)):
+                new = np.roll(full, step, axis) & ~full
+                self.cv.a[new] = np.roll(self.cv.a, step, axis)[new]
+                if self.mk is not None:
+                    self.mk.a[new] = np.roll(self.mk.a, step, axis)[new]
+                full |= new
 
     def coverage(self):
         """Where a swatch still shows (1.0) at the painting size, before the noise."""
@@ -205,6 +269,8 @@ class Painter:
         p = self.p
         k = self.at.size // p.texture_size
         cover = self.coverage() if self.layers else None
+        if self.bleeds:
+            self.bleed()
         self.cv.noise(5, seed=p.seed)
         rgb = self.cv.downsample(k)
         alpha = self.mk.downsample(k)[:, :, 0] if self.mk is not None else np.full(rgb.shape[:2], 255, np.uint8)

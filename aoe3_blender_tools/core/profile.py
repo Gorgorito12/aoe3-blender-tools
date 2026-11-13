@@ -94,3 +94,72 @@ class Profile:
         c = self.classes.get(cls) or {}
         r = c.get("rubble") or []
         return r[0][0] if r else None
+
+
+# --------------------------------------------------------------------------------------------------
+# What the textures and the models of the mod measure (tools/texture_survey.py, model_survey.py)
+
+FOLDER = os.path.dirname(DEFAULT_PATH)
+_art = {}
+
+
+def art(name):
+    """The profile `name` ("textures", "props", "units", "models") shipped with the add-on, as
+    an Art, or None when it is not there. Read once."""
+    if name not in _art:
+        p = os.path.join(FOLDER, name + ".json")
+        _art[name] = None
+        if os.path.exists(p):
+            with open(p, encoding="utf-8") as f:
+                _art[name] = Art(json.load(f))
+    return _art[name]
+
+
+def prop_group(folder="objects"):
+    """The group of the model profile a prop is held to: the original game's map objects, or
+    its treasures for "nuggets" (the mod added too few of either to measure). None without the
+    profile."""
+    models = art("models")
+    if models is None:
+        return None
+    wanted = models.group("stock", "nuggets" if folder == "nuggets" else "objects")
+    return wanted or models.group("stock", "objects")
+
+
+class Art:
+    """A profile made of groups of measurements. A group is found by what it is - its origin
+    (own: made by the mod; stock: the original game's), its category (the original game's folder
+    names, or "*" for all), and for textures its role and material - never by a file."""
+
+    def __init__(self, data):
+        self.data = data
+        self.groups = data.get("groups", [])
+
+    def group(self, origin="own", category="*", role=None, material=None, least=8):
+        """The group that matches, or None. A missing role or material is not compared."""
+        for g in self.groups:
+            if g.get("origin") != origin or g.get("category") != category:
+                continue
+            if role is not None and g.get("role") != role:
+                continue
+            if material is not None and g.get("material") != material:
+                continue
+            if g.get("count", 0) >= least:
+                return g
+        return None
+
+    def nearest(self, category="*", role=None, material=None, least=8):
+        """The best group there is for this: the mod's own art of that material and category
+        first, then of the material anywhere, then of the category, then the original game's
+        in the same order. (group, how it was found), or (None, None)."""
+        tries = []
+        for origin in ("own", "stock"):
+            if material not in (None, "", "*"):
+                tries += [(origin, category, material), (origin, "*", material)]
+            tries += [(origin, category, "*" if role is not None else None), (origin, "*", "*" if role is not None else None)]
+        for origin, cat, mat in tries:
+            g = self.group(origin, cat, role, mat, least)
+            if g is not None:
+                what = f"{origin} {cat if cat != '*' else 'art'}" + (f", {mat}" if mat not in (None, "*") else "")
+                return g, what
+        return None, None

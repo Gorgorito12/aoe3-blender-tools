@@ -24,16 +24,16 @@ One game unit is 1.626 m in Blender.
 
 | Model | Count |
 |---|---|
-| Medium detail | 1,435 |
+| Medium detail | 1,443 |
 | Low detail, the game's low-poly model | 276 |
-| Faces at medium detail | 717 |
+| Faces at medium detail | 721 |
 | Target and accepted range | 1,639 (1,393 to 1,885) |
 
 Where they go, at medium detail:
 
 | Part | Triangles | Share |
 |---|---|---|
-| wood | 600 | 42 % |
+| wood | 608 | 42 % |
 | thatch | 264 | 18 % |
 | barrel | 128 | 9 % |
 | walls | 113 | 8 % |
@@ -79,10 +79,10 @@ Where they go, at medium detail:
 | Share of the obstruction covered | 1.0 | 0.575 | 0.712 | 0.811 |
 | Share of what stands outside it | 0.184 | 0.017 | 0.119 | 0.278 |
 | Share in its largest part | 1.0 | 0.979 | 0.999 | 1.0 |
-| Share of the edge lined | 0.803 | 0.28 | 0.661 | 0.851 |
+| Share of the edge lined | 0.81 | 0.28 | 0.661 | 0.851 |
 | Flat levels | 4 | 2.0 | 3.0 | 6.5 |
-| Triangles in the lower third | 0.87 | 0.334 | 0.477 | 0.622 |
-| Triangles in the middle third | 0.125 | 0.207 | 0.349 | 0.466 |
+| Triangles in the lower third | 0.866 | 0.334 | 0.477 | 0.622 |
+| Triangles in the middle third | 0.13 | 0.207 | 0.349 | 0.466 |
 | Triangles in the upper third | 0.004 | 0.085 | 0.156 | 0.215 |
 
 ## Attach points

@@ -90,7 +90,7 @@ def opening_tops(spec, p):
 def build(p, params):
     medium = p.detail == "MEDIUM"
     layout = layouts.layout(p, sizes.side_m(p.building_type), medium)
-    b = Builder(p.texture_size, medium)
+    b = Builder(p.texture_size, medium, p.poly)
     facades = parts.declare(b, layout, medium)
     b.pack()
     b._african_facades = facades
@@ -119,7 +119,8 @@ def random_params(rng, i, BuildingParams):
         name=f"African{i}", style=NAME, building_type=rng.choice(sizes.TYPES),
         architecture=rng.choice(CHOICES["architecture"]), wall_upgrade=rng.choice(CHOICES["wall_upgrade"]),
         storeys=rng.randint(1, 2), detail=rng.choice(["LOW", "MEDIUM"]), texture_size=256,
-        player_colour=rng.random() < 0.4, materials=rng.random() < 0.3, seed=rng.randint(1, 9999))
+        player_colour=rng.random() < 0.4, materials=rng.random() < 0.3, seed=rng.randint(1, 9999),
+        poly=rng.choice([1.0, 1.0, 0.5, 0.75, 1.3]))
 
 
 # --------------------------------------------------------------------------------------------------
@@ -132,12 +133,16 @@ def paint(pr, model):
     STONE, CLOTH, POT = C["stone"], C["cloth"], C["tile"]
     DARK = (38, 28, 22)
     SKIN = skin.colours(C)
+    pr.bleeds = texture_budget(pr.p) is not None              # a halved texture shows its gutters
     BAND = PLAYER_GREY if pr.pc else (70, 64, 120)
     lw = pr.lw
     rng = pr.rng
 
-    def band(region, v0, v1, w):
-        pr.paint_on(region, 0, v0, w, v1, BAND)
+    def band(region, v0, v1, w, solid=False):
+        """`solid`: paint over what is there, so stone under it does not show through."""
+        (pr.rect if solid else pr.paint_on)(region, 0, v0, w, v1, BAND)
+        if solid:
+            pr.blotch(region, 0, v0, w, v1, 0.3, 0.05)
         pr.mark(region, 0, v0, w, v1)
 
     def smears(region, base, w, h, n, k=0.06):
@@ -211,11 +216,11 @@ def paint(pr, model):
                     for j in range(3):                                          # fading downwards
                         pr.tone(region, u, v0 + (h - v0) * j / 3, min(w, u + rw_), h, 0.95)
                 if spec.get("band", True):
-                    band(region, h - (0.46 if kept else 0.36), h - 0.16, w)
+                    band(region, h - (0.46 if kept else 0.36), h - 0.16, w, solid=kept)
             else:
                 band(region, 0.28, 0.42, w)
             if kept:
-                facade.weather(pr, region, w, h, h - 0.46, earth, spec.get("foot"))
+                facade.weather(pr, region, w, h, h - 0.46, spec.get("foot"))
                 if spec.get("foot"):                          # a course of pale stone against the rain
                     facade.foot_stones(pr, region, w, earth)
             else:
@@ -237,7 +242,7 @@ def paint(pr, model):
                         pr.vline(region, uu, 0, v1, _shade(WOOD, 0.65))
                         uu += 0.14
                 elif kept:                                    # painted: the model keeps the triangles
-                    facade.window(pr, region, u0, v0, u1, v1, earth, WOOD, u0 in spec.get("closed", ()))
+                    facade.window(pr, region, u0, v0, u1, v1, earth, WOOD, spec.get("closed", {}).get(u0, False))
                 else:
                     pr.rect(region, u0, v0, u1, v1, DARK)
                     pr.rect(region, u0 - 0.08, v1, u1 + 0.08, v1 + 0.1, WOOD, _shade(WOOD, 0.7))
@@ -263,21 +268,36 @@ def paint(pr, model):
             pr.rect("banner", k * 0.075, 0, min(rb2.world_w, k * 0.075 + 0.04), 0.16, (216, 202, 172))
             k += 1
         pr.rect("banner", 0, 0.16, rb2.world_w, 0.22, (216, 202, 172))
+    if "pit_wall" in at:
+        rw2 = at["pit_wall"]
+        pr.fill("pit_wall", _shade(ADOBE, 0.8))
+        facade.worn(pr, "pit_wall", 0.0, 0.0, rw2.world_w, rw2.world_h, facade.random.Random(8))
     if "coping" in at:
-        pr.fill("coping", skin.mix(ADOBE, facade.CREAM, 0.36))
-        pr.mottle("coping", 0.5, 0.06)
-        pr.mottle("coping", 0.09, 0.05)
-    if "step" in at:
-        rs3 = at["step"]
-        pale = skin.mix(ADOBE, facade.CREAM, 0.55)
-        pr.fill("step", _shade(pale, 0.86))
-        u = 0.0
-        while u < rs3.world_w:                                # long slabs, their joints faint
-            bw = float(rng.uniform(1.1, 1.9))
-            pr.rect("step", u + 0.01, 0.0, min(rs3.world_w, u + bw - 0.01), rs3.world_h,
-                    _shade(pale, float(rng.uniform(0.86, 0.98))))
-            u += bw
-        facade.worn(pr, "step", 0.0, 0.0, rs3.world_w, rs3.world_h, facade.random.Random(5))
+        rc2 = at["coping"]
+        pr.fill("coping", skin.mix(ADOBE, facade.CREAM, 0.5))
+        pr.mottle("coping", 0.09, 0.04)
+        facade.worn(pr, "coping", 0.0, 0.0, rc2.world_w, rc2.world_h, facade.random.Random(7), strength=0.4)
+    # (fronts, tops, colour of the fronts, of the tops): in the recess, warm earth in shade
+    for riser_region, tread_region, riser, tread in (
+            ("step", "tread", _shade(skin.mix(ADOBE, facade.CREAM, 0.22), 0.68), skin.mix(ADOBE, facade.CREAM, 0.62)),
+            ("pit_step", "pit_tread", _shade(ADOBE, 0.5), _shade(ADOBE, 0.72))):
+        if riser_region in at:
+            rs3 = at[riser_region]
+            pr.fill(riser_region, riser)
+            u = 0.0
+            while u < rs3.world_w:
+                bw = float(rng.uniform(0.34, 0.7))
+                pr.rect(riser_region, u + 0.012, 0.0, min(rs3.world_w, u + bw - 0.012), rs3.world_h,
+                        _shade(riser, float(rng.uniform(0.92, 1.14))))
+                u += bw
+            facade.worn(pr, riser_region, 0.0, 0.0, rs3.world_w, rs3.world_h, facade.random.Random(5))
+        if tread_region in at:
+            rt = at[tread_region]                             # their tops: pale stone, the front edge rubbed bright
+            pr.fill(tread_region, tread)
+            facade.worn(pr, tread_region, 0.0, 0.0, rt.world_w, rt.world_h, facade.random.Random(6))
+            pr.tone(tread_region, 0.0, 0.0, rt.world_w, 0.07, 1.16)
+            for k in range(3):
+                pr.tone(tread_region, 0.0, 0.28 + k * 0.08, rt.world_w, 0.36 + k * 0.08, 0.96 - 0.03 * k)
     if "roof_flat" in at:
         skin.coat(pr, "roof_flat", "roof_kept" if pr.p.building_type == "PALACE" else "roof_flat", SKIN)
     if "parapet" in at:
@@ -291,10 +311,12 @@ def paint(pr, model):
     if "pier" in at:
         skin.coat(pr, "pier", "pier_kept", SKIN)
         w, a, c, h, lane = parts.PIER_FACE
-        facade.pier_side(pr, "pier", w, a, c, h)
-        facade.pier_chamfer(pr, "pier", lane, 0.3, h)         # the line that divides it
-        skin.coat(pr, "pier_cap", "parapet_kept", SKIN)
-        pr.tone("pier_cap", 0.0, 0.0, 1.4, 1.2, 1.2)          # the cap takes the light
+        pale = skin.mix(ADOBE, (244, 196, 132), 0.5)          # sunlit earth, warm: not the gate's cream
+        for u in parts.PIER_LANES:
+            facade.pier_side(pr, "pier", u, w, a, c, h, pale)
+        facade.pier_chamfer(pr, "pier", lane, 0.3, h, pale)   # the strip that divides it
+        pr.fill("pier_cap", pale)                             # the cap takes the light
+        pr.rough_stone("pier_cap", 0.0, 0.0, 1.4, 1.2, 0.18, 0.07, 0.14)
     pr.base("wood", WOOD, role="timber")
     rw = at["wood"]
     stains("wood", rw.world_w, rw.world_h, 6, 0.2)
@@ -310,7 +332,7 @@ def paint(pr, model):
         pr.hline("pot", rpo.world_h * 0.7, 0, rpo.world_w, _shade(POT, 0.7), 2 * lw)
         if pr.p.building_type == "PALACE":                    # painted bands
             for v in (0.28, 0.42, 0.56):
-                pr.rect("pot", 0, v, rpo.world_w, v + 0.05, (178, 150, 116))
+                pr.rect("pot", 0, v, rpo.world_w, v + 0.04, (156, 122, 92))
             pr.mottle("pot", 0.1, 0.1)
     if "plinth" in at:
         rpl = at["plinth"]
@@ -328,7 +350,7 @@ def paint(pr, model):
         u, j = 0.0, 0
         if plain:                                             # the owner's plain cloth, two pale stripes
             pattern = ((BAND, 0.22, True), (CREAM, 0.09, False), (BAND, 0.1, True), (CREAM, 0.09, False),
-                       (BAND, 2.5, True), (CREAM, 0.09, False), (BAND, 0.1, True), (CREAM, 0.09, False),
+                       (BAND, 2.26, True), (CREAM, 0.09, False), (BAND, 0.1, True), (CREAM, 0.09, False),
                        (BAND, 0.6, True))
         while u < cw:                                         # strips woven on a narrow loom
             col, sw, mine = pattern[j % len(pattern)]
@@ -347,6 +369,8 @@ def paint(pr, model):
             for j in range(3):
                 pr.tone("cloth", 0, k * 0.5 + j * 0.05, cw, k * 0.5 + (j + 1) * 0.05, 0.9 + 0.03 * j)
         stains("cloth", cw, ch, int(cw * ch * 0.5) + 1, 0.18, 1.0)      # worn by sun and hands
+        if plain:
+            pr.tone("cloth", 0, 0.2, cw, 0.3, 1.16)            # the roll at its hem takes the light
     if "stone" in at:
         rs = at["stone"]
         MORTAR = (142, 122, 90)
@@ -367,7 +391,9 @@ def paint(pr, model):
             v += hh
     if "field" in at:
         rfi = at["field"]
-        SOIL = (62, 44, 32)                                   # worked, watered earth
+        # worked, watered earth; (62, 44, 32) until 2026-11-10 put the plot's saturation at 0.48,
+        # past the mod's own building textures' upper quartile (0.43)
+        SOIL = (60, 47, 37)
         pr.base("field", SOIL, role="plinth")
         pr.cracks("field", 0.3, 0.3, keep=0.5)
         for _ in range(int(rfi.world_w * rfi.world_h * 4)):   # clods and straw left in it

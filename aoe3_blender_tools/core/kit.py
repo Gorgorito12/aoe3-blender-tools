@@ -20,6 +20,7 @@ Nothing here imports Blender.
 import math
 from dataclasses import dataclass, field
 
+from . import resolution
 from .atlas import Atlas, Region
 
 
@@ -201,14 +202,28 @@ def wall_triangles(length, height, holes):
 class Builder:
     """Regions, atlas, faces and attach points of one building, and the pieces that make it."""
 
-    def __init__(self, texture_size, medium=False):
+    def __init__(self, texture_size, medium=False, poly=1.0):
         self.texture_size = texture_size
         self.medium = medium
+        self.poly = 1.0 if poly is None else float(poly)
         self.regions = []
         self.atlas = None
         self.faces = []
         self.attach = {}
         self.boxes = []
+
+    # -- how many segments a round body gets (core/resolution.py; 1.0 keeps every count) --
+
+    def sides(self, base, lowest=resolution.MIN_SIDES):
+        """The sides of a round body. Use the same number for the piece and for its region size,
+        or the region no longer matches its girth and face_auto quietly shrinks the faces."""
+        return resolution.sides(base, self.poly, lowest)
+
+    def rings(self, base):
+        return resolution.rings(base, self.poly)
+
+    def segments(self, base):
+        return resolution.segments(base, self.poly)
 
     def region(self, name, world_w, world_h):
         """Declares an atlas region (phase 1). Order matters: see the module's rule."""
@@ -693,7 +708,7 @@ class Builder:
         self.face_out(pts, region, (0.0, 0.0, -1.0 if down else 1.0))
 
     def flat_roof(self, x0, x1, y0, y1, z, region, parapet_h=0.0, parapet_t=0.25, parapet_region=None,
-                  merlons=0, merlon_h=0.3, open_sides=()):
+                  merlons=0, merlon_h=0.3, open_sides=(), runs_on=()):
         """A flat roof over walls x0..x1, y0..y1 whose tops are at z: the roof surface and, with
         parapet_h, a parapet round it flush with the walls (four boxes that never overlap at the
         corners) and optionally `merlons` per metre... per side (small boxes on the parapet).
@@ -714,9 +729,9 @@ class Builder:
             self.box(x0, x1, y1 - t, y1, z, zt, pr, pr)
         ends = (("-y",) if tf else ()) + (("+y",) if tb else ())           # sides between them
         if tl:
-            self.box(x0, x0 + t, y0 + tf, y1 - tb, z, zt, pr, pr, skip=ends)
+            self.box(x0, x0 + t, y0 + tf, y1 - tb, z, zt, pr, pr, skip=ends + tuple(e for s, e in runs_on if s == "-x"))
         if tr:
-            self.box(x1 - t, x1, y0 + tf, y1 - tb, z, zt, pr, pr, skip=ends)
+            self.box(x1 - t, x1, y0 + tf, y1 - tb, z, zt, pr, pr, skip=ends + tuple(e for s, e in runs_on if s == "+x"))
         if merlons:
             w = 0.35
             spans = (((x0, y0, x1, y0 + t),) if tf else ()) + (((x0, y1 - t, x1, y1),) if tb else ())
@@ -849,12 +864,13 @@ class Builder:
                      skip=("top",))
 
     def draped_cloth(self, x0, x1, y0, y1, z_hi, z_lo, region, post_region, slope="-y", post=0.07, sag=0.17,
-                     nu=5, nv=3, hem=0.2, rafters=0, z_base=0.0, scallops=True, on_wall=False):
+                     nu=5, nv=3, hem=0.2, rafters=0, z_base=0.0, scallops=True, on_wall=False, curl=0.0):
         """Cloth stretched from a pole along its high side to the poles of its low side: a grid that
         hangs between them, with a scalloped hem. `rafters`: that many timbers under it, which show
         at both ends (a tarp over a beamed yard). `on_wall`: its high side is nailed to a wall, so
-        it stands on the two low posts alone. Faces up; nothing under it (the camera never sees
-        that side)."""
+        it stands on the two low posts alone. `curl`: it runs out nearly flat, then rolls over
+        and falls that much further at its front, sagging at the middle of the hem, instead of
+        running straight. Faces up; nothing under it (the camera never sees that side)."""
         if slope in ("-y", "+y"):
             W, L = x1 - x0, y1 - y0
         else:
@@ -870,10 +886,26 @@ class Builder:
                 return x1 - t, y0 + s
             return x0 + t, y1 - s
 
+        A = 1.95                                           # how far round it rolls, past the vertical
+
         def z(s, t):
             f = t / L
             belly = 0.3 + 0.7 * math.sin(math.pi * s / W)
+            if curl:
+                fall = (1 - math.cos(f * A)) / (1 - math.cos(A))
+                return z_hi - (z_hi - z_lo + curl) * fall - sag * f ** 3 * belly
             return z_hi + (z_lo - z_hi) * f - sag * math.sin(math.pi * f) * belly
+
+        def run(t):
+            """Where down the slope a point of the cloth lies: a rolled one pulls in over its edge."""
+            return L * math.sin(t / L * A) if curl else t
+
+        ex, ey = at(0, L + 1.0)[0] - at(0, L)[0], at(0, L + 1.0)[1] - at(0, L)[1]
+
+        def up(t):
+            """The way the cloth faces where it has rolled round."""
+            a = t / L * A
+            return (ex * math.sin(a), ey * math.sin(a), math.cos(a)) if curl else (0.0, 0.0, 1.0)
 
         reg = self.atlas[region]
         k = min(1.0, reg.world_w / W, reg.world_h / (L + hem))
@@ -882,12 +914,12 @@ class Builder:
         for j in range(nv):
             for i in range(nu):
                 corners = ((ss[i], ts[j]), (ss[i + 1], ts[j]), (ss[i + 1], ts[j + 1]), (ss[i], ts[j + 1]))
-                pts = [(*at(s, t), z(s, t)) for s, t in corners]
+                pts = [(*at(s, run(t)), z(s, t)) for s, t in corners]
                 uvs = [(s * k, (L + hem - t) * k) for s, t in corners]
                 (ax, ay, az), (bx, by, bz), (cx, cy, cz), (dx, dy, dz) = pts
-                self.facing([pts[0], pts[1], pts[2]], [uvs[0], uvs[1], uvs[2]], region, (0.0, 0.0, 1.0), smooth=True)
-                self.facing([pts[0], pts[2], pts[3]], [uvs[0], uvs[2], uvs[3]], region, (0.0, 0.0, 1.0), smooth=True)
-        ex, ey = at(0, L + 1.0)[0] - at(0, L)[0], at(0, L + 1.0)[1] - at(0, L)[1]
+                n = up((ts[j] + ts[j + 1]) / 2)
+                self.facing([pts[0], pts[1], pts[2]], [uvs[0], uvs[1], uvs[2]], region, n, smooth=True)
+                self.facing([pts[0], pts[2], pts[3]], [uvs[0], uvs[2], uvs[3]], region, n, smooth=True)
         for i in range(nu if scallops else 0):               # the hem: one scallop a segment
             sa, sb, sm = ss[i], ss[i + 1], (ss[i] + ss[i + 1]) / 2
             pa, pb, pm = at(sa, L), at(sb, L), at(sm, L)
@@ -898,7 +930,12 @@ class Builder:
         for s, t, zp in ((0.0, 0.0, z_hi), (W, 0.0, z_hi), (W, L, z_lo), (0.0, L, z_lo)):
             if on_wall and t == 0.0:
                 continue
-            px, py = at(min(max(s, i), W - i), min(max(t, i), L - i))
+            ps, pt = min(max(s, i), W - i), min(max(t, i), L - i)
+            if curl:                                       # to where it meets the cloth, behind the hem
+                pt = L * 0.72
+                zp = z(ps, pt) - 0.09
+                pt = run(pt)
+            px, py = at(ps, pt)
             self.box(px - post, px + post, py - post, py + post, z_base, zp + (0.0 if on_wall else 0.1),
                      post_region, post_region)
         if not on_wall:

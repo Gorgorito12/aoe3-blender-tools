@@ -13,6 +13,7 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
 from core import airepaint, building, paint  # noqa: E402
+from core.painter import Painter  # noqa: E402
 
 W = np.array([0.299, 0.587, 0.114], np.float32)
 
@@ -48,7 +49,38 @@ class Roofs(unittest.TestCase):
             with self.subTest(key):
                 wall = max((lum(n) for n in walls), key=lambda a: a.size)
                 self.assertGreater(float(roof.mean()), float(wall.mean()) * 1.1, "the roof is not lighter")
-                self.assertLess(grain(roof), grain(wall), "the roof is not smoother")
+                if p.building_type != "PALACE":               # its roofs are paved, rougher than its walls
+                    self.assertLess(grain(roof), grain(wall), "the roof is not smoother")
+
+
+class Stone(unittest.TestCase):
+    def setUp(self):
+        self.m = building.build(building.PRESETS["AFRICAN_PALACE_SAHEL"])
+        self.name = max((n for n in self.m.atlas.regions if n.startswith("bk")), key=lambda n: self.m.atlas[n].w)
+
+    def laid(self):
+        """Rough stone on a flat grey wall of the palace, as (region's pixels, its luminance)."""
+        pr = Painter(self.m)
+        r = pr.at[self.name]
+        pr.rough_stone(self.name, 0.0, 0.0, r.world_w, r.world_h, 0.2, 0.12, 0.2)
+        a = pr.cv.a[r.y + 2:r.y + r.h - 2, r.x + 2:r.x + r.w - 2]
+        return a, a @ W
+
+    def test_it_is_the_same_each_time(self):
+        self.assertTrue(np.array_equal(self.laid()[0], self.laid()[0]))
+
+    def test_it_keeps_the_colour_of_the_wall(self):
+        self.assertAlmostEqual(float(self.laid()[1].mean()) / 128.0, 1.0, delta=0.04)
+
+    def test_no_joint_runs_straight(self):
+        lum = self.laid()[1]
+        for axis, name in ((0, "columns"), (1, "rows")):
+            line = lum.mean(axis=axis)
+            near = np.convolve(line, np.ones(9) / 9, mode="valid")
+            jump = float(np.abs(line[4:-4] - near).max()) / float(lum.mean())
+            with self.subTest(name):
+                # the old courses of blocks, their joints 9 % dark along 70 % of a row: over 6 %
+                self.assertLess(jump, 0.03, "a straight line runs through the stone")
 
 
 if __name__ == "__main__":

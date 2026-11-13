@@ -1,1 +1,1 @@
-AfricanHouseSubSaharan: 684 triangles, 542 vertices; footprint 7.5 x 6.5 m; texture 1024 x 1024
+AfricanHouseSubSaharan: 626 triangles, 517 vertices; footprint 8.0 x 8.0 m; texture 1024 x 1024

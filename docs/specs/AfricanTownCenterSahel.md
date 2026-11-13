@@ -24,22 +24,22 @@ One game unit is 1.626 m in Blender.
 
 | Model | Count |
 |---|---|
-| Medium detail | 2,942 |
+| Medium detail | 3,134 |
 | Low detail, the game's low-poly model | 778 |
-| Faces at medium detail | 1,434 |
+| Faces at medium detail | 1,530 |
 | Target and accepted range | 3,627 (3,083 to 4,171) |
 
 Where they go, at medium detail:
 
 | Part | Triangles | Share |
 |---|---|---|
-| trim | 636 | 22 % |
-| pot | 492 | 17 % |
-| thatch | 288 | 10 % |
-| roof_flat | 286 | 10 % |
-| wood | 264 | 9 % |
-| parapet | 224 | 8 % |
-| rw1 | 192 | 7 % |
+| trim | 636 | 20 % |
+| pot | 492 | 16 % |
+| wood | 456 | 15 % |
+| thatch | 288 | 9 % |
+| roof_flat | 286 | 9 % |
+| parapet | 224 | 7 % |
+| rw1 | 192 | 6 % |
 | crate | 120 | 4 % |
 | rw6 | 96 | 3 % |
 | rw7 | 96 | 3 % |
@@ -84,9 +84,9 @@ Where they go, at medium detail:
 | Share in its largest part | 1.0 | 0.838 | 0.996 | 1.0 |
 | Share of the edge lined | 0.901 | 0.265 | 0.522 | 0.698 |
 | Flat levels | 8 | 3.25 | 4.5 | 6.25 |
-| Triangles in the lower third | 0.277 | 0.334 | 0.365 | 0.484 |
-| Triangles in the middle third | 0.648 | 0.23 | 0.247 | 0.304 |
-| Triangles in the upper third | 0.075 | 0.192 | 0.315 | 0.384 |
+| Triangles in the lower third | 0.26 | 0.334 | 0.365 | 0.484 |
+| Triangles in the middle third | 0.608 | 0.23 | 0.247 | 0.304 |
+| Triangles in the upper third | 0.132 | 0.192 | 0.315 | 0.384 |
 
 ## Attach points
 
