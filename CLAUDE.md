@@ -15,8 +15,8 @@ and destroyed in game (`docs/game-test.md`), then more styles and units (README,
 
 ## Public repository rules
 
-- The repository is **public**. Keep every text neutral: do not name other mods, their teams, or
-  the private projects this tool came from, and do not link private documents.
+- The repository is **public**. Naming mods, their teams or the projects this tool serves is fine
+  (the owner's decision, 2026-11-13); still do not link private documents.
 - Never commit survey reports (`report.json`, `summary.md`) of a mod: they name its files. They
   belong to the user's private repository.
 - Reference images of a style guide may come from other games: they guide the composition only.
@@ -38,11 +38,15 @@ venv/bin/python scripts/generate.py --preset ALL   # regenerates examples/ (abou
 venv/bin/python scripts/sweep.py --count 200       # random option sets through the checks: 0 failures
 python tools/build_zip.py                          # dist/ zips (extension and legacy)
 python -I tests/test_game_formats.py               # game formats, plain Python (venv for numpy parts)
+python -I tests/test_xmbedit.py                    # compiled XML (.xmb) and its text round trip
+venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, make_bar (about 70 s)
 venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
 venv/bin/python -I tests/test_specs.py             # every building has its sheet and it is current
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
 python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
+python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
+python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
 ```
 
 On Windows the venv interpreter is `venv/Scripts/python`. `-X utf8` matters: the mod's
@@ -78,7 +82,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
-  portrait framing; numpy), `animxml.py`, `proto.py` (unit list
+  portrait framing; numpy), `animxml.py`, `precomp.py` (an animation's tag file,
+  `.gr2.precomp`: the sampled tag bones such as `HITPOINTBAR`), `proto.py` (unit list
   and string table at the text level), `bundle.py` (the files for one building), `deploy.py`
   (test copy: Steam refused, backups, manifest, undo, validators).
 - `aoe3_blender_tools/core/render.py`: Workbench render of a building for its icon and portrait
@@ -91,7 +96,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   neoclassical preset (faces, atlas, texture, attach points, sizes, facade layout) and their
   triangle counts.
 - `tools/`: `art_survey.py` (uses `bar.py` and `xmbedit.py`; standard library only, it runs on the
-  user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`;
+  user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`; `make_rings.py`,
+  `make_icons.py`, `make_bar.py` (ground rings and marks, test avatar icons, a health-bar texture;
+  standard library only, nothing taken from the game);
   `fetch_materials.py` (CC0 swatches into `aoe3_blender_tools/materials/` with `MATERIALS.md`)
   and `palette_survey.py` (stock texture colour and grain), both with numpy.
 - `aoe3_blender_tools/core/comfy.py` (ComfyUI client, standard library only, and the repaint

@@ -71,6 +71,79 @@ wide by that rule, and they are not: in game they stand at full size, their stor
 scaled as if they were inches (x 0.015625: 1,280 stored units are 20 game units). A survey must not
 trust that declaration. The writer uses the stock basis, so no conversion is involved.
 
+**Bone scale** (**measured**): a bone's world frame is its parent's world frame times its local
+transform, local = translate(Position) x rotate(Orientation, a quaternion x y z w) x ScaleShear (a
+3 x 3, used only when bit 4 of the transform's flags is set; bit 1 position, bit 2 orientation). The
+stored InverseWorldTransform is the inverse of that frame in row-vector form (translation in the
+last row): their product is the identity to 1e-6 on stock and mod buildings. On skinned units it is
+the bind pose instead and does not match the rest pose.
+
+- Stock buildings: the impact bones (`boneimpactNN`) and attach bones have world axes of length 1;
+  some helper bones are 0.918, and across all stock models helper bones from 0.24 to 4 are common.
+- Some mods export in centimetres: the root `bone_main` carries ScaleShear 100 (flags 7) and every
+  other bone a unit local scale, so every bone's world axes are 100 long. Meshes bound to these
+  bones draw right (their inverse takes the 100 out again).
+- The game hangs an impact effect whose particle set names an `.xml` visual (the stock
+  `cannon.impacteffect`'s `<wood>`) on the impact point's bone with the bone's whole world frame,
+  scale included; a plain particle set name is placed at the hit point and does not read the bone.
+  On a bone of axes 100 the visual is drawn 100 times too big (**in game**).
+- `tools/fix_bone_scale.py` gives such bones a local ScaleShear of 1/100 (flag bit 4 set), so their
+  world axes are 1 while their world position and direction stay, and scales their inverse to
+  match; mesh-bound bones are never changed. The Granny runtime reads a file patched this way and
+  its CRC check passes (**measured**). **In game** (2026-11-13): a mod building of this kind, its
+  damage template set to `wood`, threw the visual across the whole view when hit by cannon; with its
+  models fixed by the tool the splinters, smoke and fire stay on its walls, and it stands, burns and
+  collapses as before. The construction and collapse models had no bone to change.
+- Measured on a large mod: 341 of 18,501 Granny files have such bones (2,558 bones: 2,307 at 100,
+  140 at 60, the rest between 0.026 and 41); 74 more have one the tool must leave (a scaled root
+  over its debris meshes, or a bone scaled unevenly). In the stock archives only 4 of about 12,300
+  models have one (wheel links at 0.1 on a mortar, a bone at 0.012 on the low-poly war dogs), none
+  of them an impact or flag bone: run the tool on a mod's own folders.
+
+### Uncompressed copies
+
+- **Why** (**measured** by sampling the stack of the game's main thread): the
+  game reads a model or an animation the first time it meets one, on its main thread, and most of
+  that time is the Oodle1 decoder of the compressed sections. A section stored uncompressed is read
+  straight into its buffer; fixups and the byte order are separate steps, the same for any format,
+  so an uncompressed file skips only the decoder.
+- **Loose files override the archives** (**measured**): a `.gr2` under `art\` with the stored name
+  of an archived one is the one the game opens, and the game reads it like any other.
+- **The stock archives** (`Art1.bar`, `Art4.bar`, `Art5.bar`): 12,319 `.gr2` names (13,086 entries, 551 MB); 105
+  names are stored in two archives with different bytes (which one the game reads is not
+  measured, so the tool leaves them out), 1,776 have no compressed section, and 10,438 have one. In
+  a copy of Wars of Liberty 17 of those are the mod's own loose models; the other 10,421 are 397 MB
+  as stored and 1,041 MB uncompressed (2.6 times).
+- **The root type reference.** The runtime's own `GrannyRecompressFile` keeps the sections, their
+  bytes and their fixups, but writes the root object's type reference (header words 5 and 6, at
+  0x34) as 0:0. A model whose type tag is older than the runtime's is then read with the wrong
+  type, and the game exits at its main menu (exit code 0, no message). Copying the two words back
+  from the original and recomputing the CRC fixes it. The bridge's `rebake --noop` rebuilds the
+  file as bytes and keeps them (0 of 10,421 needed the fix), and the tool checks them anyway.
+- **What `tools/uncompress_models.py` checks** before it writes a copy: the bridge reads the
+  original and the copy back through the runtime and refuses any difference in their data trees,
+  and the runtime says the copy's CRC is valid; then the tool compares the containers itself: the
+  same header but for the total size and the CRC, every section uncompressed and stored at its
+  expanded size, the same section records (expanded size, alignment, stops, fixup counts), the
+  relocation and marshalling tables byte for byte, the sections the original stored uncompressed
+  byte for byte, and the CRC. After writing it reads the file back (SHA-256).
+- **Cost** (**measured**, 16 logical cores, the bridge run in 8 processes at a time): 10,421 models in 252 s
+  (about 41 per second), 1,041 MB written. `--check` of the whole set: 4 s with the files cached.
+- **In game** (**measured**, a saved late game replayed for 150 s, runs with and without the copies
+  in turns): stock game, frames over 50 ms 2 → 0, longest frame 92–98 → 42 ms, load 1.1–1.9 s
+  shorter; Wars of Liberty (its own cfg, three pairs), load 11.6 → 9.5 s in every pair, and the one
+  frame per run that loaded a new model (72–80 ms) gone; the mod's other slow frames are not model
+  loads and stay. FPS does not change. With the copies installed, 14 of 14 new game
+  processes loaded that save, played and closed cleanly (a cache that served the same bytes from
+  a DLL at runtime had hung the load in 11 of 22). `--only-used` with one session's file list kept
+  1,263 copies, 177 MB.
+- **The manifest** `uncompressed-models.jsonl` at the root of the copy is append-only while the
+  tool runs (a folder is recorded before it is created, a file before it is renamed into place
+  from `<name>.uncompressing`), so an interrupted run leaves nothing `--undo` cannot find; it is
+  rewritten compactly at the end. A copy whose content changed since it was written is no longer
+  the tool's: it is left in place and forgotten.
+- Tests: `python -I tests/test_uncompress_models.py` (synthetic archives and models, a fake bridge).
+
 ## Textures (.ddt)
 
 | Offset | Content |
@@ -180,6 +253,49 @@ Measured on 2026-11-10 over every grouping of the original game (577 files) and 
 | A `variation` above a set's model count | **to verify** | |
 | Which `RM*` folders the mod's map scripts read | **to verify** | `tools/game_deploy.py --grouping` copies into every one of the test copy |
 
+## Animation tags (.gr2.precomp)
+
+Next to a Granny animation `x.gr2` the game keeps `x.gr2.precomp`: the positions of a few named
+bones of the model, sampled over the animation. These are the animation's **tags**. The anim
+file does not hold them: its `<tag type="Attack">` and the like are timed events, a separate
+thing. Reader and writer: `aoe3game/precomp.py` (layout in its docstring).
+
+- **Measured:** the base game's archives hold 6,211 `.gr2.precomp` files; every one parses and
+  re-encodes byte for byte. The names seen are bones such as `MASTER`, `HEAD`, `NECK`, `PELVIS`,
+  `ATTACHPOINT` and `HITPOINTBAR`; 2,278 files have `HITPOINTBAR`. A track holds one position
+  (3 floats, model space) and one rotation per key, with the keys spread evenly over the
+  animation. 6,175 files hold one block of tags, sampled on one model whose path ends the file;
+  36 hold up to 10.
+- **Engine:** the game's reader of the "MS" block fills the tag table of the animation (names,
+  position tracks, duration), and the floating health bar is placed on the `HITPOINTBAR` track of
+  the animation the unit plays, interpolated at the animation's clock. When that animation has
+  no `HITPOINTBAR`, the bar goes to a height of the game's own, usually lower (inside a rider).
+  So a unit whose animations do not all have the tag sees its bar jump at every change of
+  animation, several times a minute when it stands, since idles are picked at random among
+  variants.
+- **The base game has the bug too:** its horse idles `animation_library\cavalry\horse_idle_a` to
+  `_g` lack the tag while `_h`, `_i`, the walks, gallops and attacks have it (4.15 model units
+  up), so every cavalry unit that uses them shows it; so do many villager and stance animations.
+- **Seen in game (2026-11-13):** a loose `art\<path>.gr2.precomp` wins over the one in the
+  archives (put there before the game starts). With the tag added at the idle's height to the animations
+  of three units that lacked it (a light cavalry unit, an explorer, a line infantry unit), their
+  bars stayed at one height through idles, a charge and a melee fight; without it, the light
+  cavalry bars dropped by 12 to 14 pixels (at the default close zoom) at each change of idle,
+  about once every two seconds.
+- **To verify:** an animation with no `.gr2.precomp` at all (common in mods, whose own `.gr2`
+  files come without one) must get its tags from the `.gr2` itself, which needs a
+  `HITPOINTBAR` bone; not traced. Which block a file with several blocks gives to a given
+  model is not known either.
+
+`tools/fix_hitpointbar_tags.py` adds the missing tag: for each anim file, the median height of
+the tag over the unit's Idle animations (or over all of its animations), as a constant track
+with the file's number of keys; nothing else of the file changes. An animation shared by units
+of different heights gets the height most of their anim files use. Its dry run over a large mod
+(2,443 anim files of the units of its proto file): 533 anim files have animations without the
+tag, 243 tag files to fix, 214 fixable, 29 refused (16 ties between heights, 12 files with no
+tracks to take the number of keys from, 1 sampled on several models), and 390 uses of animations
+with no tag file at all (367 of a loose `.gr2`, 23 of a missing one).
+
 ## Collision
 
 A building's hitbox is three things, none of them its visible mesh:
@@ -224,6 +340,41 @@ with their UVs, 22 parts) and went from 1,610 to 3,214. It was dropped for that 
 if it comes back: a hollow building shows the ground through its holes, so it needs a dark core inside;
 and a part that rests on another one stays in the air when the lower one goes. Check that every part a
 template names exists in its model: real mods ship templates whose models are empty, and nothing breaks.
+
+## Impact effects
+
+What a hit plays (particles, sounds) by the impact type of the surface it lands on. Measured on the
+stock files (2026-11-13).
+
+- **Files:** `art\effects\impacts\<weapon>.impacteffect`, compiled to `<weapon>.impacteffect.xmb`.
+  The base game ships 14 of them, only compiled, plain `X1` (no `l33t` zlib), inside `Art1.bar`
+  (arrow, cannon, dynamite, grenade, gun, hoop, melee, mortar, torch) and `Art5.bar` (chakram,
+  crow, melee_no_weapon, sabotage, shuriken).
+- **Layout:** a root `<impacteffect metercount=... meterlength=...>`, then one element per impact
+  type (`wood`, `stone`, `flesh`, `rooftile`, `terraingrass`, `exitbuilding`, ...), each holding
+  `particleset` and `soundset` children (several of each; `weight` and `fireexisttime` occur as
+  attributes). The impact type of a surface comes from `impacttype` in a damage template (`.dmg`),
+  a proto's `<ImpactType>` or a terrain type.
+- **A loose file:** a compiled `.xmb` in the game's `art\effects\impacts\` is read instead of the
+  archive's (seen in game with an edited `cannon.impacteffect.xmb`). An edited XML without its
+  compiled twin is not enough: compile it.
+- **Compile and decompile:** `python -I tools/xmbedit.py from-xml cannon.impacteffect` writes
+  `cannon.impacteffect.xmb` next to it (a source saved as `cannon.impacteffect.xml` gives the same
+  name); `python -I tools/xmbedit.py to-xml cannon.impacteffect.xmb` writes `cannon.impacteffect`.
+  `to-xml` puts each element on the source line stored in the file, so the stored line numbers
+  survive the text: for all 14 stock impact effects, `to-xml` then `from-xml` gives the original
+  `.xmb` byte for byte, and `xmbedit.py check` proves it for any file.
+- **Tested in game (2026-11-13):** the stock `cannon` impact effect, decompiled with `to-xml`, one
+  element of an impact type of its own added (a water splash particle set, a metal sound), compiled
+  with `from-xml` and put loose in `art\effects\impacts\`; a building whose `.dmg` names that type,
+  hit by cannons: each hit threw the splash off its walls. A type outside the game's 15 needs the
+  engine to know its name; with one of the 15 (`metal` is one no stock file uses), the data alone
+  is enough.
+- **Coverage of the text round trip:** over every `.xmb` in the base game's archives and the
+  compiled protos and tech tree (about 6,000 files), all but 48 come back byte for byte. Of those, 47
+  are anim and terrain files whose stored text keeps tabs after an element's text, before its
+  children, which the XML text drops, and one repeats an attribute, which XML forbids. `check`
+  reports such a file; its binary round trip still holds.
 
 ## Protos and strings
 

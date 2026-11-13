@@ -3,20 +3,28 @@
 
 Usage:
     python -I tools/xmbedit.py check <file.xmb>
-    python -I tools/xmbedit.py to-xml <file.xmb> <out.xml>
-    python -I tools/xmbedit.py from-xml <in.xml> <out.xmb> [--compress]
+    python -I tools/xmbedit.py to-xml <file.xmb> [<out.xml>]
+    python -I tools/xmbedit.py from-xml <in.xml> [<out.xmb>] [--compress]
     python -I tools/xmbedit.py add-unittype <in.xmb> <out.xmb> <Unit> <UnitType> [<Unit> <UnitType> ...]
 
 check         decodes and re-encodes the file and confirms the result is byte-identical, so an
-              edit cannot change anything else.
+              edit cannot change anything else; then does the same through the XML text that
+              to-xml writes (to-xml, then from-xml gives the file back byte for byte).
 to-xml        writes a readable XML copy (element names as stored, which is lowercase). Use it
-              to read files extracted from the BAR archives with tools/bar.py.
-from-xml      compiles an XML file (e.g. an edited protoy.xml or a new .tactics file) the way the
-              stock files are stored: element and attribute names lowercase, whitespace-only
-              text dropped, leading whitespace dropped (trailing spaces of a leaf's text are
-              kept), the XML's line numbers kept. --compress writes the
-              "l33t" zlib form (stock protoy.xml.XMB); without it the file is plain X1 (stock
-              .tactics files). Both load.
+              to read files extracted from the BAR archives with tools/bar.py. Each element
+              starts on the source line stored in the file (blank lines fill the gaps), so
+              from-xml compiles the copy back to the same bytes. Without <out.xml> it writes
+              next to the input, without its ".xmb" (cannon.impacteffect.xmb ->
+              cannon.impacteffect).
+from-xml      compiles an XML file (e.g. an edited protoy.xml, a new .tactics file or an
+              .impacteffect) the way the stock files are stored: element and attribute names
+              lowercase, whitespace-only text dropped, leading whitespace dropped (trailing
+              spaces of a leaf's text are kept), the XML's line numbers kept. Without <out.xmb>
+              it writes next to the input with ".xmb" added (protoy.xml -> protoy.xml.xmb,
+              cannon.impacteffect -> cannon.impacteffect.xmb; an .impacteffect, .tactics or
+              .dmg saved with ".xml" after it loses that ".xml"). --compress writes the "l33t" zlib form (stock
+              protoy.xml.XMB); without it the file is plain X1 (stock .tactics and
+              .impacteffect files). Both load.
 add-unittype  adds <unittype>UnitType</unittype> after the last unittype of each named
               <unit name='Unit'> (a protoy XMB). It reports units that are missing or already
               have the type. The output keeps the input's compression.
@@ -143,25 +151,68 @@ def load_checked(path):
     return raw, inner, elems, attrs, root
 
 
+# Line breaks inside a text are written as character references: a raw one would move every later
+# element to another source line. (quoteattr already does this for attribute values.)
+_TEXT_ENTITIES = {"\n": "&#10;", "\r": "&#13;"}
+
+
 def to_xml(elems, attrs, root):
+    """The document as XML text. Each start tag is put on the source line stored for it (the
+    declaration is line 1, blank lines fill the gaps); a tag whose line is already passed goes on
+    the current line. So from_xml(to_xml(...)) stores the same line numbers."""
     lines = ['<?xml version="1.0" encoding="utf-8"?>']
 
-    def node(nd, depth):
-        pad = "  " * depth
+    def open_on(line, depth, text):
+        if line > len(lines):
+            lines.extend([""] * (line - len(lines) - 1))
+            lines.append("  " * depth + text)
+        else:
+            lines[-1] += text
+
+    def node(nd, depth, next_line):
+        """next_line: the stored line of the next start tag after this element (None at the end)."""
         tag = elems[nd.name]
         attr_text = "".join(f" {attrs[k]}={quoteattr(v)}" for k, v in nd.attrs)
         # A leaf's text is written as stored: stock strings can end in a space ("Mejora en: ").
-        text = escape(nd.text if not nd.children else nd.text.strip())
+        text = escape(nd.text if not nd.children else nd.text.strip(), _TEXT_ENTITIES)
         if not nd.children:
-            lines.append(f"{pad}<{tag}{attr_text}>{text}</{tag}>" if text else f"{pad}<{tag}{attr_text}/>")
+            open_on(nd.line, depth, f"<{tag}{attr_text}>{text}</{tag}>" if text else f"<{tag}{attr_text}/>")
             return
-        lines.append(f"{pad}<{tag}{attr_text}>{text}")
-        for child in nd.children:
-            node(child, depth + 1)
-        lines.append(f"{pad}</{tag}>")
+        open_on(nd.line, depth, f"<{tag}{attr_text}>{text}")
+        for i, child in enumerate(nd.children):
+            later = nd.children[i + 1].line if i + 1 < len(nd.children) else next_line
+            node(child, depth + 1, later)
+        # The end tag gets a line of its own when the next start tag leaves one free.
+        if next_line is None or next_line > len(lines) + 1:
+            lines.append("  " * depth + f"</{tag}>")
+        else:
+            lines[-1] += f"</{tag}>"
 
-    node(root, 0)
+    node(root, 0, None)
     return "\n".join(lines) + "\n"
+
+
+def xml_round_trip(elems, attrs, root):
+    """The X1 document compiled back from to_xml's text."""
+    return encode(*from_xml(to_xml(elems, attrs, root).encode("utf-8")))
+
+
+# Data kinds whose source is not named .xml: an editor may still save one as cannon.impacteffect.xml.
+_OWN_EXTENSIONS = (".impacteffect", ".tactics", ".dmg")
+
+
+def default_xml_name(path):
+    """cannon.impacteffect.xmb -> cannon.impacteffect; anything else gets ".xml"."""
+    return path[:-4] if path.lower().endswith(".xmb") else path + ".xml"
+
+
+def default_xmb_name(path):
+    """The name the game loads: protoy.xml -> protoy.xml.xmb, cannon.impacteffect ->
+    cannon.impacteffect.xmb, and cannon.impacteffect.xml -> cannon.impacteffect.xmb too."""
+    lower = path.lower()
+    if lower.endswith(".xml") and lower[:-4].endswith(_OWN_EXTENSIONS):
+        path = path[:-4]
+    return path + ".xmb"
 
 
 def from_xml(data):
@@ -248,24 +299,34 @@ def main(argv):
         sys.exit(__doc__)
     command, args = argv[0], argv[1:]
     if command == "check" and len(args) == 1:
-        raw, inner, elems, attrs, _ = load_checked(args[0])
+        raw, inner, elems, attrs, root = load_checked(args[0])
         kind = "compressed" if is_compressed(raw) else "uncompressed"
+        through_xml = "identical" if xml_round_trip(elems, attrs, root) == inner else "DIFFERS"
         print(f"{args[0]}: round trip ok ({kind}, {len(inner)} bytes, {len(elems)} element names, "
-              f"{len(attrs)} attribute names)")
-    elif command == "to-xml" and len(args) == 2:
+              f"{len(attrs)} attribute names); through to-xml and from-xml: {through_xml}")
+        if through_xml != "identical":
+            sys.exit(1)
+    elif command == "to-xml" and len(args) in (1, 2):
         _, _, elems, attrs, root = load_checked(args[0])
-        with open(args[1], "w", encoding="utf-8") as f:
+        out = args[1] if len(args) == 2 else default_xml_name(args[0])
+        with open(out, "w", encoding="utf-8") as f:
             f.write(to_xml(elems, attrs, root))
-        print(f"wrote {args[1]}")
-    elif command == "from-xml" and len(args) in (2, 3) and args[2:] in ([], ["--compress"]):
+        print(f"wrote {out}")
+    elif command == "from-xml" and args and not args[0].startswith("--"):
+        compress = "--compress" in args
+        rest = [a for a in args[1:] if a != "--compress"]
+        if len(rest) > 1 or any(a.startswith("--") for a in rest):
+            sys.exit(__doc__)
+        out = rest[0] if rest else default_xmb_name(args[0])
         with open(args[0], "rb") as f:
             elems, attrs, root = from_xml(f.read())
         inner = encode(elems, attrs, root)
         if encode(*parse(inner)) != inner:
             raise ValueError("the compiled document does not decode to itself")
-        with open(args[1], "wb") as f:
-            f.write(wrap(inner, compressed=bool(args[2:])))
-        print(f"wrote {args[1]} ({len(elems)} element names, {len(attrs)} attribute names)")
+        with open(out, "wb") as f:
+            f.write(wrap(inner, compressed=compress))
+        print(f"wrote {out} ({'compressed' if compress else 'uncompressed'}, {len(elems)} element names, "
+              f"{len(attrs)} attribute names)")
     elif command == "add-unittype" and len(args) >= 4 and len(args) % 2 == 0:
         raw, _, elems, attrs, root = load_checked(args[0])
         added, already, missing = add_unittypes(elems, attrs, root, list(zip(args[2::2], args[3::2])))
