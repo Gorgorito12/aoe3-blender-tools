@@ -18,6 +18,7 @@ PROTO = """<?xml version="1.0" encoding="utf-8"?>
 \t<Unit id="1" name="Soldier"><AnimFile>units\\soldier\\soldier.xml</AnimFile></Unit>
 \t<Unit id="2" name="Ghost"><AnimFile>units\\ghost\\ghost.xml</AnimFile></Unit>
 \t<Unit id="3" name="Nothing"><DBID>3</DBID></Unit>
+\t<Unit id="4" name="Depot"><AnimFile>buildings\\depot\\depot.xml</AnimFile></Unit>
 </Proto>
 """
 ANIM = """<animfile>
@@ -26,6 +27,20 @@ ANIM = """<animfile>
 \t\t<lowpoly><assetreference type="GrannyModel"><file>units\\soldier\\lp_soldier</file></assetreference></lowpoly>
 \t</logic></component>
 \t<anim>Idle<component>ModelComp</component></anim>
+</animfile>
+"""
+DEPOT = """<animfile>
+\t<submodel>stage<component>s<assetreference type="GrannyModel"><file>buildings\\depot\\stage</file>
+\t\t</assetreference></component></submodel>
+\t<component>Depot<logic type="Culture">
+\t\t<iroquois><logic type="BuildingCompletion"><p0><submodelref ref="stage"/></p0>
+\t\t\t<p100><assetreference type="GrannyModel"><file>buildings\\depot\\typo</file></assetreference></p100>
+\t\t</logic></iroquois>
+\t\t<mediterranean><assetreference type="GrannyModel"><file>buildings\\depot\\med</file></assetreference>
+\t\t</mediterranean>
+\t\t<brazilian><assetreference type="GrannyModel"><file>buildings\\depot\\brazil</file></assetreference>
+\t\t</brazilian>
+\t</logic></component>
 </animfile>
 """
 
@@ -65,6 +80,9 @@ class GameTest(unittest.TestCase):
         put(g, "art\\units\\soldier\\soldier_b.ddt", b"bump")
         put(g, "art\\units\\other\\soldier.ddt", b"elsewhere")
         put(g, "art\\units\\other\\shared.ddt", b"shared")
+        put(g, "art\\buildings\\depot\\depot.xml", DEPOT)
+        for name in ("stage", "med", "brazil"):
+            put(g, f"art\\buildings\\depot\\{name}.gr2", b"model")
         self.game = nm.Game(g)
 
     def tearDown(self):
@@ -82,6 +100,19 @@ class GameTest(unittest.TestCase):
         self.assertEqual(self.game.resolve("art/units/Soldier/soldier")["model"],
                          "units\\soldier\\soldier.gr2")
 
+    def test_a_missing_model_falls_to_the_next_finished_one(self):
+        r = self.game.resolve("Depot")
+        self.assertEqual(r["model"], "buildings\\depot\\med.gr2")          # not the construction stage
+        self.assertEqual(r["skipped"], ["buildings\\depot\\typo.gr2"])
+
+    def test_a_preferred_branch(self):
+        self.assertEqual(self.game.resolve("Depot@brazilian")["model"], "buildings\\depot\\brazil.gr2")
+        self.assertEqual(self.game.resolve("Depot", ["brazilian"])["model"], "buildings\\depot\\brazil.gr2")
+        self.assertEqual(self.game.resolve("Depot@mediterranean", ["brazilian"])["model"],
+                         "buildings\\depot\\med.gr2")
+        self.assertEqual(nm.split_prefer("Depot@A, b"), ("Depot", ["a", "b"]))
+        self.assertEqual(nm.split_prefer("units\\x@y\\z"), ("units\\x@y\\z", []))
+
     def test_why_an_entry_has_no_model(self):
         for target, short in (("Nobody", "no such proto"), ("Nothing", "no AnimFile"),
                               ("Ghost", "anim file missing"),
@@ -96,6 +127,20 @@ class GameTest(unittest.TestCase):
                          ("units\\soldier\\soldier.ddt", b"own"))
         self.assertEqual(self.game.texture(["shared.ddt"], model), ("units\\other\\shared.ddt", b"shared"))
         self.assertIsNone(self.game.texture(["missing.ddt", None], model))
+
+    def test_an_anim_file_can_replace_a_texture(self):
+        put(self.tmp.name, "art\\units\\soldier\\reskin.xml", ANIM.replace(
+            "<file>units\\soldier\\soldier</file>",
+            "<file>units\\soldier\\soldier</file><replacetexture><from>units\\soldier\\soldier</from>"
+            "<to>units\\other\\shared</to></replacetexture>"))
+        game = nm.Game(self.tmp.name)
+        r = game.resolve("units\\soldier\\reskin.xml")
+        self.assertEqual(r["replace"], {"units\\soldier\\soldier": "units\\other\\shared"})
+        self.assertEqual(game.texture(["E:\\src\\Art\\units\\soldier\\soldier.ddt"], r["model"], r["replace"]),
+                         ("units\\other\\shared.ddt", b"shared"))
+        self.assertEqual(game.texture(["soldier.ddt"], r["model"], r["replace"])[0], "units\\other\\shared.ddt")
+        self.assertEqual(game.texture(["soldier.ddt"], r["model"])[0], "units\\soldier\\soldier.ddt")
+        self.assertEqual(nm.art_key("D:\\age3w\\art\\Units\\X\\y.ddt"), "units\\x\\y")
 
 
 if __name__ == "__main__":

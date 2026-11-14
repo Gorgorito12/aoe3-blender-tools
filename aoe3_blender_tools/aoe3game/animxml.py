@@ -294,40 +294,51 @@ def _name(el):
     return (el.text or "").strip().lower()
 
 
-def _logic_order(logic):
-    """The branches of a logic, the one to show first: the full-detail model (LowPoly), the
-    intact and finished one (the highest pN of Destruction and BuildingCompletion), else the
-    first branch (the first age of Tech, the first Variation or Culture)."""
+def _logic_order(logic, prefer=()):
+    """The branches of a logic, the one to show first: a branch named in `prefer` (a culture, a
+    civ, an age's tech), else the full-detail model (LowPoly), the intact and finished one (the
+    highest pN of Destruction and BuildingCompletion), else the first branch (the first age of
+    Tech, the first Variation, Civ or Culture). The others follow, in that order."""
     kids = list(logic)
     if (logic.get("type") or "").lower() == "lowpoly":
-        return sorted(kids, key=lambda k: k.tag != "normal")
-    numbered = [k for k in kids if k.tag[:1] == "p" and k.tag[1:].isdigit()]
-    if numbered and len(numbered) == len(kids):
-        return sorted(kids, key=lambda k: -int(k.tag[1:]))
-    return kids
+        kids = sorted(kids, key=lambda k: k.tag != "normal")
+    else:
+        numbered = [k for k in kids if k.tag[:1] == "p" and k.tag[1:].isdigit()]
+        if numbered and len(numbered) == len(kids):
+            kids = sorted(kids, key=lambda k: -int(k.tag[1:]))
+    rank = {p: i for i, p in enumerate(prefer)}
+    return sorted(kids, key=lambda k: rank.get(k.tag, len(rank)))
 
 
-def _pick(el, submodels, depth):
+STATE_LOGICS = ("lowpoly", "destruction", "buildingcompletion")
+
+
+def _picks(el, submodels, prefer, depth, strict):
     if depth > 16:
-        return None
+        return
     if el.tag == "assetreference":
-        if (el.get("type") or "").lower() != "grannymodel":
-            return None
-        f = el.find("file")
-        return ((f.text or "").strip() or None) if f is not None else None
+        if (el.get("type") or "").lower() == "grannymodel":
+            f = el.find("file")
+            if f is not None and (f.text or "").strip():
+                swaps = tuple(((r.findtext("from") or "").strip(), (r.findtext("to") or "").strip())
+                              for r in el.iter("replacetexture"))
+                yield f.text.strip(), tuple((a, b) for a, b in swaps if a and b)
+        return
     if el.tag == "submodelref":
         sub = submodels.get((el.get("ref") or "").strip().lower())
-        return None if sub is None else _scope(sub, submodels, depth + 1)
+        if sub is not None:
+            yield from _scope(sub, submodels, prefer, depth + 1, strict)
+        return
     if el.tag in ("attachment", "decal", "anim"):
-        return None
-    for child in (_logic_order(el) if el.tag == "logic" else el):
-        found = _pick(child, submodels, depth + 1)
-        if found:
-            return found
-    return None
+        return
+    kids = _logic_order(el, prefer) if el.tag == "logic" else list(el)
+    if strict and el.tag == "logic" and (el.get("type") or "").lower() in STATE_LOGICS:
+        kids = kids[:1]
+    for child in kids:
+        yield from _picks(child, submodels, prefer, depth + 1, strict)
 
 
-def _scope(scope, submodels, depth):
+def _scope(scope, submodels, prefer, depth, strict):
     comps = [el for el in scope if el.tag == "component"]
     anims = [el for el in scope if el.tag == "anim"]
     idle = next((a for a in anims if _name(a) == "idle"), None)
@@ -336,19 +347,36 @@ def _scope(scope, submodels, depth):
     for c in comps:
         by_name.setdefault(_name(c), c)
     for c in [by_name[n] for n in order if n in by_name] + comps:
-        found = _pick(c, submodels, depth + 1)
-        if found:
-            return found
-    return None
+        yield from _picks(c, submodels, prefer, depth + 1, strict)
 
 
-def idle_model(root):
-    """The Granny model (art path, no extension) an anim file shows standing, or None: the
-    components its Idle anim names (or, without one, its components in order), through each
-    logic's first branch to show (`_logic_order`) and the submodels they refer to. Attachments
-    (weapons, riders, effects) are not followed. `root`: the parsed file, tags in lower case."""
+def idle_assets(root, prefer=()):
+    """idle_models, each with the textures its reference replaces: (model, ((from, to), ...)),
+    art paths without extension, as <replacetexture> writes them."""
     submodels = {}
     for el in root:
         if el.tag == "submodel":
             submodels.setdefault(_name(el), el)
-    return _scope(root, submodels, 0)
+    seen = set()
+    for strict in (True, False):
+        for model, swaps in _scope(root, submodels, tuple(prefer), 0, strict):
+            if model.lower() not in seen:
+                seen.add(model.lower())
+                yield model, swaps
+
+
+def idle_models(root, prefer=()):
+    """The Granny models (art paths, no extension) an anim file may show standing, the likeliest
+    first: the components its Idle anim names (or, without one, its components in order), through
+    each logic's branches in `_logic_order` and the submodels they refer to. The first is what
+    the unit shows; the others serve when its file is missing: first the other branches of
+    Culture, Civ, Tech or Variation (full detail, intact, finished), then the low-poly, damaged
+    and unfinished models. Attachments (weapons, riders, effects) are not followed. `root`: the parsed file, tags in lower case; `prefer`: branch
+    names in lower case."""
+    for model, _swaps in idle_assets(root, prefer):
+        yield model
+
+
+def idle_model(root, prefer=()):
+    """The first of idle_models, or None."""
+    return next(idle_models(root, prefer), None)

@@ -2,7 +2,7 @@
 """Finds the models of a list in a game copy or a mod: what tools/model_sheets.py --models renders.
 Run alone, it prints what each entry resolves to (no Blender needed), to check a list first.
 
-    python -I tools\\named_models.py <list.txt> --game <game folder>
+    python -I tools\\named_models.py <list.txt> --game <game folder> [--prefer a,b]
 
 The list holds one entry per line, `caption | target` (a line without `|` is its own caption;
 blank lines and lines starting with # are skipped). A target is:
@@ -11,6 +11,12 @@ blank lines and lines starting with # are skipped). A target is:
                        anim file shows standing (aoe3game/animxml.idle_model)
     an anim file       units\\...\\x.xml: the same, from the anim file
     a model            units\\...\\x.gr2, or a path with no extension
+
+A proto or an anim file may end in @branch[,branch...]: the branches of its logics to show
+first (a culture, a civ, an age's tech: Stable@mediterranean, House@brazilian,industrialize),
+before those of --prefer, which apply to every entry. Without one, a logic shows its first
+branch. When the model a branch names is missing, the next candidate is shown and the report
+says so.
 
 Paths are relative to the game's art folder. Files are read loose first, then from the .bar
 archives (art\\*.bar; data\\*.bar for protoy.xml), plain or compiled (.xmb). Nothing is written.
@@ -53,9 +59,17 @@ def parse_list(text):
     return out
 
 
+def split_prefer(target):
+    """(target, [branch names in lower case]) of `name@a,b`."""
+    base, sep, rest = target.rpartition("@")
+    if not sep or not base or "\\" in rest or "/" in rest:
+        return target, []
+    return base.strip(), [b.strip().lower() for b in rest.split(",") if b.strip()]
+
+
 def kind(target):
     """proto, anim or model."""
-    low = target.lower()
+    low = split_prefer(target)[0].lower()
     if low.endswith((".xml", ".xml.xmb")):
         return "anim"
     if low.endswith(".gr2") or "\\" in target or "/" in target:
@@ -104,11 +118,15 @@ class Game:
                 self._protos.setdefault(name.lower(), (name, text or None))
         return self._protos
 
-    def resolve(self, target):
-        """{"model": art path of the .gr2, "anim": anim file or None, "proto": name or None}.
-        Missing says why an entry has no model."""
+    def resolve(self, target, prefer=()):
+        """{"model": art path of the .gr2, "anim": anim file or None, "proto": name or None,
+        "skipped": [models the anim file names first that are missing], "replace": {texture:
+        texture} its <replacetexture> asks (art paths in lower case, no extension)}. Missing
+        says why an entry has no model. `prefer`: branch names, after the target's own @branches."""
+        target, own = split_prefer(target)
+        prefer = own + [b.lower() for b in prefer]
         what = kind(target)
-        out = {"proto": None, "anim": None}
+        out = {"proto": None, "anim": None, "skipped": [], "replace": {}}
         if what == "proto":
             found = self.protos().get(target.lower())
             if found is None:
@@ -123,18 +141,23 @@ class Game:
             if raw is None:
                 raise Missing("anim file missing",
                               f"anim file {out['anim']} is not in the art folder (loose or archived)")
-            model = animxml.idle_model(fh.anim_tree(raw[0]))
-            if model is None:
+            candidates = list(animxml.idle_assets(fh.anim_tree(raw[0]), prefer))
+            if not candidates:
                 raise Missing("no model in anim file", f"anim file {out['anim']} names no Granny model")
         else:
-            model = target
-        model = fh.norm(model)
-        if not model.endswith(".gr2"):
-            model += ".gr2"
-        if self.art.find(model) is None:
-            raise Missing("model file missing", f"model {model} is not in the art folder (loose or archived)")
-        out["model"] = model
-        return out
+            candidates = [(target, ())]
+        for model, swaps in candidates:
+            model = fh.norm(model)
+            if not model.endswith(".gr2"):
+                model += ".gr2"
+            if self.art.find(model) is not None:
+                out["model"] = model
+                out["replace"] = {fh.norm(a): fh.norm(b) for a, b in swaps}
+                return out
+            out["skipped"].append(model)
+        raise Missing("model file missing", f"model {out['skipped'][0]} is not in the art folder "
+                      "(loose or archived)" + (f", nor the {len(candidates) - 1} other models of "
+                                               "its anim file" if len(candidates) > 1 else ""))
 
     def read(self, path):
         """(bytes, where) of an art file, loose first."""
@@ -143,10 +166,12 @@ class Game:
             raise Missing("file missing", f"{path} is not in the art folder")
         return found[0], found[1]
 
-    def texture(self, names, model):
+    def texture(self, names, model, replace=None):
         """(art path of the .ddt, bytes) of the first diffuse texture of `names` (as a model
         stores them: a path or a bare name) found in the art folder, or None. A name found in
-        several folders: the model's own folder first, then a loose file, then an archived one."""
+        several folders: the model's own folder first, then a loose file, then an archived one.
+        `replace`: resolve()'s, the anim file's texture swaps, matched on the art path (or, for
+        a bare name, the file name)."""
         if self._ddt is None:
             self._ddt = {}
             for key in list(self.art.loose) + list(self.art.archived):
@@ -164,6 +189,9 @@ class Game:
             if stem.endswith(NOT_DIFFUSE):
                 continue
             keys = []
+            to = _swap(plain, replace or {})
+            if to:
+                keys.append(to + ".ddt")
             if ":" not in plain:
                 keys.append(os.path.splitext(fh.norm(plain))[0] + ".ddt")
             cands = self._ddt.get(stem, [])
@@ -175,23 +203,47 @@ class Game:
         return None
 
 
+def art_key(name):
+    r"""A texture name as a model stores it, as an art path: lower case, no extension, from the
+    folder below art (C:\src\Art\units\x\x.ddt -> units\x\x)."""
+    p = str(name).replace("/", "\\").lower()
+    i = p.rfind("\\art\\")
+    p = p[i + 5:] if i >= 0 else (p[4:] if p.startswith("art\\") else p)
+    return os.path.splitext(p.split(":")[-1].lstrip("\\"))[0]
+
+
+def _swap(name, replace):
+    key = art_key(name)
+    if key in replace:
+        return replace[key]
+    stem = key.rsplit("\\", 1)[-1]
+    if "\\" not in key:
+        for frm, to in replace.items():
+            if frm.rsplit("\\", 1)[-1] == stem:
+                return to
+    return None
+
+
 def main(argv):
     def opt(name, default=None):
         return argv[argv.index(name) + 1] if name in argv else default
 
-    lst, game = next((a for a in argv if not a.startswith("--") and a != opt("--game")), None), opt("--game")
+    lst = next((a for a in argv if not a.startswith("--") and a not in (opt("--game"), opt("--prefer"))), None)
+    game = opt("--game")
     if not lst or not game:
         print(__doc__)
         return 2
     with open(lst, encoding="utf-8-sig") as fh_:
         entries = parse_list(fh_.read())
     g = Game(game)
+    prefer = [b for b in (opt("--prefer") or "").split(",") if b]
     bad = 0
     for caption, target in entries:
         try:
-            r = g.resolve(target)
+            r = g.resolve(target, prefer)
             via = f" (anim {r['anim']})" if r["anim"] else ""
-            print(f"{caption}: {r['model']}{via}")
+            miss = f"; missing first: {', '.join(r['skipped'])}" if r["skipped"] else ""
+            print(f"{caption}: {r['model']}{via}{miss}")
         except LookupError as exc:
             bad += 1
             print(f"{caption}: NOT FOUND - {exc}")

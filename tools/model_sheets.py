@@ -10,14 +10,17 @@ buildings side by side.
         [--cols 8] [--rows 6] [--seed 3]
 
     venv\\Scripts\\python tools\\model_sheets.py --models <list.txt> --game <game folder> --out <file.png>
-        [--cell 220] [--cols 6] [--title "..."] [--keep-scale]
+        [--cell 220] [--cols 6] [--title "..."] [--keep-scale] [--prefer a,b]
         [--cache <folder>] [--granny <bridge.exe>] [--granny-install <folder>]
 
 --models    one entry per line, `caption | target`; the target is a proto name (its <AnimFile>,
             then the model that file shows standing), an anim file, or a model, relative to the
             game's art folder (tools/named_models.py, which also checks a list without Blender).
             Riders, weapons and other attachments are not drawn: list them as entries of their
-            own (their anim file or model).
+            own (their anim file or model). A target may end in @branch,...: see --prefer.
+--prefer    branches of the anim files' logics to show first (a culture, a civ, an age's tech:
+            mediterranean, brazilian, industrialize...); without them a logic shows its first
+            branch. A missing model falls through to the anim file's next candidate.
 --keep-scale  one scale for the whole sheet, every model standing on the same line, so a house
             and a soldier compare fairly (default: each model fills its cell).
 --cache, --granny, --granny-install   a compressed model (most of the game's archived ones) is
@@ -189,10 +192,10 @@ def raw_model(data, cache, granny, install):
     return ms.raw_bytes(data, md5, (granny, install, cache))
 
 
-def load_entry(game, target, cache, granny, install):
+def load_entry(game, target, cache, granny, install, prefer=()):
     """(model dict, textures, facts) of one entry; textures: {index in model["textures"], or -1
     for the triangles with none: .ddt bytes}. nm.Missing or RuntimeError says why it has none."""
-    where = game.resolve(target)
+    where = game.resolve(target, prefer)
     data, src = game.read(where["model"])
     model = gr2_mesh.read(raw_model(data, cache, granny, install))
     if not model["meshes"]:
@@ -202,12 +205,12 @@ def load_entry(game, target, cache, granny, install):
     textures, names = {}, []
     used = sorted({int(k) for m in model["meshes"] for k in m["face_textures"]})
     for k in used:
-        found = game.texture([model["textures"][k]], where["model"]) if k >= 0 else None
+        found = game.texture([model["textures"][k]], where["model"], where["replace"]) if k >= 0 else None
         if found is not None:
             textures[k] = found[1]
             names.append(found[0])
     if -1 in used or not textures:
-        found = game.texture(model["textures"], where["model"])
+        found = game.texture(model["textures"], where["model"], where["replace"])
         if found is not None:
             textures[-1] = found[1]
             names.append(found[0])
@@ -219,12 +222,13 @@ def load_entry(game, target, cache, granny, install):
 
 
 def named_sheet(entries, game, out, cell=220, cols=6, title=None, keep_scale=False,
-                cache=None, granny=None, install=None):
+                cache=None, granny=None, install=None, prefer=()):
     """Renders the list into `out` (and its .txt); returns the cells' lines."""
     loaded = []
     for caption, target in entries:
         try:
-            loaded.append((caption, target) + load_entry(game, target, cache, granny, install) + (None,))
+            loaded.append((caption, target) + load_entry(game, target, cache, granny, install, prefer)
+                          + (None,))
         except (LookupError, RuntimeError, ValueError, gr2.Gr2Error) as exc:
             loaded.append((caption, target, None, None, None, exc))
     scale = None
@@ -260,7 +264,8 @@ def named_sheet(entries, game, out, cell=220, cols=6, title=None, keep_scale=Fal
             lines.append(f"row {y + 1} col {x + 1}: {caption} | {target} -> {facts['model']}"
                          f" ({facts['source']}), textures {', '.join(facts['textures']) or 'none'},"
                          f" {facts['tris']} tris, size {facts['size']} (metres as the file declares them)"
-                         + (f", anim {facts['anim']}" if facts["anim"] else ""))
+                         + (f", anim {facts['anim']}" if facts["anim"] else "")
+                         + (f"; missing, so not shown: {', '.join(facts['skipped'])}" if facts["skipped"] else ""))
         else:
             sheet[top:top + cell, left:left + cell] = (90, 50, 50)
             short = getattr(err, "short", None) or str(err)
@@ -278,7 +283,8 @@ def named_sheet(entries, game, out, cell=220, cols=6, title=None, keep_scale=Fal
     with open(out, "wb") as fh:
         fh.write(encode_png(sheet))
     with open(os.path.splitext(out)[0] + ".txt", "w", encoding="utf-8") as fh:
-        fh.write((f"{title}\n" if title else "") + f"{len(loaded)} entries, "
+        fh.write((f"{title}\n" if title else "") + (f"preferred branches: {', '.join(prefer)}\n" if prefer else "")
+                 + f"{len(loaded)} entries, "
                  f"{'one scale' if keep_scale else 'each model fills its cell'}\n"
                  + "\n".join(lines) + "\n")
     return lines
@@ -300,7 +306,8 @@ def main(argv):
             entries = nm.parse_list(fh.read())
         lines = named_sheet(entries, nm.Game(opt("--game")), opt("--out"), int(opt("--cell", "220")),
                             int(opt("--cols", "6")), opt("--title"), "--keep-scale" in argv,
-                            opt("--cache"), opt("--granny"), opt("--granny-install", opt("--game")))
+                            opt("--cache"), opt("--granny"), opt("--granny-install", opt("--game")),
+                            [b.lower() for b in (opt("--prefer") or "").split(",") if b])
         bad = sum("NOT SHOWN" in ln for ln in lines)
         print(f"{len(lines) - bad} of {len(lines)} shown -> {opt('--out')}")
         return 1 if bad else 0

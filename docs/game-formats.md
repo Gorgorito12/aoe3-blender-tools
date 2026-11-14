@@ -238,6 +238,13 @@ compiled (`.xml.xmb`, plain `X1`, inside the art archives); mods ship plain XML.
   BuildingCompletion (intact, finished), and the first branch of the others (the first age of
   Tech, the first Variation, Civ or Culture), following `submodelref` into submodels.
   Attachments (weapons, riders, effects) are separate models placed on bones by the anims.
+  A branch can be asked for by name (a culture, a civ, `colonialize`...). When the model a
+  branch names is missing, the next finished, intact, full-detail model of the other branches
+  is taken (measured in Wars of Liberty: an artillery depot's Iroquois age-1 model names a
+  folder that is not there).
+- `<replacetexture><from>` / `<to>` inside a model's `assetreference` (art paths, no extension):
+  the model drawn with another texture in place of one it names; mods reskin stock models this
+  way.
 - A **prop** (measured on `nuggets\bear_campsite`, `objects\el_dorado`, `nuggets\abandoned_cabin`):
   no construction stages, no submodel, no BuildingCompletion; one component with the model and
   a decal (a ground texture or the selection square), one `Idle` anim; a death model and a `Death`
