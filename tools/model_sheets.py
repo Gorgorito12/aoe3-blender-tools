@@ -11,7 +11,7 @@ buildings side by side.
 
     venv\\Scripts\\python tools\\model_sheets.py --models <list.txt> --game <game folder> --out <file.png>
         [--cell 220] [--cols 6] [--title "..."] [--keep-scale] [--prefer a,b]
-        [--attachments] [--views -35,145] [--overlay <folder>] [--team 2850dc]
+        [--attachments] [--views -35,145] [--overlay <folder>] [--team 2850dc] [--elevation 30]
         [--cache <folder>] [--granny <bridge.exe>] [--granny-install <folder>]
 
 --models    one entry per line, `caption | target`; the target is a proto name (its <AnimFile>,
@@ -30,6 +30,8 @@ buildings side by side.
             (default: none, the texture's own colour)
 --views     camera azimuths in degrees, one cell each per entry (default -35, the three-quarter
             view; 0 is the front, 180 the back).
+--elevation  the camera's height in degrees above the ground (default 30; 60 to 70 is how the
+            game's camera sees a unit from above).
 --prefer    branches of the anim files' logics to show first (a culture, a civ, an age's tech:
             mediterranean, brazilian, industrialize...); without them a logic shows its first
             branch. A missing model falls through to the anim file's next candidate.
@@ -95,6 +97,7 @@ def image_for(record, index):
     return None
 
 
+ELEVATION = 30.0   # --elevation: the camera's angle above the ground
 TEAM = None        # --team: the player colour drawn where a player-coloured texture asks for it
 
 
@@ -324,7 +327,7 @@ def named_sheet(entries, game, out, cell=220, cols=6, title=None, keep_scale=Fal
                 bpy.ops.wm.read_factory_settings(use_empty=True)
                 images = {k: texture_image(b, f"sheet_tex{k}") for k, b in tex.items()}
                 obj = gr2_import.create(model, "m", images.pop(-1, None), images=images)
-                img = on_background(render.render_rgba(obj, size=cell, scale=scale, azimuth=az,
+                img = on_background(render.render_rgba(obj, size=cell, scale=scale, azimuth=az, elevation=ELEVATION,
                                                        ground=0.04 if keep_scale else None))
                 sheet[top:top + cell, left:left + cell] = img
             except Exception as exc:  # noqa: BLE001 - one bad model leaves its cell empty
@@ -366,7 +369,8 @@ def main(argv):
     def opt(name, default=None):
         return argv[argv.index(name) + 1] if name in argv else default
 
-    global TEAM
+    global TEAM, ELEVATION
+    ELEVATION = float(opt("--elevation", "30"))
     if opt("--team"):
         t = opt("--team").lstrip("#")
         TEAM = tuple(int(t[i:i + 2], 16) for i in (0, 2, 4))
