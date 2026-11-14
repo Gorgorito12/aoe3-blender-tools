@@ -11,7 +11,9 @@ shows is measured from the copy's own sets at run time, never stored here: for e
 the pixels that are the same in every set are the template (button frames, the postgame painting
 round the pole), the pixels that change are where the flag goes; the colour change of each button
 state (click, highlight, disabled) is a linear fit from the normal state over every set. The
-in-game flag gets procedural folds. Formats are those the sets use (measured on the target):
+postgame flag lies on the painting's cloth by a measured warp (WARP; --fit-warp refits it), in a
+tone and folds fitted on the copy's sets whose flag shares the postgame flag's name; the pole and
+the hem are drawn back from the template. The in-game flag gets procedural folds. Formats are those the sets use (measured on the target):
 
     <flags>\\<name>.ddt                          128x128 BGRA, no alpha, 1 level
     <flags>\\ingame_ui_postgame_flag_<name>.ddt  128x32 BGRA, alpha = player colour mask, 1 level
@@ -114,15 +116,19 @@ def survey(game, flags_dir, buttons_dir, compare=()):
                 hd = hd or h
         if imgs:
             kinds["large_" + s] = Kind(imgs, hd)
-    imgs, hd = [], None
+    imgs, designs, hd = [], [], None
     for p in sorted(glob.glob(os.path.join(fdir, "ingame_ui_postgame_flag_*.ddt"))):
         h = header(p)
         if (h.width, h.height) == (128, 32):
             imgs.append(load(p))
             hd = hd or h
+            f = os.path.join(fdir, os.path.basename(p)[len("ingame_ui_postgame_flag_"):])
+            d = load(f) if os.path.exists(f) else None    # the set's own flag, for the fits
+            designs.append(d if d is not None and d.shape[:2] == (128, 128) else None)
     kinds["postgame"] = Kind(imgs, hd)
     alphas = np.stack([i[..., 3] for i in imgs])
     kinds["postgame"].alpha = np.median(alphas, axis=0)
+    kinds["postgame"].designs = designs
     return kinds, names
 
 
@@ -175,31 +181,119 @@ def button(kind, flag_rgb, fit=None):
     return out.astype(np.uint8)
 
 
-def postgame(kind, design):
-    """The flag on the painted pole: the design flows left from the pole, sagging, under the
-    shared folds of the painting (the median brightness of every set's cloth), toned like them."""
+# The cloth of the postgame painting, measured on Wars of Liberty's 40 sets whose flag and postgame
+# flag share a name (tools/make_flag.py --fit-warp prints it again for another copy). With s = 1 - x /
+# (edge + 1), 1 at the left side of the texture and 0 at the cloth's edge by the pole, and t = y / 32:
+#   u = 1 - (u0 + k s + g t)                          the design is not mirrored: its hoist is on the left
+#   v = a + b t + c s^2 + d s + e s t                 the cloth sags and narrows toward the pole
+WARP = (0.318, 0.603, 0.135, -0.291, -0.007, 0.029, 0.995, -0.100)
+
+
+class Cloth:
+    """Where the cloth is (left of the pole, the pole and the hem's highlight stay the template's),
+    and which design texel each of its pixels shows."""
+
+    def __init__(self, kind, warp=WARP):
+        h, w = kind.template.shape[:2]
+        dev = np.abs(kind.stack[..., :3] - kind.template[None, ..., :3]).mean(axis=3)
+        varies = np.median(dev, axis=0) > 12
+        self.edge = np.array([np.nonzero(varies[y])[0].max() if varies[y].any() else w - 1
+                              for y in range(h)])
+        self.mask = np.arange(w)[None, :] <= self.edge[:, None] - 1
+        self.uv(warp)
+
+    def uv(self, warp):
+        a, b, c, d, e, u0, k, g = warp
+        h, w = self.mask.shape
+        y, x = np.mgrid[0:h, 0:w].astype(np.float32)
+        s, t = 1 - x / (self.edge[:, None] + 1), y / h
+        self.u = np.clip(1 - (u0 + k * s + g * t), 0, 1)
+        self.v = np.clip(a + b * t + c * s ** 2 + d * s + e * s * t, 0, 1)
+        return self
+
+    def show(self, design):
+        small = resize(design[..., :3], 64, 96)          # filtered first: no moire at 32 rows
+        return sample(small, self.v * 63, self.u * 95)
+
+
+def _pairs(kind):
+    return [(kind.stack[i, ..., :3], d) for i, d in enumerate(kind.designs) if d is not None]
+
+
+def fit_tone(kind, cloth, rounds=6):
+    """The painting's tone: one colour map M (3 x 4) for every set and a brightness per pixel (its
+    folds and light), so that postgame = shade * (M [design, 1]), fitted on the copy's own pairs."""
+    ys, xs = np.nonzero(cloth.mask)
+    P = np.stack([p[ys, xs] for p, _ in _pairs(kind)])                     # F x N x 3
+    S = np.stack([cloth.show(d)[ys, xs] for _, d in _pairs(kind)])
+    S1 = np.concatenate([S, np.ones(S.shape[:2] + (1,))], 2)               # F x N x 4
+    shade = np.ones(len(ys))
+    for _ in range(rounds):
+        A = (S1 * shade[None, :, None]).reshape(-1, 4)
+        m, *_ = np.linalg.lstsq(A, P.reshape(-1, 3), rcond=None)
+        Q = S1 @ m                                                          # F x N x 3
+        shade = (P * Q).sum(axis=(0, 2)) / np.maximum((Q * Q).sum(axis=(0, 2)), 1e-6)
+        shade = np.clip(shade, 0.3, 2.0)
+    full = np.ones(cloth.mask.shape)
+    full[ys, xs] = shade
+    return m.T, full
+
+
+def fit_warp(kind, samples=1500, seed=0):
+    """Searches the cloth's warp that best explains the copy's postgame flags from their own flags
+    (a per-set colour map, the best 70 % of sets). About a minute; prints the numbers for WARP."""
+    cloth = Cloth(kind)
+    ys, xs = np.nonzero(cloth.mask)
+    pairs = [(p[ys, xs], resize(d[..., :3], 64, 96)) for p, d in _pairs(kind)]
+
+    def err(w):
+        cloth.uv(w)
+        out = []
+        for P, D in pairs:
+            S = sample(D, cloth.v * 63, cloth.u * 95)[ys, xs]
+            A = np.concatenate([S, np.ones((len(S), 1))], 1)
+            m, *_ = np.linalg.lstsq(A, P, rcond=None)
+            out.append(((P - A @ m) ** 2).mean())
+        return np.sort(out)[: max(1, int(len(out) * 0.7))].mean()
+
+    rng = np.random.default_rng(seed)
+    lo = np.array([-0.3, 0.2, -0.6, -0.6, -0.6, -0.4, 0.4, -0.3])
+    hi = np.array([0.5, 1.4, 0.6, 0.6, 0.6, 0.4, 1.6, 0.3])
+    best = np.array(WARP)
+    best_e = err(best)
+    for _ in range(samples):
+        w = lo + (hi - lo) * rng.random(8)
+        e = err(w)
+        if e < best_e:
+            best_e, best = e, w
+    steps = (hi - lo) / 8
+    while steps.max() > 0.005:
+        better = False
+        for i in range(8):
+            for sg in (-1, 1):
+                w = best.copy()
+                w[i] += sg * steps[i]
+                e = err(w)
+                if e < best_e:
+                    best_e, best, better = e, w, True
+        if not better:
+            steps /= 2
+    return tuple(round(float(v), 3) for v in best), best_e
+
+
+def postgame(kind, design, warp=WARP):
+    """The flag in the painting by the pole: the design laid on the measured cloth, in the
+    painting's tone and folds; the pole, the hem and the backdrop are the template's."""
+    cloth = Cloth(kind, warp)
     t = kind.template
-    h, w = t.shape[:2]
-    lum_all = kind.stack[..., :3].mean(axis=3)
-    shade = np.median(lum_all, axis=0)
-    pole = np.array([np.nonzero(kind.mask[y])[0].max() if kind.mask[y].any() else w - 1
-                     for y in range(h)])
-    mask = np.arange(w)[None, :] <= pole[:, None]  # everything left of the pole is cloth
-    y, x = np.mgrid[0:h, 0:w].astype(np.float32)
-    u = 1 - x / (pole[:, None] + 1)                  # 0 at the pole (hoist) ... 1 at the left edge
-    v = 0.12 + 0.76 * (y / h) + 0.10 * u ** 2         # the fly sags
-    small = resize(design[..., :3], 2 * h, int(pole.max()) + 1)    # filtered first: no moire
-    dh, dw = small.shape[:2]
-    rgb = sample(small, np.clip(v, 0, 1) * (dh - 1), np.clip(u, 0, 1) * (dw - 1))
-    # tone as the stock ones: the cloth's own brightness from the folds, warmed and a little muted
-    folds_ = 1 + 0.55 * (shade / (shade[mask].mean() + 1e-6) - 1)   # half the painting's folds
-    grey = rgb.mean(axis=2, keepdims=True)
-    toned = (0.80 * rgb + 0.20 * grey) * np.array([0.95, 0.85, 0.70]) * folds_[..., None]
-    cloth = kind.stack[:, mask, :3].reshape(-1, 3)
-    lo = np.percentile(cloth, 2, axis=0)
-    toned = np.maximum(toned, lo * 0.5)
+    if any(d is not None for d in kind.designs):
+        m, shade = fit_tone(kind, cloth)
+        rgb = cloth.show(design)
+        toned = shade[..., None] * (np.concatenate([rgb, np.ones(rgb.shape[:2] + (1,))], 2) @ m.T)
+    else:                                    # no pairs to learn from: the painting's mean light
+        toned = cloth.show(design) * (t[..., :3].mean(axis=2, keepdims=True) / 128.0)
     out = t.copy()
-    out[..., :3] = np.where(mask[..., None], toned, t[..., :3])
+    out[..., :3] = np.where(cloth.mask[..., None], toned, t[..., :3])
     out[..., 3] = kind.alpha
     return np.clip(out, 0, 255).astype(np.uint8)
 
@@ -230,7 +324,7 @@ def _bgra_levels(levels, hd):
     return bytes(out)
 
 
-def make_set(design, name, kinds, out, flags_dir, buttons_dir):
+def make_set(design, name, kinds, out, flags_dir, buttons_dir, warp=WARP):
     files = {}
     fl = ingame_flag(design)
     files["flag"] = write(os.path.join(out, "art", flags_dir, name + ".ddt"), fl,
@@ -248,7 +342,7 @@ def make_set(design, name, kinds, out, flags_dir, buttons_dir):
             files[prefix + s] = write(os.path.join(out, "art", buttons_dir, f"flag_{name}{sub}_{s}.ddt"),
                                       img, k.header)
     files["postgame"] = write(os.path.join(out, "art", flags_dir, f"ingame_ui_postgame_flag_{name}.ddt"),
-                              postgame(kinds["postgame"], design), kinds["postgame"].header)
+                              postgame(kinds["postgame"], design, warp), kinds["postgame"].header)
     return files
 
 
@@ -289,6 +383,8 @@ def main(argv=None):
     ap.add_argument("--buttons-dir", default="War of the Triple Alliance\\Buttons")
     ap.add_argument("--preview")
     ap.add_argument("--compare", default="")
+    ap.add_argument("--fit-warp", action="store_true",
+                    help="fit the postgame cloth's warp on this copy and use it (about a minute)")
     a = ap.parse_args(argv)
     if os.path.abspath(a.out).lower().startswith(os.path.abspath(a.game).lower()):
         sys.exit("refusing to write into the game copy; --out elsewhere")
@@ -298,7 +394,11 @@ def main(argv=None):
         design = design[..., :3]
     kinds, names = survey(a.game, a.flags_dir, a.buttons_dir)
     print(f"measured {len(names)} button sets, {kinds['postgame'].stack.shape[0]} postgame flags")
-    files = make_set(design, a.name, kinds, a.out, a.flags_dir, a.buttons_dir)
+    warp = WARP
+    if a.fit_warp:
+        warp, e = fit_warp(kinds["postgame"])
+        print(f"fitted postgame warp {warp} (mean square error {e:.0f})")
+    files = make_set(design, a.name, kinds, a.out, a.flags_dir, a.buttons_dir, warp)
     for k, p in files.items():
         print(f"{k:16s} {ddt.read_header(open(p, 'rb').read(64)).describe():50s} {p}")
     if a.preview:

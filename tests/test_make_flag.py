@@ -44,7 +44,12 @@ def fake_copy(root, n=24):
                 f.write(ddt.write_bgra(big, alpha=1, mips=True))
         pg = np.zeros((32, 128, 4), np.uint8)
         pg[..., :3] = (120, 100, 60)
-        pg[:, :90, :3] = col
+        pg[:, :90, :3] = col * 0.8               # the painting's tone: a little darker than the flag
+        pg[:, 90:92, :3] = (60, 30, 20)          # the pole
+        flag = np.zeros((128, 128, 4), np.uint8)
+        flag[..., :3], flag[..., 3] = col, 255
+        with open(os.path.join(fdir, f"s{i}.ddt"), "wb") as f:
+            f.write(ddt.write_bgra(flag, alpha=0, mips=False))
         pg[..., 3] = np.clip(np.arange(128) * -4 + 500, 0, 255)[None, :]
         with open(os.path.join(fdir, f"ingame_ui_postgame_flag_s{i}.ddt"), "wb") as f:
             f.write(ddt.write_bgra(pg, alpha=1, mips=False))
@@ -83,6 +88,12 @@ def test_set():
         pg = ddt.decode(open(os.path.join(out, "art", FL, "ingame_ui_postgame_flag_t.ddt"), "rb").read())
         assert pg[16, 127, 3] == 0 and pg[16, 10, 3] == 255         # the player colour mask kept
         assert tuple(pg[16, 127, :3]) == (120, 100, 60)             # the backdrop kept
+        assert tuple(pg[16, 90, :3]) == (60, 30, 20)                # the pole drawn over the cloth
+        assert pg[2, 5, 0] > 120 and pg[2, 5, 1] < 40               # the red field, toned
+        assert pg[2, 5, 0] < 200                                    # 0.8 of the flag's 200
+        kinds, _ = make_flag.survey(game, FL, BT)
+        warp, err = make_flag.fit_warp(kinds["postgame"], samples=20)
+        assert len(warp) == 8 and err < 1.0                         # a flat cloth fits any warp
 
 
 if __name__ == "__main__":
