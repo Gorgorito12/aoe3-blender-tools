@@ -18,6 +18,9 @@ before those of --prefer, which apply to every entry. Without one, a logic shows
 branch. When the model a branch names is missing, the next candidate is shown and the report
 says so.
 
+--overlay: a folder laid out like a game copy (art\\, data\\) whose loose files win over the
+game's, to look at new art or anim files before they are installed.
+
 Paths are relative to the game's art folder. Files are read loose first, then from the .bar
 archives (art\\*.bar; data\\*.bar for protoy.xml), plain or compiled (.xmb). Nothing is written.
 """
@@ -80,14 +83,30 @@ def kind(target):
 class Game:
     """The art and the protos of a game copy or a mod, read on demand."""
 
-    def __init__(self, folder):
+    def __init__(self, folder, overlays=()):
+        """`overlays`: folders laid out like a game copy (their art and data folders) whose
+        loose files win over the game's: new art and a changed protoy.xml seen before they are
+        installed."""
         self.folder = folder
+        self.overlays = [o for o in overlays if o]
         self.art = fh.Art(os.path.join(folder, "art"))
+        for extra in self.overlays:
+            art = os.path.join(extra, "art")
+            for top, _dirs, files in os.walk(art):
+                for name in files:
+                    full = os.path.join(top, name)
+                    self.art.loose[fh.norm(os.path.relpath(full, art))] = full
         self._protos = None
         self._ddt = None
 
     def proto_source(self):
         """(bytes, where) of protoy.xml: loose (plain, then .xmb), then in data\\*.bar."""
+        for extra in reversed(self.overlays):
+            for name in ("protoy.xml", "protoy.xml.xmb"):
+                path = os.path.join(extra, "data", name)
+                if os.path.isfile(path):
+                    with open(path, "rb") as fh_:
+                        return fh_.read(), path
         data = os.path.join(self.folder, "data")
         for name in ("protoy.xml", "protoy.xml.xmb"):
             path = os.path.join(data, name)
@@ -121,12 +140,13 @@ class Game:
     def resolve(self, target, prefer=()):
         """{"model": art path of the .gr2, "anim": anim file or None, "proto": name or None,
         "skipped": [models the anim file names first that are missing], "replace": {texture:
-        texture} its <replacetexture> asks (art paths in lower case, no extension)}. Missing
+        texture} its <replacetexture> asks (art paths in lower case, no extension),
+        "attachments": what hangs on that model standing (animxml.idle_attachments)}. Missing
         says why an entry has no model. `prefer`: branch names, after the target's own @branches."""
         target, own = split_prefer(target)
         prefer = own + [b.lower() for b in prefer]
         what = kind(target)
-        out = {"proto": None, "anim": None, "skipped": [], "replace": {}}
+        out = {"proto": None, "anim": None, "skipped": [], "replace": {}, "attachments": []}
         if what == "proto":
             found = self.protos().get(target.lower())
             if found is None:
@@ -141,7 +161,9 @@ class Game:
             if raw is None:
                 raise Missing("anim file missing",
                               f"anim file {out['anim']} is not in the art folder (loose or archived)")
-            candidates = list(animxml.idle_assets(fh.anim_tree(raw[0]), prefer))
+            tree = fh.anim_tree(raw[0])
+            candidates = list(animxml.idle_assets(tree, prefer))
+            out["attachments"] = animxml.idle_attachments(tree, prefer)
             if not candidates:
                 raise Missing("no model in anim file", f"anim file {out['anim']} names no Granny model")
         else:
@@ -228,14 +250,15 @@ def main(argv):
     def opt(name, default=None):
         return argv[argv.index(name) + 1] if name in argv else default
 
-    lst = next((a for a in argv if not a.startswith("--") and a not in (opt("--game"), opt("--prefer"))), None)
+    lst = next((a for a in argv if not a.startswith("--") and a not in (opt("--game"), opt("--prefer"),
+                                                                       opt("--overlay"))), None)
     game = opt("--game")
     if not lst or not game:
         print(__doc__)
         return 2
     with open(lst, encoding="utf-8-sig") as fh_:
         entries = parse_list(fh_.read())
-    g = Game(game)
+    g = Game(game, [opt("--overlay")])
     prefer = [b for b in (opt("--prefer") or "").split(",") if b]
     bad = 0
     for caption, target in entries:
@@ -243,7 +266,8 @@ def main(argv):
             r = g.resolve(target, prefer)
             via = f" (anim {r['anim']})" if r["anim"] else ""
             miss = f"; missing first: {', '.join(r['skipped'])}" if r["skipped"] else ""
-            print(f"{caption}: {r['model']}{via}{miss}")
+            hung = [f"{a['name']} {a['model'] or a['include']} on {a['tobone']}" for a in r["attachments"]]
+            print(f"{caption}: {r['model']}{via}{miss}" + (f"; hangs: {', '.join(hung)}" if hung else ""))
         except LookupError as exc:
             bad += 1
             print(f"{caption}: NOT FOUND - {exc}")

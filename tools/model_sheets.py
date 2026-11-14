@@ -11,13 +11,25 @@ buildings side by side.
 
     venv\\Scripts\\python tools\\model_sheets.py --models <list.txt> --game <game folder> --out <file.png>
         [--cell 220] [--cols 6] [--title "..."] [--keep-scale] [--prefer a,b]
+        [--attachments] [--views -35,145] [--overlay <folder>] [--team 2850dc]
         [--cache <folder>] [--granny <bridge.exe>] [--granny-install <folder>]
 
 --models    one entry per line, `caption | target`; the target is a proto name (its <AnimFile>,
             then the model that file shows standing), an anim file, or a model, relative to the
             game's art folder (tools/named_models.py, which also checks a list without Blender).
-            Riders, weapons and other attachments are not drawn: list them as entries of their
-            own (their anim file or model). A target may end in @branch,...: see --prefer.
+            Riders, weapons and other attachments are not drawn unless --attachments: list
+            them as entries of their own (their anim file or model). A target may end in
+            @branch,...: see --prefer.
+--attachments  also draw what hangs on the model standing (hats, ponchos, weapons: the
+            attachments of the anim file's idle component, each through its own
+            <replacetexture>), each placed with its bone on the model's bone at rest
+            (gr2_mesh.attach). Riders and effects, which include another anim file, are not.
+--overlay   a folder laid out like a game copy (art\\, data\\) whose loose files win over the
+            game's: new textures and anim copies seen before they are installed.
+--team      a player colour (RRGGBB) shown where player-coloured textures let it through
+            (default: none, the texture's own colour)
+--views     camera azimuths in degrees, one cell each per entry (default -35, the three-quarter
+            view; 0 is the front, 180 the back).
 --prefer    branches of the anim files' logics to show first (a culture, a civ, an age's tech:
             mediterranean, brazilian, industrialize...); without them a logic shows its first
             branch. A missing model falls through to the anim file's next candidate.
@@ -83,13 +95,22 @@ def image_for(record, index):
     return None
 
 
-def texture_image(data, name="sheet_tex"):
-    """A Blender image of a .ddt's diffuse colour, at the first mip level of 256 or less."""
+TEAM = None        # --team: the player colour drawn where a player-coloured texture asks for it
+
+
+def texture_image(data, name="sheet_tex", team=None):
+    """A Blender image of a .ddt's diffuse colour, at the first mip level of 256 or less. `team`
+    (RGB, default TEAM): blended in where a player-coloured texture's alpha is below 255, as the
+    game shows it (measured: alpha 255 is the texture, lower lets the player colour through)."""
     hd = ddt.read_header(data)
     level = 0
     while level + 1 < len(hd.levels) and max(hd.width, hd.height) >> (level + 1) >= 256:
         level += 1
     rgba = ddt.decode(data, level).copy()
+    team = TEAM if team is None else team
+    if team is not None and hd.alpha == 1:
+        a = rgba[:, :, 3:4].astype(np.float32) / 255.0
+        rgba[:, :, :3] = (rgba[:, :, :3] * a + np.asarray(team, np.float32) * (1 - a) + 0.5).astype(np.uint8)
     rgba[:, :, 3] = 255
     return blender_io._image_from_array(name, rgba)
 
@@ -192,9 +213,51 @@ def raw_model(data, cache, granny, install):
     return ms.raw_bytes(data, md5, (granny, install, cache))
 
 
-def load_entry(game, target, cache, granny, install, prefer=()):
+def with_attachments(game, model, where, cache, granny, install):
+    """The model with what hangs on it standing (where["attachments"]: hats, ponchos, weapons)
+    merged in, each placed on its bone (gr2_mesh.attach) and textured through its own
+    <replacetexture>. Returns (model, ({texture index: .ddt bytes}, [texture names]), [what was
+    hung, or why not]). Attachments that include another anim file (a rider, an effect) are
+    skipped."""
+    out = dict(model, meshes=list(model["meshes"]), textures=list(model["textures"]))
+    textures, names, hung = {}, [], []
+    for att in where.get("attachments") or []:
+        if not att.get("model"):
+            continue
+        path = nm.fh.norm(att["model"])
+        if not path.endswith(".gr2"):
+            path += ".gr2"
+        try:
+            data, _src = game.read(path)
+            part = gr2_mesh.read(raw_model(data, cache, granny, install))
+            meshes = gr2_mesh.attach(model, part, att["frombone"], att["tobone"])
+        except (LookupError, RuntimeError, ValueError, gr2.Gr2Error) as exc:
+            hung.append(f"{att['name']}: not shown ({exc})")
+            continue
+        base = len(out["textures"])
+        none_slot = base + len(part["textures"])        # the part's faces without a texture
+        out["textures"] += list(part["textures"]) + [None]
+        swaps = {nm.fh.norm(a): nm.fh.norm(b) for a, b in att.get("swaps") or ()}
+        shown = None
+        for k in sorted({int(t) for m in meshes for t in m["face_textures"]}):
+            found = game.texture([part["textures"][k]] if k >= 0 else part["textures"], path, swaps)
+            if found is None and k >= 0:
+                found = game.texture(part["textures"], path, swaps)
+            if found is not None:
+                textures[base + k if k >= 0 else none_slot] = found[1]
+                names.append(found[0])
+                shown = shown or found[0]
+        for m in meshes:
+            ft = np.asarray(m["face_textures"])
+            out["meshes"].append(dict(m, face_textures=np.where(ft >= 0, ft + base, none_slot)))
+        hung.append(f"{att['name']}: {path} on {att['tobone']}" + (f" ({shown})" if shown else ""))
+    return out, (textures, names), hung
+
+
+def load_entry(game, target, cache, granny, install, prefer=(), attachments=False):
     """(model dict, textures, facts) of one entry; textures: {index in model["textures"], or -1
-    for the triangles with none: .ddt bytes}. nm.Missing or RuntimeError says why it has none."""
+    for the triangles with none: .ddt bytes}. nm.Missing or RuntimeError says why it has none.
+    attachments: also draw what hangs on the model standing (with_attachments)."""
     where = game.resolve(target, prefer)
     data, src = game.read(where["model"])
     model = gr2_mesh.read(raw_model(data, cache, granny, install))
@@ -214,27 +277,35 @@ def load_entry(game, target, cache, granny, install, prefer=()):
         if found is not None:
             textures[-1] = found[1]
             names.append(found[0])
+    hung = []
+    if attachments:
+        model, extra, hung = with_attachments(game, model, where, cache, granny, install)
+        textures.update(extra[0])
+        names += extra[1]
     pts = np.concatenate([m["positions"] for m in model["meshes"]])
-    facts = dict(where, source=src, textures=sorted(set(names)),
+    facts = dict(where, source=src, textures=sorted(set(names)), hung=hung,
                  tris=int(sum(len(m["triangles"]) for m in model["meshes"])),
                  size=[round(float(v), 2) for v in pts.max(0) - pts.min(0)])
     return model, textures, facts
 
 
 def named_sheet(entries, game, out, cell=220, cols=6, title=None, keep_scale=False,
-                cache=None, granny=None, install=None, prefer=()):
-    """Renders the list into `out` (and its .txt); returns the cells' lines."""
+                cache=None, granny=None, install=None, prefer=(), attachments=False, views=(-35.0,)):
+    """Renders the list into `out` (and its .txt); returns the cells' lines. `views`: camera
+    azimuths, one cell each per entry, side by side (0 looks at the front, 180 at the back)."""
     loaded = []
     for caption, target in entries:
         try:
-            loaded.append((caption, target) + load_entry(game, target, cache, granny, install, prefer)
-                          + (None,))
+            got = load_entry(game, target, cache, granny, install, prefer, attachments) + (None,)
         except (LookupError, RuntimeError, ValueError, gr2.Gr2Error) as exc:
-            loaded.append((caption, target, None, None, None, exc))
+            got = (None, None, None, exc)
+        for k, az in enumerate(views):
+            cap = caption if k == 0 else f"{caption} ({az:g} deg)"
+            loaded.append((cap, target) + tuple(got) + (az,))
     scale = None
     if keep_scale:
         extents = []
-        for _c, _t, model, _tex, _f, err in loaded:
+        for _c, _t, model, _tex, _f, err, _az in loaded:
             if err is None:
                 bpy.ops.wm.read_factory_settings(use_empty=True)
                 extents.append(render.view_extent(gr2_import.create(model, "m")))
@@ -245,7 +316,7 @@ def named_sheet(entries, game, out, cell=220, cols=6, title=None, keep_scale=Fal
     rows = max(1, (len(loaded) + cols - 1) // cols)
     sheet = np.full((rows * (cell + cap_h), cols * cell, 3), 40, np.uint8)
     lines = []
-    for n, (caption, target, model, tex, facts, err) in enumerate(loaded):
+    for n, (caption, target, model, tex, facts, err, az) in enumerate(loaded):
         y, x = divmod(n, cols)
         top, left = y * (cell + cap_h), x * cell
         if err is None:
@@ -253,7 +324,7 @@ def named_sheet(entries, game, out, cell=220, cols=6, title=None, keep_scale=Fal
                 bpy.ops.wm.read_factory_settings(use_empty=True)
                 images = {k: texture_image(b, f"sheet_tex{k}") for k, b in tex.items()}
                 obj = gr2_import.create(model, "m", images.pop(-1, None), images=images)
-                img = on_background(render.render_rgba(obj, size=cell, scale=scale,
+                img = on_background(render.render_rgba(obj, size=cell, scale=scale, azimuth=az,
                                                        ground=0.04 if keep_scale else None))
                 sheet[top:top + cell, left:left + cell] = img
             except Exception as exc:  # noqa: BLE001 - one bad model leaves its cell empty
@@ -265,7 +336,8 @@ def named_sheet(entries, game, out, cell=220, cols=6, title=None, keep_scale=Fal
                          f" ({facts['source']}), textures {', '.join(facts['textures']) or 'none'},"
                          f" {facts['tris']} tris, size {facts['size']} (metres as the file declares them)"
                          + (f", anim {facts['anim']}" if facts["anim"] else "")
-                         + (f"; missing, so not shown: {', '.join(facts['skipped'])}" if facts["skipped"] else ""))
+                         + (f"; missing, so not shown: {', '.join(facts['skipped'])}" if facts["skipped"] else "")
+                         + (f"; attached: {'; '.join(facts['hung'])}" if facts.get("hung") else ""))
         else:
             sheet[top:top + cell, left:left + cell] = (90, 50, 50)
             short = getattr(err, "short", None) or str(err)
@@ -294,6 +366,10 @@ def main(argv):
     def opt(name, default=None):
         return argv[argv.index(name) + 1] if name in argv else default
 
+    global TEAM
+    if opt("--team"):
+        t = opt("--team").lstrip("#")
+        TEAM = tuple(int(t[i:i + 2], 16) for i in (0, 2, 4))
     if "--models" in argv:
         if not opt("--models") or not opt("--game") or not opt("--out"):
             print(__doc__)
@@ -304,10 +380,12 @@ def main(argv):
             return 2
         with open(opt("--models"), encoding="utf-8-sig") as fh:
             entries = nm.parse_list(fh.read())
-        lines = named_sheet(entries, nm.Game(opt("--game")), opt("--out"), int(opt("--cell", "220")),
+        lines = named_sheet(entries, nm.Game(opt("--game"), [opt("--overlay")]), opt("--out"), int(opt("--cell", "220")),
                             int(opt("--cols", "6")), opt("--title"), "--keep-scale" in argv,
                             opt("--cache"), opt("--granny"), opt("--granny-install", opt("--game")),
-                            [b.lower() for b in (opt("--prefer") or "").split(",") if b])
+                            [b.lower() for b in (opt("--prefer") or "").split(",") if b],
+                            "--attachments" in argv,
+                            [float(v) for v in (opt("--views") or "-35").split(",") if v.strip()])
         bad = sum("NOT SHOWN" in ln for ln in lines)
         print(f"{len(lines) - bad} of {len(lines)} shown -> {opt('--out')}")
         return 1 if bad else 0

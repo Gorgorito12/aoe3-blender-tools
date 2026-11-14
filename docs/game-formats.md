@@ -112,17 +112,41 @@ of plain meshes. `gr2_mesh.packed` reads it.
 | Offset | Content |
 |---|---|
 | 0x00 | 16 words: magic `0xFDABCD01`; size of the stream after its first 12 bytes; a value that changes from file to file (a hash?); vertex count N; rigid group count G; group table size in bytes (8 G, or 8 G + 8 in 1,791 of the 3,857); rigid block count B; rigid bytes (112 B); skinned vertex count S; skinned bytes (32 S); rigid vertex count R = 4 B; a bone count; then zeros to 0x40 |
-| 0x40 | the group table: per group u16 block count, u16 first vertex, u32 bone (an index into the mesh's bone bindings: **to verify**). The groups cover the R rigid vertices in order |
+| 0x40 | the group table: per group u16 block count, u16 first vertex, u32 bone (an index into the mesh's bone bindings: **measured**, below). The groups cover the R rigid vertices in order |
 | then | B blocks of four rigid vertices, 112 bytes each: x[4], y[4], z[4] (float32), four 4-byte words (normals, **to verify**), four 4-byte words (tangents, **to verify**), then u, v (float32) of each vertex |
-| then | S skinned vertices, 32 bytes each: x, y, z (float32); 4 bytes, two weights then two bone indices (u8; the weights add up to 255: **inferred**); a 4-byte normal and a 4-byte tangent (**to verify**); u, v (float32) |
+| then | S skinned vertices, 32 bytes each: x, y, z (float32); 4 bytes, two weights then two bone indices (u8; the weights add up to 255: **measured**, below); a 4-byte normal and a 4-byte tangent (**to verify**); u, v (float32) |
 
 - N = R + S: the rigid vertices come first, the skinned ones after, and the triangles index the
   whole range, the padding of a group's last block included (it is not used).
 - The positions are in model space, like a plain `Position` (**measured**: a point on a seam
   between a rigid and a skinned part has the same coordinates in both sections, and the
   triangles join them without moving them to a bone). The UVs follow Granny's usual convention.
-- The reader takes the positions and the UVs (the normals are left to Blender); the bones and
-  weights are not read yet.
+- The reader takes the positions, the UVs and the skin (the normals are left to Blender):
+  `gr2_mesh.packed_skin` gives each vertex two bone indices and their weights. **Measured** on a
+  rider of WoL (39 bones): each rigid group's bone index names, in the mesh's bone bindings, the bone
+  whose height matches its vertices (pelvis at the hips, calves at the shins, the head on top), so
+  the group table's bone **is** an index into the bindings; the skinned vertices' two weights add up
+  to 255 and their indices name neighbouring bones (thigh and calf, upper arm and forearm).
+- Plain meshes give the same from their `BoneIndices` and `BoneWeights` (the two heaviest).
+
+### Attachments at rest
+
+A hat, a poncho or a weapon is a model of its own that the anim file hangs on a bone of the unit
+(`<attach a="hat" frombone="bone_hat" tobone="HEAD"/>`). `gr2_mesh.attach` places one as the game
+shows it standing; what it does was checked against the game (2026-11-14, three hats and a
+lance on four WoL units, seen in game in a test copy):
+
+- each bone's rest matrix is the inverse of its `InverseWorldTransform`;
+- both files are first brought to one space by their own `ArtToolInfo` (axes and units per metre):
+  hats written in inches with Z up sit on units written in game units with Y up;
+- `tobone` is matched as the game's names are written: `HEAD` is `Bip01 Head`, `SPINE1` is
+  `Bip01 Spine1` (any case, last words);
+- most accessories have a single bone and no `frombone` (`bone_hat` is not in them): that bone
+  is laid on the body's, **without its scale** (a hat whose only bone is scaled by 0.095 shows at
+  its own size in game: inferred from where WoL's marine hats sit, not measured in the engine);
+- **to verify:** a file whose units per metre disagree with its numbers (one hat says 1000 with
+  numbers like the inch-written ones) would come out a hundredth of its size; how the engine
+  treats it is not known, so such accessories were avoided.
 
 ### Uncompressed copies
 

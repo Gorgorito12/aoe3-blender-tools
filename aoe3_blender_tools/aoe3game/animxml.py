@@ -380,3 +380,81 @@ def idle_models(root, prefer=()):
 def idle_model(root, prefer=()):
     """The first of idle_models, or None."""
     return next(idle_models(root, prefer), None)
+
+
+def _attaches(el, prefer, depth=0):
+    """The <attach> elements of a component, through the first branch (in _logic_order) of each
+    logic, as the unit shows standing."""
+    if depth > 16:
+        return
+    for child in el:
+        if child.tag == "attach":
+            yield child
+        elif child.tag == "logic":
+            kids = _logic_order(child, prefer)
+            if kids:
+                yield from _attaches(kids[0], prefer, depth + 1)
+
+
+def idle_attachments(root, prefer=()):
+    """What hangs on the model a unit shows standing (hats, weapons, ponchos...): one dict per
+    <attach> of its idle component, {"name", "frombone", "tobone", "model", "swaps", "include"},
+    in file order. "model" and "swaps" are the attachment's first model (its own logics through
+    `prefer`) and the textures it replaces, as idle_assets gives them; "include" is the anim file
+    an attachment includes instead (a rider, an effect), else None. An attach whose attachment
+    is not declared is left out."""
+    prefer = tuple(prefer)
+    submodels = {_name(el): el for el in root if el.tag == "submodel"}
+    declared = {}
+    for el in root:
+        if el.tag == "attachment":
+            declared.setdefault(_name(el), el)
+    comps = [el for el in root if el.tag == "component"]
+    anims = [el for el in root if el.tag == "anim"]
+    idle = next((a for a in anims if _name(a) == "idle"), None)
+    order = [] if idle is None else [_name(c) for c in idle if c.tag == "component"]
+    by_name = {}
+    for c in comps:
+        by_name.setdefault(_name(c), c)
+    comp = next((by_name[n] for n in order if n in by_name), comps[0] if comps else None)
+    if comp is None:
+        return []
+    out = []
+    for at in _attaches(comp, prefer):
+        name = (at.get("a") or "").strip()
+        el = declared.get(name.lower())
+        if el is None:
+            continue
+        inc = el.find("include")
+        model, swaps = None, ()
+        if inc is None:
+            for c in el:
+                if c.tag == "component":
+                    found = next(_picks(c, submodels, prefer, 0, True), None)
+                    if found:
+                        model, swaps = found
+                        break
+        out.append({"name": name, "frombone": (at.get("frombone") or "").strip(),
+                    "tobone": (at.get("tobone") or "").strip(), "model": model, "swaps": swaps,
+                    "include": (inc.text or "").strip() if inc is not None else None})
+    return out
+
+
+def find_bone(names, wanted):
+    """The bone of `names` an attach's bone name means: the same name in any case, else the one
+    whose last words are it (HEAD -> Bip01 Head, SPINE1 -> Bip01 Spine1), else the first that
+    contains it; None when nothing matches."""
+    w = (wanted or "").strip().lower()
+    if not w:
+        return None
+    low = [(n, (n or "").lower()) for n in names]
+    for n, lo in low:
+        if lo == w:
+            return n
+    for n, lo in low:
+        if lo.endswith(" " + w):
+            return n
+    for n, lo in low:
+        if w in lo:
+            return n
+    return None
