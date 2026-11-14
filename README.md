@@ -390,8 +390,8 @@ see [tools/README.md](tools/README.md).
 6. **Units:** reuse the stock skeletons and animations. The importer is done (mesh, UVs, bones
    as Empties). Measured since: a cyclic animation carries no loop flag at all, and the skinned
    layout is four weights and four indices a vertex. Next: bones in a hierarchy and that layout
-   in the writer; the packed vertex stream more than half of the units use, which the reader
-   cannot open yet; an armature in the importer.
+   in the writer; the bone weights of the packed vertex stream more than half of the units use
+   (the reader opens its positions and UVs); an armature in the importer.
 
 ## License
 

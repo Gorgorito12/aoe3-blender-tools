@@ -152,6 +152,52 @@ class AnimTest(unittest.TestCase):
         self.assertEqual(refs[-1], "Tower")
         self.assertIn("<width>9.00</width>", text)
 
+    def idle(self, text):
+        root = ET.fromstring(text)
+        for el in root.iter():
+            el.tag = el.tag.lower()
+        return animxml.idle_model(root)
+
+    def test_idle_model_of_a_unit(self):
+        # the Idle anim's component, its full-detail branch, the intact model; not the attachment
+        text = """<animfile>
+          <attachment>gun<component>gun<assetreference type="GrannyModel"><file>u\\gun</file>
+            </assetreference></component></attachment>
+          <component>DeathComp<assetreference type="GrannyModel"><file>u\\dead</file>
+            </assetreference></component>
+          <component>ModelComp<logic type="Tech"><none><logic type="LowPoly">
+            <lowpoly><assetreference type="GrannyModel"><file>u\\lp</file></assetreference></lowpoly>
+            <normal><logic type="Destruction">
+              <p1><assetreference type="GrannyModel"><file>u\\damaged</file></assetreference></p1>
+              <p99><assetreference type="GrannyModel"><file>u\\intact</file></assetreference></p99>
+            </logic></normal></logic></none>
+            <colonialize><assetreference type="GrannyModel"><file>u\\age2</file></assetreference>
+            </colonialize></logic>
+            <decal><texture>shadows_selections\\x</texture></decal></component>
+          <anim>Walk<component>DeathComp</component></anim>
+          <anim>Idle<assetreference type="GrannyAnim"><file>u\\idle</file></assetreference>
+            <component>ModelComp</component><attach a="gun" frombone="a" tobone="b"/></anim>
+        </animfile>"""
+        self.assertEqual(self.idle(text), "u\\intact")
+
+    def test_idle_model_of_a_building(self):
+        # no Idle at the top: the first component, the finished stage, through a submodel
+        text = """<animfile>
+          <submodel>stage1<component>c1<assetreference type="GrannyModel"><file>b\\stage1</file>
+            </assetreference></component><anim>Idle<component>c1</component></anim></submodel>
+          <submodel>done<attachment>smoke<component>s<assetreference type="ParticleSystem">
+            <file>e\\smoke.particle</file></assetreference></component></attachment>
+            <component>live<assetreference type="GrannyModel"><file>b\\house</file>
+            </assetreference></component><anim>Idle<component>live</component></anim></submodel>
+          <component>House<logic type="BuildingCompletion">
+            <p0><submodelref ref="stage1"/></p0><p100><submodelref ref="Done"/></p100>
+          </logic></component>
+        </animfile>"""
+        self.assertEqual(self.idle(text), "b\\house")
+        self.assertIsNone(self.idle("<animfile><component>x<decal/></component></animfile>"))
+        written = animxml.building("Tower", r"mod\buildings\tower\tower.gr2", decal=(9.0, 7.5))
+        self.assertEqual(self.idle(written.encode("utf-8")), r"mod\buildings\tower\tower")
+
     def test_stage_class(self):
         self.assertEqual(animxml.stage_class(4, 4), "2x2")
         self.assertEqual(animxml.stage_class(7.6, 6), "4x4")
@@ -746,6 +792,30 @@ class ReadBack(unittest.TestCase):
     def test_an_animation_has_no_mesh(self):
         anim = gr2_write.sink_animation("Crate", [], 2.0)
         self.assertEqual(self.gr2_mesh.read(anim)["meshes"], [])
+
+    def test_each_triangle_knows_its_texture(self):
+        m = self.gr2_mesh.read(self.data)
+        faces = m["meshes"][0]["face_textures"]
+        self.assertEqual(len(faces), len(self.T))
+        self.assertEqual({m["textures"][int(k)] for k in faces}, {"t.ddt"})
+
+    def test_packed_vertices(self):
+        # one block of four rigid vertices, stored a coordinate at a time, then two skinned ones
+        rigid = np.arange(12, dtype=np.float32).reshape(4, 3)
+        skinned = np.array([[20, 21, 22], [30, 31, 32]], np.float32)
+        uv = np.arange(12, dtype=np.float32).reshape(6, 2) / 10
+        table = struct.pack("<HHI", 1, 0, 3)
+        block = (rigid.T.astype("<f4").tobytes() + bytes(32) + uv[:4].astype("<f4").tobytes())
+        tail = b"".join(skinned[i].astype("<f4").tobytes() + bytes([255, 0, 1, 0]) + bytes(8)
+                        + uv[4 + i].astype("<f4").tobytes() for i in range(2))
+        body = struct.pack("<12I", 0, 0, 0, 6, 1, len(table), 1, len(block), 2, len(tail), 4, 2)
+        raw = bytearray(body + bytes(64 - len(body)) + table + block + tail)
+        struct.pack_into("<II", raw, 0, self.gr2_mesh.FD_MAGIC, len(raw) - 12)
+        pos, uvs = self.gr2_mesh.packed(bytes(raw))
+        self.assertEqual(pos.tolist(), np.concatenate([rigid, skinned]).tolist())
+        self.assertEqual(uvs.round(3).tolist(), uv.round(3).tolist())
+        with self.assertRaises(gr2.Gr2Error):
+            self.gr2_mesh.packed(bytes(raw[:-4]))
 
 
 if __name__ == "__main__":

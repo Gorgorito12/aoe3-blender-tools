@@ -202,7 +202,7 @@ Of 5,218 unit models:
 
 | How the vertices are stored | Models | |
 |---|---|---|
-| A packed stream the reader cannot open (one 1-byte field, `FD`), bound to about 18 bones | 2,867 (55 %) | **to decode**: the layout inside it is not known |
+| A packed stream (one 1-byte field, `FD`), bound to about 18 bones | 2,867 (55 %) | **decoded**: positions and UVs (`docs/game-formats.md`, "Packed vertices"); its weights are not read yet |
 | Plain, bound whole to one bone | 1,699 (33 %) | what `gr2_write.static_model` writes |
 | Plain and skinned: `Position, BoneWeights (4 x u8, normalised), BoneIndices (4 x u8), Normal, [Tangent,] TextureCoordinates0`, 52 or 40 bytes | 652 (12 %) | **measured**: the layout a skinned writer needs |
 

@@ -46,6 +46,7 @@ venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detai
 python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
+python -I tests/test_named_models.py              # model_sheets --models lists: protos to models, plain Python
 python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
 ```
 

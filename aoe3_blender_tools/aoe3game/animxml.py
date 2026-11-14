@@ -285,3 +285,70 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
     out.append("\t\t\t\t</logic>\n\t\t\t</none>\n\t\t</logic>\n\t</component>\n")
     out.append("</animfile>\n")
     return "".join(out)
+
+
+# --------------------------------------------------------------------------------------------------
+# Reading: the model a unit or a building shows standing
+
+def _name(el):
+    return (el.text or "").strip().lower()
+
+
+def _logic_order(logic):
+    """The branches of a logic, the one to show first: the full-detail model (LowPoly), the
+    intact and finished one (the highest pN of Destruction and BuildingCompletion), else the
+    first branch (the first age of Tech, the first Variation or Culture)."""
+    kids = list(logic)
+    if (logic.get("type") or "").lower() == "lowpoly":
+        return sorted(kids, key=lambda k: k.tag != "normal")
+    numbered = [k for k in kids if k.tag[:1] == "p" and k.tag[1:].isdigit()]
+    if numbered and len(numbered) == len(kids):
+        return sorted(kids, key=lambda k: -int(k.tag[1:]))
+    return kids
+
+
+def _pick(el, submodels, depth):
+    if depth > 16:
+        return None
+    if el.tag == "assetreference":
+        if (el.get("type") or "").lower() != "grannymodel":
+            return None
+        f = el.find("file")
+        return ((f.text or "").strip() or None) if f is not None else None
+    if el.tag == "submodelref":
+        sub = submodels.get((el.get("ref") or "").strip().lower())
+        return None if sub is None else _scope(sub, submodels, depth + 1)
+    if el.tag in ("attachment", "decal", "anim"):
+        return None
+    for child in (_logic_order(el) if el.tag == "logic" else el):
+        found = _pick(child, submodels, depth + 1)
+        if found:
+            return found
+    return None
+
+
+def _scope(scope, submodels, depth):
+    comps = [el for el in scope if el.tag == "component"]
+    anims = [el for el in scope if el.tag == "anim"]
+    idle = next((a for a in anims if _name(a) == "idle"), None)
+    order = [] if idle is None else [_name(c) for c in idle if c.tag == "component"]
+    by_name = {}
+    for c in comps:
+        by_name.setdefault(_name(c), c)
+    for c in [by_name[n] for n in order if n in by_name] + comps:
+        found = _pick(c, submodels, depth + 1)
+        if found:
+            return found
+    return None
+
+
+def idle_model(root):
+    """The Granny model (art path, no extension) an anim file shows standing, or None: the
+    components its Idle anim names (or, without one, its components in order), through each
+    logic's first branch to show (`_logic_order`) and the submodels they refer to. Attachments
+    (weapons, riders, effects) are not followed. `root`: the parsed file, tags in lower case."""
+    submodels = {}
+    for el in root:
+        if el.tag == "submodel":
+            submodels.setdefault(_name(el), el)
+    return _scope(root, submodels, 0)
