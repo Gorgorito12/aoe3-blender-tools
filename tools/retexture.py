@@ -59,6 +59,12 @@ The ops:
                and the GPU (docs/ai-textures.md); --url.
 
 --preview writes a sheet: the start, the result and the result with a player colour.
+
+    venv\\Scripts\\python -I tools\\retexture.py --own-texture <in.gr2> <out.gr2> OLD=NEW [OLD=NEW ...]
+
+writes a copy of an uncompressed model whose stored texture paths OLD (art paths, no extension)
+read NEW instead, at the same length (own_texture_paths): a unit copy that shows its new texture
+without a <replacetexture>, for when the game keeps the original's texture on a shared model.
 Needs numpy. Recipes, textures and sheets of a mod's art stay outside any repository.
 """
 import json
@@ -439,10 +445,76 @@ def preview(start, result, path, team=(40, 90, 220)):
         fh.write(encode_png(sheet))
 
 
+# --------------------------------------------------------------------------------------------------
+# A model of its own texture (--own-texture)
+
+def own_texture_paths(data, renames):
+    """The bytes of an uncompressed Granny model whose stored texture paths are renamed, in place
+    and at the same length, with the file's CRC recomputed. `renames`: {old art path: new art path}
+    (no extension, as <replacetexture> writes them, any case). Every stored texture name whose art
+    path matches is renamed: the part before it (the artist's drive and folders) and the extension
+    are kept. Returns (new bytes, [(old name, new name)]). ValueError when a model is compressed,
+    when a new path has another length than the one it replaces, or when nothing matches.
+
+    Why: a <replacetexture> in an anim file asks the game to show another texture on a shared
+    model, and in some scenarios the game shows the model's own texture instead (seen in WoL's
+    Laguna, 2026-11-14: the copy of a unit kept the original's texture there and showed its own
+    on a test map; the cause is not known). A copy of the model that names its own texture needs
+    no swap."""
+    import named_models as nm
+    from aoe3game import gr2
+    if not gr2.header_facts(data).get("raw"):
+        raise ValueError("the model is compressed: write it uncompressed first (the Granny bridge)")
+    want = {k.lower().replace("/", "\\"): v.replace("/", "\\") for k, v in renames.items()}
+    root = gr2.load(data).root()
+    out = bytearray(data)
+    done = []
+    for t in root.get("Textures") or []:
+        name = t.get("FromFileName") if t is not None else None
+        if not name:
+            continue
+        key = nm.art_key(name)
+        if key not in want:
+            continue
+        low = name.lower().replace("/", "\\")
+        at = low.rfind(key)
+        new_key = want[key]
+        if len(new_key) != len(key):
+            raise ValueError(f"{new_key!r} has {len(new_key)} characters; it replaces {key!r} in the "
+                             f"model, so it needs {len(key)}")
+        new = name[:at] + new_key + name[at + len(key):]
+        old_b, new_b = name.encode("cp1252") + b"\0", new.encode("cp1252") + b"\0"
+        hits = out.count(old_b)
+        if not hits:
+            raise ValueError(f"{name!r} is not stored as a plain string in the file")
+        out = bytearray(bytes(out).replace(old_b, new_b))
+        done.append((name, new))
+    if not done:
+        raise ValueError(f"no stored texture matches {sorted(want)}")
+    import struct
+    struct.pack_into("<I", out, 0x28, gr2.file_crc(bytes(out)))
+    return bytes(out), done
+
+
 def main(argv):
     def opt(name, default=None):
         return argv[argv.index(name) + 1] if name in argv else default
 
+    if "--own-texture" in argv:     # --own-texture <in.gr2> <out.gr2> OLD=NEW [OLD=NEW ...]
+        i = argv.index("--own-texture")
+        src, dst, pairs = argv[i + 1], argv[i + 2], argv[i + 3:]
+        with open(src, "rb") as fh:
+            data = fh.read()
+        try:
+            new, done = own_texture_paths(data, dict(p.split("=", 1) for p in pairs))
+        except ValueError as exc:
+            print(f"{src}: {exc}")
+            return 1
+        with open(dst, "wb") as fh:
+            fh.write(new)
+        for a, b in done:
+            print(f"{a} -> {b}")
+        return 0
     values = {opt("--preview"), opt("--url")}
     recipe_path = next((a for a in argv if not a.startswith("--") and a not in values), None)
     if not recipe_path:

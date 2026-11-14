@@ -148,6 +148,17 @@ lance on four WoL units, seen in game in a test copy):
   numbers like the inch-written ones) would come out a hundredth of its size; how the engine
   treats it is not known, so such accessories were avoided.
 
+### A model's own texture path
+
+A unit copy usually shows its new texture through `<replacetexture>` in its anim file. **Observed**
+(WoL's Laguna, 2026-11-14): a copy of a WoL rider kept the original's texture in that scenario,
+while the same copy showed its new texture on a test map and in another mission; the cause is not
+known (a guess: the original texture already bound in that scenario). What works there: a copy of
+the model (uncompressed) whose stored texture paths (`Textures[].FromFileName`) name the new
+texture, at the same length so nothing else in the file moves, with the CRC recomputed
+(`retexture.py --own-texture`). The game resolves the stored path below `art\` (the artist's
+drive and folders before it are ignored).
+
 ### Uncompressed copies
 
 - **Why** (**measured** by sampling the stack of the game's main thread): the

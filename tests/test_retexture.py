@@ -23,7 +23,7 @@ import bitfont  # noqa: E402
 import named_models as nm  # noqa: E402
 import retexture  # noqa: E402
 import uv_atlas  # noqa: E402
-from aoe3game import animxml, ddt, gr2, gr2_mesh  # noqa: E402
+from aoe3game import animxml, ddt, gr2, gr2_mesh, gr2_write  # noqa: E402
 from core import comfy  # noqa: E402
 from core.pngio import encode_png, read_png  # noqa: E402
 from fake_comfy import FakeComfy  # noqa: E402
@@ -299,6 +299,31 @@ class Recipes(unittest.TestCase):
     def test_an_ai_selection_too_small_to_repaint_is_a_recipe_error(self):
         with self.assertRaises(retexture.RecipeError):
             self.run_recipe([{"where": ["part:legs"], "op": "ai", "prompt": "wool"}], client=object())
+
+
+class OwnTexture(unittest.TestCase):
+    def model(self):
+        P = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], np.float32)
+        N = np.array([[0, 0, 1]] * 3, np.float32)
+        UV = np.array([[0, 0], [1, 0], [0, 1]], np.float32)
+        return gr2_write.static_model("Box", P, N, UV, np.array([[0, 1, 2]]),
+                                      texture="D:\\src\\art\\units\\box\\box_skin.ddt",
+                                      bump="D:\\src\\art\\units\\box\\box_skin_b.ddt")
+
+    def test_the_stored_paths_are_renamed_at_the_same_length_and_the_crc_holds(self):
+        data, done = retexture.own_texture_paths(self.model(), {"units\\box\\box_skin": "units\\hst\\box_hst1"})
+        self.assertEqual(len(data), len(self.model()))
+        self.assertTrue(gr2.crc_ok(data))
+        names = gr2_mesh.read(data)["textures"]
+        self.assertIn("D:\\src\\art\\units\\hst\\box_hst1.ddt", names)
+        self.assertIn("D:\\src\\art\\units\\box\\box_skin_b.ddt", names)   # not asked: kept
+        self.assertEqual(len(done), 1)
+
+    def test_another_length_or_no_match_is_refused(self):
+        with self.assertRaises(ValueError):
+            retexture.own_texture_paths(self.model(), {"units\\box\\box_skin": "units\\b\\x"})
+        with self.assertRaises(ValueError):
+            retexture.own_texture_paths(self.model(), {"units\\nothing": "units\\nothing2"})
 
 
 class Writers(unittest.TestCase):
