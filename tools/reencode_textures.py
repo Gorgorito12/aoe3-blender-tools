@@ -21,8 +21,8 @@ each result is compared with its original; a result that strays too far is not u
     (something may test it), DXT3 instead, and the report says so;
   - alpha 1 (player colour), 4 (transparent) or 8 (blend): DXT3, as the game's own;
   - BGRA (uncompressed) follows the same rule; grey and other formats are kept;
-  - a texture whose sides are not powers of two is kept (in game, two such textures written as
-    DXT3 with mips broke other scenes' <replacetexture> swaps; docs/game-formats.md).
+  - a texture whose sides are not powers of two is kept (the stock game has none; two such
+    textures were among those whose re-encoding broke other scenes in game: docs/game-formats.md).
 - **Size:** a texture with a side above the limit is halved, both sides at once, until both
   fit (area average; a bump map's normals are made unit length again). The limit is given
   (--limit) or is twice the mean width and height of the stock game's home-city building
@@ -171,8 +171,8 @@ def reencode(data, limit, smallest=4, refine=True, max_mean=MAX_MEAN, max_block=
     if fmt is None:
         return None, dict(rec, action="kept", reason=why)
     if not (power_of_two(hd.width) and power_of_two(hd.height)):
-        # in game (2026-11-17): two such textures re-encoded to DXT3 with mips broke the
-        # <replacetexture> swaps of other home cities' scenes; the stock game has none
+        # a precaution: the stock game has none, and two such textures were among those whose
+        # re-encoding broke other scenes in game (docs/game-formats.md, "Re-encoding")
         return None, dict(rec, action="kept", reason=f"{hd.width}x{hd.height}: sides that are not "
                           "powers of two are left as they are (DXT and mips need them)")
     w, h = target_size(hd.width, hd.height, *limit)

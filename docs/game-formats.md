@@ -307,13 +307,18 @@ encoding of a detailed texture (roof tiles, thatch, stone) **measured** 2 to 6 a
 `hc_move.py --reencoded` ships the re-encoded copy of every moved texture and writes the new header
 into its suffix.
 
-**Sides that are not powers of two are left alone.** **In game** (2026-11-17): two uncompressed
-one-level textures of 133 x 108 and 166 x 357 (a mod's home-city statue), written as DXT3 with a
-mip chain, broke the `<replacetexture>` swaps of other home cities' scenes, scenes that never draw
-them: a room lost its wallpaper and floor, a market its roof tiles and its grass. Put back as they
-were, everything drew as before, with the other re-encoded textures still in place. The stock game
-has no such texture (all 215 measured are powers of two), so the tool keeps them as they are.
-Whether the cause is the DXT block size, the mip chain or the size itself is **to verify**.
+**Textures re-encoded under their own name** (**in game**, 2026-11-17, a mod's 22 home cities opened
+one after the other in one session): ten building textures that stay in their folders (eight of a
+statue, among them two uncompressed one-level textures of 133 x 108 and 166 x 357, and two shared
+roof textures) were re-encoded in place. Home cities opened later in the same session then lost
+their `<replacetexture>` swaps, in scenes that never draw those textures: a room lost its wallpaper
+and floor, a market its roof tiles and its grass, a background its sky. Opened first in a fresh
+session, the same cities drew right; each group alone passed a short sequence; with the ten put
+back, all 22 drew as before in one session, with the textures that move under a new name
+re-encoded. The cause is **to verify** (a size or format the game keeps per name, the sides that
+are not powers of two, or the session's texture memory). Until then: `hc_move.py --reencoded`
+ships re-encoded only the textures that move, and `reencode_textures.py` keeps any texture whose
+sides are not powers of two (the stock game has none: all 215 measured are).
 
 **Player colour** (**measured** on the stock textures that use the `pixelxform` shader): about 2 %
 of their pixels, in thin bands (trim strips under the windows), have alpha below 128, and those
