@@ -510,6 +510,8 @@ def run_recompress(tool, install, src, out, like):
     if r.returncode == 0 and os.path.exists(out):
         return "like the original"
     r = subprocess.run(base + ["--format", "oodle1"], capture_output=True, text=True, timeout=600)
+    if "keep it uncompressed" in r.stdout + r.stderr and not os.path.exists(out):
+        return None                       # the tool refuses an older type tag: ship it as it is
     if r.returncode != 0 or not os.path.exists(out):
         raise RuntimeError(f"recompress failed on {src}: {r.stdout[-400:]} {r.stderr[-200:]}")
     return "oodle1 (the sections changed size)"
@@ -582,7 +584,12 @@ def stage(game, civ, target, out, bridge_exe, form="A", shared="_shared", caches
                 if recompress:
                     packed = dst + ".packed.gr2"
                     how = run_recompress(recompress, os.path.abspath(game), dst, packed, src)
-                    if bridge_exe and not runtime_opens(bridge_exe, os.path.abspath(game), packed):
+                    if how is None:
+                        record += " | recompressed: refused, the runtime cannot open the result"
+                        notes.append(f"{art.display(k)}: left uncompressed (an older type tag: "
+                                     "recompress_models.py refuses it, the runtime could not "
+                                     "open it recompressed)")
+                    elif bridge_exe and not runtime_opens(bridge_exe, os.path.abspath(game), packed):
                         # measured: models of type tag 0x80000010 came out unreadable (the
                         # game exits when it meets one); such a model ships uncompressed
                         record += " | recompressed: refused, the runtime cannot open the result"

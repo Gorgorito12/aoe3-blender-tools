@@ -217,6 +217,21 @@ class Select(unittest.TestCase):
         self.assertIn("person", why["d.ddt"])
         self.assertIn("units\\x.xml", why["e.ddt"])
         self.assertIn("outside", why["f.ddt"])
+        # an anim file a proto names (a building of the game) that names the texture
+        res["homecities"][0]["anims"]["hc\\b.xml"]["refs"] = [
+            {"kind": "texture:to", "value": "a", "variant": "hc\\b.xml"}]
+        res["files"] = []
+        chosen, others = rt.select(res, {}, {"hc\\b.xml": "SomeMill"})
+        self.assertNotIn("a.ddt", chosen)
+        self.assertIn("SomeMill", dict(others)["a.ddt"])
+
+    def test_proto_anim_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "data"))
+            with open(os.path.join(tmp, "data", "protoy.xml"), "w", encoding="utf-8") as fh:
+                fh.write('<proto><Unit id="1" name="Mill"><AnimFile>Buildings\\Mill\\mill.xml</AnimFile>'
+                         '</Unit></proto>')
+            self.assertEqual(rt.proto_anim_files(tmp), {"buildings\\mill\\mill.xml": "Mill"})
 
 
 if __name__ == "__main__":

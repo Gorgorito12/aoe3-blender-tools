@@ -49,7 +49,8 @@ tools/hc_survey.py does), the .ddt each model stores. Writes their mean width an
 **select.** The home-city building textures of a game copy (tools/hc_survey.py's use "building")
 that only home-city building models and anim files use, the mod's own loose files; and the
 others, with why (shared with a scene, a background, a prop or a model outside the home cities,
-named by an anim file outside them, stock).
+named by an anim file outside them, reached by an anim file that protoy.xml gives a unit or
+building of the game, stock).
 """
 import csv
 import hashlib
@@ -339,19 +340,73 @@ def tad_mean(game, caches=(), bridge=None, log=print):
 # --------------------------------------------------------------------------------------------------
 # Which textures (select)
 
-def select(res, tex_refs=None):
+def proto_anim_files(game):
+    """{anim key: proto name} of every <AnimFile> in the game copy's data\\protoy.xml (loose, plain
+    or compiled): anim files the game's units and buildings use outside the home cities."""
+    import re
+    import hc_survey as hs
+    out = {}
+    pat = re.compile(r"<unit\b[^>]*\bname\s*=\s*['\"]([^'\"]+)['\"]|<animfile>\s*([^<]+?)\s*</animfile>",
+                     re.I)
+    for name in ("protoy.xml", "protoy.xml.xmb"):
+        path = os.path.join(game, "data", name)
+        if not os.path.exists(path):
+            continue
+        with open(path, "rb") as fh:
+            text = hs.decode_text(fh.read())
+        unit = "?"
+        for m in pat.finditer(text):
+            if m.group(1):
+                unit = m.group(1)
+                continue
+            k = hs.join_key("", m.group(2))
+            if k:
+                out.setdefault(k, unit)
+        break
+    return out
+
+
+def select(res, tex_refs=None, proto_anims=None):
     """(chosen, others): the .ddt keys of res (hc_survey.survey) that only home-city building
     models and anim files use, the mod's own loose files; others: [(key, why)] of every other
     texture a building uses. tex_refs: hc_move.anim_texture_refs(art), every loose anim file's
-    texture names (one outside the home cities makes the texture shared)."""
+    texture names (one outside the home cities makes the texture shared). proto_anims:
+    proto_anim_files(game); a texture that a model or texture name of such an anim file reaches
+    is used in the game too."""
+    import hc_survey as hs
+    hs_join, hs_model_key = (lambda v: hs.join_key("", v)), hs.model_key
     art = res["art"]
     hc_anims = {v for h in res["homecities"] for info in h["anims"].values()
                 for v, _w in info["variants"][:1]}
     tex_refs = tex_refs or {}
+    in_game = {}                      # texture key -> proto anim file reaching it
+    for h in res["homecities"]:
+        for akey, info in h["anims"].items():
+            if akey not in (proto_anims or {}):
+                continue
+            effective = info["variants"][0][0] if info["variants"] else None
+            for r in info["refs"]:
+                if r["variant"] != effective:
+                    continue
+                if r["kind"].startswith("texture"):
+                    k = hs_join(r["value"])
+                    if k:
+                        in_game.setdefault(k if k.endswith(".ddt") else k + ".ddt", akey)
+                elif r["kind"] == "model":
+                    mk = hs_model_key(r["value"])
+                    for row in res["files"]:
+                        if row["key"] == mk:
+                            for t in row.get("texture_info", []):
+                                if t["resolved"]:
+                                    in_game.setdefault(t["resolved"], akey)
     chosen, others = [], []
     for key, e in sorted(res["texture_uses"].items()):
         uses = e["uses"]
         if not uses & {"building", "person"}:
+            continue
+        if key in in_game and "building" in uses:
+            others.append((key, f"a unit or building of the game uses it too ({in_game[key]}, "
+                           f"protoy.xml {proto_anims[in_game[key]]})"))
             continue
         if "building" not in uses:
             others.append((key, "a person or animal standing for a building (an anim file with a "
@@ -509,7 +564,7 @@ def main(argv):
         import hc_survey as hs
         res = hs.survey(opt("--game"), opt("--target", "x\\homecity"), caches=opts("--cache"),
                         bridge=bridge)
-        chosen, others = select(res, hm.anim_texture_refs(res["art"]))
+        chosen, others = select(res, hm.anim_texture_refs(res["art"]), proto_anim_files(opt("--game")))
         art = res["art"]
         with open(opt("--out"), "w", encoding="utf-8") as fh:
             for k in chosen:
