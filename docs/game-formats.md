@@ -239,7 +239,7 @@ texture path) that should ship at the size of the original.
 - **In game** (**measured**, a copy of Wars of Liberty, 42 of them as loose files: the Persian
   Mahalla, Temple, Royal Court, Madrasah and Forge): the game opened 23 of them in a skirmish
   (each read at its recompressed size, by the file log of the engine-extension DLL), drew the
-  buildings standing and, damaged by trigger to 60 %, their damage models, with the Royal Court's
+  buildings standing and, damaged by trigger to 60 % of their hit points, their damage models, with the Royal Court's
   flag and the Forge's smoke and flag where the uncompressed set puts them.
 - Tests: `python -I tests/test_recompress_models.py` (synthetic models, a fake runtime with zlib in
   place of Oodle).
