@@ -169,9 +169,63 @@ def eye():
     return k
 
 
-GLYPHS = {"stopwatch": stopwatch, "hourglass": hourglass, "heart": heart, "shield": shield, "eye": eye}
+LEATHER = (176, 104, 48)
+LEATHER_DARK = (118, 64, 26)
+SOLE = (70, 44, 24)
+WING = (246, 246, 240)
+WING_SHADE = (180, 186, 196)
+SPEED_BLUE = (70, 150, 235)
+
+
+def _boot(k, dx=0.0):
+    """A riding boot seen from the side, toe to the right: shaft, foot, a cuff, heel and sole. `dx` shifts it right."""
+    x, y = k.x - dx, k.y
+    shaft = (x >= 5.4) & (x <= 9.0) & (y >= 2.0) & (y <= 11.0)
+    foot = ((x >= 5.4) & (x <= 11.6) & (y >= 9.4) & (y <= 13.0)) | (np.hypot(x - 11.6, y - 11.4) <= 1.7)
+    k.paint(shaft | foot, LEATHER)
+    k.paint(shaft & (x >= 7.6) & (y <= 9.6), LEATHER_DARK)
+    k.paint((x >= 5.0) & (x <= 9.4) & (y >= 2.0) & (y <= 3.4), LEATHER_DARK)  # the cuff
+    k.paint((x >= 5.4) & (x <= 13.3) & (y >= 12.6) & (y <= 13.8), SOLE)
+    k.paint((x >= 5.4) & (x <= 7.0) & (y >= 12.0) & (y <= 14.2), SOLE)  # the heel
+
+
+def boot_wings():
+    """Speed: the boot with a small white wing at its back, swept back."""
+    k = Canvas()
+    x, y = k.x, k.y
+    for i, (cy, length) in enumerate(((3.6, 6.4), (5.6, 5.6), (7.6, 4.6))):  # behind the boot: painted first
+        feather = _seg_dist(x, y, 8.4, cy + 1.0, 8.4 - length, cy - 1.6) <= 1.0
+        k.paint(feather, WING if i != 1 else WING_SHADE)
+    _boot(k, dx=2.0)
+    return k
+
+
+def boot_arrows():
+    """Speed (variant): the boot with three blue motion strokes behind it."""
+    k = Canvas()
+    _boot(k, dx=2.4)
+    x, y = k.x, k.y
+    for cy, x0 in ((4.0, 1.2), (7.0, 0.4), (10.0, 1.2)):
+        k.paint(_seg_dist(x, y, x0, cy, x0 + 5.0, cy) <= 0.6, SPEED_BLUE)
+    return k
+
+
+def boot_lines():
+    """Speed (variant): the boot with white speed lines behind it."""
+    k = Canvas()
+    _boot(k, dx=2.4)
+    x, y = k.x, k.y
+    for cy, x0, x1 in ((4.0, 2.0, 7.0), (6.6, 0.6, 7.0), (9.2, 2.0, 7.0)):
+        k.paint(_seg_dist(x, y, x0, cy, x1, cy) <= 0.45, WING)
+    return k
+
+
+GLYPHS = {"stopwatch": stopwatch, "hourglass": hourglass, "heart": heart, "shield": shield, "eye": eye,
+          "boot_wings": boot_wings, "boot_arrows": boot_arrows, "boot_lines": boot_lines}
 FILES = {"stopwatch": "stat_icon_rof.ddt", "hourglass": "stat_icon_traintime.ddt",
-         "heart": "stat_icon_hitpoints.ddt", "shield": "stat_icon_armor.ddt", "eye": "stat_icon_los.ddt"}
+         "heart": "stat_icon_hitpoints.ddt", "shield": "stat_icon_armor.ddt", "eye": "stat_icon_los.ddt",
+         "boot_wings": "stat_icon_speed.ddt", "boot_arrows": "stat_icon_speed_arrows.ddt",
+         "boot_lines": "stat_icon_speed_lines.ddt"}
 
 
 def render(glyph):
