@@ -202,6 +202,54 @@ class Server(unittest.TestCase):
             self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"])
             self.assertEqual(maker.digest(inst), before)
 
+    def test_a_new_deployment_never_replaces_the_others_without_saying(self):
+        """What the copy has is read before deploying; Add keeps the others, a building already
+        there is refused for Add, Update deploys them all again, Replace leaves only the new one."""
+        import shutil
+        sys.path.insert(0, os.path.join(ROOT, "tests"))
+        import test_game_formats as tgf
+        maker = tgf.DeployTest()
+        with tempfile.TemporaryDirectory() as tmp:
+            inst, tower = maker.make_copy(tmp)
+            before = maker.digest(inst)
+            hall = os.path.join(tmp, "hall")
+            shutil.copytree(tower, hall)
+            with open(os.path.join(hall, "bundle.json"), encoding="utf-8") as fh:
+                b = json.load(fh)
+            b["name"] = "Hall"
+            with open(os.path.join(hall, "bundle.json"), "w", encoding="utf-8") as fh:
+                json.dump(b, fh)
+
+            def deploy(values):
+                status, r = self.call("/api/tools/deploy", {"values": dict({"install": inst}, **values)})
+                self.assertEqual(status, 200, r)
+                return self.wait(r["job"])
+
+            def state(bundle=None):
+                return self.call("/api/deploy/state", {"install": inst, "bundle": bundle})[1]
+
+            self.assertEqual(state(tower)["units"], [])
+            self.assertEqual(deploy({"bundle": [tower]})["code"], 0)
+            s = state(hall)
+            self.assertEqual((s["units"], s["new"]), (["Tower"], "Hall"))
+            self.assertEqual(deploy({"bundle": [hall], "keep": True})["code"], 0)       # Add
+            self.assertEqual(state()["units"], ["Tower", "Hall"])
+            j = deploy({"bundle": [hall], "keep": True})                                 # already there
+            self.assertEqual(j["code"], 1)
+            self.assertIn("already deployed", " ".join(j["lines"]))
+            self.assertEqual(state()["units"], ["Tower", "Hall"])
+            self.assertEqual(deploy({"bundle": [tower, hall]})["code"], 0)               # Update
+            self.assertEqual(state()["units"], ["Tower", "Hall"])
+            with open(os.path.join(inst, "data", "protoy.xml"), encoding="utf-8") as fh:
+                text = fh.read()
+            self.assertEqual((text.count('name="Tower"'), text.count('name="Hall"')), (1, 1))
+            self.assertEqual(deploy({"bundle": [hall]})["code"], 0)                      # Replace
+            self.assertEqual(state()["units"], ["Hall"])
+            status, r = self.call("/api/tools/deploy_undo", {"values": {"install": inst}})
+            self.wait(r["job"])
+            self.assertEqual(maker.digest(inst), before)                                  # as it was
+            self.assertEqual(self.call("/api/deploy/state", {"install": os.path.join(tmp, "nothing")})[0], 400)
+
     def test_the_ai_repaint_option_reaches_the_export(self):
         """Export for the game with the AI repaint, against the ComfyUI stand-in (needs the bpy
         module, as every export: skipped without it)."""

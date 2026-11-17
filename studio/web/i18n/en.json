@@ -121,7 +121,7 @@
   "b.deploy.go": "Deploy",
   "b.deploy.undo": "Undo",
   "b.deploy.confirm": "Deploy the last game export into {copy}? Backups are kept and Undo restores the copy.",
-  "b.undo.confirm": "Take every deployed building out of {copy} and restore its files?",
+  "b.undo.confirm": "Take the {n} deployed buildings out of {copy} and restore its files?",
   "job.started": "Started: see its progress below.",
   "job.done": "Done: {title}",
   "job.failed": "Failed ({code}): {title}",
@@ -477,5 +477,16 @@
   "b.v.damaged": "Damaged",
   "b.v.damaged.help": "The texture the game shows once the building has lost hit points",
   "b.v.team": "Team",
-  "b.v.team.help": "The player colour seen in this team's colour (with Player colour on)"
+  "b.v.team.help": "The player colour seen in this team's colour (with Player colour on)",
+  "b.deploy.there": "The copy has {n} buildings deployed.",
+  "b.deploy.empty": "Nothing of ours is deployed in it yet.",
+  "b.deploy.same": "{name} is one of them.",
+  "b.deploy.new": "{name} is not there yet.",
+  "b.deploy.add": "Add it",
+  "b.deploy.add.help": "Add: the new building joins the others; Undo takes them all out together.",
+  "b.deploy.update": "Update it",
+  "b.deploy.update.help": "Update: the {n} others are deployed again with the new version of this one.",
+  "b.deploy.missing": "{n} of the others' bundles are no longer on disk: they cannot be deployed again, so only Replace is possible.",
+  "b.deploy.replace": "Replace all",
+  "b.deploy.replace.help": "Replace all: the {n} buildings deployed now are taken out, and only this one stays."
 }

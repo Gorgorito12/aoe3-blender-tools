@@ -705,6 +705,30 @@ def r_game_flagdirs(st, rest, q, b):
     return {"pairs": pairs}
 
 
+def r_deploy_state(st, rest, q, b):
+    """What a test copy has deployed (its manifest), read only: the page decides from it whether a
+    new building is added, updated or replaces everything."""
+    from aoe3game import deploy
+    install = b.get("install") or st.settings.get("test_copy")
+    try:
+        d = deploy.Deployment(install or "")
+    except deploy.RefusedPath as e:
+        raise ApiError(str(e)) from None
+    m = d.manifest()
+
+    def name_of(path):
+        try:
+            with open(os.path.join(path, "bundle.json"), encoding="utf-8") as fh:
+                return json.load(fh).get("name")
+        except (OSError, ValueError):
+            return None
+    bundles = [{"path": path, "name": name_of(path), "exists": name_of(path) is not None}
+               for path in m.get("bundles") or ([m["bundle"]] if m.get("bundle") else [])]
+    return {"units": m.get("units", []), "bundles": bundles, "builder": m.get("builder"),
+            "groupings": m.get("groupings", []), "files": len(m.get("created", [])) + len(m.get("modified", {})),
+            "new": name_of(b["bundle"]) if b.get("bundle") else None}
+
+
 def r_jobs(st, rest, q, b):
     return st.jobs.all()
 
@@ -824,6 +848,7 @@ ROUTES = [
     ("POST", "/api/comfy/check", r_comfy_check),
     ("POST", "/api/comfy/start", r_comfy_start),
     ("POST", "/api/check-path", r_check_path),
+    ("POST", "/api/deploy/state", r_deploy_state),
     ("POST", "/api/game/units", r_game_units),
     ("POST", "/api/game/flagdirs", r_game_flagdirs),
     ("POST", "/api/inspect", r_inspect),

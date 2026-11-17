@@ -2,18 +2,21 @@
 """Deploy a game bundle into a TEST COPY of the game, or take it out again.
 
     python -I tools/game_deploy.py --install <copy> --bundle <folder> [--bundle <folder> ...]
-                                   [--validate] [--show-as <Unit>] [--builder <Unit>]
+                                   [--keep] [--validate] [--show-as <Unit>] [--builder <Unit>]
     python -I tools/game_deploy.py --install <copy> --grouping <file.xml> [--grouping ...]
     python -I tools/game_deploy.py --install <copy> --undo
     python -I tools/game_deploy.py --install <copy> --validate
 
-Several --bundle deploy those buildings together (each gets its own id and strings).
+Several --bundle deploy those buildings together (each gets its own id and strings). A new
+deployment replaces the one before it; --keep adds to it instead (refused for a building already
+deployed: deploy them all again, or replace).
 Refuses any folder inside a Steam library. Backups are kept as <file>.aoe3bt-orig and the
 changes are listed in <copy>/aoe3bt-manifest.json, which --undo reads. --show-as TownCenter also
 points that unit's model, icon and portrait at the new building, so it stands at the start of
 any skirmish (to look at it without placing it in the editor; the copy only). --builder Settler
 adds the building to that unit's build list.
 """
+import json
 import os
 import sys
 
@@ -39,7 +42,18 @@ def main(argv):
         d.undo()
         print("undone")
     bundles = [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--bundle"]
-    if bundles:
+    if bundles and "--keep" in argv:                       # added to what is deployed
+        there = set(d.manifest().get("units", []))
+        for b in bundles:
+            with open(os.path.join(b, "bundle.json"), encoding="utf-8") as fh:
+                name = json.load(fh)["name"]
+            if name in there:
+                print(f"refused: {name} is already deployed in this copy (deploy them all again, or replace)")
+                return 1
+        for b in bundles:
+            m = d.apply(b, show_as=opt("--show-as"), builder=opt("--builder"), keep=True)
+        print(f"added: units {m.get('units')} ids {m.get('unit_ids')}")
+    elif bundles:
         m = d.apply_many(bundles, show_as=opt("--show-as"), builder=opt("--builder"))
         print(f"deployed: units {m.get('units')} ids {m.get('unit_ids')}, strings {m.get('strings')}")
     for g in [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--grouping"]:

@@ -252,6 +252,8 @@ TOOLS = [
            "Instala uno o más paquetes en una copia de prueba del juego. Deshacer los quita de nuevo."),
          [Arg("install", "--install", "folder", L("Test copy", "Copia de prueba"), required=True, setting="test_copy"),
           Arg("bundle", "--bundle", "folders", L("Bundles", "Paquetes"), required=True, repeat=True),
+          Arg("keep", "--keep", "bool", L("Add to what is deployed", "Añadir a lo ya desplegado"),
+              L("Without it, a deployment replaces the one before it", "Sin esto, un despliegue sustituye al anterior")),
           Arg("show_as", "--show-as", "text", L("Show as unit", "Mostrar como unidad"),
               L("Also points this unit's model at the new building (e.g. TownCenter)",
                 "También apunta el modelo de esta unidad al nuevo edificio (p. ej. TownCenter)")),

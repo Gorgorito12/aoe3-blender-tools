@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The building generator: presets, the form drawn from the schema, the live 3D preview, the
 // texture, the numbers against the budget, the technical sheet, and the exports.
-import { api, clear, confirmDialog, debounce, fmt, h, pick, storeGet, storeSet, t, toast } from './core.js';
+import { api, clear, confirmDialog, debounce, dialog, fmt, h, pick, storeGet, storeSet, t, toast } from './core.js';
 import { markdown } from './md.js';
 import { Viewer } from './viewer.js';
 import { watchJob } from './jobs.js';
@@ -378,29 +378,61 @@ export async function buildingsScreen(main, app) {
   let lastBundle = storeGet('lastBundle', null);
   const jobBox = h('div', {});
   const deployBox = h('div', { class: 'stack' });
-  function drawDeploy() {
+  async function drawDeploy() {
     clear(deployBox);
     const copy = app.state.settings.paths.test_copy;
     deployBox.append(h('h3', { text: t('b.deploy') }));
     if (!copy) { deployBox.append(h('p', { class: 'small muted', text: t('b.deploy.nocopy') })); return; }
     if (lastBundle) storeSet('lastBundle', lastBundle);
+    // what the copy already has: a new deployment must not replace it without saying so
+    let there = null;
+    try { there = await api('/api/deploy/state', { install: copy, bundle: lastBundle }); } catch (e) {
+      deployBox.append(h('p', { class: 'small bad', text: e.message })); return;
+    }
     deployBox.append(h('p', { class: 'small', text: t('b.deploy.to', { copy }) }),
+      h('p', { class: 'small muted', title: there.units.join(', '),
+        text: there.units.length ? t('b.deploy.there', { n: there.units.length }) : t('b.deploy.empty') }),
       lastBundle ? h('p', { class: 'small muted mono', text: lastBundle }) : h('p', { class: 'small muted', text: t('b.deploy.first') }),
       h('div', { class: 'row' },
-        h('button', { type: 'button', class: 'primary', disabled: !lastBundle, text: t('b.deploy.go'), onclick: async () => {
-          if (!await confirmDialog(t('b.deploy'), t('b.deploy.confirm', { copy }))) return;
-          runTool('deploy', { install: copy, bundle: [lastBundle], builder: 'Settler' });
-        } }),
-        h('button', { type: 'button', text: t('b.deploy.undo'), onclick: async () => {
-          if (!await confirmDialog(t('b.deploy.undo'), t('b.undo.confirm', { copy }))) return;
+        h('button', { type: 'button', class: 'primary', disabled: !lastBundle, text: t('b.deploy.go'), onclick: () => deployNew(copy, there) }),
+        h('button', { type: 'button', disabled: !there.units.length, text: t('b.deploy.undo'), onclick: async () => {
+          if (!await confirmDialog(t('b.deploy.undo'), t('b.undo.confirm', { copy, n: there.units.length }))) return;
           runTool('deploy_undo', { install: copy });
         } })));
+  }
+
+  // Add (a building not there yet), Update (one of the same name: all deployed again with the new
+  // one, while their bundles are still on disk) or Replace everything
+  async function deployNew(copy, there) {
+    const builder = 'Settler';
+    if (!there.units.length) {
+      if (!await confirmDialog(t('b.deploy'), t('b.deploy.confirm', { copy }))) return;
+      return runTool('deploy', { install: copy, bundle: [lastBundle], builder });
+    }
+    const name = there.new;
+    const same = name && there.units.includes(name);
+    const others = there.bundles.filter(b => b.name !== name);
+    const missing = others.filter(b => !b.exists).length;
+    const buttons = [{ value: 'no', label: t('cancel') }];
+    if (!same) buttons.push({ value: 'add', label: t('b.deploy.add'), primary: true });
+    if (same && !missing) buttons.push({ value: 'update', label: t('b.deploy.update'), primary: true });
+    buttons.push({ value: 'replace', label: t('b.deploy.replace'), danger: true });
+    const text = h('div', { class: 'stack small' },
+      h('p', { text: t('b.deploy.there', { n: there.units.length }) + ' ' + (same ? t('b.deploy.same', { name }) : t('b.deploy.new', { name: name || '?' })) }),
+      !same ? h('p', { text: t('b.deploy.add.help') }) : null,
+      same && !missing ? h('p', { text: t('b.deploy.update.help', { n: others.length }) }) : null,
+      same && missing ? h('p', { class: 'warn', text: t('b.deploy.missing', { n: missing }) }) : null,
+      h('p', { class: 'bad', text: t('b.deploy.replace.help', { n: there.units.length }) }));
+    const choice = await dialog(t('b.deploy'), text, buttons);
+    if (choice === 'add') runTool('deploy', { install: copy, bundle: [lastBundle], builder, keep: true });
+    else if (choice === 'update') runTool('deploy', { install: copy, bundle: [...others.map(b => b.path), lastBundle], builder });
+    else if (choice === 'replace') runTool('deploy', { install: copy, bundle: [lastBundle], builder });
   }
 
   async function runTool(id, values) {
     try {
       const r = await api('/api/tools/' + id, { values });
-      watchJob(r.job, jobBox, {});
+      watchJob(r.job, jobBox, { onDone: () => drawDeploy() });
     } catch (e) { toast(e.message, 'bad'); }
   }
 

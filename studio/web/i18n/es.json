@@ -121,7 +121,7 @@
   "b.deploy.go": "Desplegar",
   "b.deploy.undo": "Deshacer",
   "b.deploy.confirm": "¿Desplegar la última exportación en {copy}? Se guardan copias de seguridad y Deshacer restaura la copia.",
-  "b.undo.confirm": "¿Quitar todos los edificios desplegados de {copy} y restaurar sus archivos?",
+  "b.undo.confirm": "¿Quitar los {n} edificios desplegados de {copy} y restaurar sus archivos?",
   "job.started": "En marcha: mira su progreso abajo.",
   "job.done": "Terminado: {title}",
   "job.failed": "Falló ({code}): {title}",
@@ -633,5 +633,16 @@
   "b.v.damaged": "Dañado",
   "b.v.damaged.help": "La textura que muestra el juego cuando el edificio ha perdido vida",
   "b.v.team": "Equipo",
-  "b.v.team.help": "El color del jugador visto con el color de este equipo (con Color del jugador activado)"
+  "b.v.team.help": "El color del jugador visto con el color de este equipo (con Color del jugador activado)",
+  "b.deploy.there": "La copia tiene {n} edificios desplegados.",
+  "b.deploy.empty": "Todavía no hay nada nuestro desplegado en ella.",
+  "b.deploy.same": "{name} es uno de ellos.",
+  "b.deploy.new": "{name} todavía no está.",
+  "b.deploy.add": "Añadirlo",
+  "b.deploy.add.help": "Añadir: el edificio nuevo se suma a los otros; Deshacer los quita todos juntos.",
+  "b.deploy.update": "Actualizarlo",
+  "b.deploy.update.help": "Actualizar: los otros {n} se despliegan de nuevo con la versión nueva de este.",
+  "b.deploy.missing": "{n} paquetes de los otros ya no están en el disco: no se pueden volver a desplegar, así que solo se puede Sustituir.",
+  "b.deploy.replace": "Sustituir todo",
+  "b.deploy.replace.help": "Sustituir todo: se quitan los {n} edificios desplegados ahora y solo queda este."
 }
