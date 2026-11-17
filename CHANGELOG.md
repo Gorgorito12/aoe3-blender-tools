@@ -15,7 +15,8 @@ English and Spanish, for modders who use neither Blender nor a terminal.
 - Screens made for their task: repaint a unit by its UV islands, design a civ flag set, make
   tileable textures from photographs, compose a settlement and write its grouping, a survey's
   results as a sortable table, look inside `.ddt`, `.gr2`, `.xmb` and `.bar` files.
-- Every command-line tool as a form with its live log; a trial before any change in place.
+- Every command-line tool as a form with its live log, every option with its help in both
+  languages; a trial before any change in place.
 - A program without Python (`tools/build_app.py`), which uses an installed Blender for the exports.
 - The rule that every new function reaches the studio, held by its tests (`studio/coverage.py`).
 

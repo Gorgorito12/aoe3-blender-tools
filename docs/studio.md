@@ -31,7 +31,9 @@ folder) are kept in `%APPDATA%\aoe3-blender-tools\studio.json`. Nothing leaves t
 | Developer tools | Technical sheets, sweep, galleries, AI sweep, the painter's fit, swatch download, add-on zips |
 
 Every command-line tool has its form (`studio/catalog.py`; `tests/test_studio.py` fails when a
-script has none, or when a form passes an option its script does not read).
+script has none, or when a form passes an option its script does not read). Every option says
+what it does, its unit and its default, in both languages (`studio/catalog_help.py` for those the
+catalog declares without help; a test fails on an option left without it).
 
 ## The screens made for their task
 

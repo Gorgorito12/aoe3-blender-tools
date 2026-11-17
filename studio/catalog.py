@@ -752,7 +752,7 @@ TOOLS = [
          L("Download the material swatches", "Descargar las muestras de material"),
          L("Downloads the CC0 swatches, checks each licence and prepares them in the add-on's folder.",
            "Descarga las muestras CC0, comprueba cada licencia y las prepara en la carpeta del complemento."),
-         [Arg("names", None, "text", L("Only these", "Solo estas")),
+         [Arg("names", None, "text", L("Only these", "Solo estas"), rest=True),
           Arg("cache", "--cache", "folder", L("Download cache", "Caché de descargas"))],
          needs=("network",), writes="repo", dev=True),
     Tool("build_zip", "tools/build_zip.py", "dev",
@@ -762,6 +762,18 @@ TOOLS = [
          [], writes="repo", dev=True),
 ]
 BY_ID = {t.id: t for t in TOOLS}
+
+
+def _fill_help():
+    """An option declared without help takes its text from studio/catalog_help.py."""
+    from .catalog_help import HELP
+    for t in TOOLS:
+        for a in t.args:
+            if not a.help["en"] and a.key in HELP.get(t.id, {}):
+                a.help = L(*HELP[t.id][a.key])
+
+
+_fill_help()
 
 
 # -- requirements ---------------------------------------------------------------------------

@@ -1013,6 +1013,21 @@ class Inspector(unittest.TestCase):
                 inspector.inspect(os.path.join(tmp, "Art1.bar"), "nothing")
 
 
+class FormHelp(unittest.TestCase):
+    def test_every_option_has_its_help_in_both_languages(self):
+        from studio import catalog_help
+        missing = [f"{t.id}.{a.key}" for t in catalog.TOOLS for a in t.args
+                   if not (a.help["en"].strip() and a.help["es"].strip())]
+        self.assertEqual(missing, [], "options without help: add them to studio/catalog_help.py")
+        known = {(t.id, a.key) for t in catalog.TOOLS for a in t.args}
+        stale = [f"{t}.{k}" for t, opts in catalog_help.HELP.items() for k in opts if (t, k) not in known]
+        self.assertEqual(stale, [], "help for options that no longer exist")
+
+    def test_several_swatch_names_are_passed_one_by_one(self):
+        cmd = catalog.command(None, "fetch_materials", {"names": "plaster clay"})[0]
+        self.assertEqual(cmd[-2:], ["plaster", "clay"])
+
+
 class InspectorCache(unittest.TestCase):
     def test_a_compressed_model_is_read_from_the_cache(self):
         """A model the game stores compressed is shown from its uncompressed copy in the cache,
