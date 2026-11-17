@@ -5,7 +5,7 @@ takes it back out.
 
     python -I tools\\hc_move.py stage --game <copy> --civ <civ> --target "<Mod>\\homecity"
         --out <stage folder> --granny <bridge.exe> [--form A|B] [--shared _shared]
-        [--cache <survey cache> ...] [--recompress <tools/recompress_models.py>]
+        [--cache <survey cache> ...] [--work <folder>] [--recompress <tools/recompress_models.py>]
         [--convert] [--suffix]
     python -I tools\\hc_move.py install --bed <test copy> --stage <stage folder>
     python -I tools\\hc_move.py undo --bed <test copy>
@@ -27,13 +27,16 @@ What `stage` does, for the home city of <civ> (its data and campaign files):
   is. Each result is read back: its names, and that every new name resolves in the moved layout.
   With --recompress, each rebuilt model is compressed again (tools/recompress_models.py), with
   each section in its original's format when the sections kept their sizes, else Oodle1.
-- **Not by default, and why** (in game, 2026-11-17, on a home city):
-  - --convert also puts a raw 3ds Max export into the stock basis (`rebake --convert`). The
-    models it converted were drawn misplaced and out of scale in the home city, so conversion
-    does not keep what the game draws there;
-  - --suffix writes a .tga, .png or .jpg name as <name>.(u,a,f,m).tga (the digits of the .ddt it
-    resolves to). The game drops only the last extension: it then looks for
-    <name>.(u,a,f,m).ddt, and the models were drawn black until .ddt copies of that name existed.
+- **--suffix** renames each moved .ddt that only .tga/.png/.jpg stored names reach to
+  <name>.(u,a,f,m).ddt, the digits its own header (never re-encoded), and writes those stored
+  names <name>.(u,a,f,m).tga: the game drops only the last extension of a stored name, so it
+  reads them as that .ddt (in game, 2026-11-17). A .ddt that a stored .ddt name or an anim file
+  (<replacetexture>, a decal) names keeps its name, and the report lists it.
+- **Run "_tables" as the civ** to move the models that only the shared tables name (props,
+  proto units) to the shared folder. Files already below the tree are never moved again.
+- **--convert** (off) also puts a raw 3ds Max export into the stock basis (`rebake --convert`).
+  In game (2026-11-17) the converted models of a home city were drawn misplaced and out of
+  scale: conversion does not keep what the game draws there.
 - **The references.** Every home-city file and every loose anim file (plain or compiled) that
   names a moved file is edited on that line only: visuals, includes, models, animations and
   textures. A home-city path relative to art\\homecity\\ gets ..\\ in form A.
@@ -91,30 +94,66 @@ def civ_homecities(res, civ):
     return hcs
 
 
-def plan_moves(res, civ, target, form="A", shared="_shared"):
+TABLES = "_tables"
+SUFFIXABLE = (".tga", ".png", ".jpg", ".jpeg")
+
+
+def anim_texture_refs(art):
+    """{ddt key: [anim files]} of every texture any loose anim file names (<texture>,
+    <replacetexture>), read cheaply: such a .ddt keeps its name."""
+    import re
+    pat = re.compile(r"<(?:texture|to|from)>\s*([^<]+?)\s*</", re.I)
+    out = {}
+    for key, full in art.loose.items():
+        if not (key.endswith(".xml") or key.endswith(".xml.xmb")):
+            continue
+        try:
+            with open(full, "rb") as fh:
+                raw = fh.read()
+            text = hs.decode_text(raw) if key.endswith(".xmb") else raw.decode("utf-8", "replace")
+        except Exception:                                  # noqa: BLE001
+            continue
+        for value in pat.findall(text):
+            k = hs.join_key("", value)
+            if k:
+                out.setdefault(k if k.endswith(".ddt") else k + ".ddt", []).append(key)
+    return out
+
+
+def plan_moves(res, civ, target, form="A", shared="_shared", suffix=False, tex_refs=None):
     """{"civ", "tree", "root", "moves": {old key: new art path (spelled)}, "groups": {key: civ|
-    shared}, "stay": [(key, why)], "left": [keys under the root that nothing moves]}."""
+    shared}, "stay": [(key, why)], "left": [keys under the root that nothing reaches],
+    "suffixed": {ddt key: digits}, "unsuffixed": [(ddt key, why)]}.
+
+    civ "_tables": the models only the shared tables (props, proto units) name, to the shared
+    folder. Files already below the tree are left where they are. With `suffix`, a moved .ddt
+    that only .tga/.png/.jpg stored names reach is renamed <name>.(u,a,f,m).ddt (its real
+    header); tex_refs: anim_texture_refs(art), the textures anim files name (they keep theirs)."""
     art = res["art"]
-    hcs = civ_homecities(res, civ)
-    civ = hcs[0]["civ"]
-    main = next((h for h in hcs if h["file"].lower().startswith("data")), hcs[0])
-    root = main["root_folder"]
-    if not root:
-        raise SystemExit(f"{civ}: its home city names no folder of its own")
-    labels = {h["label"] for h in hcs}
-    civ_of = {h["label"]: h["civ"] for h in res["homecities"] if h["kind"] == "civ"}
     tree = trees(target, form)
-    dest = {"civ": tree + "\\" + civ, "shared": tree + "\\" + shared}
+    tree_key = hs.norm(tree) + "\\"
+    civ_of = {h["label"]: h["civ"] for h in res["homecities"] if h["kind"] == "civ"}
+    if civ == TABLES:
+        labels = {h["label"] for h in res["homecities"] if h["kind"] != "civ"}
+        root = None
+        civ_name = TABLES
+    else:
+        hcs = civ_homecities(res, civ)
+        civ_name = hcs[0]["civ"]
+        main = next((h for h in hcs if h["file"].lower().startswith("data")), hcs[0])
+        root = main["root_folder"]
+        labels = {h["label"] for h in hcs}
+    dest = {"civ": tree + "\\" + civ_name, "shared": tree + "\\" + shared}
 
     def rel(key):
         disp = art.display(key)
-        if key.startswith(root + "\\"):
+        if root and key.startswith(root + "\\"):
             return disp[len(root) + 1:]
-        parts = disp.replace("/", "\\").split("\\")
-        return "_from_" + parts[0].replace(" ", "_") + "\\" + "\\".join(parts[1:])
+        return disp[len("homecity\\"):] if key.startswith("homecity\\") else disp
 
-    moves, groups, stay = {}, {}, []
-    rows = [r for r in res["files"] if r["status"] in ("mod", "override") and labels & set(r["homecities"])]
+    groups, stay = {}, []
+    rows = [r for r in res["files"] if r["status"] in ("mod", "override")
+            and labels & set(r["homecities"]) and not r["key"].startswith(tree_key)]
     for r in rows:
         civs = {civ_of[h] for h in r["homecities"] if h in civ_of}
         if r["status"] == "override":
@@ -123,58 +162,101 @@ def plan_moves(res, civ, target, form="A", shared="_shared"):
             stay.append((r["key"], "used outside the home cities: " + ", ".join(r["world_refs"][:3])))
         elif r["kind"] == "pathdata":
             stay.append((r["key"], "path data"))
+        elif civ == TABLES:
+            if not civs:
+                groups[r["key"]] = "shared"
         elif not civs:
-            stay.append((r["key"], "only a shared table names it"))
+            stay.append((r["key"], "only a shared table names it (moved with the tables)"))
         else:
             groups[r["key"]] = "shared" if len(civs) > 1 else "civ"
     # anim files of the home city's folder, and which civs reach them
-    reach = {}
-    for h in res["homecities"]:
-        if h["kind"] != "civ":
-            continue
-        for akey, info in h["anims"].items():
-            for vkey, where in info["variants"]:
-                if where == "loose" and vkey.startswith(root + "\\"):
-                    reach.setdefault(vkey, set()).add(h["civ"])
-    for vkey, civs in reach.items():
-        if civ in civs:
-            groups[vkey] = "shared" if len(civs) > 1 else "civ"
-    # textures that every user takes along
+    if root:
+        reach = {}
+        for h in res["homecities"]:
+            if h["kind"] != "civ":
+                continue
+            for info in h["anims"].values():
+                for vkey, where in info["variants"]:
+                    if where == "loose" and vkey.startswith(root + "\\"):
+                        reach.setdefault(vkey, set()).add(h["civ"])
+        for vkey, civs in reach.items():
+            if civ_name in civs:
+                groups[vkey] = "shared" if len(civs) > 1 else "civ"
+    # textures that every user takes along: below the home city's folder, or in a folder whose
+    # every loose model moves; never one an anim file outside these home cities names
     users = {}
     for r in res["files"]:
         for t in r.get("texture_info", []):
             if t["resolved"]:
                 users.setdefault(t["resolved"], set()).add(r["key"])
+    tex_refs = tex_refs or {}
+    hc_anims = {v for h in res["homecities"] for info in h["anims"].values() for v, _w in info["variants"]}
+
+    def folder_moves(k):
+        d = os.path.dirname(k)
+        models = [x for x in art.by_folder.get(d, []) if x.endswith(".gr2")]
+        return bool(models) and all(x in groups for x in models)
+
+    def movable(k):
+        if not k or art.status(k) != "mod" or k.startswith(tree_key):
+            return False
+        if any(a not in hc_anims for a in tex_refs.get(k, ())):
+            return False
+        return (root and k.startswith(root + "\\")) or folder_moves(k)
+
     for r in rows:
         if r["key"] not in groups:
             continue
         for t in r.get("texture_info", []):
             k = t["resolved"]
-            if not k or art.status(k) != "mod" or not k.startswith(root + "\\"):
-                continue
-            if all(u in groups for u in users[k]):
+            if movable(k) and all(u in groups for u in users[k]):
                 groups[k] = "shared" if any(groups[u] == "shared" for u in users[k]) else "civ"
-    # textures of the folder that anim files name (<replacetexture>, decals): with the civs whose
-    # home cities name them, unless a model that stays uses them
-    named = {}
-    for h in res["homecities"]:
-        if h["kind"] != "civ":
-            continue
-        for info in h["anims"].values():
-            for r in info["refs"]:
-                if r["kind"].startswith("texture"):
-                    k = ref_key(r)
-                    if k and k.startswith(root + "\\") and art.status(k) == "mod":
-                        named.setdefault(k, set()).add(h["civ"])
-    for k, civs in named.items():
-        if civ not in civs or any(u not in groups for u in users.get(k, ())):
-            continue
-        if len(civs) > 1 or groups.get(k) == "shared":
-            groups[k] = "shared"
-        else:
-            groups[k] = "civ"
-    for k, g in groups.items():
-        moves[k] = dest[g] + "\\" + rel(k)
+    # textures of the folder that anim files name (<replacetexture>, decals)
+    if root:
+        named = {}
+        for h in res["homecities"]:
+            if h["kind"] != "civ":
+                continue
+            for info in h["anims"].values():
+                for r in info["refs"]:
+                    if r["kind"].startswith("texture"):
+                        k = ref_key(r)
+                        if k and k.startswith(root + "\\") and movable(k):
+                            named.setdefault(k, set()).add(h["civ"])
+        for k, civs in named.items():
+            if civ_name not in civs or any(u not in groups for u in users.get(k, ())):
+                continue
+            groups[k] = "shared" if (len(civs) > 1 or groups.get(k) == "shared") else "civ"
+    moves = {k: dest[g] + "\\" + rel(k) for k, g in groups.items()}
+    # the suffix: a moved .ddt that only .tga/.png/.jpg stored names of moved models reach
+    suffixed, unsuffixed = {}, []
+    if suffix:
+        exts, header = {}, {}
+        for r in res["files"]:
+            for t in r.get("texture_info", []):
+                if t["resolved"] in moves:
+                    exts.setdefault(t["resolved"], set()).add(t["ext"])
+                    header[t["resolved"]] = t["header"]
+        for k in sorted(moves):
+            if not k.endswith(".ddt"):
+                continue
+            why = None
+            if k not in exts:
+                why = "no model stores its name (an anim file names it)"
+            elif tex_refs.get(k):
+                why = "an anim file names it: " + tex_refs[k][0]
+            elif not exts[k] <= set(SUFFIXABLE):
+                why = "a model stores it as " + "/".join(sorted(exts[k] - set(SUFFIXABLE)) or ["?"])
+            elif not header.get(k):
+                why = "no readable header"
+            elif hs.SUFFIX_RE.search(os.path.splitext(os.path.basename(k))[0]):
+                why = "already suffixed"
+            if why:
+                unsuffixed.append((k, why))
+                continue
+            new = moves[k]
+            moves[k] = new[:-4] + f".({header[k]})" + new[-4:]
+            suffixed[k] = header[k]
     taken = {}
     for k, new in moves.items():
         low = hs.norm(new)
@@ -182,41 +264,37 @@ def plan_moves(res, civ, target, form="A", shared="_shared"):
             raise SystemExit(f"two files would land on {new}: {art.display(k)} and "
                              f"{art.display(taken.get(low, low))}")
         taken[low] = k
-    left = sorted(k for k in art.loose if k.startswith(root + "\\") and k not in moves)
-    return {"civ": civ, "form": form, "tree": tree, "root": root, "moves": moves,
-            "groups": groups, "stay": stay, "left": left, "labels": sorted(labels)}
+    reached = set(moves) | {r["key"] for r in res["files"]} | hc_anims | set(users) | set(tex_refs)
+    left = sorted(k for k in art.loose
+                  if k.startswith(root + "\\") and k not in reached) if root else []
+    return {"civ": civ_name, "form": form, "tree": tree, "root": root, "moves": moves,
+            "groups": groups, "stay": stay, "left": left, "labels": sorted(labels),
+            "suffixed": suffixed, "unsuffixed": unsuffixed}
 
 
 # --------------------------------------------------------------------------------------------------
 # Texture names
 
-def new_texture_name(stored, info, moves, art, prefix, suffix=False):
-    """The stored name a moved model gets for one texture, or (None, why) to leave it. Without
-    `suffix`, a name only follows its moved .ddt and keeps its extension."""
+def new_texture_name(stored, info, moves, art, prefix, suffixed=None):
+    """The stored name a moved model gets for one texture, or (None, why) to leave it. A name
+    follows its moved .ddt and keeps its extension; a .tga/.png/.jpg name of a .ddt the plan
+    renamed with its suffix (`suffixed`: {ddt key: digits}) becomes <name>.(u,a,f,m).tga, which
+    the game reads as <name>.(u,a,f,m).ddt (it drops only the last extension)."""
     k = info["resolved"]
     if not k:
         return None, "resolves to nothing"
+    if k not in moves:
+        return None, "its .ddt stays where it is"
     p = str(stored).replace("/", "\\")
     i = p.lower().rfind("\\art\\")
-    if i >= 0:
-        head, below = p[:i + 5], p[i + 5:]
-    else:
-        head, below = prefix, None
-    if k in moves:
-        folder = os.path.dirname(moves[k])
-    elif below is not None and info["how"] == "art path":
-        folder = os.path.dirname(below)
-    else:
-        folder = os.path.dirname(art.display(k))
+    head = p[:i + 5] if i >= 0 else prefix
+    folder = os.path.dirname(moves[k])
     stem = info["stem"]
-    if info["ext"] == ".ddt" or not suffix:
-        if k not in moves:
-            return None, ("a .ddt name, its file stays" if suffix else "its file stays")
-        new = head + folder + "\\" + stem + (p[p.rfind("."):] if info["ext"] else "")
+    if suffixed and k in suffixed and info["ext"] in SUFFIXABLE:
+        new = head + folder + "\\" + stem + f".({suffixed[k]}).tga"
     else:
-        if not info["header"]:
-            return None, "its .ddt has no readable header"
-        new = head + folder + "\\" + stem + f".({info['header']}).tga"
+        stem += f".({info['suffix']})" if info["suffix"] else ""
+        new = head + folder + "\\" + stem + (p[p.rfind("."):] if info["ext"] else "")
     return (new, "") if new != p else (None, "unchanged")
 
 
@@ -230,12 +308,16 @@ def model_prefix(textures):
 
 
 def resolves_after(name, moved_layout_keys, art_exists):
-    """Does a stored name resolve (the part after \\art\\, the suffix and extension dropped,
-    .ddt added) in the layout after the move?"""
-    folder, stem, _ext, _suffix = hs.split_texture(name)
-    if folder is None:
+    """Does a stored name resolve in the layout after the move, as the game reads it: the part
+    after \\art\\, its last extension dropped, .ddt added?"""
+    p = str(name).replace("/", "\\")
+    i = p.lower().rfind("\\art\\")
+    if i < 0:
         return False
-    key = hs.join_key(folder, stem.lower() + ".ddt")
+    below = p[i + 5:]
+    base = below.rsplit("\\", 1)[-1]
+    stem = base[:base.rfind(".")] if "." in base else base
+    key = hs.join_key(hs.norm(os.path.dirname(below)), stem.lower() + ".ddt")
     return key in moved_layout_keys or (art_exists(key) and key not in moved_layout_keys.removed)
 
 
@@ -383,15 +465,17 @@ def run_recompress(tool, install, src, out, like):
 
 
 def stage(game, civ, target, out, bridge_exe, form="A", shared="_shared", caches=(),
-          convert=False, suffix=False, recompress=None, rebake=None, log=print):
+          convert=False, suffix=False, recompress=None, rebake=None, work=None, log=print):
     """Writes the stage folder. rebake(src, dst, convert, renames) -> record line replaces the
     bridge (tests); recompress: the path of tools/recompress_models.py, to compress each rebuilt
     model again."""
     if os.path.commonpath([os.path.abspath(out), os.path.abspath(game)]) == os.path.abspath(game):
         raise SystemExit("--out must be outside the game copy")
-    res = hs.survey(game, target, caches=caches)
+    bridge = (bridge_exe, os.path.abspath(game), os.path.abspath(work)) if work and bridge_exe else None
+    res = hs.survey(game, target, caches=caches, bridge=bridge)
     art = res["art"]
-    p = plan_moves(res, civ, target, form, shared)
+    p = plan_moves(res, civ, target, form, shared, suffix=suffix,
+                   tex_refs=anim_texture_refs(art) if suffix else None)
     moves = p["moves"]
     files = os.path.join(out, "files")
     work = os.path.join(out, "work")
@@ -423,7 +507,7 @@ def stage(game, civ, target, out, bridge_exe, form="A", shared="_shared", caches
             prefix = model_prefix(r.get("textures", []))
             renames, kept = [], []
             for t in r.get("texture_info", []):
-                name, why = new_texture_name(t["stored"], t, moves, art, prefix, suffix)
+                name, why = new_texture_name(t["stored"], t, moves, art, prefix, p["suffixed"])
                 if name:
                     if not resolves_after(name, layout, art.exists):
                         raise SystemExit(f"{art.display(k)}: {name} would resolve to nothing")
@@ -534,7 +618,7 @@ def check_model(data, renames, converted, row, caches):
 
 def report(p, art, models, edited, notes):
     root = next((art.display(k)[:len(p["root"])] for k in art.loose
-                 if k.startswith(p["root"] + "\\")), p["root"])
+                 if k.startswith(p["root"] + "\\")), p["root"]) if p["root"] else "-"
     out = [f"# {p['civ']}: home-city models moved", "",
            f"Tree: `art\\{p['tree']}\\` (form {p['form']}). Old folder: `art\\{root}`.",
            "", "## Models", "", "| old | new | converted | names renamed | names left | written |",
@@ -553,6 +637,10 @@ def report(p, art, models, edited, notes):
     out += ["", "## Edited files", ""]
     for rel, changes in sorted(edited.items()):
         out.append(f"- `{rel}`: " + "; ".join(f"line {n}: `{a}` -> `{b}`" for n, a, b in changes))
+    if p.get("suffixed") or p.get("unsuffixed"):
+        out += ["", "## Suffix", "", f"{len(p['suffixed'])} textures renamed with their header; "
+                f"{len(p['unsuffixed'])} keep their name:", ""]
+        out += [f"- `{art.display(k)}`: {why}" for k, why in p["unsuffixed"]]
     out += ["", "## Not moved", ""]
     for k, why in p["stay"]:
         out.append(f"- `{art.display(k)}`: {why}")
@@ -659,7 +747,7 @@ def main(argv):
             raise SystemExit("stage needs --granny <bridge.exe>")
         stage(opt("--game"), opt("--civ"), opt("--target"), opt("--out"), opt("--granny"),
               form=opt("--form", "A").upper(), shared=opt("--shared", "_shared"),
-              caches=opts("--cache"), convert="--convert" in argv,
+              caches=opts("--cache"), convert="--convert" in argv, work=opt("--work"),
               suffix="--suffix" in argv, recompress=opt("--recompress"))
         return 0
     if cmd == "install" and opt("--bed") and opt("--stage"):

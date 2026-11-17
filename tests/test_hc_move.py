@@ -89,12 +89,34 @@ class MoveTest(unittest.TestCase):
         art, moves = self.res["art"], self.plan["moves"]
         new, _ = hm.new_texture_name(tex["main"]["stored"], tex["main"], moves, art, hm.DEFAULT_PREFIX)
         self.assertEqual(new, fixture.ART + "Mod\\homecity\\Testland\\main.tga")
-        new, _ = hm.new_texture_name(tex["main"]["stored"], tex["main"], moves, art,
-                                     hm.DEFAULT_PREFIX, suffix=True)
-        self.assertEqual(new, fixture.ART + "Mod\\homecity\\Testland\\main.(0,1,8,8).tga")
         sky = next(r for r in self.res["files"] if r["key"] == "homecity\\test\\sky.gr2")
         flat = next(t for t in sky["texture_info"] if t["stem"] == "flat")
         self.assertEqual(hm.new_texture_name(flat["stored"], flat, moves, art, "")[0], None)
+        # with the suffix: the .ddt itself is renamed, and the stored name says the same digits
+        sp = hm.plan_moves(self.res, "Testland", TARGET, "A", suffix=True, tex_refs={})
+        self.assertEqual(sp["moves"]["homecity\\test\\main.ddt"],
+                         "Mod\\homecity\\Testland\\main.(0,1,8,8).ddt")
+        self.assertEqual(sp["moves"]["homecity\\test\\main_b.(6,0,9,8).ddt"],   # already has it
+                         "Mod\\homecity\\Testland\\main_b.(6,0,9,8).ddt")
+        new, _ = hm.new_texture_name(tex["main"]["stored"], tex["main"], sp["moves"], art,
+                                     hm.DEFAULT_PREFIX, sp["suffixed"])
+        self.assertEqual(new, fixture.ART + "Mod\\homecity\\Testland\\main.(0,1,8,8).tga")
+        layout = hm.Layout({hs.norm(v) for v in sp["moves"].values()}, sp["moves"])
+        self.assertTrue(hm.resolves_after(new, layout, art.exists))
+        self.assertFalse(hm.resolves_after(tex["main"]["stored"], layout, art.exists))
+        # a .ddt a home city's anim file names moves but keeps its name; one an anim file
+        # outside the home cities names stays where it is
+        kept = hm.plan_moves(self.res, "Testland", TARGET, "A", suffix=True,
+                             tex_refs={"homecity\\test\\main.ddt": ["homecity\\test\\test_homecity.xml"]})
+        self.assertEqual(kept["moves"]["homecity\\test\\main.ddt"], "Mod\\homecity\\Testland\\main.ddt")
+        self.assertIn("homecity\\test\\main.ddt", dict(kept["unsuffixed"]))
+        out = hm.plan_moves(self.res, "Testland", TARGET, "A", suffix=True,
+                            tex_refs={"homecity\\test\\main.ddt": ["units\\guy\\guy_world.xml"]})
+        self.assertNotIn("homecity\\test\\main.ddt", out["moves"])
+
+    def test_tables_and_the_tree(self):
+        tables = hm.plan_moves(self.res, hm.TABLES, TARGET)
+        self.assertEqual(tables["moves"], {})                # the fixture's tables name no model
 
     def test_edits(self):
         text = "<a>\n  <file>X\\y</file> <file>X\\y</file>\n</a>"

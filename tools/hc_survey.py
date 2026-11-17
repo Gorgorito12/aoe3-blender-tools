@@ -501,18 +501,21 @@ def ddt_digits(head):
 def texture_info(art, stored, model):
     folder, stem, ext, suffix = split_texture(stored)
     home = os.path.dirname(model)
+    # the game drops only the last extension: a name with a (u,a,f,m) suffix reaches a .ddt that
+    # carries the suffix too (in game, 2026-11-17)
+    full = (stem + (f".({suffix})" if suffix else "")).lower()
     lstem = stem.lower()
     tries = []
     if folder is not None:
-        tries.append((join_key(folder, lstem + ".ddt"), "art path"))
-    tries.append((join_key(home, lstem + ".ddt"), "model folder"))
+        tries.append((join_key(folder, full + ".ddt"), "art path"))
+    tries.append((join_key(home, full + ".ddt"), "model folder"))
     found, how = None, "missing"
     for key, why in tries:
         if key and art.exists(key):
             found, how = key, why
             break
     if found is None:
-        cands = art.by_stem.get(lstem, [])
+        cands = art.by_stem.get(full, [])
         loose = [k for k in cands if k in art.loose]
         if cands:
             found = (loose or cands)[0]

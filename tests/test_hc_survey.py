@@ -114,7 +114,7 @@ def build(g):
     put(g, a + "main.gr2", model(ART + "homecity\\test\\main.tga",
                                  ART + "homecity\\test\\main_b.(6,0,9,8).tga", upm=39.370079))
     put(g, a + "main.ddt", ddt(0, 1, 8, 8))
-    put(g, a + "main_b.ddt", ddt(6, 0, 9, 8))
+    put(g, a + "main_b.(6,0,9,8).ddt", ddt(6, 0, 9, 8))
     put(g, a + "main.(0,1,8,8).tga", b"tga")
     put(g, a + "sky.gr2", model("D:\\a\\art\\homecity\\test\\sky.jpg", "D:\\x\\flat.ddt"))
     put(g, a + "sky.ddt", ddt(0, 4, 8, 8))
