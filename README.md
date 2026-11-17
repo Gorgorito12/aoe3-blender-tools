@@ -330,8 +330,10 @@ python -I tools/build_app.py --zip                     # or a program without Py
 
 The building generator with a live 3D preview, the texture and its atlas, triangles against the
 budget, the technical sheet, the game export (with the AI repaint when ComfyUI runs) and the
-deployment to a test copy; every command-line tool as a form, with its live log and its outputs;
-a file inspector for `.ddt`, `.gr2`, `.xmb` and `.bar`. Previews need no Blender; the exports
+deployment to a test copy; a unit's texture repainted by clicking its UV islands, a civ flag set
+designed from one picture, tileable textures made from photographs, the AI repaint region by
+region; every command-line tool as a form, with its live log and its outputs; a file inspector for
+`.ddt`, `.gr2`, `.xmb` and `.bar`. Previews need no Blender; the exports
 use the `bpy` module or an installed Blender 4.2+. Tools that change files in place run a trial
 first; nothing is ever written into the game's installation or a Steam library. Details in
 [docs/studio.md](docs/studio.md).
@@ -414,9 +416,10 @@ see [tools/README.md](tools/README.md).
    in the writer; the bone weights of the packed vertex stream more than half of the units use
    (the reader opens its positions and UVs); an armature in the importer.
 7. **The studio** (in progress): every tool in one window (done: the generator with its live
-   preview, every tool as a form, the file inspector, the program build, English and Spanish).
-   Next: the game export without Blender, screens made for the retexture recipe, the flag
-   designer and the settlement composer.
+   preview, every tool as a form, the file inspector, the program build, English and Spanish, and
+   screens made for repainting units, designing flags, making textures and the AI repaint by
+   regions). Next: those screens with the real art of a game copy, the game export without
+   Blender, the settlement composer on a map.
 
 ## License
 

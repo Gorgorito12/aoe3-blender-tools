@@ -6,6 +6,9 @@ import { areaScreen, toolScreen } from './tools.js';
 import { jobsScreen } from './jobs.js';
 import { settingsScreen } from './settings.js';
 import { inspectScreen } from './inspect.js';
+import { retexScreen } from './retex.js';
+import { flagsScreen } from './flags.js';
+import { texmakerScreen } from './texmaker.js';
 
 const SCREENS = [
   { id: 'buildings', icon: '🏛' },
@@ -17,6 +20,15 @@ const SCREENS = [
   { id: 'dev', icon: '🛠' },
 ];
 
+// the screens made for their task, shown first on their area: [route, title key, intro key]
+const SCREENS_OF = {
+  survey: [['inspect', 'i.title', 'i.intro']],
+  textures: [['retex', 'r.title', 'r.intro'], ['texmaker', 'x.title', 'x.intro']],
+  art: [['flags', 'f.title', 'f.intro']],
+};
+// the area each of those screens belongs to, for the navigation
+const AREA_OF = Object.fromEntries(Object.entries(SCREENS_OF).flatMap(([a, list]) => list.map(([r]) => [r, a])));
+
 const app = {
   state: null,
   leave: [],
@@ -24,29 +36,37 @@ const app = {
   go(route) { location.hash = '#/' + route; },
   // what an area's screen shows above its tools
   extraFor(area) {
-    if (area !== 'survey') return null;
-    return h('button', { type: 'button', class: 'card tool-card', style: { marginBottom: '12px', width: '100%' },
-      onclick: () => this.go('inspect') }, h('strong', { text: t('i.title') }), h('span', { class: 'muted', text: t('i.intro') }));
+    const screens = SCREENS_OF[area];
+    if (!screens) return null;
+    return h('div', { class: 'tool-grid', style: { marginBottom: '14px' } }, screens.map(([route, title, intro]) =>
+      h('button', { type: 'button', class: 'card tool-card featured', onclick: () => this.go(route) },
+        h('strong', { text: t(title) }), h('span', { class: 'muted', text: t(intro) }))));
   },
 };
 
 async function show() {
   const route = (location.hash.replace(/^#\//, '') || 'buildings');
   for (const fn of app.leave.splice(0)) { try { fn(); } catch { /* already gone */ } }
-  const main = document.getElementById('main');
+  // each visit draws into a page of its own: a screen still loading when the user moves on then
+  // draws into a page no longer shown, never over the next screen
+  const main = h('div', { class: 'page' });
+  clear(document.getElementById('main')).append(main);
   const [head, rest] = route.split('/');
-  drawNav(head === 'tool' ? toolArea(rest) : head === 'inspect' ? 'survey' : head);
+  drawNav(head === 'tool' ? toolArea(rest) : AREA_OF[head] || head);
   try {
     if (head === 'buildings') await buildingsScreen(main, app);
     else if (head === 'jobs') await jobsScreen(main, app);
     else if (head === 'settings') await settingsScreen(main, app);
     else if (head === 'tool') await toolScreen(main, app, rest);
     else if (head === 'inspect') await inspectScreen(main, app);
+    else if (head === 'retex') await retexScreen(main, app);
+    else if (head === 'flags') await flagsScreen(main, app);
+    else if (head === 'texmaker') await texmakerScreen(main, app);
     else await areaScreen(main, app, head);
   } catch (e) {
     clear(main).append(h('div', { class: 'notice bad' }, e.message));
   }
-  main.focus({ preventScroll: true });
+  document.getElementById('main').focus({ preventScroll: true });
 }
 
 let toolAreas = {};

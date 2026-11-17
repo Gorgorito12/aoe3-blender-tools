@@ -169,3 +169,38 @@ dialog img { max-width: 100%; }
   .field { grid-template-columns: 110px 1fr; }
 }
 .checker { background: repeating-conic-gradient(#8884 0% 25%, transparent 0% 50%) 50% / 16px 16px; }
+
+/* made-to-measure screens */
+.retex { display: grid; grid-template-columns: 340px minmax(380px, 1fr) 340px; gap: 14px; align-items: start; }
+.retex > section { min-width: 0; }
+.imageview { display: block; cursor: crosshair; touch-action: none; }
+.chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 12px;
+  padding: 1px 4px 1px 8px; font-size: 12px; background: var(--panel); }
+.chip.minus { border-style: dashed; color: var(--bad); }
+.chip button { padding: 0 4px; }
+button.chip { padding: 2px 8px; cursor: pointer; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.step { padding: 10px; }
+.step.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.step.off { opacity: .55; }
+.step .field { grid-template-columns: 100px 1fr; }
+.tool-card.featured { border-color: var(--accent); }
+@media (max-width: 1280px) { .retex { grid-template-columns: 320px 1fr; } .retex > section:last-child { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .retex { grid-template-columns: 1fr; } }
+.flags { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.flags > section { min-width: 0; }
+.flagsheet { display: flex; flex-direction: column; gap: 10px; }
+.flagrow { display: grid; grid-template-columns: 130px minmax(0, max-content) minmax(0, max-content); gap: 12px;
+  align-items: center; justify-content: start; }
+.flagrow img { max-width: 100%; height: auto; }
+img.pixel { image-rendering: pixelated; }
+@media (max-width: 900px) { .flags { grid-template-columns: 1fr; } }
+.texmaker { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr) 320px; gap: 14px; align-items: start; }
+.texmaker > section { min-width: 0; }
+.texmaker figure { margin: 0; }
+img.texout { display: block; width: 100%; max-width: 256px; border-radius: 4px; background: var(--panel-2); }
+@media (max-width: 1280px) { .texmaker { grid-template-columns: 1fr 1fr; } .texmaker > section:last-child { grid-column: 1 / -1; } }
+@media (max-width: 900px) { .texmaker { grid-template-columns: 1fr; } }
+.regionlist { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+.regionlist .row { flex-wrap: nowrap; }
+.regionlist .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

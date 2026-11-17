@@ -5,6 +5,7 @@ import { api, clear, confirmDialog, debounce, fmt, h, pick, storeGet, storeSet, 
 import { markdown } from './md.js';
 import { Viewer } from './viewer.js';
 import { watchJob } from './jobs.js';
+import { aiCard } from './airepaint.js';
 
 const QUICK = 256;                   // the texture painted while a control moves
 const FULL = 1024;                   // the largest texture the preview paints
@@ -177,7 +178,7 @@ export async function buildingsScreen(main, app) {
     clear(tex);
     const d = state.preview;
     if (!d) return;
-    const url = state.view === 'damaged' ? d.damaged : d.texture;
+    const url = state.view === 'damaged' ? d.damaged : (state.aiImage || d.texture);
     if (!url) { tex.append(h('p', { class: 'muted', text: t('b.working') })); return; }
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 1 1');
@@ -204,7 +205,14 @@ export async function buildingsScreen(main, app) {
   const numbers = h('div', { class: 'card stack' });
   const actions = h('div', { class: 'card stack' });
   const sheetBox = h('div', { class: 'card md' });
-  right.append(h('div', { class: 'scroll stack' }, numbers, actions, h('details', { class: 'card' },
+  // the AI repaint by regions: its texture goes on the model, and to the export when chosen
+  const ai = aiCard(app, {
+    params: () => state.params,
+    show: url => { state.aiImage = url; viewer.setTexture(url); if (state.view === 'texture') drawTexture(); },
+    use: (path, key) => { state.ai = { path, key }; drawActions(); },
+    restore: () => { state.aiImage = null; state.ai = null; if (state.preview) viewer.setTexture(state.preview.texture); drawActions(); drawTexture(); },
+  });
+  right.append(h('div', { class: 'scroll stack' }, numbers, actions, ai, h('details', { class: 'card' },
     h('summary', { text: t('b.sheet') }), sheetBox)));
 
   function drawNumbers() {
@@ -253,6 +261,8 @@ export async function buildingsScreen(main, app) {
     stat.textContent = `${fmt(tris)} ${t('b.tris.short')} · ${fmt(d.vertices)} ${t('b.verts.short')}`;
   }
 
+  function aiInUse() { return !!(state.ai && state.ai.key === JSON.stringify(state.params)); }
+
   function drawActions() {
     clear(actions);
     const blender = app.state.blender;
@@ -269,20 +279,17 @@ export async function buildingsScreen(main, app) {
           ['DXT3', 'DXT1', 'BGRA'].map(x => h('option', { value: x, selected: x === opts.texture_format, text: x })))),
       [['no_icons', t('b.noicons')], ['no_lowpoly', t('b.nolowpoly')], ['no_damaged', t('b.nodamaged')]].map(([k, text]) =>
         h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: !!opts[k], onchange: e => { opts[k] = e.target.checked; storeSet('gameOpts', opts); } }), text)),
-      // the AI repaint: only when ComfyUI answers
-      h('label', { class: 'row small', title: app.state.requirements.comfy ? t('b.ai.help') : t('b.ai.off') },
-        h('input', { type: 'checkbox', disabled: !app.state.requirements.comfy, checked: !!opts.ai && app.state.requirements.comfy,
-          onchange: e => { opts.ai = e.target.checked; storeSet('gameOpts', opts); } }), t('b.ai'),
-        h('input', { type: 'number', min: 0.05, max: 0.95, step: 0.05, value: opts.ai_strength || 0.45, style: { width: '64px' },
-          'aria-label': t('b.ai.strength'), disabled: !app.state.requirements.comfy,
-          onchange: e => { opts.ai_strength = Number(e.target.value); storeSet('gameOpts', opts); } })));
+      // the texture of the AI repaint, while the building is the one it was made for
+      aiInUse() ? h('div', { class: 'notice ok small row' }, h('span', { class: 'grow', text: t('a.in.export') }),
+        h('button', { type: 'button', class: 'ghost small', text: '×', 'aria-label': t('remove'), onclick: () => { state.ai = null; drawActions(); } })) : null);
     const outInput = h('input', { type: 'text', class: 'grow', placeholder: t('b.out.default'), value: storeGet('gameOut', '') });
     actions.append(optForm, h('div', { class: 'row' }, outInput,
       h('button', { type: 'button', text: t('browse'), onclick: async () => { const p = await pick('folder', { title: t('b.out') }); if (p) { outInput.value = p; storeSet('gameOut', p); } } })));
     const run = async (kind) => {
       try {
-        const r = await api('/api/building/export', { kind, params: state.params, out: outInput.value || null,
-          options: kind === 'game' ? opts : { views: ['front34', 'back34', 'wire'] } });
+        const options = kind === 'game' ? { ...opts, ai: false, texture_png: aiInUse() ? state.ai.path : null }
+          : { views: ['front34', 'back34', 'wire'] };
+        const r = await api('/api/building/export', { kind, params: state.params, out: outInput.value || null, options });
         toast(t('job.started'), 'ok');
         lastBundle = kind === 'game' ? r.out : lastBundle;
         watchJob(r.job, jobBox, { onDone: drawDeploy });
@@ -350,6 +357,7 @@ export async function buildingsScreen(main, app) {
   const fullLater = debounce(() => refresh(false), 900);
   function changed(dragging) {
     storeSet('building', { preset: state.preset, params: state.params });
+    if (state.ai || state.aiImage) { state.ai = null; state.aiImage = null; drawActions(); }
     refresh(false, false, dragging);
     if (!dragging) sheetLater();
   }
@@ -368,7 +376,7 @@ export async function buildingsScreen(main, app) {
       const d = await api('/api/building/preview', { params: state.params, texture: size, damaged: job.damaged });
       if (seq === state.seq) {
         state.preview = d;
-        viewer.setModel(d, d.texture, frame || !viewer.mesh);
+        viewer.setModel(d, state.aiImage || d.texture, frame || !viewer.mesh);
         drawNumbers();
         if (state.view !== '3d') drawTexture();
         if (frame) loadSheet();

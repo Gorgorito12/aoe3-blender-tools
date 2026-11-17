@@ -16,7 +16,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import VERSION, WEB, blender_bridge, catalog, engine, jobs, settings
+from . import VERSION, WEB, blender_bridge, catalog, engine, jobs, sessions, settings
 from . import ROOT
 
 MAX_BODY = 8 * 1024 * 1024
@@ -43,6 +43,7 @@ class Studio:
         self.trials = {}                    # a tool's values -> the job of its trial run
         self.last_ping = None               # when the page last called in
         self.bye_at = None                  # when a page said it was closing
+        self.sessions = sessions.Sessions()  # what the made-to-measure screens have loaded
 
     # -- helpers ------------------------------------------------------------------------------
     def work_dir(self, *parts):
@@ -281,7 +282,11 @@ def r_building_export(st, rest, q, b):
         for flag in ("display", "template", "kind", "folder"):
             if opts.get(flag):
                 args += ["--" + flag, str(opts[flag])]
-        if opts.get("ai"):                  # repainted by the local ComfyUI (docs/ai-textures.md)
+        if opts.get("texture_png"):         # the texture the AI repaint tab made, as it was seen
+            if not os.path.isfile(opts["texture_png"]):
+                raise ApiError("the repainted texture is no longer there: repaint again")
+            args += ["--texture-png", opts["texture_png"]]
+        elif opts.get("ai"):                # repainted by the local ComfyUI (docs/ai-textures.md)
             strength = float(opts.get("ai_strength") or 0.45)
             if not 0.05 <= strength <= 0.95:
                 raise ApiError("AI strength: 0.05 to 0.95")
@@ -316,6 +321,221 @@ def r_inspect(st, rest, q, b):
         return inspector.inspect(b.get("path") or "", b.get("entry"))
     except inspector.InspectError as e:
         raise ApiError(str(e)) from None
+
+
+def _retex():
+    from . import retex
+    return retex
+
+
+def r_retex_load(st, rest, q, b):
+    """A unit (of the game copy) or a model file, with its texture and its UV islands."""
+    rx = _retex()
+    work = st.work_dir("retexture")
+    s = st.settings
+    common = {"scale": int(b.get("scale") or 1), "by": b.get("by") or "bone",
+              "cache": s.get("cache") or None, "granny": s.get("granny") or None}
+    try:
+        if b.get("source") == "game":
+            game = b.get("game") or s.get("game")
+            if not game:
+                raise ApiError("set the game's folder in Settings, or load a model file")
+            prefer = [x.strip() for x in (b.get("prefer") or "").split(",") if x.strip()]
+            session = rx.load_game(work, game, (b.get("target") or "").strip(), prefer=prefer,
+                                   overlay=b.get("overlay") or None, **common)
+        else:
+            if not b.get("model"):
+                raise ApiError("a model file (.gr2) is needed")
+            session = rx.load_files(work, b["model"], b.get("texture") or None, **common)
+    except rx.RetexError as e:
+        raise ApiError(str(e)) from None
+    st.roots.add(os.path.abspath(session.folder))
+    return dict(rx.public(session), session=st.sessions.add(session))
+
+
+def r_retex_paint(st, rest, q, b):
+    rx = _retex()
+    try:
+        return rx.paint(st.sessions.get(b.get("session")), b.get("ops") or [])
+    except rx.RetexError as e:
+        raise ApiError(str(e)) from None
+
+
+def r_retex_picture(st, rest, q, b):
+    rx = _retex()
+    try:
+        return {"name": rx.add_picture(st.sessions.get(b.get("session")), b.get("name"), b.get("data"))}
+    except rx.RetexError as e:
+        raise ApiError(str(e)) from None
+
+
+def r_retex_save(st, rest, q, b):
+    """Writes the recipe, then the retexture tool writes the texture, its bump map and a sheet."""
+    rx = _retex()
+    session = st.sessions.get(b.get("session"))
+    try:
+        recipe = rx.save(session, b.get("ops") or [], out=b.get("out") or "new", fmt=b.get("format") or "same",
+                         mips=b.get("mips") or "same", bump=bool(b.get("bump", True)),
+                         bump_strength=float(b.get("bump_strength") or 6.0))
+    except rx.RetexError as e:
+        raise ApiError(str(e)) from None
+    cmd = jobs.python_command() + [os.path.join(ROOT, "tools", "retexture.py"), recipe,
+                                   "--preview", os.path.join(session.folder, "sheet.png"),
+                                   "--url", st.settings.get("comfy_url") or "http://127.0.0.1:8188"]
+    job = st.jobs.start(f"Repaint: {session.name}", cmd, cwd=ROOT, outputs=[session.folder], tool="retexture")
+    return {"job": job.id, "recipe": recipe, "folder": session.folder}
+
+
+def _flags():
+    from . import flags
+    return flags
+
+
+DEFAULT_FLAGS = ("War of the Triple Alliance\\Flags", "War of the Triple Alliance\\Buttons")   # make_flag.py's
+
+
+def r_flags_measure(st, rest, q, b):
+    """A game copy's flag sets, measured once for the designer."""
+    fl = _flags()
+    try:
+        m = fl.measure(b.get("game") or st.settings.get("game"), b.get("flags_dir") or DEFAULT_FLAGS[0],
+                       b.get("buttons_dir") or DEFAULT_FLAGS[1])
+    except fl.FlagError as e:
+        raise ApiError(str(e)) from None
+    return dict(fl.public(m), session=st.sessions.add(m))
+
+
+def r_flags_preview(st, rest, q, b):
+    fl = _flags()
+    try:
+        m = st.sessions.get(b.get("session"))
+        if b.get("existing"):
+            return fl.existing(m, b["existing"])
+        return fl.preview(m, b.get("design"), b.get("crop"))
+    except fl.FlagError as e:
+        raise ApiError(str(e)) from None
+
+
+def r_flags_write(st, rest, q, b):
+    fl = _flags()
+    m = st.sessions.get(b.get("session"))
+    name = b.get("name") or ""
+    out = st.output(b.get("out") or os.path.join(st.work_dir("flags"), name or "flag"))
+    try:
+        return fl.write(m, b.get("design"), b.get("crop"), name, out)
+    except fl.FlagError as e:
+        raise ApiError(str(e)) from None
+
+
+def _tex():
+    from . import texmaker_ui
+    return texmaker_ui
+
+
+def r_tex_source(st, rest, q, b):
+    """The photograph a texture is made from (the page decodes it and sends it as a PNG)."""
+    tx = _tex()
+    folder = os.path.join(st.work_dir("textures"), time.strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(3))
+    try:
+        src = tx.Source(b.get("data"), folder)
+    except tx.TexError as e:
+        raise ApiError(str(e)) from None
+    h, w = src.rgb.shape[:2]
+    return {"session": st.sessions.add(src), "width": w, "height": h}
+
+
+def r_tex_preview(st, rest, q, b):
+    tx = _tex()
+    try:
+        return tx.preview(st.sessions.get(b.get("session")), b)
+    except tx.TexError as e:
+        raise ApiError(str(e)) from None
+
+
+def r_tex_keep(st, rest, q, b):
+    tx = _tex()
+    try:
+        entry = tx.keep(st.sessions.get(b.get("session")), b, b.get("folder") or None)
+    except tx.TexError as e:
+        raise ApiError(str(e)) from None
+    return {"entry": entry, "library": tx.library(b.get("folder") or None)}
+
+
+def r_tex_ai(st, rest, q, b):
+    """The same crop repainted by ComfyUI, as a task (tools/make_texture.py)."""
+    tx = _tex()
+    src = st.sessions.get(b.get("session"))
+    try:
+        cmd = tx.ai_command(src, b, jobs.python_command(), os.path.join(ROOT, "tools", "make_texture.py"),
+                            st.settings.get("comfy_url") or "http://127.0.0.1:8188")
+    except tx.TexError as e:
+        raise ApiError(str(e)) from None
+    job = st.jobs.start(f"Texture with AI: {b.get('name')}", cmd, cwd=ROOT, tool="make_texture")
+    return {"job": job.id}
+
+
+def r_tex_library(st, rest, q, b):
+    return _tex().library(b.get("folder") or None)
+
+
+def r_tex_use(st, rest, q, b):
+    """The library under the painter, or the add-on's swatches back: the building previews and
+    exports of this studio then show it."""
+    tx = _tex()
+    with engine._lock:                    # the painter's table must not change under a preview
+        return {"in_use": tx.use(bool(b.get("on")), b.get("folder") or None)}
+
+
+def r_tex_delete(st, rest, q, b):
+    tx = _tex()
+    try:
+        tx.delete(b.get("name"), b.get("folder") or None)
+    except tx.TexError as e:
+        raise ApiError(str(e)) from None
+    return tx.library(b.get("folder") or None)
+
+
+def _ai():
+    from . import airepaint_ui
+    return airepaint_ui
+
+
+def r_ai_regions(st, rest, q, b):
+    return _ai().regions(b.get("params") or {})
+
+
+def r_ai_start(st, rest, q, b):
+    """The building's texture repainted by ComfyUI region by region, in a thread of the studio."""
+    ai = _ai()
+    which = b.get("regions")
+    if which is not None and not isinstance(which, list):
+        raise ApiError("regions: a list of names, or nothing for all")
+    try:
+        run = ai.Run(b.get("params") or {}, st.settings.get("comfy_url") or "http://127.0.0.1:8188",
+                     strength=b.get("strength", 0.45), seed=b.get("seed", 1), regions=which,
+                     blend=b.get("blend", 1.0), prompt=b.get("prompt") or "", extra=b.get("extra") or "",
+                     guard=b.get("guard", True))
+    except ai.AiError as e:
+        raise ApiError(str(e)) from None
+    return {"session": st.sessions.add(run)}
+
+
+def r_ai_state(st, rest, q, b):
+    return st.sessions.get(b.get("session")).state(int(b.get("since", -1)))
+
+
+def r_ai_cancel(st, rest, q, b):
+    st.sessions.get(b.get("session")).cancel()
+    return {"ok": True}
+
+
+def r_ai_save(st, rest, q, b):
+    ai = _ai()
+    try:
+        path = st.sessions.get(b.get("session")).save(st.work_dir("ai"))
+    except ai.AiError as e:
+        raise ApiError(str(e)) from None
+    return {"path": path}
 
 
 def r_jobs(st, rest, q, b):
@@ -432,6 +652,25 @@ ROUTES = [
     ("POST", "/api/building/sheet", r_sheet),
     ("POST", "/api/building/export", r_building_export),
     ("POST", "/api/inspect", r_inspect),
+    ("POST", "/api/retex/load", r_retex_load),
+    ("POST", "/api/retex/paint", r_retex_paint),
+    ("POST", "/api/retex/picture", r_retex_picture),
+    ("POST", "/api/retex/save", r_retex_save),
+    ("POST", "/api/flags/measure", r_flags_measure),
+    ("POST", "/api/flags/preview", r_flags_preview),
+    ("POST", "/api/flags/write", r_flags_write),
+    ("POST", "/api/tex/source", r_tex_source),
+    ("POST", "/api/tex/preview", r_tex_preview),
+    ("POST", "/api/tex/keep", r_tex_keep),
+    ("POST", "/api/tex/ai", r_tex_ai),
+    ("POST", "/api/tex/library", r_tex_library),
+    ("POST", "/api/tex/use", r_tex_use),
+    ("POST", "/api/tex/delete", r_tex_delete),
+    ("POST", "/api/ai/regions", r_ai_regions),
+    ("POST", "/api/ai/start", r_ai_start),
+    ("POST", "/api/ai/state", r_ai_state),
+    ("POST", "/api/ai/cancel", r_ai_cancel),
+    ("POST", "/api/ai/save", r_ai_save),
     ("GET", "/api/jobs", r_jobs),
     ("GET", "/api/jobs/", r_job),
     ("POST", "/api/cancel/", r_cancel),

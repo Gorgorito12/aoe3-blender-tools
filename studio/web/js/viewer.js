@@ -125,7 +125,10 @@ export class Viewer {
     const size = new THREE.Vector3();
     b.getSize(size);
     const r = Math.max(size.length() / 2, 1);              // the bounding sphere
-    const target = new THREE.Vector3(0, size.z * 0.4, 0);   // Blender's Z is three's Y
+    const c = new THREE.Vector3();
+    b.getCenter(c);
+    // the box's centre, a little low (a building sits on the ground); Blender's Z is three's Y
+    const target = new THREE.Vector3(c.x, Math.max(b.min.z, 0) + (b.max.z - Math.max(b.min.z, 0)) * 0.42, -c.y);
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * this.camera.aspect);
     const dist = r / Math.sin(Math.min(vfov, hfov) / 2) * 1.05;

@@ -22,15 +22,49 @@ folder) are kept in `%APPDATA%\aoe3-blender-tools\studio.json`. Nothing leaves t
 
 | Screen | What is there |
 |---|---|
-| Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes; the texture with its atlas regions, and the damaged texture; triangles against the style's target or the game's buildings of the same class; the technical sheet; export for the game (with the AI repaint when ComfyUI runs), GLB/FBX/OBJ with renders; deploy to the test copy and undo |
-| Textures and units | Texture maker and library, UV atlas of a unit, repaint by body part, LoRA dataset and training |
+| Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes; the texture with its atlas regions, and the damaged texture; triangles against the style's target or the game's buildings of the same class; the technical sheet; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo |
+| Textures and units | **Repaint a unit** and **Make a tileable texture** (below); the UV atlas, the recipe tool, LoRA dataset and training as forms |
 | Survey and inspection | The art, texture, model, grouping, shape and palette surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it, `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back |
-| Art utilities | Civ flags, avatar icons, ground rings, health bars, the HITPOINTBAR fix, bone scale fix, uncompressed models |
+| Art utilities | **Design a civ flag** (below); avatar icons, ground rings, health bars, the HITPOINTBAR fix, bone scale fix, uncompressed models |
 | Tasks | Every task of the session with its live log, progress, cancel and outputs (pictures shown, text files opened, folders shown) |
 | Developer tools | Technical sheets, sweep, galleries, AI sweep, the painter's fit, swatch download, add-on zips |
 
 Every command-line tool has its form (`studio/catalog.py`; `tests/test_studio.py` fails when a
 script has none, or when a form passes an option its script does not read).
+
+## The screens made for their task
+
+A form is enough to run a survey; it is not enough to paint. Four screens work in the studio's
+own process and answer as you move a control (a ComfyUI step runs in a thread, a write as a task):
+
+- **Repaint a unit** (`studio/retex.py`, `web/js/retex.js`). A unit of the game copy (as
+  `tools/uv_atlas.py` finds its model and texture) or a model file; its texture with the UV
+  islands, coloured by body part on demand. Click an island to add it to the step being edited
+  (Ctrl or Alt: take it out), a part's button for the whole part, Shift and drag for a box. Steps
+  are those of `tools/retexture.py` (recolour, hue and tone, fill with a swatch, paste a design,
+  smooth, cloth grain, player colour, AI) with sliders and colour pickers, painted live on the
+  picture and on the unit in 3D (`retexture.paint`, split out of `run` with the same result).
+  A step with no selection yet paints nothing instead of failing. **Write** saves the recipe, the
+  atlas and the pictures in a folder of the work folder and runs the retexture tool: the .ddt in
+  the chosen format, the bump map, a sheet of before and after; the AI steps run there.
+- **Design a civ flag** (`studio/flags.py`, `web/js/flags.js`). The copy's flag sets measured once
+  (`make_flag.survey` and the state colour fits), then any design, cropped by Shift and drag,
+  shown as all ten textures (`make_flag.set_images`, split out of `make_set`) next to one of the
+  copy's sets; written beside the copy, never into it, with its preview sheet.
+- **Make a tileable texture** (`studio/texmaker_ui.py`, `web/js/texmaker.js`). A photograph (any
+  format the browser reads: the page sends it as PNG, the studio needs no image library), the
+  square to use moved with sliders or Shift and drag, the texture made at once without ComfyUI
+  (`texmaker.make(client=None)`), tiled 3 by 3, the join before and after, its distance to the
+  mod's own textures of that material; kept in the library with its licence (refused without
+  one); the library with its pictures; **Use it in the buildings** puts it under the painter
+  (`texlib.install`) for this studio's previews and exports, and back. With ComfyUI, the repaint
+  runs as `tools/make_texture.py`.
+- **AI repaint, region by region** (a card of the Buildings screen; `studio/airepaint_ui.py`,
+  `web/js/airepaint.js`). Each region with the material ComfyUI is asked for; all, walls, roofs or
+  one by one; strength, seed, mix, an own description, the edge guard. The model shows each
+  region as it is done; **Stop** ends it between two regions (and interrupts ComfyUI). **Use it
+  for the export** keeps the texture as a PNG that `scripts/game_export.py --texture-png` puts in
+  place of the painted one; a change to the building drops it.
 
 ## How it is built
 
@@ -80,11 +114,16 @@ script has none, or when a form passes an option its script does not read).
   triangles count, area, corner positions and UVs everywhere; the same vertices and normals in
   100 of the 102 cases.
 
+- The made-to-measure screens on synthetic data: a unit's live repaint of three steps on a
+  1024 px texture, 0.35 s; a texture made from a photograph without ComfyUI, 1.6 s (it works at
+  1024 px before bringing it to the swatch size); a flag set of ten textures, well under a second.
+
 ## Still to do
 
 - The game export without Blender: `core/gamemesh.py` gives Blender's mesh (above); the icon and
   portrait, the checks and the GLB writer still need Blender, and the result must be seen in game
   before Blender leaves that path.
-- Screens made for their task where a form is not enough: the retexture recipe as a painting tool
-  over the atlas, the flag designer with its preview, the settlement composer on a map.
+- The made-to-measure screens with the real art: a unit of the game copy and its flag sets have
+  only been tried on synthetic models and sets so far (no game copy set in this computer's
+  Settings during the work). The settlement composer on a map.
 - A signed installer, and a first-run assistant beyond the welcome note.

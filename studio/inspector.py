@@ -112,15 +112,10 @@ def _texture_beside(folder, names):
     return None
 
 
-def _gr2(name, data, folder=None):
+def mesh_of(model):
+    """A model read by gr2_mesh.read as one mesh for the page's 3D view, with its numbers; None
+    when it holds no mesh this reader can show."""
     import numpy as np
-    try:
-        model = gr2_mesh.read(data)
-    except gr2.Compressed as e:
-        return {"kind": "gr2", "name": name, "error": f"{e}. Use Uncompressed models, or give the Granny bridge "
-                "in Settings to the tools that read compressed models."}
-    except (gr2.Gr2Error, ValueError) as e:
-        return {"kind": "gr2", "name": name, "error": str(e)}
     pos, uvs, idx, base = [], [], [], 0
     meshes = []
     for m in model["meshes"]:
@@ -131,18 +126,32 @@ def _gr2(name, data, folder=None):
         uvs.append(np.asarray(u, np.float32))
         idx.append(t)
         base += len(p)
-        meshes.append({"name": m["name"], "vertices": int(len(p)), "triangles": int(len(t)), "bones": m["bound_to"][:20]})
+        meshes.append({"name": m["name"], "vertices": int(len(p)), "triangles": int(len(t)),
+                       "bones": list(m["bound_to"][:20])})
     if not pos:
-        return {"kind": "gr2", "name": name, "error": "no mesh this reader can show (an animation?)",
-                "bones": len(model["bones"]), "skipped": model["skipped"]}
+        return None
     P, U, T = np.concatenate(pos), np.concatenate(uvs), np.concatenate(idx)
     lo, hi = P.min(0), P.max(0)
-    beside = _texture_beside(folder, model["textures"]) if folder else None
-    return {"kind": "gr2", "name": name, "texture": beside[1] if beside else None,
-            "texture_name": beside[0] if beside else None,
-            "mesh": {"positions": [round(float(c), 4) for c in P.ravel()], "uvs": [round(float(c), 5) for c in U.ravel()],
-                     "indices": [int(i) for i in T.ravel()]},
+    return {"mesh": {"positions": [round(float(c), 4) for c in P.ravel()],
+                     "uvs": [round(float(c), 5) for c in U.ravel()], "indices": [int(i) for i in T.ravel()]},
             "attach": {b[0]: list(b[2]) for b in model["bones"][:400]},
-            "meshes": meshes, "textures": model["textures"], "skipped": model["skipped"],
-            "triangles": int(len(T)), "vertices": int(len(P)), "bones": len(model["bones"]),
-            "size": [round(float(v), 3) for v in hi - lo], "units_per_meter": model["units_per_meter"]}
+            "meshes": meshes, "triangles": int(len(T)), "vertices": int(len(P)), "bones": len(model["bones"]),
+            "size": [round(float(v), 3) for v in hi - lo]}
+
+
+def _gr2(name, data, folder=None):
+    try:
+        model = gr2_mesh.read(data)
+    except gr2.Compressed as e:
+        return {"kind": "gr2", "name": name, "error": f"{e}. Use Uncompressed models, or give the Granny bridge "
+                "in Settings to the tools that read compressed models."}
+    except (gr2.Gr2Error, ValueError) as e:
+        return {"kind": "gr2", "name": name, "error": str(e)}
+    shown = mesh_of(model)
+    if shown is None:
+        return {"kind": "gr2", "name": name, "error": "no mesh this reader can show (an animation?)",
+                "bones": len(model["bones"]), "skipped": model["skipped"]}
+    beside = _texture_beside(folder, model["textures"]) if folder else None
+    return dict(shown, kind="gr2", name=name, texture=beside[1] if beside else None,
+                texture_name=beside[0] if beside else None, textures=model["textures"],
+                skipped=model["skipped"], units_per_meter=model["units_per_meter"])

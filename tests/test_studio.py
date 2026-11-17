@@ -227,6 +227,215 @@ class Server(unittest.TestCase):
                                                              "options": {"ai": True, "ai_strength": 2}})
             self.assertEqual(status, 400)
 
+    def test_repaint_a_unit(self):
+        """The unit repaint screen: load a model and its texture, paint live, add a picture, write."""
+        import base64
+
+        import numpy as np
+        from aoe3game import ddt, gr2_write
+        from core import paint as painter
+        with tempfile.TemporaryDirectory() as tmp:
+            # a 'unit' of two islands: a head high up (UV top left), a leg low down (UV bottom right)
+            P = [(-.2, 0, 1.6), (.2, 0, 1.6), (.2, 0, 1.9), (-.2, 0, 1.9), (-.2, 0, .1), (.2, 0, .1), (.2, 0, .8), (-.2, 0, .8)]
+            UV = [(0, .5), (.5, .5), (.5, 1), (0, 1), (.5, 0), (1, 0), (1, .5), (.5, .5)]
+            with open(os.path.join(tmp, "unit.gr2"), "wb") as fh:
+                fh.write(gr2_write.static_model("unit", P, [(0, -1, 0)] * 8, UV, [(0, 1, 2), (0, 2, 3), (4, 5, 6), (4, 6, 7)],
+                                                texture="unit.ddt", bump="unit_b.ddt"))
+            tex = np.full((64, 64, 4), 200, np.uint8)
+            tex[..., 3] = 255
+            tex[48:, 48:, 3] = 0                                    # player colour on the leg
+            with open(os.path.join(tmp, "unit.ddt"), "wb") as fh:
+                fh.write(ddt.write_bgra(tex, alpha=1, mips=False))
+            status, r = self.call("/api/retex/load", {"source": "file", "model": os.path.join(tmp, "unit.gr2"),
+                                                      "texture": os.path.join(tmp, "unit.ddt"), "by": "position"})
+            self.assertEqual(status, 200, r)
+            self.assertEqual((r["width"], r["height"], r["triangles"]), (64, 64, 4))
+            self.assertEqual(sorted(i["part"] for i in r["islands"]), ["head", "leg_r"])
+            sid = r["session"]
+            head = [{"op": "recolour", "where": ["part:head"], "colour": "#204080", "shading": 0}]
+            status, p = self.call("/api/retex/paint", {"session": sid, "ops": head + [{"op": "tone", "where": []},
+                                                                                     {"op": "ai", "where": ["all"]}]})
+            self.assertEqual(status, 200, p)
+            self.assertEqual((p["empty"], p["ai_skipped"]), ([1], [2]))   # neither paints in the preview
+            from core import pngio
+            img = np.asarray(pngio.read_png(base64.b64decode(p["image"].split(",", 1)[1])))
+            self.assertEqual(img[8, 8, :3].tolist(), [32, 64, 128])       # the head, recoloured
+            self.assertEqual(img[56, 56, :3].tolist(), [200, 200, 200])   # the leg, untouched
+            status, err = self.call("/api/retex/paint", {"session": sid, "ops": [{"op": "melt", "where": ["all"]}]})
+            self.assertEqual(status, 400)
+            # a swatch the page sends, then a fill with it
+            swatch = np.zeros((8, 8, 3), np.uint8)
+            swatch[..., 1] = 180
+            data = "data:image/png;base64," + base64.b64encode(painter.png_bytes(swatch)).decode()
+            status, got = self.call("/api/retex/picture", {"session": sid, "name": "green.png", "data": data})
+            self.assertEqual((status, got.get("name")), (200, "green.png"), got)
+            for bad in ("../x.png", "start.png", "x.exe"):
+                status, _ = self.call("/api/retex/picture", {"session": sid, "name": bad, "data": data})
+                self.assertEqual(status, 400, bad)
+            ops = head + [{"op": "fill", "where": ["part:legs"], "swatch": "green.png", "tile": 8, "shading": 0}]
+            status, err = self.call("/api/retex/save", {"session": sid, "ops": [{"op": "tone", "where": []}]})
+            self.assertEqual(status, 400)                                  # a step that paints nowhere
+            status, w = self.call("/api/retex/save", {"session": sid, "ops": ops, "out": "blue", "format": "DXT3"})
+            self.assertEqual(status, 200, w)
+            j = self.wait(w["job"], 120)
+            self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"])
+            with open(os.path.join(w["folder"], "blue.ddt"), "rb") as fh:
+                out = ddt.decode(fh.read(), 0)
+            self.assertLess(abs(int(out[8, 8, 2]) - 128), 12)              # DXT3: near, not exact
+            self.assertGreater(int(out[56, 56, 1]), int(out[56, 56, 0]) + 60)  # the leg filled green
+            self.assertEqual(int(out[60, 60, 3]), 0)                       # the player colour kept
+            for name in ("blue_b.ddt", "blue.png", "sheet.png", "recipe.json", os.path.join("atlas", "atlas.json")):
+                self.assertTrue(os.path.isfile(os.path.join(w["folder"], name)), name)
+        status, err = self.call("/api/retex/paint", {"session": "gone", "ops": []})
+        self.assertEqual(status, 400)
+
+    def test_design_a_flag(self):
+        """The flag designer on a made-up copy (tests/test_make_flag.py): measure, preview every
+        texture of the set, compare, write beside the copy and never into it."""
+        import base64
+
+        import numpy as np
+        from core import paint as painter
+        sys.path.insert(0, os.path.join(ROOT, "tests"))
+        import test_make_flag as tmf
+        with tempfile.TemporaryDirectory() as tmp:
+            game = os.path.join(tmp, "game")
+            tmf.fake_copy(game, n=6)
+            status, m = self.call("/api/flags/measure", {"game": game, "flags_dir": tmf.FL, "buttons_dir": tmf.BT})
+            self.assertEqual(status, 200, m)
+            self.assertEqual(m["count"], 6)
+            design = np.zeros((40, 60, 3), np.uint8)
+            design[:, :30] = (200, 20, 20)
+            design[:, 30:] = (20, 20, 200)
+            url = "data:image/png;base64," + base64.b64encode(painter.png_bytes(design)).decode()
+            status, p = self.call("/api/flags/preview", {"session": m["session"], "design": url})
+            self.assertEqual(status, 200, p)
+            self.assertEqual(sorted(p), sorted(["flag", "postgame"] + [f"{k}_{s}" for k in ("button", "large")
+                                                                         for s in ("normal", "click", "high", "disable")]))
+            # a crop of the left half only: the in-game flag is red all across
+            status, p = self.call("/api/flags/preview", {"session": m["session"], "design": url, "crop": [0, 0, 0.5, 1]})
+            from core import pngio
+            flag = np.asarray(pngio.read_png(base64.b64decode(p["flag"].split(",", 1)[1])))
+            self.assertGreater(int(flag[64, 120, 0]), int(flag[64, 120, 2]) + 80)
+            status, e = self.call("/api/flags/preview", {"session": m["session"], "existing": "s2"})
+            self.assertEqual((status, len(e)), (200, 10))
+            for bad in ({"name": "bad name"}, {"name": "ok", "out": os.path.join(game, "art", "x")}):
+                status, err = self.call("/api/flags/write", dict({"session": m["session"], "design": url}, **bad))
+                self.assertEqual(status, 400, bad)
+            out = os.path.join(tmp, "out")
+            status, w = self.call("/api/flags/write", {"session": m["session"], "design": url, "name": "duo", "out": out})
+            self.assertEqual(status, 200, w)
+            self.assertEqual(len(w["files"]), 10)
+            self.assertTrue(all(os.path.isfile(f) for f in w["files"].values()))
+            self.assertTrue(os.path.isfile(w["sheet"]))
+            status, _ = self.call("/api/flags/measure", {"game": os.path.join(tmp, "nothing")})
+            self.assertEqual(status, 400)
+
+    def test_make_a_texture(self):
+        """The texture maker: a photograph, a crop made tileable without ComfyUI, kept in a
+        library with its licence, used by the painter, deleted."""
+        import base64
+
+        import numpy as np
+        from core import paint as painter
+        rng = np.random.default_rng(0)
+        img = (rng.random((120, 160, 3)) * 60 + np.linspace(60, 200, 160)[None, :, None]).astype(np.uint8)
+        url = "data:image/png;base64," + base64.b64encode(painter.png_bytes(img)).decode()
+        with tempfile.TemporaryDirectory() as lib:
+            status, s = self.call("/api/tex/source", {"data": url})
+            self.assertEqual(status, 200, s)
+            self.assertEqual((s["width"], s["height"]), (160, 120))
+            o = {"session": s["session"], "cx": 0.5, "cy": 0.5, "part": 0.8, "size": 128, "material": "plaster"}
+            status, p = self.call("/api/tex/preview", o)
+            self.assertEqual(status, 200, p)
+            self.assertLess(p["report"]["seam"], p["report"]["seam_before"])     # it tiles better than the photograph
+            for bad in ({"size": 300}, {"part": 0}, {"cx": 2}):
+                self.assertEqual(self.call("/api/tex/preview", dict(o, **bad))[0], 400, bad)
+            keep = dict(o, name="wall_test", licence="made in a test", style="COLONIAL", role="wall", folder=lib)
+            for bad in ({"licence": ""}, {"name": "../x"}):
+                self.assertEqual(self.call("/api/tex/keep", dict(keep, **bad))[0], 400, bad)
+            status, k = self.call("/api/tex/keep", keep)
+            self.assertEqual(status, 200, k)
+            self.assertEqual([x["name"] for x in k["library"]["textures"]], ["wall_test"])
+            self.assertIn("COLONIAL", k["library"]["roles"])
+            with open(os.path.join(lib, "wall_test.json"), encoding="utf-8") as fh:
+                self.assertEqual(json.load(fh)["licence"], "made in a test")
+            status, u = self.call("/api/tex/use", {"on": True, "folder": lib})
+            try:
+                self.assertEqual(u["in_use"], {"COLONIAL wall": "wall_test"})
+                from core import materials
+                self.assertEqual(os.path.basename(materials.MATERIALS["COLONIAL"]["wall"][0]), "wall_test")
+            finally:
+                status, u = self.call("/api/tex/use", {"on": False})
+            self.assertEqual(u["in_use"], {})
+            self.assertEqual(materials.MATERIALS["COLONIAL"]["wall"][0], "plaster")   # the add-on's own again
+            # the AI repaint needs a prompt (and runs as a task)
+            self.assertEqual(self.call("/api/tex/ai", dict(keep, prompt=""))[0], 400)
+            status, d = self.call("/api/tex/delete", {"name": "wall_test", "folder": lib})
+            self.assertEqual((status, d["textures"]), (200, []))
+            self.assertEqual(self.call("/api/tex/delete", {"name": "wall_test", "folder": lib})[0], 400)
+
+    def test_ai_repaint_by_regions(self):
+        """The building screen's AI repaint against the ComfyUI stand-in: the regions and their
+        materials, a run region by region with its texture as it goes, a stop, the result kept and
+        used by the game export (that part needs the bpy module)."""
+        sys.path.insert(0, os.path.join(ROOT, "tests"))
+        from fake_comfy import FakeComfy
+        p = engine.preset("COLONIAL_HOUSE")
+        p["texture_size"] = 256
+        status, r = self.call("/api/ai/regions", {"params": p})
+        self.assertEqual(status, 200, r)
+        names = {x["name"]: x for x in r["regions"]}
+        self.assertTrue(names["roof"]["material"])
+        self.assertIn("roof", r["roofs"])
+        usable = [x["name"] for x in r["regions"] if x["material"] and not x["small"]]
+        self.assertGreater(len(usable), 3)
+
+        def slow_invert(rgb):                 # a region takes a while, so a stop lands between two
+            time.sleep(0.2)
+            return 255 - rgb
+        with FakeComfy(transform=slow_invert) as fake:
+            self.studio.settings.update({"paths": {"comfy_url": fake.url}})
+            try:
+                self.assertEqual(self.call("/api/ai/start", {"params": p, "regions": ["nowhere"]})[0], 400)
+                self.assertEqual(self.call("/api/ai/start", {"params": p, "strength": 3})[0], 400)
+                status, s = self.call("/api/ai/start", {"params": p, "regions": usable[:2], "strength": 0.4, "guard": False})
+                self.assertEqual(status, 200, s)
+                for _ in range(200):
+                    status, st = self.call("/api/ai/state", {"session": s["session"]})
+                    if st["status"] != "running":
+                        break
+                    time.sleep(0.1)
+                self.assertEqual(st["status"], "done", st)
+                self.assertEqual(st["version"], 3)                        # each region, then the result
+                self.assertTrue(st["image"].startswith("data:image/png"))
+                self.assertEqual(len([x for x in st["report"] if "skipped" not in x]), 2)
+                status, saved = self.call("/api/ai/save", {"session": s["session"]})
+                self.assertEqual(status, 200, saved)
+                self.assertTrue(os.path.isfile(saved["path"]))
+                # a stop between regions keeps what was done
+                status, s2 = self.call("/api/ai/start", {"params": p, "strength": 0.4, "guard": False})
+                self.call("/api/ai/cancel", {"session": s2["session"]})
+                for _ in range(200):
+                    status, st2 = self.call("/api/ai/state", {"session": s2["session"]})
+                    if st2["status"] != "running":
+                        break
+                    time.sleep(0.1)
+                self.assertEqual(st2["status"], "cancelled", st2)
+            finally:
+                self.studio.settings.update({"paths": {"comfy_url": "http://127.0.0.1:8188"}})
+        status, err = self.call("/api/ai/start", {"params": p})                 # nothing answers there
+        self.assertEqual(status, 400)
+        if not self.studio.bridge.module:
+            return
+        with tempfile.TemporaryDirectory() as tmp:
+            status, r = self.call("/api/building/export", {"kind": "game", "params": p, "out": tmp,
+                                                           "options": {"texture_png": saved["path"], "no_icons": True}})
+            j = self.wait(r["job"], 300)
+            self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"][-20:])
+            self.assertIn("--texture-png", j["command"])
+            self.assertTrue(any(line.startswith("texture:") for line in j["lines"]))
+
     def test_a_job_can_be_cancelled(self):
         job = self.studio.jobs.start("sleep", [sys.executable, "-c", "import time\nprint('1/4', flush=True)\ntime.sleep(60)"])
         time.sleep(1.0)

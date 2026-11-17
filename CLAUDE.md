@@ -132,6 +132,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   `jobs.py` (each tool in its own process), `blender_bridge.py` (the `bpy` module or an installed
   Blender), `catalog.py` (every command-line tool as a form, strings in English and Spanish),
   `inspector.py` (.ddt, .gr2, .xmb, .bar read only), `settings.py`, `picker.py` (file dialogs),
+  the screens made for their task (`retex.py` unit repaint, `flags.py` flag designer, `texmaker_ui.py`
+  texture maker, `airepaint_ui.py` AI repaint by regions; `sessions.py` keeps what they loaded),
   `web/` (the page: ES modules, no build step; three.js vendored; `i18n/en.json`, `es.json`).
   `aoe3_blender_tools/core/schema.py` describes every `BuildingParams` field for the forms;
   `core/gamemesh.py` is the game mesh without Blender (measured against Blender's).
