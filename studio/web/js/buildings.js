@@ -317,6 +317,7 @@ export async function buildingsScreen(main, app) {
     actions.append(h('h2', { text: t('b.export') }));
     if (!blender.available) actions.append(h('p', { class: 'notice small', text: t('b.noblender') }));
     const opts = storeGet('gameOpts', { prefix: 'mod', texture_format: 'DXT3', display: '', no_icons: false, no_lowpoly: false, no_damaged: false });
+    if (!blender.available) opts.no_blender = true;     // the only way left: the experimental one
     const optForm = h('div', {},
       h('div', { class: 'field' }, h('label', { text: t('b.prefix'), for: 'o-prefix' }),
         h('input', { id: 'o-prefix', type: 'text', value: opts.prefix, onchange: e => { opts.prefix = e.target.value; storeSet('gameOpts', opts); } })),
@@ -327,6 +328,12 @@ export async function buildingsScreen(main, app) {
           ['DXT3', 'DXT1', 'BGRA'].map(x => h('option', { value: x, selected: x === opts.texture_format, text: x })))),
       [['no_icons', t('b.noicons')], ['no_lowpoly', t('b.nolowpoly')], ['no_damaged', t('b.nodamaged')]].map(([k, text]) =>
         h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: !!opts[k], onchange: e => { opts[k] = e.target.checked; storeSet('gameOpts', opts); } }), text)),
+      // experimental: the game export without Blender (scripts/game_export_noblender.py)
+      h('label', { class: 'row small', title: t('b.noblender.help') },
+        h('input', { type: 'checkbox', checked: !!opts.no_blender, disabled: !blender.available,
+          onchange: e => { opts.no_blender = e.target.checked; storeSet('gameOpts', opts); drawActions(); } }),
+        t('b.noblender.option'), h('span', { class: 'pill warn', text: t('b.experimental') })),
+      opts.no_blender ? h('p', { class: 'small muted', text: t('b.noblender.help') }) : null,
       // the texture of the AI repaint, while the building is the one it was made for
       aiInUse() ? h('div', { class: 'notice ok small row' }, h('span', { class: 'grow', text: t('a.in.export') }),
         h('button', { type: 'button', class: 'ghost small', text: '×', 'aria-label': t('remove'), onclick: () => { state.ai = null; drawActions(); } })) : null);
@@ -344,8 +351,8 @@ export async function buildingsScreen(main, app) {
       } catch (e) { toast(e.message, 'bad'); }
     };
     actions.append(h('div', { class: 'row' },
-      h('button', { type: 'button', disabled: !blender.available, text: t('b.check'), title: t('b.check.help'), onclick: () => check() }),
-      h('button', { type: 'button', class: 'primary', disabled: !blender.available, text: t('b.export.game'), onclick: () => run('game') }),
+      h('button', { type: 'button', text: t('b.check'), title: t('b.check.help'), onclick: () => check() }),
+      h('button', { type: 'button', class: 'primary', disabled: !blender.available && !opts.no_blender, text: t('b.export.game'), onclick: () => run('game') }),
       h('button', { type: 'button', disabled: !blender.available, text: t('b.export.files'), onclick: () => run('files'), title: t('b.export.files.help') }),
       h('button', { type: 'button', text: t('b.save'), onclick: saveParams }),
       h('button', { type: 'button', text: t('b.load'), onclick: loadParams })));

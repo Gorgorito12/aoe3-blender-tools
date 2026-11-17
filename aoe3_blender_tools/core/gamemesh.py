@@ -42,6 +42,15 @@ def _convex(poly2):
     return True
 
 
+def _flat(poly2, tris, eps=1e-9):
+    """Whether one of the triangles has no area."""
+    for a, b, c in tris:
+        (x0, y0), (x1, y1), (x2, y2) = poly2[a], poly2[b], poly2[c]
+        if abs((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0)) <= eps:
+            return True
+    return False
+
+
 def triangulate(pts):
     """Index triples into pts: len(pts) - 2 of them for a simple polygon."""
     n = len(pts)
@@ -60,6 +69,13 @@ def triangulate(pts):
     u, v = _basis(normal)
     poly2 = [(sum(q[k] * u[k] for k in range(3)), sum(q[k] * v[k] for k in range(3))) for q in pts]
     if _convex(poly2):
+        if n > 4 and _flat(poly2, fan):
+            # points along one edge (an arcade's lintel): a fan from the first corner leaves flat
+            # triangles, which Blender's n-gon triangulation does not; fan from a corner that leaves none
+            for k in range(1, n):
+                other = [(k, (k + i) % n, (k + i + 1) % n) for i in range(1, n - 1)]
+                if not _flat(poly2, other):
+                    return other
         return fan
     tris = _ear_clip(poly2)
     if not tris:

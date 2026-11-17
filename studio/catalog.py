@@ -761,6 +761,20 @@ TOOLS = [
                                                                "dist/."),
          [], writes="repo", dev=True),
 ]
+TOOLS.insert(next(i for i, t in enumerate(TOOLS) if t.id == "game_export") + 1, Tool(
+    "game_export_noblender", "scripts/game_export_noblender.py", "buildings",
+    L("Export a preset for the game, without Blender (experimental)",
+      "Exportar un preset al juego, sin Blender (experimental)"),
+    L("The same bundle without Blender: the mesh, icons and checks made by this program. Whether it looks the "
+      "same in game is still to verify.",
+      "El mismo paquete sin Blender: la malla, los iconos y las comprobaciones los hace este programa. Falta "
+      "verificar en el juego que se vea igual."),
+    [*next(t for t in TOOLS if t.id == "game_export").args,
+     Arg("compare", "--compare", "folder", L("Compare with (a Blender bundle)", "Comparar con (un paquete de Blender)"),
+         L("A bundle of the same building made with Blender: each file is compared and the differences listed.",
+           "Un paquete del mismo edificio hecho con Blender: se compara cada archivo y se listan las diferencias."))],
+    outputs=("out",)))
+
 BY_ID = {t.id: t for t in TOOLS}
 
 

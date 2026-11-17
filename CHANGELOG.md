@@ -17,6 +17,9 @@ English and Spanish, for modders who use neither Blender nor a terminal.
   results as a sortable table, look inside `.ddt`, `.gr2`, `.xmb` and `.bar` files.
 - Every command-line tool as a form with its live log, every option with its help in both
   languages; a trial before any change in place.
+- Without Blender: the checks (the same findings as Blender's on every preset), and an
+  experimental game export (`scripts/game_export_noblender.py`) to be seen in game before it
+  replaces Blender's.
 - A program without Python (`tools/build_app.py`), which uses an installed Blender for the exports.
 - The rule that every new function reaches the studio, held by its tests (`studio/coverage.py`).
 

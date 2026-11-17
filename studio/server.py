@@ -307,6 +307,10 @@ def r_building_export(st, rest, q, b):
                 args.append(flag)
         script = os.path.join(ROOT, "scripts", "game_export.py")
         title = f"Game export: {params.name}"
+        if opts.get("no_blender"):          # experimental: scripts/game_export_noblender.py
+            cmd = jobs.python_command() + [os.path.join(ROOT, "scripts", "game_export_noblender.py")] + args
+            job = st.jobs.start(title + " (without Blender)", cmd, cwd=ROOT, outputs=[out], tool="building_game")
+            return {"job": job.id, "out": out}
     elif kind == "files":
         args = ["--params", spec, "--out", out]
         views = opts.get("views")
@@ -625,10 +629,11 @@ def r_building_check(st, rest, q, b):
     spec = os.path.join(st.work_dir("jobs"), f"{params.name}-check-{int(time.time() * 1000)}.json")
     with open(spec, "w", encoding="utf-8") as fh:
         json.dump(schema.params_to_dict(params), fh)
-    try:
-        cmd = st.bridge.command(os.path.join(ROOT, "scripts", "check.py"), ["--params", spec, "--json"])
-    except RuntimeError as e:
-        raise ApiError(str(e)) from None
+    script, args = os.path.join(ROOT, "scripts", "check.py"), ["--params", spec, "--json"]
+    if st.bridge.available or st.bridge.module:
+        cmd = st.bridge.command(script, args)
+    else:                                   # the same rules without Blender (core/checks.py)
+        cmd = jobs.python_command() + [script] + args + ["--no-blender"]
     job = st.jobs.start(f"Check: {params.name}", cmd, cwd=ROOT, tool="check")
     return {"job": job.id}
 

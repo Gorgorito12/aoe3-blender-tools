@@ -277,6 +277,35 @@ class Server(unittest.TestCase):
                                                              "options": {"ai": True, "ai_strength": 2}})
             self.assertEqual(status, 400)
 
+    def test_without_blender_the_check_and_the_export_still_run(self):
+        """With no Blender at all, Check runs core/checks.py and the game export runs the
+        experimental scripts/game_export_noblender.py: a whole bundle, icons included."""
+        from unittest import mock
+        bridge = self.studio.bridge
+        p = engine.preset("AFRICAN_HOUSE_SAHEL")
+        p["texture_size"] = 256
+        with mock.patch.object(bridge, "module", False), mock.patch.object(bridge, "app", None):
+            self.assertFalse(bridge.available)
+            status, r = self.call("/api/building/check", {"params": p})
+            self.assertEqual(status, 200, r)
+            j = self.wait(r["job"], 300)
+            self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"][-10:])
+            self.assertIn("--no-blender", j["command"])
+            found = [json.loads(line) for line in j["lines"] if line.startswith("{")]
+            self.assertTrue(any("triangles" in f["message"] for f in found), found)
+            with tempfile.TemporaryDirectory() as tmp:
+                status, r = self.call("/api/building/export", {"kind": "game", "params": p, "out": tmp,
+                                                               "options": {"no_blender": True}})
+                self.assertEqual(status, 200, r)
+                j = self.wait(r["job"], 600)
+                self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"][-20:])
+                self.assertIn("game_export_noblender.py", j["command"])
+                names = {f for _b, _d, files in os.walk(tmp) for f in files}
+                for want in ("africanhousesahel.gr2", "africanhousesahel_icon.ddt", "africanhousesahel_portrait.ddt",
+                             "africanhousesahel_lp.gr2", "SPECS.md"):
+                    self.assertIn(want, names)
+        self.assertIn("game_export_noblender", catalog.BY_ID)
+
     def test_a_surveys_results_as_a_table(self):
         """The program's own profiles, and a texture survey's report (its profile computed as the
         tool does), as groups with their columns; anything else refused."""

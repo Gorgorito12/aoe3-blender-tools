@@ -45,6 +45,7 @@ venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, mak
 venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
 venv/bin/python -I tests/test_specs.py             # every building has its sheet and it is current
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
+venv/bin/python -I scripts/game_export_noblender.py --out out/wh_nb --preset WHITE_HOUSE --compare out/wh   # experimental
 python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
@@ -85,7 +86,10 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   (the `Painter`: canvas, mask, seeded generator, drawing in region metres; `base()` is the
   material hook), `pngio.py` (PNG reader) and `paint.py` (dispatch, damaged texture) are pure
   Python; `blender_io.py` (object creation, export)
-  and `validate.py` (checks) need Blender.
+  and `validate.py` (the checks' Blender side) need Blender. `checks.py` holds the checks' rules
+  on plain mesh data (`mesh_of(model)`: the generator's mesh as Blender's modifier cuts it) and
+  `softrender.py` draws an icon in numpy: with `gamemesh.py` they make the Blender-free export
+  (`scripts/game_export_noblender.py`, experimental until seen in game).
 - `aoe3_blender_tools/aoe3game/`: the game formats, pure Python, never importing `core` or bpy
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_types.py`

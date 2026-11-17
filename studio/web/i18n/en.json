@@ -52,7 +52,7 @@
   "color.thatch": "Thatch",
   "color.adobe": "Adobe",
   "color.cloth": "Cloth",
-  "b.intro": "Pick a preset, change what you like, and watch it change. Exports need Blender.",
+  "b.intro": "Pick a preset, change what you like, and watch it change. Exports use Blender (the game export can do without it, experimental).",
   "b.presets": "Presets",
   "b.filter": "Filter presets…",
   "b.random": "Surprise me",
@@ -99,7 +99,7 @@
   "b.over": "Over the budget. The owner cares about optimisation: is the extra cost worth it?",
   "b.sheet": "Technical sheet",
   "b.export": "Export",
-  "b.noblender": "Exports need Blender: install Blender 4.2 or newer, or set its path in Settings.",
+  "b.noblender": "GLB, FBX and OBJ need Blender: install Blender 4.2 or newer, or set its path in Settings. The game export can run without it (experimental).",
   "b.prefix": "Mod folder",
   "b.display": "Name in game",
   "b.format": "Texture format",
@@ -547,5 +547,8 @@
   "rs.groups": "{n} groups",
   "rs.unread": "{n} unread",
   "rs.none": "No group matches.",
-  "rs.see": "See the results"
+  "rs.see": "See the results",
+  "b.noblender.option": "Without Blender",
+  "b.experimental": "experimental",
+  "b.noblender.help": "The game bundle made by this program alone: the same textures, anim file and proto as Blender's, the same mesh seen at any angle, icons from its own renderer. Whether it looks the same in game is still to verify."
 }

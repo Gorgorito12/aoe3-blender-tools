@@ -174,10 +174,26 @@ What the add-on does that the studio does not do yet:
 The AI repaint of a mesh made elsewhere (the add-on's AI panel on any mesh) also waits: the studio
 repaints its own buildings.
 
+## Without Blender
+
+- **Check** runs everywhere: without Blender, `scripts/check.py` applies the same rules to the
+  generator's own mesh (`core/checks.py`; `core/validate.py` is now the Blender side of the same
+  rules). The same findings on all 102 presets and details (`the_checks_without_blender_match_blenders`
+  in `tests/run_tests.py`).
+- **Export for the game, without Blender** (experimental): a box of the Export card (the only way
+  when Blender is missing), and its own form (`scripts/game_export_noblender.py`, `--compare` lists
+  how its bundle differs from one made with Blender). The mesh is `core/gamemesh.py`'s; the icon and
+  portrait come from `core/softrender.py` (Blender's camera, its light fitted to Blender's: within
+  4 / 255 on average); the low-poly and damaged variants as `blender_io.game_variants` makes them.
+  Measured against Blender's bundles of four presets: textures, bump maps, anim file, proto and
+  strings byte for byte; the models with the same vertices, normals and UVs (some flat quads cut
+  along the other diagonal: rendered alike, under 0.3 % of the pixels differ). Whether it looks the
+  same in game is **to verify** (`docs/game-test.md`); Blender stays the default until then.
+- GLB, FBX and OBJ, the renders of `scripts/generate.py`, `model_sheets` and the galleries still
+  need Blender.
+
 ## Still to do
 
-- The game export without Blender: `core/gamemesh.py` gives Blender's mesh (above); the icon and
-  portrait, the checks and the GLB writer still need Blender, and the result must be seen in game
-  before Blender leaves that path.
+- The bundle made without Blender, seen in game beside its Blender twin.
 - The settlement composer's axes and facing, in game.
 - A signed installer, and a first-run assistant beyond the welcome note.

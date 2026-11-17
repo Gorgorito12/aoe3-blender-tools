@@ -84,6 +84,28 @@ def sheet(key, prof=None, proto=None):
     return specs.render(f, proto=specs.proto_of(proto, f["name"], f["template"]) if proto else None), f
 
 
+def write_bundle_sheet(out, p, desc, vertices, triangles, proto_path=None):
+    """SPECS.md beside a game bundle: the building's technical sheet and what the export wrote
+    (scripts/game_export.py, and its Blender-free twin)."""
+    from dataclasses import replace
+    prof = profile.load()
+    size = desc["size"]
+    model = building.build(replace(p, detail="MEDIUM"))
+    key = next((k for k, v in building.PRESETS.items() if v.name == p.name), None)
+    band, scale = style_side(p)
+    facts = specs.facts(p, size, desc["template"], bundle.UNITS_PER_METER, key=key, collision=bundle.COLLISION_SHAPE,
+                        shape=None if p.style == "PROP" else shape_of(model, size, prof), band=band, scale=scale,
+                        budget=building.texture_budget(p))
+    files = [(os.path.basename(f), os.path.getsize(os.path.join(out, f))) for f in desc["files"]]
+    export = {"vertices": vertices, "triangles": triangles, "format": desc["texture"]["format"], "files": files}
+    proto = None
+    if proto_path:
+        with open(proto_path, encoding="utf-8", errors="ignore") as fh:
+            proto = specs.proto_of(fh.read(), p.name, desc["template"])
+    with open(os.path.join(out, "SPECS.md"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(specs.render(facts, export, proto))
+
+
 def index(rows):
     """docs/specs/README.md."""
     upm = bundle.UNITS_PER_METER

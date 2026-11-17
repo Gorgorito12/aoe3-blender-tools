@@ -52,7 +52,7 @@
   "color.thatch": "Paja",
   "color.adobe": "Adobe",
   "color.cloth": "Tela",
-  "b.intro": "Elige un preset, cambia lo que quieras y mira cómo cambia. Las exportaciones necesitan Blender.",
+  "b.intro": "Elige un preset, cambia lo que quieras y mira cómo cambia. Las exportaciones usan Blender (la del juego puede hacerse sin él, experimental).",
   "b.presets": "Presets",
   "b.filter": "Filtrar presets…",
   "b.random": "Sorpréndeme",
@@ -99,7 +99,7 @@
   "b.over": "Supera el presupuesto. La optimización importa: ¿merece la pena el coste extra?",
   "b.sheet": "Ficha técnica",
   "b.export": "Exportar",
-  "b.noblender": "Las exportaciones necesitan Blender: instala Blender 4.2 o posterior, o indica su ruta en Ajustes.",
+  "b.noblender": "GLB, FBX y OBJ necesitan Blender: instala Blender 4.2 o posterior, o indica su ruta en Ajustes. La exportación al juego puede hacerse sin él (experimental).",
   "b.prefix": "Carpeta del mod",
   "b.display": "Nombre en el juego",
   "b.format": "Formato de textura",
@@ -703,5 +703,8 @@
   "rs.groups": "{n} grupos",
   "rs.unread": "{n} sin leer",
   "rs.none": "Ningún grupo coincide.",
-  "rs.see": "Ver los resultados"
+  "rs.see": "Ver los resultados",
+  "b.noblender.option": "Sin Blender",
+  "b.experimental": "experimental",
+  "b.noblender.help": "El paquete del juego hecho solo por este programa: las mismas texturas, archivo de animación y proto que con Blender, la misma malla vista desde cualquier ángulo, los iconos de su propio renderizador. Falta verificar en el juego que se vea igual."
 }
