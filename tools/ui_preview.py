@@ -4,7 +4,7 @@ gadgets sit without opening the game.
 
     python -I tools/ui_preview.py <layout.xml|.xmb> --out <preview.png>
         [--scale 2] [--region auto|x1,y1,x2,y2] [--hide REGEX] [--mark REGEX] [--title TEXT]
-        [--strip PREFIX] [--text]
+        [--strip PREFIX] [--text] [--vline X[,X...]]
 
 Each gadget with a `size1024` rectangle (the game's 1024 x 768 layout space) is drawn as a box:
 its outline coloured by how deep it is nested, a number in its top left corner, and the legend on
@@ -19,6 +19,8 @@ draws it, but it shows and hides with that parent. `hidden` gadgets are drawn da
 - `--mark REGEX`: draw the matching gadgets filled in yellow (new rows of a proposal).
 - `--strip PREFIX`: drop that prefix from the names in the legend (default: the root's name
   followed by `-`).
+- `--vline X[,X...]`: draw a dashed vertical guide at each x of the layout space (a centre line,
+  to check that a layout is symmetric), with its x written at the top.
 
 The parser is lenient, as the game's is: comments, attribute names in any case, spaces around
 `=`, and stray closing tags are accepted. Text is drawn with the 5 x 7 bitmap font (`bitfont.py`),
@@ -42,6 +44,7 @@ DEPTH_COLOURS = [(90, 170, 255), (110, 220, 120), (240, 170, 60), (200, 120, 240
                  (240, 110, 160)]
 OUT_COLOUR = (255, 60, 60)
 MARK_COLOUR = (255, 230, 60)
+GUIDE_COLOUR = (255, 80, 220)
 BACKGROUND = (28, 26, 24)
 GRID = (44, 41, 38)
 LEGEND_BG = (18, 17, 16)
@@ -201,8 +204,8 @@ def box(img, x1, y1, x2, y2, colour, dashed=False, fill=None, alpha=0.18):
 
 
 def render(root, scale=2.0, region="auto", hide=None, mark=None, title=None, strip=None,
-           show_text=False):
-    """H x W x 3 uint8 picture of the layout and its legend."""
+           show_text=False, vlines=()):
+    """H x W x 3 uint8 picture of the layout and its legend; `vlines`: x of dashed vertical guides."""
     items = gadgets(root, hide)
     rects = [n.rect for n, _, _ in items if n.rect is not None]
     if region == "auto" or region is None:
@@ -280,6 +283,14 @@ def render(root, scale=2.0, region="auto", hide=None, mark=None, title=None, str
             continue
         x1, y1, _, _ = to_px(r)
         bitfont.draw(img, str(idx), x1 + 3, y1 + 3, TEXT, shadow=(0, 0, 0))
+    for i, gx in enumerate(vlines):
+        x = int(round((gx - rx1) * scale))
+        if 0 <= x < pw:
+            _vline(img, x, head, head + ph - 1, GUIDE_COLOUR, dashed=True)
+            label = f"{gx:g}"
+            # one label per text line from the bottom up, so close guides keep readable labels
+            bitfont.draw(img, label, min(x + 3, pw - bitfont.width(label) - 2), head + ph - 10 - 10 * i,
+                         GUIDE_COLOUR, shadow=(0, 0, 0))
     y = head + 4
     for line, node, depth, idx, flags in legend_lines:
         colour = TEXT if node is not None else DIM
@@ -305,13 +316,18 @@ def main(argv):
     ap.add_argument("--title")
     ap.add_argument("--strip", help="name prefix to drop in the legend")
     ap.add_argument("--text", action="store_true", help="list each gadget's text in the legend")
+    ap.add_argument("--vline", help="x of dashed vertical guides in the 1024 x 768 space, comma-separated")
     a = ap.parse_args(argv)
     region = "auto" if a.region == "auto" else [float(v) for v in a.region.split(",")]
     if region != "auto" and len(region) != 4:
         ap.error("--region takes auto or four numbers")
+    try:
+        vlines = [float(v) for v in a.vline.split(",")] if a.vline else []
+    except ValueError:
+        ap.error("--vline takes numbers separated by commas")
     root = load(a.layout)
     img = render(root, a.scale, region, re.compile(a.hide) if a.hide else None,
-                 re.compile(a.mark) if a.mark else None, a.title, a.strip, a.text)
+                 re.compile(a.mark) if a.mark else None, a.title, a.strip, a.text, vlines)
     with open(a.out, "wb") as fh:
         fh.write(encode_png(img))
     n = len(gadgets(root))
