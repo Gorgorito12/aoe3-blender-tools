@@ -336,7 +336,8 @@ region; every command-line tool as a form, with its live log and its outputs; a 
 `.ddt`, `.gr2`, `.xmb` and `.bar`. Previews need no Blender; the exports
 use the `bpy` module or an installed Blender 4.2+. Tools that change files in place run a trial
 first; nothing is ever written into the game's installation or a Steam library. Details in
-[docs/studio.md](docs/studio.md).
+[docs/studio.md](docs/studio.md). To hand it to someone to try: the zip and the tester's guide
+([español](docs/studio-guia.md), [English](docs/studio-guide.md)), which the zip also carries.
 
 ![AoE3 Mod Studio](examples/studio.jpg)
 
