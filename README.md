@@ -10,6 +10,10 @@ the art a mod already has. It has two parts:
   edges), lay out one UV atlas, paint the texture from the real measurements, check that the
   result is game-ready, and export it. Four styles so far: neoclassical, Spanish colonial,
   European timber framing and African (Sub-Saharan and Sahel, thirteen building types).
+- **AoE3 Mod Studio** (`studio/`): every tool of the repository behind one window, in English or
+  Spanish, for modders who use neither Blender nor a terminal: the building generator with a live
+  3D preview, the exports and the test copy, the surveys, a file inspector and every other tool as
+  a form. See [The studio](#the-studio).
 
 | White House | Courthouse |
 |---|---|
@@ -290,9 +294,9 @@ venv\Scripts\python -I tools\model_survey.py --from survey/mod/models.json --tex
 Download or build the zip (`python tools/build_zip.py` writes `dist/`), then:
 
 - **Blender 4.2 or later:** Edit > Preferences > Get Extensions > Install from Disk, and pick
-  `aoe3_blender_tools-0.2.0.zip`.
+  `aoe3_blender_tools-0.3.0.zip`.
 - **Blender 3.6 to 4.1:** Edit > Preferences > Add-ons > Install, and pick
-  `aoe3_blender_tools-0.2.0-legacy.zip`.
+  `aoe3_blender_tools-0.3.0-legacy.zip`.
 
 Tested with Blender 5.2 (as the `bpy` module, headless): install from the zip, generate, check and
 export all work. The Blender 3.6 to 4.1 path is untested.
@@ -316,6 +320,25 @@ export all work. The Blender 3.6 to 4.1 path is untested.
 
 Conventions: 1 unit = 1 m, Z up, the front (portico) faces −Y, the origin is the centre of the
 footprint (steps included) on the ground. GLB, FBX and OBJ are written Y-up.
+
+## The studio
+
+```
+venv\Scripts\python -m studio                       # opens its own window
+python -I tools/build_app.py --zip                     # or a program without Python (about 60 MB)
+```
+
+The building generator with a live 3D preview, the texture and its atlas, triangles against the
+budget, the technical sheet, the game export (with the AI repaint when ComfyUI runs) and the
+deployment to a test copy; a unit's texture repainted by clicking its UV islands, a civ flag set
+designed from one picture, tileable textures made from photographs, the AI repaint region by
+region; every command-line tool as a form, with its live log and its outputs; a file inspector for
+`.ddt`, `.gr2`, `.xmb` and `.bar`. Previews need no Blender; the exports
+use the `bpy` module or an installed Blender 4.2+. Tools that change files in place run a trial
+first; nothing is ever written into the game's installation or a Steam library. Details in
+[docs/studio.md](docs/studio.md).
+
+![AoE3 Mod Studio](examples/studio.jpg)
 
 ## Command line
 
@@ -390,8 +413,13 @@ see [tools/README.md](tools/README.md).
 6. **Units:** reuse the stock skeletons and animations. The importer is done (mesh, UVs, bones
    as Empties). Measured since: a cyclic animation carries no loop flag at all, and the skinned
    layout is four weights and four indices a vertex. Next: bones in a hierarchy and that layout
-   in the writer; the packed vertex stream more than half of the units use, which the reader
-   cannot open yet; an armature in the importer.
+   in the writer; the bone weights of the packed vertex stream more than half of the units use
+   (the reader opens its positions and UVs); an armature in the importer.
+7. **The studio** (in progress): every tool in one window (done: the generator with its live
+   preview, every tool as a form, the file inspector, the program build, English and Spanish, and
+   screens made for repainting units, designing flags, making textures and the AI repaint by
+   regions). Next: those screens with the real art of a game copy, the game export without
+   Blender, the settlement composer on a map.
 
 ## License
 

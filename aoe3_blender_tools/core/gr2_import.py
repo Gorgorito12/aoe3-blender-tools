@@ -16,16 +16,23 @@ from ..aoe3game import gr2, gr2_mesh
 from . import blender_io
 
 
-def create(model, name, image=None, collection=None):
+def create(model, name, image=None, collection=None, images=None):
     """An object from what gr2_mesh.read returned: every mesh in one object, one UV map, flat or
     smooth as its normals say, an Empty per bone that is not the root or a mesh's own. `image`: a
-    Blender image for its material, or None for a plain one."""
+    Blender image for its material, or None for a plain one. `images`: {index in model["textures"]:
+    Blender image}, a material for each, given to the triangles that show that texture (the
+    others get `image`'s)."""
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
     uv_layer = bm.loops.layers.uv.new("UVMap")
+    slots = {}
+    if images:
+        for k in sorted(images):
+            slots[k] = len(slots) + 1          # slot 0 is `image`'s
     for part in model["meshes"]:
         verts = [bm.verts.new(tuple(float(c) for c in p)) for p in part["positions"]]
-        for a, b, c in part["triangles"]:
+        faces = part.get("face_textures")
+        for k, (a, b, c) in enumerate(part["triangles"]):
             if len({int(a), int(b), int(c)}) < 3:
                 continue
             try:
@@ -33,6 +40,8 @@ def create(model, name, image=None, collection=None):
             except ValueError:                      # the same triangle twice: keep the first
                 continue
             face.smooth = True
+            if slots and faces is not None and k < len(faces):
+                face.material_index = slots.get(int(faces[k]), 0)
             if part["uvs"] is not None:
                 for loop, i in zip(face.loops, (int(a), int(b), int(c))):
                     loop[uv_layer].uv = (float(part["uvs"][i][0]), float(part["uvs"][i][1]))
@@ -40,8 +49,11 @@ def create(model, name, image=None, collection=None):
     bm.free()
     obj = bpy.data.objects.new(name, mesh)
     (collection or bpy.context.collection).objects.link(obj)
-    if image is not None:
-        mesh.materials.append(blender_io._material(name + "_mat", image))
+    if image is not None or slots:
+        mesh.materials.append(blender_io._material(name + "_mat", image) if image is not None
+                              else bpy.data.materials.new(name + "_mat"))
+    for k, slot in slots.items():
+        mesh.materials.append(blender_io._material(f"{name}_mat{slot}", images[k]))
     own = {part["name"] for part in model["meshes"]} | {name}
     for i, (bone, _parent, at) in enumerate(model["bones"]):
         if i == 0 or bone in own or (bone or "").lower() == "bone_main":

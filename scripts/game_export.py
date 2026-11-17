@@ -2,16 +2,19 @@
 """Generate a preset headless and write it as a game bundle (model, texture, anim file, proto
 fields and strings) for `tools/game_deploy.py`.
 
-    python scripts/game_export.py --out DIR [--preset WHITE_HOUSE] [--detail LOW|MEDIUM]
+    python scripts/game_export.py --out DIR [--preset WHITE_HOUSE | --params <building.json>]
+                                  [--detail LOW|MEDIUM]
                                   [--prefix mod] [--name NAME] [--display "Shown name"]
                                   [--template House] [--kind BUILDING|PROP] [--folder objects]
                                   [--no-v-flip] [--player-colour]
                                   [--texture DXT3|DXT1|BGRA] [--no-icons] [--no-lowpoly] [--no-damaged]
                                   [--materials] [--ai <strength>] [--ai-seed N] [--ai-url URL]
+                                  [--texture-png <file>]  (this texture in place of the painted one)
                                   [--profile <profile.json> | --no-profile] [--proto <protoy.xml>]
     python scripts/game_export.py --out DIR --set GOODS|CAMP [--prefix mod] [--texture-size 256]
 
-A preset of the PROP style is written as a prop (no stages, rubble or damaged model; treasures in
+--params reads any building's parameters from a JSON file (core/schema.params_to_dict; the
+studio writes it). A preset of the PROP style is written as a prop (no stages, rubble or damaged model; treasures in
 nuggets, map objects in objects). --set writes a generated prop set: one unit whose models are its
 variations, on one texture (core/styles/props/sets.py).
 
@@ -98,8 +101,13 @@ def main():
         return 2
     if opt("--set"):
         return export_set(out, opt("--set").upper())
-    key = opt("--preset", "WHITE_HOUSE")
-    p = dataclasses.replace(building.PRESETS[key])
+    if opt("--params"):                     # any building, as core/schema.params_to_dict writes it
+        import json
+        from aoe3_blender_tools.core import schema
+        with open(opt("--params"), encoding="utf-8") as fh:
+            p = schema.params_from_dict(json.load(fh))
+    else:
+        p = dataclasses.replace(building.PRESETS[opt("--preset", "WHITE_HOUSE")])
     if opt("--detail"):
         p = dataclasses.replace(p, detail=opt("--detail"))
     if opt("--name"):
@@ -118,6 +126,22 @@ def main():
                                         strength=float(opt("--ai", "0.45")), seed=int(opt("--ai-seed", "1")))
         blender_io.set_texture_rgba(obj, repainted)
         print("AI repaint:", ", ".join(r["region"] for r in report if "skipped" not in r))
+    if opt("--texture-png"):        # a texture made for this building elsewhere (the studio's AI repaint)
+        import numpy as np
+        from aoe3_blender_tools.core import pngio
+        with open(opt("--texture-png"), "rb") as fh:
+            rgba = np.asarray(pngio.read_png(fh.read()))
+        if rgba.ndim != 3 or rgba.shape[2] not in (3, 4):
+            print(f"--texture-png: an RGB or RGBA picture is needed, not {rgba.shape}")
+            return 1
+        if rgba.shape[2] == 3:
+            rgba = np.concatenate([rgba, np.full(rgba.shape[:2] + (1,), 255, np.uint8)], axis=2)
+        want = blender_io.texture_rgba(obj).shape[:2]
+        if rgba.shape[:2] != want:
+            print(f"--texture-png is {rgba.shape[1]} x {rgba.shape[0]}; this building's texture is {want[1]} x {want[0]}")
+            return 1
+        blender_io.set_texture_rgba(obj, rgba.astype(np.uint8))
+        print("texture:", opt("--texture-png"))
     positions, normals, uvs, tris = blender_io.game_mesh(obj)
     icon = portrait = None
     ref = building.reference(p)          # a style guide's reference size and proto template

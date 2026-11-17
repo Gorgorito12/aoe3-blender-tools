@@ -10,9 +10,26 @@ import numpy as np
 from mathutils import Vector
 
 
-def render_rgba(obj, size=512, azimuth=-35.0, elevation=30.0, margin=0.98):
+def _view(azimuth, elevation):
+    az, el = math.radians(azimuth), math.radians(elevation)
+    return Vector((math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el)))
+
+
+def view_extent(obj, azimuth=-35.0, elevation=30.0):
+    """The larger side of the object's bounding box seen from that direction (an orthographic
+    view), in scene units: what render_rgba fits into its frame."""
+    rot = (-_view(azimuth, elevation)).to_track_quat("-Z", "Y").to_matrix().inverted()
+    pts = [rot @ (obj.matrix_world @ Vector(c)) for c in obj.bound_box]
+    return max(max(p.x for p in pts) - min(p.x for p in pts),
+               max(p.y for p in pts) - min(p.y for p in pts))
+
+
+def render_rgba(obj, size=512, azimuth=-35.0, elevation=30.0, margin=0.98, scale=None, ground=None):
     """A size x size RGBA uint8 render of the object, top row first, from the front three
-    quarters (azimuth 0 looks from -Y, the front)."""
+    quarters (azimuth 0 looks from -Y, the front). `scale`: the frame's side in scene units
+    (default: the object's own view_extent times `margin`), so several renders share one scale.
+    `ground`: put the object's lowest point this share of the frame above its bottom edge
+    instead of centring it."""
     scene = bpy.context.scene
     r, disp = scene.render, scene.display
     saved = (scene.camera, r.engine, r.resolution_x, r.resolution_y, r.resolution_percentage,
@@ -27,8 +44,7 @@ def render_rgba(obj, size=512, azimuth=-35.0, elevation=30.0, margin=0.98):
         lo = Vector([min(c[i] for c in corners) for i in range(3)])
         hi = Vector([max(c[i] for c in corners) for i in range(3)])
         target = (lo + hi) / 2
-        az, el = math.radians(azimuth), math.radians(elevation)
-        view = Vector((math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el)))
+        view = _view(azimuth, elevation)
         cam.location = target + view * 200
         cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
         cam.data.type = "ORTHO"
@@ -38,7 +54,11 @@ def render_rgba(obj, size=512, azimuth=-35.0, elevation=30.0, margin=0.98):
         pts = [inv @ c for c in corners]
         extent = max(max(p.x for p in pts) - min(p.x for p in pts),
                      max(p.y for p in pts) - min(p.y for p in pts))
-        cam.data.ortho_scale = extent * margin
+        cam.data.ortho_scale = extent * margin if scale is None else scale
+        if ground is not None:
+            low = min(p.y for p in pts)              # camera space: the camera sits at y = 0
+            up = cam.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
+            cam.location += up * (low + cam.data.ortho_scale * (0.5 - ground))
         scene.camera = cam
         r.engine = "BLENDER_WORKBENCH"
         r.resolution_x = r.resolution_y = size

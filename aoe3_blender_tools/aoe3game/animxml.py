@@ -285,3 +285,176 @@ def building(name, model, *, decal, stages="2x2", stage_decal=None, ground=GROUN
     out.append("\t\t\t\t</logic>\n\t\t\t</none>\n\t\t</logic>\n\t</component>\n")
     out.append("</animfile>\n")
     return "".join(out)
+
+
+# --------------------------------------------------------------------------------------------------
+# Reading: the model a unit or a building shows standing
+
+def _name(el):
+    return (el.text or "").strip().lower()
+
+
+def _logic_order(logic, prefer=()):
+    """The branches of a logic, the one to show first: a branch named in `prefer` (a culture, a
+    civ, an age's tech), else the full-detail model (LowPoly), the intact and finished one (the
+    highest pN of Destruction and BuildingCompletion), else the first branch (the first age of
+    Tech, the first Variation, Civ or Culture). The others follow, in that order."""
+    kids = list(logic)
+    if (logic.get("type") or "").lower() == "lowpoly":
+        kids = sorted(kids, key=lambda k: k.tag != "normal")
+    else:
+        numbered = [k for k in kids if k.tag[:1] == "p" and k.tag[1:].isdigit()]
+        if numbered and len(numbered) == len(kids):
+            kids = sorted(kids, key=lambda k: -int(k.tag[1:]))
+    rank = {p: i for i, p in enumerate(prefer)}
+    return sorted(kids, key=lambda k: rank.get(k.tag, len(rank)))
+
+
+STATE_LOGICS = ("lowpoly", "destruction", "buildingcompletion")
+
+
+def _picks(el, submodels, prefer, depth, strict):
+    if depth > 16:
+        return
+    if el.tag == "assetreference":
+        if (el.get("type") or "").lower() == "grannymodel":
+            f = el.find("file")
+            if f is not None and (f.text or "").strip():
+                swaps = tuple(((r.findtext("from") or "").strip(), (r.findtext("to") or "").strip())
+                              for r in el.iter("replacetexture"))
+                yield f.text.strip(), tuple((a, b) for a, b in swaps if a and b)
+        return
+    if el.tag == "submodelref":
+        sub = submodels.get((el.get("ref") or "").strip().lower())
+        if sub is not None:
+            yield from _scope(sub, submodels, prefer, depth + 1, strict)
+        return
+    if el.tag in ("attachment", "decal", "anim"):
+        return
+    kids = _logic_order(el, prefer) if el.tag == "logic" else list(el)
+    if strict and el.tag == "logic" and (el.get("type") or "").lower() in STATE_LOGICS:
+        kids = kids[:1]
+    for child in kids:
+        yield from _picks(child, submodels, prefer, depth + 1, strict)
+
+
+def _scope(scope, submodels, prefer, depth, strict):
+    comps = [el for el in scope if el.tag == "component"]
+    anims = [el for el in scope if el.tag == "anim"]
+    idle = next((a for a in anims if _name(a) == "idle"), None)
+    order = [] if idle is None else [_name(c) for c in idle if c.tag == "component"]
+    by_name = {}
+    for c in comps:
+        by_name.setdefault(_name(c), c)
+    for c in [by_name[n] for n in order if n in by_name] + comps:
+        yield from _picks(c, submodels, prefer, depth + 1, strict)
+
+
+def idle_assets(root, prefer=()):
+    """idle_models, each with the textures its reference replaces: (model, ((from, to), ...)),
+    art paths without extension, as <replacetexture> writes them."""
+    submodels = {}
+    for el in root:
+        if el.tag == "submodel":
+            submodels.setdefault(_name(el), el)
+    seen = set()
+    for strict in (True, False):
+        for model, swaps in _scope(root, submodels, tuple(prefer), 0, strict):
+            if model.lower() not in seen:
+                seen.add(model.lower())
+                yield model, swaps
+
+
+def idle_models(root, prefer=()):
+    """The Granny models (art paths, no extension) an anim file may show standing, the likeliest
+    first: the components its Idle anim names (or, without one, its components in order), through
+    each logic's branches in `_logic_order` and the submodels they refer to. The first is what
+    the unit shows; the others serve when its file is missing: first the other branches of
+    Culture, Civ, Tech or Variation (full detail, intact, finished), then the low-poly, damaged
+    and unfinished models. Attachments (weapons, riders, effects) are not followed. `root`: the parsed file, tags in lower case; `prefer`: branch
+    names in lower case."""
+    for model, _swaps in idle_assets(root, prefer):
+        yield model
+
+
+def idle_model(root, prefer=()):
+    """The first of idle_models, or None."""
+    return next(idle_models(root, prefer), None)
+
+
+def _attaches(el, prefer, depth=0):
+    """The <attach> elements of a component, through the first branch (in _logic_order) of each
+    logic, as the unit shows standing."""
+    if depth > 16:
+        return
+    for child in el:
+        if child.tag == "attach":
+            yield child
+        elif child.tag == "logic":
+            kids = _logic_order(child, prefer)
+            if kids:
+                yield from _attaches(kids[0], prefer, depth + 1)
+
+
+def idle_attachments(root, prefer=()):
+    """What hangs on the model a unit shows standing (hats, weapons, ponchos...): one dict per
+    <attach> of its idle component, {"name", "frombone", "tobone", "model", "swaps", "include"},
+    in file order. "model" and "swaps" are the attachment's first model (its own logics through
+    `prefer`) and the textures it replaces, as idle_assets gives them; "include" is the anim file
+    an attachment includes instead (a rider, an effect), else None. An attach whose attachment
+    is not declared is left out."""
+    prefer = tuple(prefer)
+    submodels = {_name(el): el for el in root if el.tag == "submodel"}
+    declared = {}
+    for el in root:
+        if el.tag == "attachment":
+            declared.setdefault(_name(el), el)
+    comps = [el for el in root if el.tag == "component"]
+    anims = [el for el in root if el.tag == "anim"]
+    idle = next((a for a in anims if _name(a) == "idle"), None)
+    order = [] if idle is None else [_name(c) for c in idle if c.tag == "component"]
+    by_name = {}
+    for c in comps:
+        by_name.setdefault(_name(c), c)
+    comp = next((by_name[n] for n in order if n in by_name), comps[0] if comps else None)
+    if comp is None:
+        return []
+    out = []
+    for at in _attaches(comp, prefer):
+        name = (at.get("a") or "").strip()
+        el = declared.get(name.lower())
+        if el is None:
+            continue
+        inc = el.find("include")
+        model, swaps = None, ()
+        if inc is None:
+            for c in el:
+                if c.tag == "component":
+                    found = next(_picks(c, submodels, prefer, 0, True), None)
+                    if found:
+                        model, swaps = found
+                        break
+        out.append({"name": name, "frombone": (at.get("frombone") or "").strip(),
+                    "tobone": (at.get("tobone") or "").strip(), "model": model, "swaps": swaps,
+                    "include": (inc.text or "").strip() if inc is not None else None})
+    return out
+
+
+def find_bone(names, wanted):
+    """The bone of `names` an attach's bone name means: the same name in any case, else the one
+    whose last words are it (HEAD -> Bip01 Head, SPINE1 -> Bip01 Spine1), else the first that
+    contains it; None when nothing matches."""
+    w = (wanted or "").strip().lower()
+    if not w:
+        return None
+    low = [(n, (n or "").lower()) for n in names]
+    for n, lo in low:
+        if lo == w:
+            return n
+    for n, lo in low:
+        if lo.endswith(" " + w):
+            return n
+    for n, lo in low:
+        if w in lo:
+            return n
+    return None

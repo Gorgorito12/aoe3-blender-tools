@@ -229,8 +229,9 @@ def compress(rgba, fmt):
 
 
 def write_dxt(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True):
-    """Bytes of a DXT1 or DXT3 texture (with its mip levels down to 4 x 4) from an H x W x 3 or 4
-    uint8 array, top row first. DXT3 keeps the alpha (player-colour mask); DXT1 drops it."""
+    """Bytes of a DXT1, DXT3 or DXT5 texture (with its mip levels down to 4 x 4) from an H x W x 3
+    or 4 uint8 array, top row first. DXT3 (4-bit steps) and DXT5 (interpolated) keep the alpha
+    (player-colour mask); DXT1 drops it."""
     np = _np()
     a = np.asarray(rgba)
     if a.ndim != 3 or a.shape[2] not in (3, 4):
@@ -240,8 +241,8 @@ def write_dxt(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True):
     a = a.astype(np.uint8)
     h, w = a.shape[:2]
     levels = mip_chain(a) if mips else [a]
-    blobs = [compress(lv, fmt) for lv in levels]
-    out = bytearray(MAGIC + bytes([usage, alpha if fmt == DXT3 else 0, fmt, len(blobs)])
+    blobs = [compress_dxt5(lv) if fmt == DXT5 else compress(lv, fmt) for lv in levels]
+    out = bytearray(MAGIC + bytes([usage, alpha if fmt in (DXT3, DXT5) else 0, fmt, len(blobs)])
                     + struct.pack("<II", w, h))
     off = 16 + 8 * len(blobs)
     for b in blobs:
@@ -253,7 +254,7 @@ def write_dxt(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True):
 
 
 def write(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True):
-    """A texture in the given format: BGRA (uncompressed), DXT1 or DXT3."""
+    """A texture in the given format: BGRA (uncompressed), DXT1, DXT3 or DXT5."""
     if fmt == BGRA:
         return write_bgra(rgba, alpha=alpha, usage=usage, mips=mips)
     return write_dxt(rgba, fmt, alpha=alpha, usage=usage, mips=mips)

@@ -7,6 +7,8 @@
                                [--materials]     (photo swatches under the painting)
                                [--textures DIR]  (the texture maker's library, in their place)
                                [--poly 0.6]      (segments of every body that is not a box)
+    python scripts/generate.py --params <building.json> --out DIR [same options]
+                                                 (any building, as core/schema.params_to_dict writes it)
 Presets: WHITE_HOUSE, COURTHOUSE, CAPITOL, MANSION, WHITE_HOUSE_1914 (or ALL).
 
 or with Blender: blender -b --factory-startup -P scripts/generate.py -- [same options]
@@ -124,9 +126,14 @@ VIEWS = {"front34": (-35, 42, False), "back34": (145, 42, False), "wire": (-35, 
          "front": (0, 12, False), "back": (180, 12, False)}
 
 
-def generate(key, out, views, detail):
+def generate(key, out, views, detail, params=None):
+    """A preset by its key, or any building's `params` (then `out` is needed)."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    params = building.PRESETS[key]
+    if params is not None:
+        key = None
+    else:
+        params = building.PRESETS[key]
+    own = params
     if detail and detail != params.detail:      # --detail overrides the preset's own level
         params = dataclasses.replace(params, detail=detail,
                                      name=params.name + ("Medium" if detail == "MEDIUM" else "Low"))
@@ -136,9 +143,9 @@ def generate(key, out, views, detail):
         params = dataclasses.replace(params, poly=float(opt("--poly")))
     model = building.build(params)
     obj = blender_io.create_object(model, paint.paint(model))
-    suffix = "" if not detail or detail == building.PRESETS[key].detail else "_" + detail.lower()
+    suffix = "" if not detail or detail == own.detail else "_" + detail.lower()
     # absolute: once the .blend is saved, Blender reads a relative render path from the drive's root
-    folder = os.path.abspath(out or os.path.join(ROOT, "examples", building.PRESETS[key].name.lower() + suffix))
+    folder = os.path.abspath(out or os.path.join(ROOT, "examples", own.name.lower() + suffix))
     paths = blender_io.export(obj, folder)
     try:
         bpy.context.preferences.filepaths.save_version = 0     # no .blend1 backup
@@ -160,13 +167,22 @@ def main():
         from aoe3_blender_tools.core import texlib
         chosen = texlib.install(folder=opt("--textures"))
         print("textures:", ", ".join(f"{s} {r}: {n}" for (s, r), n in sorted(chosen.items())) or "none")
-    preset = opt("--preset", "WHITE_HOUSE").upper()
-    keys = list(building.PRESETS) if preset == "ALL" else [preset]
     views = [] if "--no-render" in argv else opt("--views", "front34,back34,wire").split(",")
     detail = (opt("--detail") or "").upper() or None
+    if opt("--params"):                     # any building, as core/schema.params_to_dict writes it
+        import json
+        from aoe3_blender_tools.core import schema
+        if not opt("--out"):
+            print("--params needs --out")
+            return 2
+        with open(opt("--params"), encoding="utf-8") as fh:
+            generate(None, opt("--out"), views, detail, params=schema.params_from_dict(json.load(fh)))
+        return 0
+    preset = opt("--preset", "WHITE_HOUSE").upper()
+    keys = list(building.PRESETS) if preset == "ALL" else [preset]
     for key in keys:
         generate(key, opt("--out") if len(keys) == 1 else None, views, detail)
 
 
 if __name__ == "__main__":            # tools/gallery.py imports the scene and the camera
-    main()
+    sys.exit(main())

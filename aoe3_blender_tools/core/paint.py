@@ -96,19 +96,24 @@ def damaged(model, rgba, seed=None):
     return np.clip(out + 0.5, 0, 255).astype(np.uint8)
 
 
-def save_png(array, path):
-    """Writes an RGB uint8 array as PNG with the standard library only (zlib)."""
+def png_bytes(array, level=9):
+    """An RGB or RGBA uint8 array as PNG bytes, with the standard library only (zlib)."""
     import struct
     import zlib
 
-    h, w, _ = array.shape
+    h, w, channels = array.shape
     raw = b"".join(b"\x00" + array[y].tobytes() for y in range(h))
 
     def chunk(tag, data):
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
 
-    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
-           + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+    kind = {3: 2, 4: 6}[channels]
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, kind, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, level)) + chunk(b"IEND", b""))
+
+
+def save_png(array, path):
+    """Writes an RGB uint8 array as PNG with the standard library only (zlib)."""
     with open(path, "wb") as fh:
-        fh.write(png)
+        fh.write(png_bytes(array))
 

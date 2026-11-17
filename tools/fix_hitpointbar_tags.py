@@ -41,7 +41,7 @@ import xml.etree.ElementTree as ET
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "aoe3_blender_tools"))
 sys.path.insert(0, HERE)
-from aoe3game import precomp  # noqa: E402
+from aoe3game import deploy, precomp  # noqa: E402
 import bar  # noqa: E402
 import xmbedit  # noqa: E402
 
@@ -296,6 +296,11 @@ def parse_args(argv):
         if probe is None:
             sys.exit("cannot tell the art folder: pass --art")
         args.art = probe
+    if not args.dry_run:                     # it writes into the art folder unless --out says otherwise
+        try:
+            deploy.refuse_steam(args.out or args.art)
+        except deploy.RefusedPath as e:
+            sys.exit(f"{e}: work on a test copy, or give --out")
     return args
 
 
