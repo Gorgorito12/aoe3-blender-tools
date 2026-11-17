@@ -10,7 +10,9 @@ and of a mod, and a Blender add-on (`aoe3_blender_tools/`) whose generators are 
 check the result and export it. Done: the survey (run on the game and the target mod, profile
 in `aoe3_blender_tools/profiles/`), a first generator (neoclassical buildings), and the game
 formats (`aoe3game/`: Granny model, .ddt, anim file, proto and strings, deployment to a test
-copy). The game loads a generated building (scenario editor preview). Next: see it placed, built
+copy). The game loads a generated building (scenario editor preview). AoE3 Mod Studio
+(`studio/`, `docs/studio.md`) puts every tool behind one window for modders without Blender or a
+terminal. Next: see it placed, built
 and destroyed in game (`docs/game-test.md`), then more styles and units (README, "Roadmap").
 
 ## Public repository rules
@@ -49,6 +51,9 @@ python -I tests/test_hitpointbar_tags.py           # animation tag files and the
 python -I tests/test_named_models.py              # model_sheets --models lists: protos to models, plain Python
 venv/bin/python -I tests/test_retexture.py        # uv_atlas, retexture, skin and attachments, synthetic data
 python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
+venv/bin/python -m studio [--no-window] [--port N]      # AoE3 Mod Studio: every tool in one window
+venv/bin/python -I tests/test_studio.py                # the studio: API, safety, forms, languages (about 35 s)
+python -I tools/build_app.py --zip                     # the studio as a program (a Python with pyinstaller and numpy)
 ```
 
 On Windows the venv interpreter is `venv/Scripts/python`. `-X utf8` matters: the mod's
@@ -122,6 +127,14 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 - `docs/game-formats.md`: the formats as measured, and how the writer was proven.
 - `docs/game-test.md`: the test copy, deployment, what to check in game, and the status.
 - `docs/specs/`: the technical sheet of every building, generated, with an index.
+- `studio/`: AoE3 Mod Studio (`docs/studio.md`), a local web application: `server.py` (API on
+  127.0.0.1 with a token, the page), `engine.py` (previews and sheets in process, no Blender),
+  `jobs.py` (each tool in its own process), `blender_bridge.py` (the `bpy` module or an installed
+  Blender), `catalog.py` (every command-line tool as a form, strings in English and Spanish),
+  `inspector.py` (.ddt, .gr2, .xmb, .bar read only), `settings.py`, `picker.py` (file dialogs),
+  `web/` (the page: ES modules, no build step; three.js vendored; `i18n/en.json`, `es.json`).
+  `aoe3_blender_tools/core/schema.py` describes every `BuildingParams` field for the forms;
+  `core/gamemesh.py` is the game mesh without Blender (measured against Blender's).
 - `aoe3_blender_tools/aoe3game/collision.py`: a building's own collision shape (`.shp`, Havok XML),
   written into `data/physics/` of the bundle; `Model.boxes` holds the boxes, `building.obstruction`
   a style's own obstruction. See "Collision" in `docs/game-formats.md`.
@@ -159,7 +172,13 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   swatch small (256 px; the zip stays under 6 MB, `build_zip.py` checks).
 - A new `BuildingParams` field needs a default that changes nothing, a panel property (or an
   entry in `PROP_NAMES`), its style's panel draw, `random_params`, and a preset or a test that
-  uses it; `ui_has_a_property_for_every_param_field` fails otherwise.
+  uses it; `ui_has_a_property_for_every_param_field` fails otherwise. It also needs its entry in
+  `core/schema.py` (the studio's form: the panel's range and choices, when it shows) and its
+  Spanish label in `studio/web/i18n/es.json`; `the_schema_matches_the_panel` and
+  `tests/test_studio.py` fail otherwise.
+- A new command-line tool gets its form in `studio/catalog.py` (strings in English and Spanish; a
+  trial or a confirmation when it changes files in place or in a test copy); `tests/test_studio.py`
+  fails on a script without one, or on a form option its script does not read.
 - Test the add-on in the user's installed Blender too
   (`"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe" -b --factory-startup -P
   tests/run_tests.py`), and reinstall the zip there after a change
