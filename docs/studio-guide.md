@@ -14,8 +14,9 @@ note it as you go.
 4. A window of its own opens (with Edge or Chrome; otherwise a tab of your browser). To close the
    program, close its window.
 
-Exporting to the game needs **Blender 4.2 or newer** installed (the program finds it). Everything
-else works without Blender.
+With **Blender 4.2 or newer** installed, the program finds it and exports with it. Without Blender
+the game export still works, the **experimental** way (the "Without Blender" box): if you try it
+so, say so in your notes. GLB, FBX and OBJ do need Blender.
 
 ## The tour
 
@@ -28,7 +29,7 @@ skips it.
 - Pick a preset (an African house, say) and move its options: the 3D model changes at once.
 - Try the buttons over the view: Person (for the scale), Obstruction, Low poly, Damaged.
 - Look at the Texture tab and at the technical sheet, bottom right.
-- With Blender: **Check**, then **Export for the game**.
+- **Check**, then **Export for the game** (with Blender, or "Without Blender").
 - With a test copy: **Deploy**. It says what the copy already has and offers Add, Update or
   Replace. Then **Undo**.
 

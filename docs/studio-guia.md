@@ -13,8 +13,9 @@ Gracias por probarlo. Son unos 15 minutos. Lo que más ayuda no es que todo salg
 4. Se abre una ventana propia. Si tienes Edge o Chrome, es una ventana del programa; si no, una
    pestaña de tu navegador. Para cerrarlo, cierra la ventana.
 
-Para exportar al juego hace falta **Blender 4.2 o posterior** instalado (el programa lo encuentra
-solo). Todo lo demás funciona sin Blender.
+Con **Blender 4.2 o posterior** instalado, el programa lo encuentra solo y exporta con él. Sin
+Blender también se puede exportar al juego, de forma **experimental** (la casilla "Sin Blender"):
+si lo pruebas así, dilo en tus notas. GLB, FBX y OBJ sí necesitan Blender.
 
 ## El recorrido
 
@@ -28,7 +29,7 @@ Si no quieres, pulsa "Más tarde".
 - Prueba los botones sobre la vista: Persona (para la escala), Obstrucción, Pocos polígonos,
   Dañado.
 - Mira la pestaña Textura y la ficha técnica abajo a la derecha.
-- Con Blender: **Comprobar**, y después **Exportar al juego**.
+- **Comprobar**, y después **Exportar al juego** (con Blender, o con "Sin Blender").
 - Si indicaste una copia de prueba: **Desplegar**. El programa dice qué hay ya en la copia y te
   deja Añadir, Actualizar o Sustituir. Luego **Deshacer**.
 
