@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+  <rect width="64" height="64" rx="14" fill="#7a4a1e"/>
+  <path d="M12 50h40v-4H12z" fill="#e9d8b4"/>
+  <path d="M16 46V28h32v18h-6V34h-8v12z" fill="#f4ead2"/>
+  <path d="M12 29L32 13l20 16z" fill="#c8572e"/>
+  <rect x="29" y="5" width="2" height="10" fill="#f4ead2"/>
+  <path d="M31 5h9l-2 3 2 3h-9z" fill="#3f8fd8"/>
+</svg>

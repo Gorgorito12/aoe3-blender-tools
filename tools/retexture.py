@@ -383,6 +383,18 @@ def write_ddt(rgba, fmt, like, mips):
     return ddt.write(rgba, fmt, alpha=like.alpha, usage=like.usage, mips=use_mips)
 
 
+def paint(start, atlas, ops, base, client=None, masks=None):
+    """`start` (H x W x 4 uint8) painted by `ops` in order: the result as uint8. `masks`: a
+    Masks of this atlas at this size, kept between calls by a caller that paints again and
+    again (the studio's live preview)."""
+    h, w = start.shape[:2]
+    masks = masks or Masks(atlas, w, h)
+    img = start.astype(np.float32)
+    for op in ops:
+        apply(op, img, start, masks, base, client)
+    return np.clip(img + 0.5, 0, 255).astype(np.uint8)
+
+
 def run(recipe, base, client=None):
     """Paints a recipe; returns (start RGBA scaled, result RGBA, written paths)."""
     src = os.path.join(base, recipe["texture"])
@@ -398,12 +410,7 @@ def run(recipe, base, client=None):
     start = upscale(start, k)
     with open(os.path.join(base, recipe["atlas"], "atlas.json"), encoding="utf-8") as fh:
         atlas = json.load(fh)
-    h, w = start.shape[:2]
-    masks = Masks(atlas, w, h)
-    img = start.astype(np.float32)
-    for op in recipe.get("ops", []):
-        apply(op, img, start, masks, base, client)
-    result = np.clip(img + 0.5, 0, 255).astype(np.uint8)
+    result = paint(start, atlas, recipe.get("ops", []), base, client)
     written = []
     out = os.path.join(base, recipe["out"])
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)

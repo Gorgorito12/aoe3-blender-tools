@@ -64,7 +64,11 @@ def shape_of(model, size, prof):
 
 
 def facts_of(key, prof):
-    params = building.PRESETS[key]
+    return facts_for(building.PRESETS[key], prof, key)
+
+
+def facts_for(params, prof, key=None):
+    """The sheet's facts of any building, a preset or not."""
     size, template, model = game_side(params, prof)
     band, scale = style_side(params)
     prop = params.style == "PROP"                         # no building class to hold a prop's shape to

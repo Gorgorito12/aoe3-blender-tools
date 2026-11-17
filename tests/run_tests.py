@@ -469,6 +469,87 @@ def roof_kit_parts_have_no_overlaps():
 
 
 @test
+def every_operator_reaches_the_studio():
+    """The rule of CLAUDE.md: every operator the add-on registers has its place in the studio
+    (studio/coverage.py), or is listed there as pending with the reason."""
+    from studio import coverage
+    registered = {c.bl_idname for c in bpy.types.Operator.__subclasses__()
+                  if getattr(c, "bl_idname", "").startswith("aoe3.")}
+    assert registered, "no aoe3 operator registered"
+    missing = sorted(registered - set(coverage.OPERATORS))
+    assert not missing, f"operators with no place in the studio (studio/coverage.py): {missing}"
+    gone = sorted(set(coverage.OPERATORS) - registered)
+    assert not gone, f"studio/coverage.py names operators the add-on no longer has: {gone}"
+
+
+@test
+def the_schema_matches_the_panel():
+    """core/schema.py (the studio's forms) describes every field as the Blender panel does: the
+    same kind, range and choices."""
+    import dataclasses
+    from aoe3_blender_tools.core import schema
+    names = {f.name for f in dataclasses.fields(building.BuildingParams)} - set(schema.NOT_DESCRIBED)
+    assert names == set(schema.BY_NAME), names ^ set(schema.BY_NAME)
+    rna = bpy.context.scene.aoe3_building.bl_rna.properties
+    for f in schema.FIELDS:
+        prop = rna[addon.PROP_NAMES.get(f.name, f.name)]
+        if f.kind == "choice":
+            assert prop.type == "ENUM", f.name
+            assert [str(c[0]) for c in f.choices] == [i.identifier for i in prop.enum_items], f.name
+        elif f.kind == "bool":
+            assert prop.type == "BOOLEAN", f.name
+        elif f.kind == "text":
+            assert prop.type == "STRING", f.name
+        else:
+            assert prop.type == ("FLOAT" if f.kind == "float" else "INT"), f.name
+            if f.name == "seed":            # the panel's seed has no bounds; the painter's needs >= 0
+                continue
+            assert abs(prop.hard_min - f.min) < 1e-6 and abs(prop.hard_max - f.max) < 1e-6, \
+                (f.name, prop.hard_min, prop.hard_max, f.min, f.max)
+    for key, p in building.PRESETS.items():     # the studio's data goes back to the same building
+        assert schema.params_from_dict(schema.params_to_dict(p)) == p, key
+
+
+@test
+def the_mesh_without_blender_matches_blenders():
+    """core/gamemesh.py against the game mesh Blender gives: the same triangle count and area,
+    every corner's position and UV, and the vertices with their normals (measured 2026-11-17: all
+    alike in 100 of the 102 preset and detail pairs; the burnt hut differs where a non-planar
+    polygon of five sides or more is cut otherwise than Blender's beauty fill)."""
+    import dataclasses
+
+    import numpy as np
+    from aoe3_blender_tools.core import gamemesh
+
+    def found(a, b, tol):
+        """the share of b's rows that a holds, within tol"""
+        a, b = np.asarray(a, float), np.asarray(b, float)
+        ok = np.zeros(len(b), bool)
+        for s in range(0, len(b), 512):
+            ok[s:s + 512] = (np.abs(b[s:s + 512, None, :] - a[None]) <= tol).all(axis=2).any(axis=1)
+        return ok.mean()
+
+    def area(p, t):
+        p, t = np.asarray(p), np.asarray(t)
+        return float(np.linalg.norm(np.cross(p[t[:, 1]] - p[t[:, 0]], p[t[:, 2]] - p[t[:, 0]]), axis=1).sum() / 2)
+
+    tol = np.array([1e-3] * 5 + [0.02] * 3)
+    for key in ("WHITE_HOUSE", "CAPITOL", "COLONIAL_TRADING_HOUSE", "TIMBER_INN", "AFRICAN_TOWN_CENTER_SUBSAHARAN",
+                "AFRICAN_PALACE_SAHEL", "AFRICAN_PLOT_SAHEL", "PROP_WELL", "PROP_BURNT_HUT"):
+        for detail in ("LOW", "MEDIUM"):
+            model = building.build(dataclasses.replace(building.PRESETS[key], detail=detail, texture_size=256))
+            obj = blender_io.create_object(model, np.full((256, 256, 3), 128, np.uint8))
+            bp, bn, bu, bt = blender_io.game_mesh(obj)
+            gp, gn, gu, gt = gamemesh.mesh(model)
+            assert len(gt) == len(bt), (key, detail, len(gt), len(bt))
+            assert abs(area(gp, gt) - area(bp, bt)) < 1e-4 * area(bp, bt), (key, detail)
+            assert found(np.hstack([gp, gu]), np.hstack([bp, bu]), tol[:5]) == 1.0, (key, detail)
+            share = found(np.hstack([gp, gu, gn]), np.hstack([bp, bu, bn]), tol)
+            assert share >= (0.95 if key == "PROP_BURNT_HUT" else 0.999), (key, detail, share)
+            bpy.data.objects.remove(obj)
+
+
+@test
 def ui_has_a_property_for_every_param_field():
     import dataclasses
     s = bpy.context.scene.aoe3_building
@@ -875,7 +956,9 @@ def main():
                   player_colour_marks_the_string_courses, icon_and_portrait_render,
                   game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo,
                   square_hipped_roof_builds, roof_kit_parts_have_no_overlaps,
-                  ui_has_a_property_for_every_param_field, ai_repaint_and_revert,
+                  ui_has_a_property_for_every_param_field, the_schema_matches_the_panel,
+                  every_operator_reaches_the_studio,
+                  the_mesh_without_blender_matches_blenders, ai_repaint_and_revert,
                   round_kit_parts_have_no_overlaps, round_roofs_export_smooth_normals,
                   a_mesh_we_did_not_make_is_repainted_and_exported_as_a_prop,
                   the_texture_maker_makes_a_tileable_swatch_and_keeps_it,

@@ -101,7 +101,11 @@ def wanted(prefix="test_", table_name=None):
 
 
 def install(game, files):
-    if "steamapps" in str(game.resolve()).lower():
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "aoe3_blender_tools"))
+    from aoe3game import deploy          # standard library only, as this tool is
+    try:
+        deploy.refuse_steam(str(game))
+    except deploy.RefusedPath:
         sys.exit(f"make_icons: {game} is a Steam folder; install into a test copy")
     for name, data in files.items():
         folder = game / "data" if name.endswith(".xml") else game / "art" / "ui" / "playericons"

@@ -5,7 +5,7 @@ Empires III mods. Panel: 3D Viewport > Sidebar (N) > AoE3."""
 bl_info = {      # read only by Blender versions without extensions; 4.2+ reads blender_manifest.toml
     "name": "AoE3 Blender Tools",
     "author": "Gorgorito12",
-    "version": (0, 2, 0),
+    "version": (0, 3, 0),
     "blender": (3, 6, 0),
     "location": "3D Viewport > Sidebar > AoE3",
     "description": "Low-poly building generator, game-ready checks and exports for Age of Empires III mods",

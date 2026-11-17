@@ -324,25 +324,43 @@ def _bgra_levels(levels, hd):
     return bytes(out)
 
 
-def make_set(design, name, kinds, out, flags_dir, buttons_dir, warp=WARP):
-    files = {}
-    fl = ingame_flag(design)
-    files["flag"] = write(os.path.join(out, "art", flags_dir, name + ".ddt"), fl,
-                          ddt.Header(0, 0, ddt.BGRA, 1, 128, 128, []))
-    flag_rgb = fl[..., :3].astype(np.float32)
+def state_fits(kinds):
+    """The colour change of each button state from the normal one, measured set by set."""
     normal = kinds["button_normal"]
-    fits = {s: state_fit(normal.stack, kinds["button_" + s].stack, normal.box)
-            for s in STATES[1:]}           # the small sets, measured set by set
+    return {s: state_fit(normal.stack, kinds["button_" + s].stack, normal.box) for s in STATES[1:]}
+
+
+def set_images(design, kinds, warp=WARP, fits=None):
+    """Every texture of the set as RGBA arrays, by kind ("flag", "postgame", "button_<state>",
+    "large_<state>"): what make_set writes, in memory (the studio previews them live)."""
+    images = {}
+    fl = ingame_flag(design)
+    images["flag"] = fl
+    flag_rgb = fl[..., :3].astype(np.float32)
+    fits = fits if fits is not None else state_fits(kinds)
+    for prefix in ("button_", "large_"):
+        if prefix + "normal" not in kinds:
+            continue
+        for s in STATES:
+            k = kinds.get(prefix + s) or kinds[prefix + "normal"]
+            images[prefix + s] = button(k, flag_rgb, fits.get(s))
+    images["postgame"] = postgame(kinds["postgame"], design, warp)
+    return images
+
+
+def make_set(design, name, kinds, out, flags_dir, buttons_dir, warp=WARP, fits=None):
+    images = set_images(design, kinds, warp, fits)
+    files = {"flag": write(os.path.join(out, "art", flags_dir, name + ".ddt"), images["flag"],
+                           ddt.Header(0, 0, ddt.BGRA, 1, 128, 128, []))}
     for prefix, sub in (("button_", ""), ("large_", "_large")):
         if prefix + "normal" not in kinds:
             continue
         for s in STATES:
             k = kinds.get(prefix + s) or kinds[prefix + "normal"]
-            img = button(k, flag_rgb, fits.get(s))
             files[prefix + s] = write(os.path.join(out, "art", buttons_dir, f"flag_{name}{sub}_{s}.ddt"),
-                                      img, k.header)
+                                      images[prefix + s], k.header)
     files["postgame"] = write(os.path.join(out, "art", flags_dir, f"ingame_ui_postgame_flag_{name}.ddt"),
-                              postgame(kinds["postgame"], design, warp), kinds["postgame"].header)
+                              images["postgame"], kinds["postgame"].header)
     return files
 
 

@@ -54,7 +54,7 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "aoe3_blender_tools"))
-from aoe3game import gr2  # noqa: E402
+from aoe3game import deploy, gr2  # noqa: E402
 
 HAS_POSITION, HAS_ORIENTATION, HAS_SCALE_SHEAR = 1, 2, 4
 # granny_transform: u32 flags, f32 position[3], f32 orientation[4] (x, y, z, w), f32 scale_shear[9]
@@ -437,8 +437,10 @@ def main(argv):
     bones = 0
     for path, out in jobs:
         try:
+            if not args["dry_run"]:              # a file is written there (in place without -o)
+                deploy.refuse_steam(out or path)
             status, n = run_one(path, out, args)
-        except (Refused, gr2.Gr2Error, OSError, struct.error) as exc:
+        except (Refused, deploy.RefusedPath, gr2.Gr2Error, OSError, struct.error) as exc:
             print(f"{path}: refused: {exc}")
             counts["refused"] += 1
             continue
