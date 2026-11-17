@@ -170,7 +170,7 @@ def paint(s, ops):
     run when the texture is written."""
     ops = clean_ops(ops)
     img = s.start.astype(np.float32)
-    skipped, empty, started = [], [], time.perf_counter()
+    skipped, empty, missing, started = [], [], [], time.perf_counter()
     for i, op in enumerate(ops):
         if not op.get("where"):              # a step still being set up: nothing chosen yet
             empty.append(i)
@@ -184,12 +184,15 @@ def paint(s, ops):
             if "selects nothing" in str(e):  # e.g. only islands taken out: nothing left to paint
                 empty.append(i)
                 continue
+            if "no island of part" in str(e) or "no island moved by bone" in str(e):
+                missing.append([i, str(e).split(" (atlas parts")[0]])   # a part this unit has not
+                continue
             raise RetexError(f"op {i + 1} ({op['op']}): {e}") from None
         except (KeyError, ValueError, OSError) as e:
             raise RetexError(f"op {i + 1} ({op['op']}): {e}") from None
     result = np.clip(img + 0.5, 0, 255).astype(np.uint8)
     return {"image": _png(result), "seconds": round(time.perf_counter() - started, 3), "ai_skipped": skipped,
-            "empty": empty}
+            "empty": empty, "missing": missing}
 
 
 def add_picture(s, name, data_url):
@@ -217,9 +220,14 @@ def save(s, ops, *, out="new", fmt="same", mips="same", bump=True, bump_strength
     if mips not in ("same", "full", "none"):
         raise RetexError("mips: same, full or none")
     ops = clean_ops(ops)
+    parts = set(s.atlas.get("parts", []))
     for i, op in enumerate(ops):
         if not op.get("where"):
             raise RetexError(f"step {i + 1} ({op['op']}) paints nowhere yet: choose where, or switch it off")
+        lacking = [w.split(":", 1)[1] for w in op["where"] if w.lstrip("-").startswith("part:")
+                   and w.lstrip("-").split(":", 1)[1] not in parts]
+        if lacking:
+            raise RetexError(f"step {i + 1} names a part this unit has not ({', '.join(lacking)}): take it out")
     recipe = {"texture": s.start_file, "atlas": "atlas", "scale": s.scale, "out": out + ".ddt",
               "format": str(fmt).lower(), "mips": mips, "png": out + ".png", "ops": ops}
     if bump:

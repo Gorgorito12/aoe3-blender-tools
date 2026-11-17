@@ -325,7 +325,7 @@ def r_building_export(st, rest, q, b):
 def r_inspect(st, rest, q, b):
     from . import inspector
     try:
-        return inspector.inspect(b.get("path") or "", b.get("entry"))
+        return inspector.inspect(b.get("path") or "", b.get("entry"), st.settings.get("cache") or None)
     except inspector.InspectError as e:
         raise ApiError(str(e)) from None
 

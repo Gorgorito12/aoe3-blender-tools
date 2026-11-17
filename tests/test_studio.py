@@ -313,6 +313,14 @@ class Server(unittest.TestCase):
             self.assertEqual(img[56, 56, :3].tolist(), [200, 200, 200])   # the leg, untouched
             status, err = self.call("/api/retex/paint", {"session": sid, "ops": [{"op": "melt", "where": ["all"]}]})
             self.assertEqual(status, 400)
+            # a part this unit has not: skipped with a note while painting, refused when writing
+            torso = [{"op": "recolour", "where": ["part:torso"], "colour": "#204080"}]
+            status, p2 = self.call("/api/retex/paint", {"session": sid, "ops": torso + head})
+            self.assertEqual(status, 200, p2)
+            self.assertEqual([m[0] for m in p2["missing"]], [0])
+            status, err = self.call("/api/retex/save", {"session": sid, "ops": torso})
+            self.assertEqual(status, 400)
+            self.assertIn("torso", err["error"])
             # a swatch the page sends, then a fill with it
             swatch = np.zeros((8, 8, 3), np.uint8)
             swatch[..., 1] = 180
@@ -902,6 +910,25 @@ class Inspector(unittest.TestCase):
             self.assertEqual((r["kind"], r["width"]), ("ddt", 64))
             with self.assertRaises(inspector.InspectError):
                 inspector.inspect(os.path.join(tmp, "Art1.bar"), "nothing")
+
+
+class InspectorCache(unittest.TestCase):
+    def test_a_compressed_model_is_read_from_the_cache(self):
+        """A model the game stores compressed is shown from its uncompressed copy in the cache,
+        found by the original's MD5 (as tools/model_survey.py names them)."""
+        import hashlib
+        from unittest import mock
+        from aoe3game import gr2
+        from studio import inspector
+        compressed = b"stands for a compressed model"
+        with tempfile.TemporaryDirectory() as cache:
+            os.makedirs(os.path.join(cache, "raw"))
+            with open(os.path.join(cache, "raw", hashlib.md5(compressed).hexdigest() + ".gr2"), "wb") as fh:
+                fh.write(b"the uncompressed copy")
+            with mock.patch.object(gr2, "header_facts", return_value={"raw": False}):
+                self.assertEqual(inspector._uncompressed(compressed, cache), b"the uncompressed copy")
+                self.assertEqual(inspector._uncompressed(b"not in the cache", cache), b"not in the cache")
+                self.assertEqual(inspector._uncompressed(compressed, None), compressed)
 
 
 class Picker(unittest.TestCase):

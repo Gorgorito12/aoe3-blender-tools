@@ -41,7 +41,9 @@ def _data(path, entry):
     raise InspectError(f"{entry} is not in {os.path.basename(path)}")
 
 
-def inspect(path, entry=None):
+def inspect(path, entry=None, cache=None):
+    """`cache`: the folder of uncompressed model copies (tools/model_survey.py's), where a
+    compressed model is looked up by its MD5."""
     if entry is None and path.lower().endswith(".bar"):
         try:
             entries = bar.read_entries(path)
@@ -53,7 +55,7 @@ def inspect(path, entry=None):
     if data[:4] == ddt.MAGIC:
         return _ddt(name, data)
     if low.endswith(".gr2") or data[:16] == gr2.MAGIC:
-        return _gr2(name, data, os.path.dirname(path) if entry is None else None)
+        return _gr2(name, data, os.path.dirname(path) if entry is None else None, cache)
     if xmbedit.is_compressed(data) or data[:2] == b"X1":
         elems, attrs, root = xmbedit.parse(xmbedit.decode(data))
         return {"kind": "text", "name": name, "format": "xmb", "text": xmbedit.to_xml(elems, attrs, root)[:MAX_TEXT]}
@@ -112,6 +114,19 @@ def _texture_beside(folder, names):
     return None
 
 
+def _uncompressed(data, cache):
+    """The model's bytes, or its uncompressed copy from the cache when it is compressed and the
+    cache holds one (named by the original's MD5, as tools/model_survey.py keeps them)."""
+    import hashlib
+    if not cache or gr2.header_facts(data).get("raw"):
+        return data
+    p = os.path.join(cache, "raw", hashlib.md5(data).hexdigest() + ".gr2")
+    if os.path.isfile(p):
+        with open(p, "rb") as fh:
+            return fh.read()
+    return data
+
+
 def mesh_of(model):
     """A model read by gr2_mesh.read as one mesh for the page's 3D view, with its numbers; None
     when it holds no mesh this reader can show."""
@@ -139,9 +154,9 @@ def mesh_of(model):
             "size": [round(float(v), 3) for v in hi - lo]}
 
 
-def _gr2(name, data, folder=None):
+def _gr2(name, data, folder=None, cache=None):
     try:
-        model = gr2_mesh.read(data)
+        model = gr2_mesh.read(_uncompressed(data, cache))
     except gr2.Compressed as e:
         return {"kind": "gr2", "name": name, "error": f"{e}. Use Uncompressed models, or give the Granny bridge "
                 "in Settings to the tools that read compressed models."}

@@ -488,5 +488,6 @@
   "b.deploy.update.help": "Update: the {n} others are deployed again with the new version of this one.",
   "b.deploy.missing": "{n} of the others' bundles are no longer on disk: they cannot be deployed again, so only Replace is possible.",
   "b.deploy.replace": "Replace all",
-  "b.deploy.replace.help": "Replace all: the {n} buildings deployed now are taken out, and only this one stays."
+  "b.deploy.replace.help": "Replace all: the {n} buildings deployed now are taken out, and only this one stays.",
+  "r.missing": "Step {step} skips what this unit has not: {why}."
 }
