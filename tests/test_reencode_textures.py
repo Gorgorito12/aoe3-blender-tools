@@ -173,6 +173,10 @@ class Reencode(unittest.TestCase):
         self.assertIn("the check failed", rec["reason"])
         grey = ddt.pack(0, 0, ddt.GREY, 4, 4, [b"\x80" * 16])
         self.assertEqual(rt.reencode(grey, LIMIT)[1]["action"], "kept")
+        odd = ddt.write_bgra(picture(20, 12), alpha=1, mips=False)       # not powers of two
+        new, rec = rt.reencode(odd, LIMIT)
+        self.assertIsNone(new)
+        self.assertIn("powers of two", rec["reason"])
 
     def test_run_report_and_sheet(self):
         with tempfile.TemporaryDirectory() as tmp:

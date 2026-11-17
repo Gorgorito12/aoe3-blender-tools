@@ -307,6 +307,14 @@ encoding of a detailed texture (roof tiles, thatch, stone) **measured** 2 to 6 a
 `hc_move.py --reencoded` ships the re-encoded copy of every moved texture and writes the new header
 into its suffix.
 
+**Sides that are not powers of two are left alone.** **In game** (2026-11-17): two uncompressed
+one-level textures of 133 x 108 and 166 x 357 (a mod's home-city statue), written as DXT3 with a
+mip chain, broke the `<replacetexture>` swaps of other home cities' scenes, scenes that never draw
+them: a room lost its wallpaper and floor, a market its roof tiles and its grass. Put back as they
+were, everything drew as before, with the other re-encoded textures still in place. The stock game
+has no such texture (all 215 measured are powers of two), so the tool keeps them as they are.
+Whether the cause is the DXT block size, the mip chain or the size itself is **to verify**.
+
 **Player colour** (**measured** on the stock textures that use the `pixelxform` shader): about 2 %
 of their pixels, in thin bands (trim strips under the windows), have alpha below 128, and those
 pixels are light and nearly grey (the shader tints them). The generator's player-colour option
