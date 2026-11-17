@@ -2,7 +2,8 @@
 """Generate a preset headless and write it as a game bundle (model, texture, anim file, proto
 fields and strings) for `tools/game_deploy.py`.
 
-    python scripts/game_export.py --out DIR [--preset WHITE_HOUSE] [--detail LOW|MEDIUM]
+    python scripts/game_export.py --out DIR [--preset WHITE_HOUSE | --params <building.json>]
+                                  [--detail LOW|MEDIUM]
                                   [--prefix mod] [--name NAME] [--display "Shown name"]
                                   [--template House] [--kind BUILDING|PROP] [--folder objects]
                                   [--no-v-flip] [--player-colour]
@@ -11,7 +12,8 @@ fields and strings) for `tools/game_deploy.py`.
                                   [--profile <profile.json> | --no-profile] [--proto <protoy.xml>]
     python scripts/game_export.py --out DIR --set GOODS|CAMP [--prefix mod] [--texture-size 256]
 
-A preset of the PROP style is written as a prop (no stages, rubble or damaged model; treasures in
+--params reads any building's parameters from a JSON file (core/schema.params_to_dict; the
+studio writes it). A preset of the PROP style is written as a prop (no stages, rubble or damaged model; treasures in
 nuggets, map objects in objects). --set writes a generated prop set: one unit whose models are its
 variations, on one texture (core/styles/props/sets.py).
 
@@ -98,8 +100,13 @@ def main():
         return 2
     if opt("--set"):
         return export_set(out, opt("--set").upper())
-    key = opt("--preset", "WHITE_HOUSE")
-    p = dataclasses.replace(building.PRESETS[key])
+    if opt("--params"):                     # any building, as core/schema.params_to_dict writes it
+        import json
+        from aoe3_blender_tools.core import schema
+        with open(opt("--params"), encoding="utf-8") as fh:
+            p = schema.params_from_dict(json.load(fh))
+    else:
+        p = dataclasses.replace(building.PRESETS[opt("--preset", "WHITE_HOUSE")])
     if opt("--detail"):
         p = dataclasses.replace(p, detail=opt("--detail"))
     if opt("--name"):
