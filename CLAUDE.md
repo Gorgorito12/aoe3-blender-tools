@@ -50,6 +50,7 @@ python -I tests/test_named_models.py              # model_sheets --models lists:
 venv/bin/python -I tests/test_retexture.py        # uv_atlas, retexture, skin and attachments, synthetic data
 python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
 python -I tests/test_hc_survey.py                 # home-city inventory and move plan, plain Python
+python -I tests/test_hc_move.py                   # the move itself: stage, edits, install and undo
 python -I tools/hc_survey.py --game <copy> --out <dir outside repo> --target "<Mod>\homecity" [--plan <civ>]
 ```
 

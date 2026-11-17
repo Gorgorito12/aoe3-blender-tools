@@ -159,6 +159,32 @@ texture, at the same length so nothing else in the file moves, with the CRC reco
 (`retexture.py --own-texture`). The game resolves the stored path below `art\` (the artist's
 drive and folders before it are ignored).
 
+### Moving a home city's models (`tools/hc_move.py`)
+
+**In game** (2026-11-17, a mod's home city of 32 models and the one that shares four of them,
+before and after, from the same six views; the screenshots differ by 0.1 to 0.6 levels out of 255
+on average where the move works, by 50 to 190 where it does not):
+
+- **A stored texture name drops only its last extension.** `...\art\x\name.jpg`,
+  `...\art\x\name.tga` and `...\art\x\name.ddt` all reach `art\x\name.ddt`, and a model whose stored
+  names follow its moved textures draws as before. A name written `name.(0,4,8,8).tga` (the
+  `(usage,alpha,format,mips)` suffix of a source texture's file name) makes the game look for
+  `name.(0,4,8,8).ddt`: the models drew black until copies of their textures with that name were
+  added. So a suffix belongs on a source `.tga`, not in a model's stored name, unless the `.ddt` is
+  renamed with it.
+- **A home city's `<visual>` may climb out of `art\homecity\`** with `..\` (a path relative to
+  `art\homecity\` such as `..\Mod\homecity\Name\x.xml` loads), and a path under `art\homecity\`
+  works as well.
+- **A raw 3ds Max export converted to the stock basis** (`rebake --convert`: inches to 0.615 units
+  per metre, Z up to Y up, every value checked to the units ratio offline) **does not draw as the
+  original in a home city**: the converted buildings and background stood misplaced and out of
+  scale and the camera saw the wrong scene, while the same models rebuilt without the conversion
+  drew as before. The game evidently does not read these files through their declared basis alone;
+  how it places them is **to verify** before converting any model the game already draws right.
+- Rebuilt models compressed again with `recompress_models.py` (each section in the original's
+  format where the rebuild kept the sections' sizes, else Oodle1) drew as before, at the
+  originals' total size.
+
 ### Uncompressed copies
 
 - **Why** (**measured** by sampling the stack of the game's main thread): the
