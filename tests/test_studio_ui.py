@@ -21,7 +21,7 @@ from studio import log, server  # noqa: E402
 from studio.__main__ import BROWSERS  # noqa: E402
 
 ROUTES = ("buildings", "textures", "survey", "art", "jobs", "settings", "dev", "welcome", "inspect", "retex", "flags",
-          "texmaker", "settlement", "buildtools", "tool/deploy", "tool/make_bar", "tool/fix_bone_scale", "tool/art_survey")
+          "texmaker", "settlement", "buildtools", "results", "tool/deploy", "tool/make_bar", "tool/fix_bone_scale", "tool/art_survey")
 
 
 def node():

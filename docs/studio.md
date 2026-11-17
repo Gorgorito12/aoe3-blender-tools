@@ -24,7 +24,7 @@ folder) are kept in `%APPDATA%\aoe3-blender-tools\studio.json`. Nothing leaves t
 |---|---|
 | Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes, a person 1.8 m tall for the scale, the obstruction on the ground, the low-poly model, the damaged texture, the player colour of a team; the texture with its atlas regions; triangles against the style's target or the game's buildings of the same class; the technical sheet; **Check** (the add-on's game-ready checks, `scripts/check.py`); with the PROP style, the prop sets side by side and their export; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo. **Settlements and more forms** leads to the settlement composer (below) and the buildings' forms |
 | Textures and units | **Repaint a unit** and **Make a tileable texture** (below); the UV atlas, the recipe tool, LoRA dataset and training as forms |
-| Survey and inspection | The art, texture, model, grouping, shape and palette surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it, `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back |
+| Survey and inspection | The art, texture, model, grouping, shape and palette surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it, `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back; **a survey's results** as a table (below) |
 | Art utilities | **Design a civ flag** (below); avatar icons, ground rings, health bars, the HITPOINTBAR fix, bone scale fix, uncompressed models |
 | Settings | The folders, checked as they are chosen; what the studio found; Start and Check ComfyUI (the nodes and models a repaint needs); the log. The **welcome** opens on the first start until the game's folder is set |
 | Tasks | Every task of the session with its live log, progress, cancel and outputs (pictures shown, text files opened, folders shown) |
@@ -35,7 +35,7 @@ script has none, or when a form passes an option its script does not read).
 
 ## The screens made for their task
 
-A form is enough to run a survey; it is not enough to paint. Five screens work in the studio's
+A form is enough to run a survey; it is not enough to paint. Six screens work in the studio's
 own process and answer as you move a control (a ComfyUI step runs in a thread, a write as a task):
 
 - **Repaint a unit** (`studio/retex.py`, `web/js/retex.js`). A unit of the game copy (as
@@ -66,6 +66,13 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   region as it is done; **Stop** ends it between two regions (and interrupts ComfyUI). **Use it
   for the export** keeps the texture as a PNG that `scripts/game_export.py --texture-png` puts in
   place of the painted one; a change to the building drops it.
+- **A survey's results** (`studio/results.py`, `web/js/results.js`). A texture or model survey's
+  report (`textures.json`, `models.json`: the profile is computed with the survey's own
+  `profile()`) or a profile (`--profile-out`, or this program's own in
+  `aoe3_blender_tools/profiles/`) as a table: every group (origin, category, role, material) with
+  its quartiles drawn as bars (the middle half and the median, each column on its scale), its
+  shares, its palette and its most common sizes and formats; sorted by any column, filtered by a
+  word. A finished survey offers **See the results**. Only groups are shown, which name no file.
 - **Compose a settlement** (`studio/settlement_ui.py`, `web/js/settlement.js`). The units to lay out
   (class, proto, variations, radius), the socket and an obstruction ring; `core/settlement.compose`
   lays them as the mod's own settlements are (the counts default to the mod's medians, another seed

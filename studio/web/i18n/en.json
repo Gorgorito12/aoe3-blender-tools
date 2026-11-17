@@ -534,5 +534,18 @@
   "se.x": "x",
   "se.z": "z",
   "se.turn": "Turn (°)",
-  "se.keys": "Drag to move; the wheel, or Q and E, turn it by 15°; Delete removes it."
+  "se.keys": "Drag to move; the wheel, or Q and E, turn it by 15°; Delete removes it.",
+  "rs.title": "A survey's results",
+  "rs.intro": "What a texture or model survey measured, as a table: every group with its quartiles, shares and palette, sorted by any column.",
+  "rs.open": "Open a result…",
+  "rs.profile.textures": "This program's texture profile",
+  "rs.profile.models": "This program's model profile",
+  "rs.filter": "Filter by origin, category, role or material",
+  "rs.sort": "Sort by this column",
+  "rs.textures": "{n} textures, {d} distinct",
+  "rs.files": "{n} files, {d} distinct",
+  "rs.groups": "{n} groups",
+  "rs.unread": "{n} unread",
+  "rs.none": "No group matches.",
+  "rs.see": "See the results"
 }

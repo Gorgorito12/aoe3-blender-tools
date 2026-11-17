@@ -440,6 +440,23 @@ def _tex():
     return texmaker_ui
 
 
+def r_results(st, rest, q, b):
+    """A survey's result (a report or a profile) as a table; `profile`: one of this program's."""
+    from . import results
+    from . import ADDON
+    name = b.get("profile")
+    if name:
+        if name not in ("textures", "models"):
+            raise ApiError("profile: textures or models")
+        path = os.path.join(ADDON, "profiles", name + ".json")
+    else:
+        path = b.get("path") or ""
+    try:
+        return results.table(path)
+    except results.ResultsError as e:
+        raise ApiError(str(e)) from None
+
+
 def _settle():
     from . import settlement_ui
     return settlement_ui
@@ -903,6 +920,7 @@ ROUTES = [
     ("POST", "/api/retex/paint", r_retex_paint),
     ("POST", "/api/retex/picture", r_retex_picture),
     ("POST", "/api/retex/save", r_retex_save),
+    ("POST", "/api/results", r_results),
     ("POST", "/api/settlement/measured", r_settlement_measured),
     ("POST", "/api/settlement/compose", r_settlement_compose),
     ("POST", "/api/settlement/open", r_settlement_open),

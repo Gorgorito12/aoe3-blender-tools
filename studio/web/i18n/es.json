@@ -690,5 +690,18 @@
   "se.x": "x",
   "se.z": "z",
   "se.turn": "Giro (°)",
-  "se.keys": "Arrastra para mover; la rueda, o Q y E, la giran 15°; Supr la quita."
+  "se.keys": "Arrastra para mover; la rueda, o Q y E, la giran 15°; Supr la quita.",
+  "rs.title": "Resultados de un estudio",
+  "rs.intro": "Lo que midió un estudio de texturas o de modelos, como tabla: cada grupo con sus cuartiles, proporciones y paleta, ordenable por cualquier columna.",
+  "rs.open": "Abrir un resultado…",
+  "rs.profile.textures": "El perfil de texturas de este programa",
+  "rs.profile.models": "El perfil de modelos de este programa",
+  "rs.filter": "Filtrar por origen, categoría, papel o material",
+  "rs.sort": "Ordenar por esta columna",
+  "rs.textures": "{n} texturas, {d} distintas",
+  "rs.files": "{n} archivos, {d} distintos",
+  "rs.groups": "{n} grupos",
+  "rs.unread": "{n} sin leer",
+  "rs.none": "Ningún grupo coincide.",
+  "rs.see": "Ver los resultados"
 }

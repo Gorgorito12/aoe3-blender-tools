@@ -10,6 +10,7 @@ import { retexScreen } from './retex.js';
 import { flagsScreen } from './flags.js';
 import { texmakerScreen } from './texmaker.js';
 import { settlementScreen } from './settlement.js';
+import { resultsScreen } from './results.js';
 import { welcomeScreen } from './welcome.js';
 
 const SCREENS = [
@@ -25,7 +26,7 @@ const SCREENS = [
 // the screens made for their task, shown first on their area: [route, title key, intro key]
 const SCREENS_OF = {
   buildings: [['settlement', 'se.title', 'se.intro']],
-  survey: [['inspect', 'i.title', 'i.intro']],
+  survey: [['inspect', 'i.title', 'i.intro'], ['results', 'rs.title', 'rs.intro']],
   textures: [['retex', 'r.title', 'r.intro'], ['texmaker', 'x.title', 'x.intro']],
   art: [['flags', 'f.title', 'f.intro']],
 };
@@ -68,6 +69,7 @@ async function show() {
     else if (head === 'texmaker') await texmakerScreen(main, app);
     else if (head === 'welcome') await welcomeScreen(main, app);
     else if (head === 'settlement') await settlementScreen(main, app);
+    else if (head === 'results') await resultsScreen(main, app);
     else if (head === 'buildtools') await areaScreen(main, app, 'buildings');   // the area's own forms
     else await areaScreen(main, app, head);
   } catch (e) {

@@ -277,6 +277,42 @@ class Server(unittest.TestCase):
                                                              "options": {"ai": True, "ai_strength": 2}})
             self.assertEqual(status, 400)
 
+    def test_a_surveys_results_as_a_table(self):
+        """The program's own profiles, and a texture survey's report (its profile computed as the
+        tool does), as groups with their columns; anything else refused."""
+        for name, kind, col in (("textures", "textures", "grain"), ("models", "models", "tris")):
+            status, r = self.call("/api/results", {"profile": name})
+            self.assertEqual(status, 200, r)
+            self.assertEqual(r["kind"], kind)
+            self.assertGreater(len(r["rows"]), 5)
+            self.assertIn(col, [c["key"] for c in r["columns"]])
+            self.assertTrue(all(c["label"]["en"] and c["label"]["es"] for c in r["columns"]))
+            self.assertTrue(r["help"]["en"] and r["help"]["es"])
+            q = next(x[col] for x in r["rows"] if x[col])
+            self.assertEqual(len(q), 3)
+            self.assertLessEqual(q[0], q[1])
+        import numpy as np
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import texture_survey
+        rng = np.random.default_rng(1)
+        records = []
+        for i in range(10):
+            rec = texture_survey.measure(rng.integers(0, 255, (64, 64, 4), dtype=np.uint8))
+            rec.update({"path": f"art/units/u{i}.ddt", "md5": str(i), "w": 64, "h": 64, "format": 1, "alpha": 0,
+                        "origin": "own", "category": "units", "role": "diffuse", "material": ""})
+            records.append(rec)
+        report = os.path.join(self.tmp.name, "textures.json")
+        with open(report, "w", encoding="utf-8") as fh:
+            json.dump({"folders": [], "reference": [], "textures": records}, fh)
+        status, r = self.call("/api/results", {"path": report})
+        self.assertEqual(status, 200, r)
+        self.assertEqual(r["facts"]["textures"], 10)
+        self.assertTrue(any(x["category"] == "units" and x["count"] == 10 for x in r["rows"]))
+        self.assertNotIn("u0.ddt", json.dumps(r))                     # groups only: no file named
+        for bad in ({"path": os.path.join(self.tmp.name, "none.json")}, {"path": self.config}, {"profile": "x"}):
+            status, err = self.call("/api/results", bad)
+            self.assertEqual(status, 400, bad)
+
     def test_compose_a_settlement(self):
         """Laid out as measured, written as a grouping in the work folder, read back unit for unit;
         a read file's own orientation kept while a unit is not turned; never into the game."""
