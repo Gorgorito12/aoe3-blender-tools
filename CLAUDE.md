@@ -49,6 +49,8 @@ python -I tests/test_hitpointbar_tags.py           # animation tag files and the
 python -I tests/test_named_models.py              # model_sheets --models lists: protos to models, plain Python
 venv/bin/python -I tests/test_retexture.py        # uv_atlas, retexture, skin and attachments, synthetic data
 python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
+python -I tests/test_hc_survey.py                 # home-city inventory and move plan, plain Python
+python -I tools/hc_survey.py --game <copy> --out <dir outside repo> --target "<Mod>\homecity" [--plan <civ>]
 ```
 
 On Windows the venv interpreter is `venv/Scripts/python`. `-X utf8` matters: the mod's
