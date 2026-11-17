@@ -31,6 +31,10 @@ the Visual Studio C compiler for x86 (found by vswhere) or zig, by default to
 tools/granny_recompress.exe (ignored by git), which is also where --helper looks by default.
 
 Per file:
+- a file whose type tag (header + 0x24) is 0x80000010 or older is refused: such a file
+  passes every check below once recompressed, yet the game's runtime cannot open it and the game
+  exits at its main menu, so it stays uncompressed (0x80000013 and 0x80000015 load recompressed;
+  0x80000011 and 0x80000012 are untested in game);
 - the runtime writes the file once in each target format (with the mapping "every format to F");
   for one target format that file is the result, for several the sections are put together from
   them in the runtime's own layout (per section: pointer fixups, marshalling fixups, data, packed);
@@ -68,6 +72,10 @@ NAMES = {v: k for k, v in FORMATS.items()}
 HELPER_SOURCE = os.path.join(HERE, "granny_recompress.c")
 DEFAULT_HELPER = os.path.join(HERE, "granny_recompress.exe")
 TEMP_SUFFIX = ".recompressing"
+TYPE_TAG = 0x44            # the file's type tag (header + 0x24)
+MIN_TYPE_TAG = 0x80000011  # 0x80000010 passes every check below, yet the game cannot load
+#                            it recompressed: it exits at its main menu (WoL home cities, 2026-11-17);
+#                            0x80000011 and 0x80000012 are untested in game, 0x80000013 and 0x80000015 load
 MB = 1024 * 1024
 
 
@@ -215,6 +223,10 @@ def verify(raw, out, targets, root):
 def recompress(data, runtime, fmt, like, tag):
     """(the recompressed file, its section formats). Raises Refused."""
     words, sections, _, _ = layout(data)
+    type_tag = struct.unpack_from("<I", data, TYPE_TAG)[0]
+    if type_tag < MIN_TYPE_TAG:
+        raise Refused(f"type tag 0x{type_tag:08X} is older than 0x{MIN_TYPE_TAG:08X}: once "
+                      "recompressed the game's runtime cannot open it (keep it uncompressed)")
     root = data[ROOT_TYPE:ROOT_TYPE + 8]
     if root == bytes(8) and like is not None:
         root = like[0][ROOT_TYPE:ROOT_TYPE + 8]        # the input lost it: the original's

@@ -172,6 +172,15 @@ class RecompressTests(unittest.TestCase):
         with self.assertRaisesRegex(rm.Refused, "CRC"):
             rm.recompress(model(), FakeRuntime(bad_crc=True), 2, None, 0)
 
+    def test_refuses_an_old_type_tag(self):
+        old = bytearray(model())
+        struct.pack_into("<I", old, rm.TYPE_TAG, 0x80000010)
+        struct.pack_into("<I", old, 0x28, gr2.file_crc(old))
+        rt = FakeRuntime()
+        with self.assertRaisesRegex(rm.Refused, "type tag 0x80000010"):
+            rm.recompress(bytes(old), rt, 2, None, 0)
+        self.assertEqual(rt.calls, [])      # refused before the runtime is asked
+
     def test_verify_refuses_changed_fixups(self):
         raw = FakeRuntime().recompress(model(), 0, 0)
         out, targets = rm.recompress(model(), FakeRuntime(), 2, None, 0)
