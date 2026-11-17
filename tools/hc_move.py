@@ -6,7 +6,7 @@ takes it back out.
     python -I tools\\hc_move.py stage --game <copy> --civ <civ> --target "<Mod>\\homecity"
         --out <stage folder> --granny <bridge.exe> [--form A|B] [--shared _shared]
         [--cache <survey cache> ...] [--work <folder>] [--recompress <tools/recompress_models.py>]
-        [--convert] [--suffix]
+        [--convert] [--suffix] [--reencoded <tools/reencode_textures.py report.json>]
     python -I tools\\hc_move.py install --bed <test copy> --stage <stage folder>
     python -I tools\\hc_move.py undo --bed <test copy>
 
@@ -28,10 +28,15 @@ What `stage` does, for the home city of <civ> (its data and campaign files):
   With --recompress, each rebuilt model is compressed again (tools/recompress_models.py), with
   each section in its original's format when the sections kept their sizes, else Oodle1.
 - **--suffix** renames each moved .ddt that only .tga/.png/.jpg stored names reach to
-  <name>.(u,a,f,m).ddt, the digits its own header (never re-encoded), and writes those stored
+  <name>.(u,a,f,m).ddt, the digits the header it ships with (see --reencoded), and writes those stored
   names <name>.(u,a,f,m).tga: the game drops only the last extension of a stored name, so it
   reads them as that .ddt (in game, 2026-11-17). A .ddt that a stored .ddt name or an anim file
   (<replacetexture>, a decal) names keeps its name, and the report lists it.
+- **--reencoded** takes the textures tools/reencode_textures.py re-encoded (its report.json,
+  made from this game copy): a moved .ddt that is still the file it was made from ships as its
+  re-encoded copy, and its suffix states the new header. Re-encoding comes before the suffix, so
+  a name never states an old header. A re-encoded texture that does not move, or whose name
+  already carries a suffix, is left as it was and the report lists it.
 - **Run "_tables" as the civ** to move the models that only the shared tables name (props,
   proto units) to the shared folder. Files already below the tree are never moved again.
 - **--convert** (off) also puts a raw 3ds Max export into the stock basis (`rebake --convert`).
@@ -120,7 +125,22 @@ def anim_texture_refs(art):
     return out
 
 
-def plan_moves(res, civ, target, form="A", shared="_shared", suffix=False, tex_refs=None):
+def load_reencoded(report, game):
+    """{art key: {"sha256", "path", "digits"}} of the textures a tools/reencode_textures.py report
+    re-encoded, keyed by their place in the game copy's art folder."""
+    with open(report, encoding="utf-8") as fh:
+        rep = json.load(fh)
+    art = os.path.join(os.path.abspath(game), "art")
+    out = {}
+    for r in rep["textures"]:
+        if r.get("action") == "re-encoded" and r.get("output"):
+            key = hs.norm(os.path.relpath(os.path.abspath(r["source"]), art))
+            out[key] = {"sha256": r["sha256"], "path": r["output"], "digits": r["after"]}
+    return out
+
+
+def plan_moves(res, civ, target, form="A", shared="_shared", suffix=False, tex_refs=None,
+               reencoded=None):
     """{"civ", "tree", "root", "moves": {old key: new art path (spelled)}, "groups": {key: civ|
     shared}, "stay": [(key, why)], "left": [keys under the root that nothing reaches],
     "suffixed": {ddt key: digits}, "unsuffixed": [(ddt key, why)]}.
@@ -228,7 +248,22 @@ def plan_moves(res, civ, target, form="A", shared="_shared", suffix=False, tex_r
                 continue
             groups[k] = "shared" if (len(civs) > 1 or groups.get(k) == "shared") else "civ"
     moves = {k: dest[g] + "\\" + rel(k) for k, g in groups.items()}
-    # the suffix: a moved .ddt that only .tga/.png/.jpg stored names of moved models reach
+    # re-encoded textures: taken when the texture moves and is still the file it was made from
+    applied, refused = {}, []
+    mine = {t["resolved"] for r in rows for t in r.get("texture_info", [])} | set(moves)
+    for k, e in sorted((reencoded or {}).items()):
+        if k not in mine:
+            continue
+        if k not in moves:
+            refused.append((k, "it does not move (left as it was)"))
+        elif sha256(art.read(k)) != e["sha256"]:
+            refused.append((k, "the file changed since it was re-encoded"))
+        elif hs.SUFFIX_RE.search(os.path.splitext(os.path.basename(k))[0]):
+            refused.append((k, "its name already carries a suffix, which would no longer be true"))
+        else:
+            applied[k] = e
+    # the suffix: a moved .ddt that only .tga/.png/.jpg stored names of moved models reach; its
+    # digits are the header it ships with (the re-encoded one when it was re-encoded)
     suffixed, unsuffixed = {}, []
     if suffix:
         exts, header = {}, {}
@@ -236,7 +271,8 @@ def plan_moves(res, civ, target, form="A", shared="_shared", suffix=False, tex_r
             for t in r.get("texture_info", []):
                 if t["resolved"] in moves:
                     exts.setdefault(t["resolved"], set()).add(t["ext"])
-                    header[t["resolved"]] = t["header"]
+                    header[t["resolved"]] = applied[t["resolved"]]["digits"] \
+                        if t["resolved"] in applied else t["header"]
         for k in sorted(moves):
             if not k.endswith(".ddt"):
                 continue
@@ -269,7 +305,8 @@ def plan_moves(res, civ, target, form="A", shared="_shared", suffix=False, tex_r
                   if k.startswith(root + "\\") and k not in reached) if root else []
     return {"civ": civ_name, "form": form, "tree": tree, "root": root, "moves": moves,
             "groups": groups, "stay": stay, "left": left, "labels": sorted(labels),
-            "suffixed": suffixed, "unsuffixed": unsuffixed}
+            "suffixed": suffixed, "unsuffixed": unsuffixed, "reencoded": applied,
+            "not_reencoded": refused}
 
 
 # --------------------------------------------------------------------------------------------------
@@ -479,17 +516,19 @@ def run_recompress(tool, install, src, out, like):
 
 
 def stage(game, civ, target, out, bridge_exe, form="A", shared="_shared", caches=(),
-          convert=False, suffix=False, recompress=None, rebake=None, work=None, log=print):
+          convert=False, suffix=False, recompress=None, rebake=None, work=None, reencoded=None,
+          log=print):
     """Writes the stage folder. rebake(src, dst, convert, renames) -> record line replaces the
     bridge (tests); recompress: the path of tools/recompress_models.py, to compress each rebuilt
-    model again."""
+    model again; reencoded: load_reencoded(...), the re-encoded textures to ship in place of the
+    moved originals."""
     if os.path.commonpath([os.path.abspath(out), os.path.abspath(game)]) == os.path.abspath(game):
         raise SystemExit("--out must be outside the game copy")
     bridge = (bridge_exe, os.path.abspath(game), os.path.abspath(work)) if work and bridge_exe else None
     res = hs.survey(game, target, caches=caches, bridge=bridge)
     art = res["art"]
     p = plan_moves(res, civ, target, form, shared, suffix=suffix,
-                   tex_refs=anim_texture_refs(art) if suffix else None)
+                   tex_refs=anim_texture_refs(art) if suffix else None, reencoded=reencoded)
     moves = p["moves"]
     files = os.path.join(out, "files")
     work = os.path.join(out, "work")
@@ -563,6 +602,11 @@ def stage(game, civ, target, out, bridge_exe, form="A", shared="_shared", caches
                 if new_data is not None:
                     data = new_data
                     edited["art\\" + art.display(k)] = changes
+            elif k in p["reencoded"]:
+                with open(p["reencoded"][k]["path"], "rb") as fh:
+                    data = fh.read()
+                if hs.ddt_digits(data[:8]) != p["reencoded"][k]["digits"]:
+                    raise SystemExit(f"{p['reencoded'][k]['path']} is not the re-encoded texture")
             put(rel_new, data)
     # files that stay but name a moved file
     stems = {os.path.basename(k).split(".")[0] for k in moves}
@@ -610,7 +654,9 @@ def stage(game, civ, target, out, bridge_exe, form="A", shared="_shared", caches
             fh.write(f"art\\{art.display(k)} -> art\\{new}\n")
     meta = {"civ": p["civ"], "form": form, "tree": p["tree"], "game": os.path.abspath(game),
             "written": written, "replaced": replaced, "removed": removed,
-            "moves": {"art\\" + art.display(k): "art\\" + v for k, v in moves.items()}}
+            "moves": {"art\\" + art.display(k): "art\\" + v for k, v in moves.items()},
+            "reencoded": {"art\\" + art.display(k): e["digits"] for k, e in p["reencoded"].items()},
+            "not_reencoded": {"art\\" + art.display(k): why for k, why in p["not_reencoded"]}}
     with open(os.path.join(out, "stage.json"), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=1)
     with open(os.path.join(out, "report.md"), "w", encoding="utf-8") as fh:
@@ -658,6 +704,14 @@ def report(p, art, models, edited, notes):
     out += ["", "## Edited files", ""]
     for rel, changes in sorted(edited.items()):
         out.append(f"- `{rel}`: " + "; ".join(f"line {n}: `{a}` -> `{b}`" for n, a, b in changes))
+    if p.get("reencoded") or p.get("not_reencoded"):
+        out += ["", "## Re-encoded textures", "",
+                f"{len(p['reencoded'])} moved textures ship re-encoded (tools/reencode_textures.py); "
+                "their suffix states the new header.", ""]
+        out += [f"- `{art.display(k)}`: ({e['digits']})" for k, e in sorted(p["reencoded"].items())]
+        if p.get("not_reencoded"):
+            out += ["", "Re-encoded but not used:", ""]
+            out += [f"- `{art.display(k)}`: {why}" for k, why in p["not_reencoded"]]
     if p.get("suffixed") or p.get("unsuffixed"):
         out += ["", "## Suffix", "", f"{len(p['suffixed'])} textures renamed with their header; "
                 f"{len(p['unsuffixed'])} keep their name:", ""]
@@ -773,7 +827,8 @@ def main(argv):
         stage(opt("--game"), opt("--civ"), opt("--target"), opt("--out"), opt("--granny"),
               form=opt("--form", "A").upper(), shared=opt("--shared", "_shared"),
               caches=opts("--cache"), convert="--convert" in argv, work=opt("--work"),
-              suffix="--suffix" in argv, recompress=opt("--recompress"))
+              suffix="--suffix" in argv, recompress=opt("--recompress"),
+              reencoded=load_reencoded(opt("--reencoded"), opt("--game")) if opt("--reencoded") else None)
         return 0
     if cmd == "install" and opt("--bed") and opt("--stage"):
         install(opt("--bed"), opt("--stage"))

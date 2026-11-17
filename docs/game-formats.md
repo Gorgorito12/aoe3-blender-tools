@@ -268,6 +268,45 @@ inset bounding box of each 4 x 4 block and picks the nearest of the four palette
 mod's 1024 x 1024 texture the decoded result differs from the source by 1.7 levels out of 255 on
 average, and the file has the size of the game's own (**measured**).
 
+**The closer encoder** (`refine=True` on `compress`, `compress_dxt5`, `write_dxt`, `encode_level`;
+the default stays the fast one, so existing output does not change): it also starts from the ends
+of each block's principal colour axis, solves the endpoints by least squares for the chosen
+indices (twice), tries one 565 step either way on each channel of each endpoint, and keeps per
+block whichever is closest. On a decoded DXT texture it finds the original blocks again: on a
+mod's 1024 x 1024 textures, 1.9 and 0.75 levels of difference with the fast encoder against 0.00
+(**measured**, about 5 s a 1024 x 1024 level). Other helpers: `chain_length(w, h, smallest)`,
+`mip_chain(..., bump=True)` (each level's normals made unit length again; `write_normal_map` with
+`mips=True` uses it), `area_resize`/`halve` (area average, the 2 x 2 box at exactly half),
+`colour_blocks_as_dxt1` (DXT3/DXT5 colour blocks as DXT1 blocks that decode the same: endpoints
+in the wrong order swapped with their indices, a one-colour block given index 0, as DXT1 reads
+c0 == c1 as the 3-colour mode whose index 3 is transparent black), `level_blocks`,
+`alpha_blocks`, `pack`. `fitted()` halves until the **longer** side fits (it looked at the height
+only, so a 2:1 texture was never reduced).
+
+**The game's own home-city building textures** (**measured**, `tools/reencode_textures.py tad`:
+the home-city files in `Data*.bar`, each `<building><visual>`, its anim files and models, the
+`.ddt` each model stores, people standing in for buildings left out): 215 textures of 98 models,
+mean 454 x 395; 152 are 512 x 512, 53 are 512 x 256, 43 are 256 x 256, none is above 512. Colour
+textures are DXT3 (`0,1,8,x` and `0,4,8,x`) or DXT1 with alpha 0 (`0,0,4,x`; no DXT1 declares an
+alpha); bump maps are DXT5 (`6,0,9,x`, `6,4,9,x`). Their chains stop at 4 px on the short side
+(512 x 512: 8 levels) or at 8 (7 levels); 32 bump maps have one level.
+
+### Re-encoding (`tools/reencode_textures.py`)
+
+Rules (the header's alpha value is always kept): a bump map (usage bit 4) becomes DXT5; alpha 0
+becomes DXT1, or DXT3 when its alpha channel is not opaque everywhere (an `alphatest` shader may
+cut holes with it); alpha 1, 4 or 8 becomes DXT3; BGRA follows the same rule; grey is kept. A side
+above twice the game's mean (above) halves both sides until both fit; the chain goes down to 4 px
+on the short side (a longer existing chain is kept). A level whose size does not change keeps its
+blocks when they can be carried over (DXT3/DXT5 to DXT1 exactly; a DXT3/DXT5 alpha re-quantised
+from its decoded values); a halved texture's level is either the original's own level of that
+size or a new encoding of the area average, whichever is closer. The check compares the new top
+level with the original's (area averaged when halved): the mean absolute difference per channel
+must stay at or below 6 and the worst 4 x 4 block's mean at or below 32 (0-255); a sound DXT1
+encoding of a detailed texture (roof tiles, thatch, stone) **measured** 2 to 6 and up to 21.
+`hc_move.py --reencoded` ships the re-encoded copy of every moved texture and writes the new header
+into its suffix.
+
 **Player colour** (**measured** on the stock textures that use the `pixelxform` shader): about 2 %
 of their pixels, in thin bands (trim strips under the windows), have alpha below 128, and those
 pixels are light and nearly grey (the shader tints them). The generator's player-colour option

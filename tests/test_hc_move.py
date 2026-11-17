@@ -114,6 +114,37 @@ class MoveTest(unittest.TestCase):
                             tex_refs={"homecity\\test\\main.ddt": ["units\\guy\\guy_world.xml"]})
         self.assertNotIn("homecity\\test\\main.ddt", out["moves"])
 
+    def test_reencoded_textures(self):
+        art = self.res["art"]
+        new = b"RTS3" + bytes((0, 1, 8, 3)) + b"\0" * 40
+        path = os.path.join(self.tmp.name, "main_new.ddt")
+        with open(path, "wb") as fh:
+            fh.write(new)
+
+        def entry(key, data=None):
+            data = art.read(key) if data is None else data
+            return {"sha256": hashlib.sha256(data).hexdigest(), "path": path, "digits": "0,1,8,3"}
+
+        re = {"homecity\\test\\main.ddt": entry("homecity\\test\\main.ddt"),
+              "homecity\\test\\main_b.(6,0,9,8).ddt": entry("homecity\\test\\main_b.(6,0,9,8).ddt"),
+              "homecity\\test\\sky.ddt": entry("homecity\\test\\sky.ddt", b"other bytes")}
+        sp = hm.plan_moves(self.res, "Testland", TARGET, "A", suffix=True, tex_refs={}, reencoded=re)
+        # the suffix states the re-encoded header, not the old one
+        self.assertEqual(sp["moves"]["homecity\\test\\main.ddt"],
+                         "Mod\\homecity\\Testland\\main.(0,1,8,3).ddt")
+        self.assertEqual(list(sp["reencoded"]), ["homecity\\test\\main.ddt"])
+        why = dict(sp["not_reencoded"])
+        self.assertIn("suffix", why["homecity\\test\\main_b.(6,0,9,8).ddt"])
+        self.assertIn("changed", why["homecity\\test\\sky.ddt"])
+        out, meta = self.stage("stageR", suffix=True, reencoded=re)
+        with open(os.path.join(out, "files", "art", "Mod", "homecity", "Testland", "main.(0,1,8,3).ddt"),
+                  "rb") as fh:
+            self.assertEqual(fh.read(), new)
+        self.assertEqual(meta["reencoded"], {"art\\homecity\\test\\main.ddt": "0,1,8,3"})
+        with open(os.path.join(out, "files", "art", "Mod", "homecity", "Testland", "main.gr2"), "rb") as fh:
+            self.assertIn(fixture.ART + "Mod\\homecity\\Testland\\main.(0,1,8,3).tga",
+                          hs.measure(fh.read())["textures"])
+
     def test_tables_and_the_tree(self):
         tables = hm.plan_moves(self.res, hm.TABLES, TARGET)
         self.assertEqual(tables["moves"], {})                # the fixture's tables name no model

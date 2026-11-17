@@ -32,8 +32,17 @@ expanded by an external bridge into `--work` (`<exe> rebake --install <copy> --f
 <out> --noop`, the tool of tools/model_survey.py). The game's Granny runtime is never shipped or
 called by this repository.
 
+Each Granny file and each texture also carries its use: "building" when only a building's
+<visual> (<building><visual><file>) reaches it, through its anim files and their includes;
+"person" when that anim file names a rigged model (a Bip01 skeleton: native home cities put
+people in their buildings' place), and everything that anim file includes;
+"other" when only the scene, background, water, path data or props do; both when both do, and
+"outside" when a model is used outside the home cities too. A texture's use is that of every
+model storing it and every home-city anim file naming it (textures.csv: building, shared, other).
+
 Writes into --out: models.csv (one row per Granny file of the mod's), textures.csv (one row per
-stored texture name), refs.csv (every reference followed), summary.md (counts per home city),
+stored texture name, with its use, width, height and bytes), refs.csv (every reference
+followed), summary.md (counts per home city),
 report.json; with --plan, plan_<name>.md: the moves, texture renames and XML line changes for that
 home city. The reports name the scanned files: keep them out of public repositories.
 """
@@ -43,6 +52,7 @@ import hashlib
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 
@@ -141,12 +151,13 @@ def decode_text(raw):
 # The files of a game copy
 
 class Art:
-    """An art folder: its loose files (key -> full path) and its archives' (key -> entry)."""
+    """An art folder: its loose files (key -> full path) and its archives' (key -> entry).
+    loose=False: the archives only (the stock game under a mod)."""
 
-    def __init__(self, root):
+    def __init__(self, root, loose=True):
         self.root = root
         self.loose = {}
-        for folder, _dirs, files in os.walk(root):
+        for folder, _dirs, files in os.walk(root) if loose else ():
             for name in files:
                 full = os.path.join(folder, name)
                 self.loose.setdefault(norm(os.path.relpath(full, root)), full)
@@ -183,6 +194,13 @@ class Art:
             with open(archive, "rb") as fh:
                 fh.seek(offset)
                 return fh.read(length if size is None else min(size, length))
+        return None
+
+    def size(self, key):
+        if key in self.loose:
+            return os.path.getsize(self.loose[key])
+        if key in self.archived:
+            return self.archived[key][3]
         return None
 
     def display(self, key):
@@ -265,8 +283,16 @@ def hc_refs(text):
             base = "homecity"
         else:
             base = "art"
+        if parents == ["homecity", "building"] and tag == "file":
+            use = "building"
+        elif parents == ["homecity"] and tag in HC_TOP:
+            use = tag
+        elif tags[0] in HC_TABLES:
+            use = "table"
+        else:
+            use = "prop" if "prop" in parents else "other"
         refs.append({"tag": tag if tag != "file" else "visual/file", "value": value,
-                     "line": line, "base": base})
+                     "line": line, "base": base, "use": use})
     if root is None:
         m = re.search(r"<\s*([A-Za-z_][\w]*)", blank_comments(text).split("?>", 1)[-1])
         root = m.group(1).lower() if m else ""
@@ -342,6 +368,59 @@ def walk(art, start_keys, cache):
                 if inc and inc not in reached:
                     queue.append((inc, depth + 1))
     return reached
+
+
+def building_contexts(art, starts, cache, biped):
+    """{anim key: {"building"} / {"person"} / both} of the anim files a building's <visual>
+    reaches. An anim file that names a rigged model (biped(model key) is true: a person or an
+    animal) is "person", and so is everything it includes (its weapons, hats, mounts); the rest
+    is "building". Native home cities use people as their buildings."""
+    reached = walk(art, starts, cache)
+    out = collections.defaultdict(set)
+    queue, seen = [(k, False) for k in starts], set()
+    while queue:
+        key, person = queue.pop(0)
+        if (key, person) in seen or key not in reached:
+            continue
+        seen.add((key, person))
+        info = reached[key]
+        effective = info["variants"][0][0] if info["variants"] else None
+        refs = [r for r in info["refs"] if r["variant"] == effective]
+        me = person or any(r["kind"] == "model" and biped(model_key(r["value"])) for r in refs)
+        out[key].add("person" if me else "building")
+        for r in refs:
+            if r["kind"] == "include":
+                inc = join_key("", r["value"])
+                if inc:
+                    queue.append((inc, me))
+    return dict(out)
+
+
+def is_biped(raw):
+    """Does an uncompressed Granny file hold a character rig (a bone named Bip01...)?"""
+    try:
+        doc = gr2.load(raw)
+        return any(b.name.lower().startswith("bip01") for _n, bs in fbs.read_skeletons(doc) for b in bs)
+    except Exception:                                      # noqa: BLE001 - no skeleton: not a rig
+        return False
+
+
+class Bipeds:
+    """biped(model key) for a game copy's art, read once per model (caches and bridge as
+    raw_bytes); models that cannot be read count as not rigged and are listed in `unread`."""
+
+    def __init__(self, art, caches=(), bridge=None):
+        self.art, self.caches, self.bridge = art, caches, bridge
+        self.known, self.unread = {}, set()
+
+    def __call__(self, key):
+        if key not in self.known:
+            data = self.art.read(key)
+            raw = raw_bytes(data, self.caches, self.bridge)[0] if data else None
+            if raw is None:
+                self.unread.add(key)
+            self.known[key] = bool(raw) and is_biped(raw)
+        return self.known[key]
 
 
 def model_key(value):
@@ -524,7 +603,11 @@ def texture_info(art, stored, model):
         if cands:
             found = (loose or cands)[0]
             how = f"same name elsewhere ({len(cands)})"
-    digits = ddt_digits(art.read(found, 8)) if found else None
+    head = art.read(found, 16) if found else None
+    digits = ddt_digits(head)
+    width = height = None
+    if digits and len(head) >= 16:
+        width, height = struct.unpack_from("<II", head, 8)
     sources = []
     where = os.path.dirname(found) if found else home
     for k in art.by_folder.get(where, []):
@@ -534,7 +617,8 @@ def texture_info(art, stored, model):
     return {"stored": stored, "ext": ext, "suffix": suffix, "stem": stem,
             "art_folder": folder, "resolved": found, "how": how,
             "resolved_status": art.status(found) if found else "missing",
-            "header": digits, "usual": USUAL.get(digits or "", ""), "sources": sorted(sources)}
+            "header": digits, "usual": USUAL.get(digits or "", ""), "sources": sorted(sources),
+            "width": width, "height": height, "bytes": art.size(found) if found else None}
 
 
 def texture_need(textures):
@@ -561,6 +645,7 @@ def survey(game, target, caches=(), bridge=None, world_index=True):
     art = Art(os.path.join(game, "art"))
     cache = {}
     hcs = []
+    bipeds = Bipeds(art, caches, bridge)
     for rel, full in homecity_files(game):
         with open(full, "rb") as fh:
             text = decode_text(fh.read())
@@ -579,8 +664,14 @@ def survey(game, target, caches=(), bridge=None, world_index=True):
                 hc["top"] = key
             if key.endswith(".gr2"):
                 continue
-            starts.append(key)
-        hc["anims"] = walk(art, starts, cache)
+            starts.append((key, r["use"]))
+        hc["anims"] = walk(art, [k for k, _u in starts], cache)
+        # which anim files a building's <visual> reaches (a building, or a person standing in
+        # for one), and which anything else reaches
+        ctx = building_contexts(art, [k for k, u in starts if u == "building"], cache, bipeds)
+        hc["building_anims"] = {k for k, c in ctx.items() if "building" in c}
+        hc["person_anims"] = {k for k, c in ctx.items() if "person" in c}
+        hc["other_anims"] = set(walk(art, [k for k, u in starts if u != "building"], cache))
         hcs.append(hc)
     labels = collections.Counter(hc["label"] for hc in hcs)
     for hc in hcs:                       # two files of one civ (a revolution, a campaign copy)
@@ -597,15 +688,17 @@ def survey(game, target, caches=(), bridge=None, world_index=True):
                     continue
                 k = model_key(r["value"])
                 f = files.setdefault(k, {"key": k, "kind": r["kind"], "hcs": set(), "named_by": set(),
-                                         "lines": []})
+                                         "lines": [], "uses": set()})
                 f["hcs"].add(hc["label"])
                 f["named_by"].add(akey)
                 f["lines"].append((r["variant"], r["line"], r["value"]))
                 f["depth"] = min(f.get("depth", 99), info["depth"])
+                f["uses"] |= anim_uses(hc, akey)
         for r in hc["refs"]:
             if r["key"] and r["key"].endswith(".gr2"):
                 f = files.setdefault(r["key"], {"key": r["key"], "kind": "pathdata", "hcs": set(),
-                                                "named_by": set(), "lines": []})
+                                                "named_by": set(), "lines": [], "uses": set()})
+                f["uses"].add("other")
                 f["hcs"].add(hc["label"])
                 f["named_by"].add(hc["file"])
                 f["lines"].append((hc["file"], r["line"], r["value"]))
@@ -644,7 +737,8 @@ def survey(game, target, caches=(), bridge=None, world_index=True):
         row = {"path": art.display(k) if status != "missing" else k, "key": k, "kind": f["kind"],
                "status": status, "homecities": sorted(f["hcs"]), "named_by": sorted(f["named_by"]),
                "lines": f["lines"], "depth": f.get("depth", 0), "world_refs": outside,
-               "unreached_refs": sorted(others - set(outside)), "hc_only": not outside}
+               "unreached_refs": sorted(others - set(outside)), "hc_only": not outside,
+               "uses": sorted(f["uses"] | ({"outside"} if outside else set()))}
         if status in ("mod", "override"):
             data = art.read(k)
             raw, how = raw_bytes(data, caches, bridge)
@@ -687,8 +781,60 @@ def survey(game, target, caches=(), bridge=None, world_index=True):
             row["move"] = "ask (shared by several home cities)"
         else:
             row["move"] = "yes"
+    tex_uses = texture_uses(hcs, rows)
+    for t in texrows:
+        t["use"] = use_label(tex_uses.get(t["resolved"], {}).get("uses")) if t["resolved"] else ""
     return {"game": game, "target": target, "homecities": hcs, "files": rows,
-            "textures": texrows, "art": art}
+            "textures": texrows, "texture_uses": tex_uses, "art": art}
+
+
+def anim_uses(hc, akey):
+    """{"building", "person", "other"}: what in a home city reaches an anim file: a building's
+    <visual> (a building, or a person or animal in its place) or anything else (the scene, the
+    background, water, props)."""
+    out = set()
+    if akey in hc.get("building_anims", ()):
+        out.add("building")
+    if akey in hc.get("person_anims", ()):
+        out.add("person")
+    if akey in hc.get("other_anims", ()):
+        out.add("other")
+    return out
+
+
+def texture_uses(hcs, rows):
+    """{.ddt key: {"uses": set, "users": set}} of every texture the measured models store and the
+    home cities' anim files name: "building" when a building's <visual> reaches its user, "other"
+    for anything else, "outside" when the user is a model used outside the home cities too."""
+    out = {}
+
+    def add(key, uses, who):
+        e = out.setdefault(key, {"uses": set(), "users": set()})
+        e["uses"] |= uses
+        e["users"].add(who)
+
+    for r in rows:
+        for t in r.get("texture_info", []):
+            if t["resolved"]:
+                add(t["resolved"], set(r.get("uses") or ["other"]), r["key"])
+    for hc in hcs:
+        for akey, info in hc["anims"].items():
+            effective = info["variants"][0][0] if info["variants"] else None
+            for r in info["refs"]:
+                if r["kind"].startswith("texture") and r["variant"] == effective:
+                    k = join_key("", r["value"])
+                    if k:
+                        add(k if k.endswith(".ddt") else k + ".ddt", anim_uses(hc, akey) or {"other"}, akey)
+    return out
+
+
+def use_label(uses):
+    """building (only buildings use it), shared (buildings and something else), other, or ''."""
+    if not uses:
+        return ""
+    if set(uses) == {"building"}:
+        return "building"
+    return "shared" if "building" in uses else "other"
 
 
 # --------------------------------------------------------------------------------------------------
@@ -702,14 +848,14 @@ def _fmt(v):
     return "" if v is None else str(v)
 
 
-MODEL_COLS = ("path", "kind", "status", "homecities", "hc_only", "world_refs", "unreached_refs",
+MODEL_COLS = ("path", "kind", "status", "homecities", "uses", "hc_only", "world_refs", "unreached_refs",
               "depth", "read",
               "art_tool", "upm", "up", "basis", "root_name", "root_scale", "max_bone_scale",
               "scaled_bones", "placement_scaled", "size", "stock_extent", "tris", "animations",
               "world_fix", "texture_fix", "move", "under_target", "under_option_b", "shared",
               "named_by", "error")
 TEX_COLS = ("model", "stored", "ext", "suffix", "resolved", "how", "resolved_status", "header",
-            "usual", "sources")
+            "usual", "use", "width", "height", "bytes", "sources")
 
 
 def write_reports(res, out):

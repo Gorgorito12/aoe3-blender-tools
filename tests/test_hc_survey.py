@@ -258,6 +258,35 @@ class SurveyTest(unittest.TestCase):
         self.assertEqual(guy["world_fix"], ["upm1000"])
         self.assertEqual(self.rows["homecity\\test\\main.gr2"]["move"], "yes")
 
+    def test_uses(self):
+        r = self.rows
+        # the market (a building's <visual>) names shared and scaled; Otherland's scene names shared
+        self.assertEqual(r["homecity\\test\\scaled.gr2"]["uses"], ["building"])
+        self.assertEqual(r["homecity\\test\\shared.gr2"]["uses"], ["building", "other"])
+        self.assertEqual(r["homecity\\test\\main.gr2"]["uses"], ["other"])
+        self.assertEqual(r["homecity\\test\\path.gr2"]["uses"], ["other"])
+        self.assertIn("outside", r["units\\guy\\guy.gr2"]["uses"])
+        uses = self.res["texture_uses"]
+        # main.ddt: the scene's main.gr2 and the market's scaled.gr2 both store it
+        self.assertEqual(hs.use_label(uses["homecity\\test\\main.ddt"]["uses"]), "shared")
+        self.assertEqual(hs.use_label({"building"}), "building")
+        self.assertEqual(hs.use_label({"other", "outside"}), "other")
+        self.assertEqual(hs.use_label(set()), "")
+        sky = [t for t in self.res["textures"] if t["resolved"] == "homecity\\test\\sky.ddt"][0]
+        self.assertEqual((sky["use"], sky["width"], sky["height"], sky["bytes"]), ("other", 4, 4, 32))
+
+    def test_use_of_a_reference(self):
+        uses = {r["value"]: r["use"] for r in hs.hc_refs(HC_A)["refs"]}
+        self.assertEqual(uses["test\\market.xml"], "building")
+        self.assertEqual(uses["test\\test_homecity.xml"], "visual")
+        self.assertEqual(uses["test\\sky.xml"], "backgroundvisual")
+        self.assertEqual(uses["units\\guy\\guy.xml"], "prop")
+
+    def test_stock_only(self):
+        art = hs.Art(os.path.join(self.tmp.name, "art"), loose=False)
+        self.assertEqual(art.loose, {})
+        self.assertIsNone(art.size("homecity\\test\\main.ddt"))
+
     def test_reports_and_plan(self):
         out = os.path.join(self.tmp.name, "_report")
         hs.write_reports(self.res, out)

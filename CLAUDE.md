@@ -52,6 +52,8 @@ python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.x
 python -I tests/test_hc_survey.py                 # home-city inventory and move plan, plain Python
 python -I tests/test_hc_move.py                   # the move itself: stage, edits, install and undo
 python -I tools/hc_survey.py --game <copy> --out <dir outside repo> --target "<Mod>\homecity" [--plan <civ>]
+venv/bin/python -I tests/test_reencode_textures.py   # texture re-encoding: rules, chain, carried blocks
+venv/bin/python -I tools/reencode_textures.py run --in <list or folder> --out <dir> --tad <tad.json> [--sheets <dir>]
 ```
 
 On Windows the venv interpreter is `venv/Scripts/python`. `-X utf8` matters: the mod's
