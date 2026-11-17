@@ -170,20 +170,36 @@ on average where the move works, by 50 to 190 where it does not):
   names follow its moved textures draws as before. A name written `name.(0,4,8,8).tga` (the
   `(usage,alpha,format,mips)` suffix of a source texture's file name) makes the game look for
   `name.(0,4,8,8).ddt`: the models drew black until copies of their textures with that name were
-  added. So a suffix belongs on a source `.tga`, not in a model's stored name, unless the `.ddt` is
-  renamed with it.
+  added. So a suffix in a model's stored name needs the `.ddt` renamed with it.
 - **A home city's `<visual>` may climb out of `art\homecity\`** with `..\` (a path relative to
   `art\homecity\` such as `..\Mod\homecity\Name\x.xml` loads), and a path under `art\homecity\`
   works as well.
+- **A suffix in the name and on the file works.** With the `.ddt` renamed `name.(0,4,8,8).ddt`
+  (its own header's digits, the file unchanged) and the stored name `name.(0,4,8,8).tga`, the models
+  draw as before (2026-11-17, every home city of a mod: 22 home cities, 161 models, 240 textures).
+- **Of a loose plain anim file and its loose compiled twin, the newer one is read.** A home city
+  whose plain `x.xml` (2019) named one model and whose `x.xml.xmb` (2015) another drew the plain
+  file's model; once both were copied to a new folder, the twin was a few milliseconds newer and
+  the game drew the twin's model. A move must carry only the twin the game reads.
 - **A raw 3ds Max export converted to the stock basis** (`rebake --convert`: inches to 0.615 units
   per metre, Z up to Y up, every value checked to the units ratio offline) **does not draw as the
-  original in a home city**: the converted buildings and background stood misplaced and out of
-  scale and the camera saw the wrong scene, while the same models rebuilt without the conversion
-  drew as before. The game evidently does not read these files through their declared basis alone;
-  how it places them is **to verify** before converting any model the game already draws right.
+  original in a home city.** **In game:** with the converted files still named `3D Studio MAX` in
+  `ArtToolInfo.FromArtToolName`, the buildings and background stood misplaced and out of scale and
+  the camera saw the wrong scene; renamed `ESPostExport` (nothing else changed), the camera and the
+  layout came back, but the converted buildings and background were drawn as stretched, broken
+  polygons and the sky was missing. The converted vertex positions are the originals through
+  (x, y, z) -> (-x, z, -y) / 64 exactly, and the bones' rotations and scales are conjugated as
+  expected. So the game picks how it reads a file by its art tool's name (it ignores the declared
+  units: a file declaring 1,000 per metre is drawn as if in inches), and something else in a
+  converted file (the bones' inverse world transforms or the meshes' bindings: **to verify**) is
+  not read the way the conversion writes it. Until that is known, keep raw exports as they are:
+  the game draws them right.
 - Rebuilt models compressed again with `recompress_models.py` (each section in the original's
   format where the rebuild kept the sections' sizes, else Oodle1) drew as before, at the
-  originals' total size.
+  originals' total size, **except** models of type tag `0x80000010`: their recompressed copies
+  pass the CRC check but the Granny runtime cannot open them (an access violation in
+  `GrannyGetFileInfo`), and the game exits (code 0) as soon as it meets one. `hc_move.py` opens
+  every recompressed model through the runtime and ships it uncompressed when it fails.
 
 ### Uncompressed copies
 

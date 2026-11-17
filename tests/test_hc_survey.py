@@ -110,6 +110,8 @@ def build(g):
     put(g, a + "test_homecity.xml", TOP)
     put(g, a + "sky.xml", SKY_PLAIN)
     put(g, a + "sky.xml.xmb", xmbedit.encode(*xmbedit.from_xml(SKY_TWIN.encode())))
+    plain = os.path.join(g, "art", "homecity", "test", "sky.xml")
+    os.utime(plain, (1_500_000_000, 1_500_000_000))   # the compiled twin is the newer: it is read
     put(g, a + "market.xml", MARKET)
     put(g, a + "main.gr2", model(ART + "homecity\\test\\main.tga",
                                  ART + "homecity\\test\\main_b.(6,0,9,8).tga", upm=39.370079))

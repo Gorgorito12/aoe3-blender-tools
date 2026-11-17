@@ -142,6 +142,10 @@ class MoveTest(unittest.TestCase):
         with open(os.path.join(files, "art", "Mod", "homecity", "Testland", "sky.xml.xmb"), "rb") as fh:
             twin = xmbedit.to_xml(*xmbedit.parse(xmbedit.decode(fh.read())))
         self.assertIn("Mod\\homecity\\Testland\\sky", twin)
+        # only the twin the game reads (the newer) moves; the older one stays where it was
+        self.assertFalse(os.path.exists(os.path.join(files, "art", "Mod", "homecity", "Testland", "sky.xml")))
+        self.assertIn("art\\homecity\\test\\sky.xml.xmb", meta["moves"])
+        self.assertNotIn("art\\homecity\\test\\sky.xml", meta["moves"])
         with open(os.path.join(files, "art", "Mod", "homecity", "Testland", "main.gr2"), "rb") as fh:
             self.assertIn(fixture.ART + "Mod\\homecity\\Testland\\main.tga", hs.measure(fh.read())["textures"])
         with open(os.path.join(out, "moved-files.txt"), encoding="utf-8") as fh:

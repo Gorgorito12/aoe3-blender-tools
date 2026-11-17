@@ -195,13 +195,17 @@ class Art:
         return key
 
     def anim_variants(self, key):
-        """[(file key, where)] of an anim file, the one the game reads first: a loose compiled
-        twin wins over a loose plain file, loose wins over archived."""
+        """[(file key, where)] of an anim file, the one the game reads first: of a loose plain
+        file and its loose compiled twin, the newer one (in game, 2026-11-17: a plain file of 2019
+        beside a twin of 2015 was drawn; with the twin made newer, the twin was drawn); loose wins
+        over archived."""
         key = key[:-4] if key.endswith(".xmb") else key
         out = []
         for k, where in ((key + ".xmb", "loose"), (key, "loose")):
             if k in self.loose:
                 out.append((k, where))
+        if len(out) == 2 and os.path.getmtime(self.loose[key]) > os.path.getmtime(self.loose[key + ".xmb"]):
+            out.reverse()
         for k in (key + ".xmb", key):
             if k in self.archived and not out:
                 out.append((k, "archived"))

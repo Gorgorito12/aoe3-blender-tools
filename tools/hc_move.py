@@ -176,7 +176,7 @@ def plan_moves(res, civ, target, form="A", shared="_shared", suffix=False, tex_r
             if h["kind"] != "civ":
                 continue
             for info in h["anims"].values():
-                for vkey, where in info["variants"]:
+                for vkey, where in info["variants"][:1]:     # the twin the game reads
                     if where == "loose" and vkey.startswith(root + "\\"):
                         reach.setdefault(vkey, set()).add(h["civ"])
         for vkey, civs in reach.items():
@@ -190,7 +190,7 @@ def plan_moves(res, civ, target, form="A", shared="_shared", suffix=False, tex_r
             if t["resolved"]:
                 users.setdefault(t["resolved"], set()).add(r["key"])
     tex_refs = tex_refs or {}
-    hc_anims = {v for h in res["homecities"] for info in h["anims"].values() for v, _w in info["variants"]}
+    hc_anims = {v for h in res["homecities"] for info in h["anims"].values() for v, _w in info["variants"][:1]}
 
     def folder_moves(k):
         d = os.path.dirname(k)
@@ -338,14 +338,17 @@ def _decode(raw):
         return raw.decode("utf-16"), ("utf-16", raw[:2])
     if raw[:3] == b"\xef\xbb\xbf":
         return raw[3:].decode("utf-8"), ("utf-8", b"\xef\xbb\xbf")
-    return raw.decode("utf-8"), ("utf-8", b"")
+    try:
+        return raw.decode("utf-8"), ("utf-8", b"")
+    except UnicodeDecodeError:              # an ANSI file (a mod's): latin-1 keeps every byte
+        return raw.decode("latin-1"), ("latin-1", b"")
 
 
 def _encode(text, how):
     enc, bom = how
     if enc == "utf-16":
         return text.encode("utf-16")
-    return bom + text.encode("utf-8")
+    return bom + text.encode(enc)
 
 
 def edit_lines(text, changes):
@@ -450,6 +453,17 @@ def run_bridge(exe, install, src, out, convert, renames):
     return last
 
 
+def runtime_opens(exe, install, path):
+    """Does the game's Granny runtime open the file (bridge `info`)? A valid CRC is not enough:
+    a recompressed model can pass it and still be unreadable."""
+    try:
+        r = subprocess.run([exe, "info", "--install", install, "--file", path], capture_output=True,
+                           text=True, timeout=120, cwd=os.path.dirname(path))
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return r.returncode == 0 and "Fatal error" not in r.stdout + r.stderr
+
+
 def run_recompress(tool, install, src, out, like):
     """Compresses a rebuilt model again (tools/recompress_models.py): each section in the format
     the original stores it in (--like), or, when the rebuild changed the sections' sizes (a grown
@@ -529,9 +543,16 @@ def stage(game, civ, target, out, bridge_exe, form="A", shared="_shared", caches
                 if recompress:
                     packed = dst + ".packed.gr2"
                     how = run_recompress(recompress, os.path.abspath(game), dst, packed, src)
-                    record += " | recompressed: " + how
-                    with open(packed, "rb") as fh:
-                        data = fh.read()
+                    if bridge_exe and not runtime_opens(bridge_exe, os.path.abspath(game), packed):
+                        # measured: models of type tag 0x80000010 came out unreadable (the
+                        # game exits when it meets one); such a model ships uncompressed
+                        record += " | recompressed: refused, the runtime cannot open the result"
+                        notes.append(f"{art.display(k)}: left uncompressed (its recompressed "
+                                     "copy does not open in the Granny runtime)")
+                    else:
+                        record += " | recompressed: " + how
+                        with open(packed, "rb") as fh:
+                            data = fh.read()
             else:
                 record = "copied"
             model_report.append((art.display(k), new, conv, renames, kept, record))
@@ -672,6 +693,10 @@ def install(bed, stage_dir, log=print):
             raise SystemExit(f"refused: {rel} already exists in {bed}")
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     back = os.path.join(bed, BACKUP, stamp)
+    n = 1
+    while os.path.exists(back):         # two installs in one second: never share a backup
+        back = os.path.join(bed, BACKUP, f"{stamp}-{n:02d}")
+        n += 1
     manifest = {"stage": os.path.abspath(stage_dir), "backed_up": {}, "created": [], "dirs": []}
     for rel in sorted(set(meta["replaced"]) | set(meta["removed"])):
         dst = os.path.join(back, rel)
