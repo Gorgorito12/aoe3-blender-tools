@@ -9,3 +9,5 @@ aoe3_export/
 survey/
 out/
 *.aoe3bt-orig
+tools/granny_recompress.exe
+tools/granny_recompress.obj

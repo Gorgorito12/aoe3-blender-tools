@@ -203,6 +203,47 @@ drive and folders before it are ignored).
   the tool's: it is left in place and forgotten.
 - Tests: `python -I tests/test_uncompress_models.py` (synthetic archives and models, a fake bridge).
 
+### Recompressed copies
+
+`tools/recompress_models.py` goes the other way, for a model a tool wrote uncompressed (a bone fix, a
+texture path) that should ship at the size of the original.
+
+- **The call** (**measured**): `GrannyRecompressFile(src, dst, n, map)` of the game's `granny2.dll`
+  stores every section whose stored format is k (0 none, 1 Oodle0, 2 Oodle1) in format `map[k]`; it
+  keeps the sections' order, records (expanded size, alignment, Oodle stops) and fixup tables. With
+  the map "everything to 2" an uncompressed file comes out Oodle1; with the identity map a stock
+  compressed model keeps its size. It writes the file packed (per section: pointer fixups,
+  marshalling fixups, data, no padding; the bridge's rebuild pads an uncompressed section's data to
+  its alignment, and both read the same) and the root type reference as 0:0, which the tool puts
+  back (see above).
+- **Its temporary file** (**measured**): two calls at once with the same `%TEMP%` fail (it returns
+  false); the tool gives each call its own `TEMP` and folder.
+- **32 bits**: the DLL is x86, so `tools/granny_recompress.c`, a small x86 program, hosts it
+  (`recompress` and `crc`, `GrannyFileCRCIsValid`). `--build-helper` compiles it with Visual Studio's
+  x86 compiler (found by `vswhere`) or `zig cc -target x86-windows-gnu`.
+- **Which format**: with `--like <original>` each section gets the original's; else Oodle1, except a
+  section whose compressed bytes would not be fewer than its expanded size (the stock exports keep
+  such a section uncompressed: a section of 17,880 bytes of vertex data came out of Oodle1 at
+  18,065).
+- **Checks** before a file is written: the header is the input's but for the total size and the
+  CRC; every section has its target format, its record and its fixups; an uncompressed section its
+  bytes; the CRC is valid by the bytes and by the runtime; and the runtime expands the result back to
+  exactly the bytes it expands the input to.
+- **On 107 building models of Wars of Liberty** whose bones `fix_bone_scale.py` fixed (**measured**,
+  2026-11-17): 16,543,100 bytes uncompressed → 6,963,269 bytes, against 6,959,543 for the mod's
+  originals (+0.05 %); the formats chosen without `--like` were the originals' in all 107 (one model
+  keeps one of its eight sections uncompressed, as the original does). The Oodle1 bytes are not the
+  originals' (0 of 107 identical) but expand to the same data. 2.7 s with 8 calls at a time. Each
+  result expanded again by the bridge (`rebake --noop`, as `uncompress_models.py` does) was the fixed
+  uncompressed file byte for byte (107 of 107), and the runtime found every CRC valid.
+- **In game** (**measured**, a copy of Wars of Liberty, 42 of them as loose files: the Persian
+  Mahalla, Temple, Royal Court, Madrasah and Forge): the game opened 23 of them in a skirmish
+  (each read at its recompressed size, by the file log of the engine-extension DLL), drew the
+  buildings standing and, damaged by trigger to 60 %, their damage models, with the Royal Court's
+  flag and the Forge's smoke and flag where the uncompressed set puts them.
+- Tests: `python -I tests/test_recompress_models.py` (synthetic models, a fake runtime with zlib in
+  place of Oodle).
+
 ## Textures (.ddt)
 
 | Offset | Content |
