@@ -9,7 +9,16 @@ export async function api(path, body) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(path, opts);
+  let res;
+  try {
+    res = await fetch(path, opts);
+  } catch (e) {                              // nothing answers: the studio has stopped
+    offline(true);
+    const err = new Error(t('offline'));
+    err.offline = true;
+    throw err;
+  }
+  offline(false);
   const type = res.headers.get('Content-Type') || '';
   const data = type.includes('application/json') ? await res.json() : await res.text();
   if (!res.ok) throw new Error((data && data.error) || String(data) || res.statusText);
@@ -30,6 +39,15 @@ export async function fileUrl(path) {
 
 export async function fileText(path) {
   return api('/api/file?path=' + encodeURIComponent(path));
+}
+
+// a bar over the page while the studio does not answer
+let offlineBar = null;
+export function offline(on) {
+  if (!on) { offlineBar?.remove(); offlineBar = null; return; }
+  if (offlineBar) return;
+  offlineBar = h('div', { class: 'offline', role: 'alert' }, h('strong', { text: t('offline') }), ' ', t('offline.help'));
+  document.body.prepend(offlineBar);
 }
 
 // -- language ------------------------------------------------------------------------------------

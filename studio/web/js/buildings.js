@@ -97,9 +97,44 @@ export async function buildingsScreen(main, app) {
         oninput: e => { p.colors = { ...(p.colors || {}), [c.key]: fromHex(e.target.value) }; changed(); } }),
         t('color.' + c.key, null, c.key)));
     }
+    if (p.style === 'PROP') form.append(setCard());
     form.append(h('details', {}, h('summary', { text: t('group.colors') }), colors,
       h('button', { type: 'button', class: 'ghost small', text: t('b.colors.reset'),
         onclick: async () => { p.colors = (await api('/api/preset/' + (state.preset || 'WHITE_HOUSE'))).colors; drawForm(); changed(); } })));
+  }
+
+  // a prop set: the variations of one unit of the game, on one texture
+  function setCard() {
+    const o = storeGet('propSet', { set: schema.sets[0], texture: 256 });
+    const sel = h('select', { onchange: e => { o.set = e.target.value; storeSet('propSet', o); if (state.setShown) showSet(); } },
+      schema.sets.map(n => h('option', { value: n, text: t('set.' + n, null, n), selected: n === o.set })));
+    const size = h('select', { onchange: e => { o.texture = Number(e.target.value); storeSet('propSet', o); if (state.setShown) showSet(); } },
+      [128, 256, 512].map(v => h('option', { value: v, text: v + ' px', selected: v === o.texture })));
+    const info = h('p', { class: 'small muted', id: 'set-info' });
+    async function showSet() {
+      try {
+        const d = await api('/api/building/set', { set: o.set, texture: o.texture });
+        state.setShown = true;
+        viewer.setModel(d, d.texture, true);
+        info.textContent = t('s.info', { n: d.variations.length, tris: fmt(d.triangles), px: d.texture_size });
+        stat.textContent = `${fmt(d.triangles)} ${t('b.tris.short')}`;
+      } catch (e) { toast(e.message, 'bad'); }
+    }
+    return h('fieldset', { class: 'fieldset' }, h('legend', { text: t('s.title') }),
+      h('p', { class: 'small muted', text: t('s.intro') }),
+      h('div', { class: 'row' }, sel, size),
+      h('div', { class: 'row' },
+        h('button', { type: 'button', text: t('s.show'), onclick: showSet }),
+        h('button', { type: 'button', class: 'ghost', text: t('s.back'), onclick: () => { state.setShown = false; info.textContent = ''; refresh(true); } }),
+        h('button', { type: 'button', class: 'primary', disabled: !app.state.blender.available, text: t('s.export'), onclick: async () => {
+          const opts = storeGet('gameOpts', {});
+          try {
+            const r = await api('/api/tools/game_export_set', { values: { set: o.set, texture_size: String(o.texture),
+              prefix: opts.prefix || 'mod', texture: opts.texture_format || 'DXT3' } });
+            watchJob(r.job, jobBox, {});
+            toast(t('job.started'), 'ok');
+          } catch (e) { toast(e.message, 'bad'); }
+        } })), info);
   }
 
   function fieldFor(f, p) {
@@ -154,6 +189,19 @@ export async function buildingsScreen(main, app) {
     over.append(h('button', { type: 'button', 'aria-pressed': String(viewer.show[what]), text,
       onclick: e => { const on = e.target.getAttribute('aria-pressed') !== 'true'; e.target.setAttribute('aria-pressed', String(on)); viewer.toggle(what, on); } }));
   }
+  // what else the view can show: a person for the scale, the obstruction, the low-poly model,
+  // the damaged texture, the player colour of a team
+  const v = state.v || (state.v = { person: false, obstruction: false, lowpoly: false, damaged: false, team: '#2f6fd0' });
+  for (const [what, text, help] of [['person', t('b.v.person'), t('b.v.person.help')], ['obstruction', t('b.v.obstruction'), t('b.v.obstruction.help')],
+    ['lowpoly', t('b.v.lowpoly'), t('b.v.lowpoly.help')], ['damaged', t('b.v.damaged'), t('b.v.damaged.help')]]) {
+    over.append(h('button', { type: 'button', 'aria-pressed': String(v[what]), text, title: help, onclick: e => {
+      v[what] = !v[what]; e.target.setAttribute('aria-pressed', String(v[what]));
+      if (what === 'damaged' && v.damaged && !state.preview?.damaged) refresh(false, true); else showModel(false);
+    } }));
+  }
+  const team = h('input', { type: 'color', value: v.team, title: t('b.v.team.help'), 'aria-label': t('b.v.team'),
+    oninput: e => { v.team = e.target.value; showModel(false); } });
+  over.append(h('label', { class: 'row small teamcolour', title: t('b.v.team.help') }, t('b.v.team'), team));
   over.append(h('select', { 'aria-label': t('b.v.camera'), onchange: e => { if (e.target.value) viewer.view(e.target.value); e.target.value = ''; } },
     h('option', { value: '', text: t('b.v.camera') }),
     ['three', 'front', 'back', 'left', 'right', 'top'].map(v => h('option', { value: v, text: t('b.cam.' + v) }))));
@@ -210,7 +258,7 @@ export async function buildingsScreen(main, app) {
     params: () => state.params,
     show: url => { state.aiImage = url; viewer.setTexture(url); if (state.view === 'texture') drawTexture(); },
     use: (path, key) => { state.ai = { path, key }; drawActions(); },
-    restore: () => { state.aiImage = null; state.ai = null; if (state.preview) viewer.setTexture(state.preview.texture); drawActions(); drawTexture(); },
+    restore: () => { state.aiImage = null; state.ai = null; showModel(false); drawActions(); drawTexture(); },
   });
   right.append(h('div', { class: 'scroll stack' }, numbers, actions, ai, h('details', { class: 'card' },
     h('summary', { text: t('b.sheet') }), sheetBox)));
@@ -258,7 +306,6 @@ export async function buildingsScreen(main, app) {
     const display = document.getElementById('o-display');
     if (display) display.placeholder = d.params.name;
     if (notes.length) numbers.append(h('div', { class: 'notice small' }, h('strong', { text: t('b.notes') }), h('ul', {}, notes.map(n => h('li', { text: n })))));
-    stat.textContent = `${fmt(tris)} ${t('b.tris.short')} · ${fmt(d.vertices)} ${t('b.verts.short')}`;
   }
 
   function aiInUse() { return !!(state.ai && state.ai.key === JSON.stringify(state.params)); }
@@ -296,12 +343,36 @@ export async function buildingsScreen(main, app) {
       } catch (e) { toast(e.message, 'bad'); }
     };
     actions.append(h('div', { class: 'row' },
+      h('button', { type: 'button', disabled: !blender.available, text: t('b.check'), title: t('b.check.help'), onclick: () => check() }),
       h('button', { type: 'button', class: 'primary', disabled: !blender.available, text: t('b.export.game'), onclick: () => run('game') }),
       h('button', { type: 'button', disabled: !blender.available, text: t('b.export.files'), onclick: () => run('files'), title: t('b.export.files.help') }),
       h('button', { type: 'button', text: t('b.save'), onclick: saveParams }),
       h('button', { type: 'button', text: t('b.load'), onclick: loadParams })));
-    actions.append(jobBox, deployBox);
+    actions.append(checkBox, jobBox, deployBox);
     drawDeploy();
+  }
+
+  // the add-on's checks: a task in Blender, its findings listed with their level
+  const checkBox = h('div', { class: 'stack' });
+  async function check() {
+    clear(checkBox).append(h('p', { class: 'small muted', text: t('b.check.running') }));
+    const key = JSON.stringify(state.params);
+    try {
+      const { job } = await api('/api/building/check', { params: state.params });
+      let j;
+      do {
+        await new Promise(r => setTimeout(r, 700));
+        j = await api('/api/jobs/' + job);
+      } while (j.status === 'queued' || j.status === 'running');
+      const found = j.lines.map(line => { try { return JSON.parse(line); } catch { return null; } })
+        .filter(x => x && x.level && x.message);
+      clear(checkBox);
+      if (!found.length) { checkBox.append(h('p', { class: 'small bad', text: t('b.check.failed') + ' ' + j.lines.slice(-3).join(' ') })); return; }
+      const icon = { ERROR: '✖', WARNING: '⚠', INFO: '•' };
+      const cls = { ERROR: 'bad', WARNING: 'warn', INFO: 'muted' };
+      checkBox.append(h('h3', { text: t('b.check.title') + (key !== JSON.stringify(state.params) ? ' ' + t('b.check.old') : '') }),
+        h('ul', { class: 'checks small' }, found.map(f => h('li', { class: cls[f.level] || '' }, h('span', { 'aria-hidden': 'true', text: icon[f.level] || '•' }), ' ', f.message))));
+    } catch (e) { clear(checkBox).append(h('p', { class: 'small bad', text: e.message })); }
   }
 
   let lastBundle = storeGet('lastBundle', null);
@@ -357,6 +428,7 @@ export async function buildingsScreen(main, app) {
   const fullLater = debounce(() => refresh(false), 900);
   function changed(dragging) {
     storeSet('building', { preset: state.preset, params: state.params });
+    state.setShown = false;
     if (state.ai || state.aiImage) { state.ai = null; state.aiImage = null; drawActions(); }
     refresh(false, false, dragging);
     if (!dragging) sheetLater();
@@ -364,7 +436,7 @@ export async function buildingsScreen(main, app) {
 
   let inFlight = false, queued = null;
   async function refresh(frame, damaged, dragging) {
-    const job = { frame, damaged: damaged || state.view === 'damaged', dragging };
+    const job = { frame, damaged: damaged || state.view === 'damaged' || state.v?.damaged, dragging };
     if (inFlight) { queued = job; return; }
     inFlight = true;
     busy.hidden = false;
@@ -376,7 +448,7 @@ export async function buildingsScreen(main, app) {
       const d = await api('/api/building/preview', { params: state.params, texture: size, damaged: job.damaged });
       if (seq === state.seq) {
         state.preview = d;
-        viewer.setModel(d, state.aiImage || d.texture, frame || !viewer.mesh);
+        await showModel(frame || !viewer.mesh);
         drawNumbers();
         if (state.view !== '3d') drawTexture();
         if (frame) loadSheet();
@@ -391,12 +463,38 @@ export async function buildingsScreen(main, app) {
     }
   }
 
+  // the model on the view, with what the controls above it ask for
+  let lowKey = null, low = null;
+  async function showModel(frame) {
+    const d = state.preview;
+    if (!d || state.setShown) return;
+    const v = state.v;
+    let model = d;
+    if (v.lowpoly && state.params.detail !== 'LOW') {
+      const key = JSON.stringify(state.params);
+      if (lowKey !== key) {
+        try { low = await api('/api/building/preview', { params: { ...state.params, detail: 'LOW' }, texture: QUICK }); lowKey = key; }
+        catch (e) { toast(e.message, 'bad'); low = null; }
+      }
+      if (low) model = low;
+    }
+    let texture = model === d ? (v.damaged && d.damaged ? d.damaged : (state.aiImage || d.texture)) : model.texture;
+    if (state.params.player_colour) texture = await withTeam(texture, v.team);
+    viewer.setModel(model, texture, frame);
+    const [w, dep] = d.footprint;
+    const ob = state.sheet?.obstruction_m;
+    viewer.setExtras({ person: v.person ? [w / 2 + 1.2, -dep / 2] : null, obstruction: v.obstruction && ob ? ob : null });
+    stat.textContent = `${fmt(model.triangles)} ${t('b.tris.short')} · ${fmt(model.vertices)} ${t('b.verts.short')}`
+      + (model === d ? '' : ' · ' + t('b.v.lowpoly'));
+  }
+
   async function loadSheet() {
     try {
       const s = await api('/api/building/sheet', { params: state.params });
       state.sheet = s; state.budget = s.budget;
       sheetBox.innerHTML = markdown(s.markdown);
       drawNumbers();
+      if (state.v?.obstruction) showModel(false);
     } catch (e) { sheetBox.textContent = e.message; }
   }
 
@@ -413,6 +511,30 @@ function clampNum(f, v) {
   if (f.min !== undefined) x = Math.max(f.min, x);
   if (f.max !== undefined) x = Math.min(f.max, x);
   return f.kind === 'int' ? Math.round(x) : x;
+}
+
+// the player colour seen as a team's: where the texture's alpha lets it through (alpha 0: all
+// the team's colour, shaded by the texture's light), as the game's shader shows it
+async function withTeam(url, hex) {
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, c.width, c.height);
+  const [tr, tg, tb] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const d = px.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3] / 255;
+    if (a >= 1) continue;
+    const light = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) / 160;
+    d[i] = d[i] * a + tr * light * (1 - a); d[i + 1] = d[i + 1] * a + tg * light * (1 - a); d[i + 2] = d[i + 2] * a + tb * light * (1 - a);
+    d[i + 3] = 255;
+  }
+  ctx.putImageData(px, 0, 0);
+  return c.toDataURL('image/png');
 }
 
 function toHex(rgb) { return '#' + rgb.map(c => c.toString(16).padStart(2, '0')).join(''); }

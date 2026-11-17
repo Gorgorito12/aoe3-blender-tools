@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import VERSION, WEB, blender_bridge, catalog, engine, jobs, sessions, settings
+from . import log as studio_log
 from . import ROOT
 
 MAX_BODY = 8 * 1024 * 1024
@@ -79,7 +80,8 @@ class Studio:
         the page is silent; when the page has been silent for ten minutes (it crashed)."""
         if any(j["status"] in ("queued", "running") for j in self.jobs.all()):
             return False
-        if self.bye_at and (self.last_ping is None or self.last_ping < self.bye_at) and now - self.bye_at > 5:
+        # 12 s: longer than a page's ping (10 s), so another window still open keeps the studio
+        if self.bye_at and (self.last_ping is None or self.last_ping < self.bye_at) and now - self.bye_at > 12:
             return True
         if window_gone and (self.last_ping is None or now - self.last_ping > 30):
             return True
@@ -170,9 +172,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(e.status, {"error": str(e)})
         except (ValueError, KeyError, OSError) as e:
             self._send(400, {"error": str(e)})
-        except Exception as e:                              # a bug: say so, keep serving
+        except Exception as e:                              # a bug: say so, log it, keep serving
             traceback.print_exc()
-            self._send(500, {"error": f"{type(e).__name__}: {e}"})
+            studio_log.log.exception("error answering %s %s", method, path)
+            self._send(500, {"error": f"{type(e).__name__}: {e} (the details are in the log: Settings)"})
 
     def _bye(self):
         """The page is closing (navigator.sendBeacon: no headers of its own, so the token comes
@@ -217,6 +220,10 @@ def r_state(st, rest, q, b):
     return st.state()
 
 
+def r_log(st, rest, q, b):
+    return {"path": studio_log.path(), "text": studio_log.tail()}
+
+
 def r_ping(st, rest, q, b):
     st.last_ping = time.time()
     return {"jobs": sum(1 for j in st.jobs.all() if j["status"] == "running")}
@@ -238,7 +245,7 @@ def r_refresh(st, rest, q, b):
 
 def r_schema(st, rest, q, b):
     from core import schema
-    return schema.to_json() | {"styles": engine.styles(), "presets": engine.presets()}
+    return schema.to_json() | {"styles": engine.styles(), "presets": engine.presets(), "sets": engine.prop_sets()}
 
 
 def r_preset(st, rest, q, b):
@@ -538,6 +545,166 @@ def r_ai_save(st, rest, q, b):
     return {"path": path}
 
 
+def r_building_set(st, rest, q, b):
+    """A prop set's preview: its variations side by side, on their one texture."""
+    try:
+        return engine.set_preview(b.get("set") or "", b.get("texture") or 256, b.get("seed") or 1)
+    except KeyError as e:
+        raise ApiError(str(e)) from None
+
+
+def r_building_check(st, rest, q, b):
+    """The add-on's game-ready checks on the building on screen, as a task (they need Blender);
+    the page reads its lines as JSON."""
+    from core import schema
+    params = schema.params_from_dict(b.get("params") or {})
+    spec = os.path.join(st.work_dir("jobs"), f"{params.name}-check-{int(time.time() * 1000)}.json")
+    with open(spec, "w", encoding="utf-8") as fh:
+        json.dump(schema.params_to_dict(params), fh)
+    try:
+        cmd = st.bridge.command(os.path.join(ROOT, "scripts", "check.py"), ["--params", spec, "--json"])
+    except RuntimeError as e:
+        raise ApiError(str(e)) from None
+    job = st.jobs.start(f"Check: {params.name}", cmd, cwd=ROOT, tool="check")
+    return {"job": job.id}
+
+
+def _comfy_url(st):
+    return st.settings.get("comfy_url") or "http://127.0.0.1:8188"
+
+
+def r_comfy_check(st, rest, q, b):
+    """Is ComfyUI running, with the nodes and models the repaint needs? (the add-on's Check)"""
+    from core import comfy
+    try:
+        problems = comfy.Client(_comfy_url(st), timeout=5).check()
+    except comfy.ComfyError as e:
+        return {"running": False, "problems": [str(e)]}
+    return {"running": True, "problems": problems}
+
+
+def r_comfy_start(st, rest, q, b):
+    """Starts the portable ComfyUI of Settings in its own console window (the add-on's Start)."""
+    from core import comfy
+    url = _comfy_url(st)
+    if comfy.Client(url, timeout=3).alive():
+        return {"started": False, "already": True}
+    root = st.settings.get("comfy_dir")
+    exe = os.path.join(root or "", "python_embeded", "python.exe")
+    main = os.path.join(root or "", "ComfyUI", "main.py")
+    if not root or not (os.path.isfile(exe) and os.path.isfile(main)):
+        raise ApiError("set the ComfyUI folder (ComfyUI_windows_portable) in Settings")
+    port = url.rstrip("/").rsplit(":", 1)[-1]
+    port = port if port.isdigit() else "8188"
+    subprocess.Popen([exe, "-s", main, "--windows-standalone-build", "--listen", "127.0.0.1", "--port", port,
+                      "--disable-auto-launch"], cwd=root, creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+    return {"started": True, "already": False}
+
+
+def r_check_path(st, rest, q, b):
+    """What a path given in Settings or the welcome is, at once: [(level, note)] and whether it
+    can be saved. Nothing is written."""
+    from aoe3game import deploy
+    key, path = b.get("key"), (b.get("path") or "").strip().strip('"')
+    if key not in settings.PATHS:
+        raise ApiError("unknown setting")
+    notes, ok = [], True
+    if not path:
+        return {"ok": True, "notes": [["info", "empty"]]}
+    kind = settings.PATHS[key][0]
+    if kind == "url":
+        return {"ok": path.startswith(("http://", "https://")), "notes": [["info", "address"]]}
+    exists = os.path.isfile(path) if kind == "file" else os.path.isdir(path)
+    if not exists and key != "work":
+        return {"ok": False, "notes": [["bad", "missing"]]}
+    try:
+        deploy.refuse_steam(path)
+        steam = False
+    except deploy.RefusedPath:
+        steam = True
+    if key in ("game", "test_copy", "mod"):
+        has_art = os.path.isdir(os.path.join(path, "art"))
+        has_data = os.path.isdir(os.path.join(path, "data"))
+        notes.append(["ok" if has_art else "bad", "art" if has_art else "no_art"])
+        if key != "mod":
+            notes.append(["ok" if has_data else "bad", "data" if has_data else "no_data"])
+            ok = ok and has_art and has_data
+        else:
+            ok = ok and has_art
+    if steam:
+        if key in ("test_copy", "work", "cache"):
+            notes.append(["bad", "steam_refused"])
+            ok = False
+        elif key == "game":
+            notes.append(["info", "steam_read_only"])
+    if key == "comfy_dir":
+        portable = (os.path.isfile(os.path.join(path, "python_embeded", "python.exe"))
+                    and os.path.isfile(os.path.join(path, "ComfyUI", "main.py")))
+        notes.append(["ok" if portable else "bad", "comfy_portable" if portable else "comfy_not_portable"])
+        ok = ok and portable
+    if key == "test_copy" and ok and st.settings.get("game") and \
+            os.path.normcase(os.path.abspath(path)) == os.path.normcase(os.path.abspath(st.settings.get("game"))):
+        notes.append(["bad", "same_as_game"])
+        ok = False
+    if ok and not notes:
+        notes.append(["ok", "found"])
+    return {"ok": ok, "notes": notes}
+
+
+def _game(st):
+    """The game copy of Settings, read on demand and kept (tools/named_models.py)."""
+    import named_models
+    folder = st.settings.get("game")
+    if not folder or not os.path.isdir(folder):
+        raise ApiError("set the game's folder in Settings")
+    cached = getattr(st, "_game", None)
+    if cached is None or cached.folder != folder:
+        cached = st._game = named_models.Game(folder)
+    return cached
+
+
+def r_game_units(st, rest, q, b):
+    """The game's units whose name holds the words typed, for the unit repaint's search."""
+    game = _game(st)
+    try:
+        protos = game.protos()
+    except (OSError, LookupError, ValueError) as e:
+        raise ApiError(f"the game's unit list could not be read: {e}") from None
+    words = [w for w in str(b.get("q") or "").lower().split() if w]
+    found = [{"name": name, "anim": anim} for key, (name, anim) in sorted(protos.items())
+             if anim and all(w in key for w in words)]
+    return {"units": found[:60], "more": len(found) > 60, "count": len(found)}
+
+
+def r_game_flagdirs(st, rest, q, b):
+    """The folders of a game copy's art that hold flag sets (buttons, and the flags beside them)."""
+    game = b.get("game") or st.settings.get("game")
+    art = os.path.join(game or "", "art")
+    if not os.path.isdir(art):
+        raise ApiError("a game copy (a folder with art) is needed")
+    buttons, flags = {}, {}
+    for base, dirs, files in os.walk(art):
+        depth = os.path.relpath(base, art).count(os.sep)
+        if depth >= 4:
+            dirs[:] = []
+        low = [f.lower() for f in files]
+        rel = os.path.relpath(base, art)
+        n = sum(1 for f in low if f.startswith("flag_") and f.endswith("_normal.ddt") and "_large_" not in f)
+        if n:
+            buttons[rel] = n
+        m = sum(1 for f in low if f.startswith("ingame_ui_postgame_flag_") and f.endswith(".ddt"))
+        if m:
+            flags[rel] = m
+    pairs = []
+    for b_rel, n in sorted(buttons.items(), key=lambda kv: -kv[1]):
+        sibling = os.path.join(os.path.dirname(b_rel), "Flags")
+        f_rel = next((f for f in flags if f.lower() == sibling.lower()), None) or \
+            (max(flags, key=lambda f: flags[f]) if flags else None)
+        if f_rel:
+            pairs.append({"buttons": b_rel, "flags": f_rel, "sets": n})
+    return {"pairs": pairs}
+
+
 def r_jobs(st, rest, q, b):
     return st.jobs.all()
 
@@ -643,6 +810,7 @@ def r_list(st, rest, q, b):
 ROUTES = [
     ("GET", "/api/state", r_state),
     ("POST", "/api/ping", r_ping),
+    ("GET", "/api/log", r_log),
     ("POST", "/api/settings", r_settings),
     ("POST", "/api/refresh", r_refresh),
     ("GET", "/api/schema", r_schema),
@@ -651,6 +819,13 @@ ROUTES = [
     ("POST", "/api/building/preview", r_preview),
     ("POST", "/api/building/sheet", r_sheet),
     ("POST", "/api/building/export", r_building_export),
+    ("POST", "/api/building/check", r_building_check),
+    ("POST", "/api/building/set", r_building_set),
+    ("POST", "/api/comfy/check", r_comfy_check),
+    ("POST", "/api/comfy/start", r_comfy_start),
+    ("POST", "/api/check-path", r_check_path),
+    ("POST", "/api/game/units", r_game_units),
+    ("POST", "/api/game/flagdirs", r_game_flagdirs),
     ("POST", "/api/inspect", r_inspect),
     ("POST", "/api/retex/load", r_retex_load),
     ("POST", "/api/retex/paint", r_retex_paint),
@@ -686,9 +861,13 @@ ROUTES = [
 def serve(port=0, config=None):
     """Starts the server in a thread; returns (studio, httpd)."""
     studio = Studio(config)
+    studio_log.setup(os.path.dirname(studio.settings.path))
     handler = type("BoundHandler", (Handler,), {"studio": studio})
     httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
     httpd.daemon_threads = True
     studio.port = httpd.server_address[1]
+    studio_log.log.info("studio %s on port %s (%s, Python %s)", VERSION, studio.port,
+                        "built program" if getattr(sys, "frozen", False) else "from the repository",
+                        sys.version.split()[0])
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return studio, httpd

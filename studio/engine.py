@@ -95,6 +95,42 @@ def preview(data, texture=None, damaged=False, parts=True):
     return out
 
 
+def prop_sets():
+    from core.styles.props import sets
+    return list(sets.SETS)
+
+
+def set_preview(name, texture_size=256, seed=1):
+    """A prop set (core/styles/props/sets.py) as the page shows it: its variations side by side on
+    one mesh, the one texture they share, and each one's triangles."""
+    from core.styles.props import sets
+    if name not in sets.SETS:
+        raise KeyError(f"no prop set {name}")
+    if int(texture_size) not in (128, 256, 512, 1024):
+        raise ValueError("texture: 128 to 1024")
+    with _lock:
+        models, combined = sets.build_set(name, texture_size=int(texture_size), seed=int(seed))
+        rgba = paint.paint_rgba(combined)
+    pos, nrm, uvs, idx, rows = [], [], [], [], []
+    x = 0.0
+    for m in models:
+        w = m.dims["footprint"][0]
+        p, n, u, t = gamemesh.mesh(m)
+        base = len(pos) // 3
+        dx = x + w / 2                      # each variation on its own spot along X, 0.6 m apart
+        pos += [c + (dx if k % 3 == 0 else 0.0) for k, c in enumerate(_flat(p, 4))]
+        nrm += _flat(n, 3)
+        uvs += _flat(u, 5)
+        idx += [base + i for tri in t for i in tri]
+        rows.append({"triangles": len(t), "width": round(w, 2)})
+        x += w + 0.6
+    centre = x / 2
+    pos = [round(c - centre, 4) if k % 3 == 0 else c for k, c in enumerate(pos)]
+    return {"mesh": {"positions": pos, "normals": nrm, "uvs": uvs, "indices": idx}, "texture": _png(rgba),
+            "variations": rows, "triangles": len(idx) // 3, "texture_size": int(rgba.shape[0]),
+            "attach": {}, "boxes": []}
+
+
 def _png(array):
     return "data:image/png;base64," + base64.b64encode(paint.png_bytes(array, level=3)).decode("ascii")
 
@@ -110,7 +146,12 @@ def sheet(data):
     measured = calibration().tri_budget(cls) if cls and calibration() else None
     budget = {"class": cls, "band": facts.get("band"),
               "p90": measured[0] if measured else None, "max": measured[1] if measured else None}
-    return {"markdown": text, "facts": _plain(facts), "budget": _plain(budget)}
+    # the obstruction's half sizes in the preview's metres: game units over units per metre (a
+    # style's scale is already in the model: the African house is built 1.7 times its plan)
+    rx, rz = (facts.get("game") or {}).get("radius") or (0, 0)
+    upm = facts.get("upm") or 1
+    obstruction = [rx / upm, rz / upm] if rx and rz else None
+    return {"markdown": text, "facts": _plain(facts), "budget": _plain(budget), "obstruction_m": _plain(obstruction)}
 
 
 def _plain(v):

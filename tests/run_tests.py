@@ -469,6 +469,20 @@ def roof_kit_parts_have_no_overlaps():
 
 
 @test
+def every_operator_reaches_the_studio():
+    """The rule of CLAUDE.md: every operator the add-on registers has its place in the studio
+    (studio/coverage.py), or is listed there as pending with the reason."""
+    from studio import coverage
+    registered = {c.bl_idname for c in bpy.types.Operator.__subclasses__()
+                  if getattr(c, "bl_idname", "").startswith("aoe3.")}
+    assert registered, "no aoe3 operator registered"
+    missing = sorted(registered - set(coverage.OPERATORS))
+    assert not missing, f"operators with no place in the studio (studio/coverage.py): {missing}"
+    gone = sorted(set(coverage.OPERATORS) - registered)
+    assert not gone, f"studio/coverage.py names operators the add-on no longer has: {gone}"
+
+
+@test
 def the_schema_matches_the_panel():
     """core/schema.py (the studio's forms) describes every field as the Blender panel does: the
     same kind, range and choices."""
@@ -943,6 +957,7 @@ def main():
                   game_variants_lowpoly_and_damaged, deploy_from_blender_and_undo,
                   square_hipped_roof_builds, roof_kit_parts_have_no_overlaps,
                   ui_has_a_property_for_every_param_field, the_schema_matches_the_panel,
+                  every_operator_reaches_the_studio,
                   the_mesh_without_blender_matches_blenders, ai_repaint_and_revert,
                   round_kit_parts_have_no_overlaps, round_roofs_export_smooth_normals,
                   a_mesh_we_did_not_make_is_repainted_and_exported_as_a_prop,

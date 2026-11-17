@@ -70,17 +70,64 @@ def app_window(url, home):
     return None
 
 
+LOCK = "studio.lock"
+
+
+def running(home):
+    """The address of a studio already running from this settings folder, or None: opening the
+    program twice opens a second window on the first one, not a second studio."""
+    import json
+    import urllib.request
+    try:
+        with open(os.path.join(home, LOCK), encoding="utf-8") as fh:
+            url = json.load(fh)["url"]
+        if not url.startswith("http://127.0.0.1:"):
+            return None
+        with urllib.request.urlopen(url, timeout=2) as r:
+            return url if b"AoE3 Mod Studio" in r.read(4096) else None
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def claim(home, url):
+    import json
+    os.makedirs(home, exist_ok=True)
+    with open(os.path.join(home, LOCK), "w", encoding="utf-8") as fh:
+        json.dump({"url": url, "pid": os.getpid()}, fh)
+
+
+def release(home, url):
+    import json
+    p = os.path.join(home, LOCK)
+    try:
+        with open(p, encoding="utf-8") as fh:
+            ours = json.load(fh).get("url") == url
+        if ours:                               # closed first: Windows keeps an open file
+            os.remove(p)
+    except (OSError, ValueError):
+        pass
+
+
 def main(argv):
     def opt(name, default=None):
         return argv[argv.index(name) + 1] if name in argv else default
 
     from studio import server, settings
+    alone = "--no-window" in argv              # served only: it runs until Ctrl+C
+    home = os.path.dirname(os.path.abspath(opt("--config"))) if opt("--config") else settings.default_home()
+    if not alone and not opt("--port"):
+        url = running(home)
+        if url:
+            print(f"AoE3 Mod Studio is already open on {url}: a window on it", flush=True)
+            app_window(url, home)
+            return 0
     port = int(opt("--port", "0"))
     studio, httpd = server.serve(port, opt("--config"))
     url = f"http://127.0.0.1:{studio.port}/"
     print(f"AoE3 Mod Studio on {url}  (Ctrl+C stops it)", flush=True)
-    alone = "--no-window" in argv              # served only: it runs until Ctrl+C
-    window = None if alone else app_window(url, os.path.dirname(studio.settings.path) or settings.default_home())
+    if not alone:
+        claim(home, url)
+    window = None if alone else app_window(url, home)
     try:
         while True:
             time.sleep(1)
@@ -92,6 +139,11 @@ def main(argv):
         pass
     studio.jobs.stop_all()
     httpd.shutdown()
+    if not alone:
+        release(home, url)
+    from studio import log
+    log.log.info("studio stopped")
+    log.close()
     if window is not None and window.poll() is None:
         from studio.jobs import kill_tree
         kill_tree(window)                     # the browser started with the studio's own profile

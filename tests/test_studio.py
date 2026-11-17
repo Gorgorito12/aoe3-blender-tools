@@ -41,9 +41,11 @@ class Server(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        from studio import log
         cls.studio.jobs.stop_all()
         cls.httpd.shutdown()
         cls.httpd.server_close()
+        log.close()
         cls.tmp.cleanup()
 
     def call(self, path, body=None, token=None, headers=None):
@@ -436,6 +438,138 @@ class Server(unittest.TestCase):
             self.assertIn("--texture-png", j["command"])
             self.assertTrue(any(line.startswith("texture:") for line in j["lines"]))
 
+    def test_check_a_building(self):
+        """The add-on's Check from the building screen: a task in Blender whose lines the page reads
+        as JSON (needs the bpy module: skipped without it)."""
+        if not self.studio.bridge.module:
+            self.skipTest("no bpy module in this Python")
+        p = engine.preset("WHITE_HOUSE")
+        status, r = self.call("/api/building/check", {"params": p})
+        self.assertEqual(status, 200, r)
+        j = self.wait(r["job"], 300)
+        self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"][-10:])
+        found = [json.loads(line) for line in j["lines"] if line.startswith("{")]
+        self.assertTrue(any(f["level"] == "INFO" and "triangles" in f["message"] for f in found), found)
+        self.assertFalse([f for f in found if f["level"] == "ERROR"], found)
+
+    def test_a_prop_set_previews(self):
+        status, schema_ = self.call("/api/schema")
+        self.assertEqual(sorted(schema_["sets"]), ["CAMP", "GOODS"])
+        for name in schema_["sets"]:
+            status, d = self.call("/api/building/set", {"set": name, "texture": 128})
+            self.assertEqual(status, 200, d)
+            self.assertEqual(d["triangles"], sum(v["triangles"] for v in d["variations"]))
+            self.assertEqual(len(d["mesh"]["indices"]), 3 * d["triangles"])
+        self.assertEqual(self.call("/api/building/set", {"set": "NOPE"})[0], 400)
+        self.assertEqual(self.call("/api/building/set", {"set": "GOODS", "texture": 3000})[0], 400)
+
+    def test_comfyui_check_and_start(self):
+        sys.path.insert(0, os.path.join(ROOT, "tests"))
+        from fake_comfy import FakeComfy
+        from core import comfy
+        status, r = self.call("/api/comfy/check", {})
+        self.assertEqual((status, r["running"]), (200, False))          # nothing answers at the default
+        self.assertEqual(self.call("/api/comfy/start", {})[0], 400)     # and there is no ComfyUI folder
+        with FakeComfy(missing_nodes=(comfy.NODES[0],)) as fake:
+            self.studio.settings.update({"paths": {"comfy_url": fake.url}})
+            try:
+                status, r = self.call("/api/comfy/check", {})
+                self.assertTrue(r["running"])
+                self.assertTrue(any(comfy.NODES[0] in x for x in r["problems"]), r)
+                status, r = self.call("/api/comfy/start", {})
+                self.assertEqual((status, r["already"]), (200, True))    # running: nothing to start
+            finally:
+                self.studio.settings.update({"paths": {"comfy_url": "http://127.0.0.1:8188"}})
+
+    def test_an_error_is_logged(self):
+        """A bug answers 500 and leaves its trace in the log the Settings screen shows."""
+        status, err = self.call("/api/building/preview", {"params": {"colors": "not a table"}, "texture": 128})
+        self.assertEqual(status, 500)
+        self.assertIn("log", err["error"])
+        status, log = self.call("/api/log")
+        self.assertEqual(status, 200)
+        self.assertIn("error answering POST /api/building/preview", log["text"])
+        self.assertIn("Traceback", log["text"])
+
+    def test_when_the_studio_stops(self):
+        st = server.Studio(os.path.join(self.tmp.name, "stop", "s.json"))
+        now = 1000.0
+        self.assertFalse(st.should_stop(now))                      # no page yet
+        st.last_ping = now
+        st.bye_at = now + 1                                        # its page closed...
+        self.assertFalse(st.should_stop(now + 5))                  # ...another page may still call in
+        self.assertTrue(st.should_stop(now + 14))
+        st.last_ping = now + 9                                     # a reload, or a second window
+        self.assertFalse(st.should_stop(now + 20))
+        st.bye_at, st.last_ping = None, now
+        self.assertTrue(st.should_stop(now + 40, window_gone=True))
+        self.assertTrue(st.should_stop(now + 700))                 # a page silent for ten minutes
+        job = st.jobs.start("sleep", [sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            time.sleep(0.5)
+            self.assertFalse(st.should_stop(now + 700))            # never while a task runs
+        finally:
+            st.jobs.cancel(job.id)
+
+    def test_one_studio_at_a_time(self):
+        """The lock file names the running studio; a second start finds it (and only a live one)."""
+        import importlib
+        launcher = importlib.import_module("studio.__main__")
+        home = os.path.join(self.tmp.name, "single")
+        self.assertIsNone(launcher.running(home))
+        launcher.claim(home, self.base + "/")
+        self.assertEqual(launcher.running(home), self.base + "/")
+        launcher.release(home, "http://127.0.0.1:1/")              # not ours: kept
+        self.assertTrue(os.path.isfile(os.path.join(home, launcher.LOCK)))
+        launcher.release(home, self.base + "/")
+        self.assertIsNone(launcher.running(home))
+        launcher.claim(home, "http://127.0.0.1:1/")                # a studio that is gone
+        self.assertIsNone(launcher.running(home))
+
+    def test_the_welcome_checks_each_folder(self):
+        def check(key, path):
+            status, r = self.call("/api/check-path", {"key": key, "path": path})
+            self.assertEqual(status, 200, r)
+            return r["ok"], [code for _level, code in r["notes"]]
+        game = os.path.join(self.tmp.name, "w_game")
+        os.makedirs(os.path.join(game, "art"))
+        self.assertEqual(check("game", game), (False, ["art", "no_data"]))
+        os.makedirs(os.path.join(game, "data"))
+        self.assertEqual(check("game", game), (True, ["art", "data"]))
+        self.assertEqual(check("game", os.path.join(self.tmp.name, "nowhere")), (False, ["missing"]))
+        steam = os.path.join(self.tmp.name, "SteamLibrary", "steamapps", "common", "AoE3")
+        for sub in ("art", "data"):
+            os.makedirs(os.path.join(steam, sub))
+        self.assertIn("steam_read_only", check("game", steam)[1])            # the game: only read
+        ok, notes = check("test_copy", steam)
+        self.assertFalse(ok)
+        self.assertIn("steam_refused", notes)                                 # a test copy: refused
+        self.assertEqual(check("comfy_dir", game), (False, ["comfy_not_portable"]))
+        self.assertEqual(self.call("/api/check-path", {"key": "nonsense", "path": game})[0], 400)
+
+    def test_find_units_and_flag_folders_in_the_game(self):
+        sys.path.insert(0, os.path.join(ROOT, "tests"))
+        import test_make_flag as tmf
+        game = os.path.join(self.tmp.name, "f_game")
+        tmf.fake_copy(game, n=3)
+        os.makedirs(os.path.join(game, "data"))
+        with open(os.path.join(game, "data", "protoy.xml"), "w", encoding="utf-8") as fh:
+            fh.write('<proto><unit name="Musketeer"><animfile>units\\infantry\\musketeer.xml</animfile></unit>'
+                     '<unit name="Pikeman"><animfile>units\\infantry\\pikeman.xml</animfile></unit>'
+                     '<unit name="NoArt"></unit></proto>')
+        self.assertEqual(self.call("/api/game/units", {"q": "musk"})[0], 400)    # no game set yet
+        self.studio.settings.update({"paths": {"game": game}})
+        try:
+            status, r = self.call("/api/game/units", {"q": "musk"})
+            self.assertEqual((status, [u["name"] for u in r["units"]]), (200, ["Musketeer"]))
+            status, r = self.call("/api/game/units", {"q": ""})
+            self.assertEqual([u["name"] for u in r["units"]], ["Musketeer", "Pikeman"])  # units with art only
+            status, r = self.call("/api/game/flagdirs", {})
+            self.assertEqual(status, 200, r)
+            self.assertEqual(r["pairs"], [{"buttons": tmf.BT, "flags": tmf.FL, "sets": 3}])
+        finally:
+            self.studio.settings.update({"paths": {"game": ""}})
+
     def test_a_job_can_be_cancelled(self):
         job = self.studio.jobs.start("sleep", [sys.executable, "-c", "import time\nprint('1/4', flush=True)\ntime.sleep(60)"])
         time.sleep(1.0)
@@ -571,6 +705,44 @@ class Forms(unittest.TestCase):
                     catalog.command(st, "fix_bone_scale", bad)
             with self.assertRaises(catalog.ToolError):
                 catalog.command(st, "make_rings", {"out": os.path.join(tmp, "steamapps", "x")})
+
+
+class EveryFunctionReachesTheStudio(unittest.TestCase):
+    """The rule of CLAUDE.md, without Blender: every operator in the add-on's sources has its
+    place in studio/coverage.py, and every place named there exists."""
+
+    def test_every_operator_has_a_place(self):
+        from studio import coverage
+        found = set()
+        for name in ("__init__.py", "ai_panel.py"):
+            with open(os.path.join(ROOT, "aoe3_blender_tools", name), encoding="utf-8") as fh:
+                found |= set(re.findall(r'bl_idname = "(aoe3\.\w+)"', fh.read()))
+        self.assertEqual(sorted(found - set(coverage.OPERATORS)), [],
+                         "operators with no place in the studio: add them to studio/coverage.py")
+        self.assertEqual(sorted(set(coverage.OPERATORS) - found), [])
+
+    def test_every_place_exists(self):
+        from studio import coverage
+        with open(os.path.join(WEB, "js", "app.js"), encoding="utf-8") as fh:
+            app = fh.read()
+        for screen in coverage.SCREENS:
+            self.assertTrue(f"head === '{screen}'" in app or f"id: '{screen}'" in app, screen)
+        for op in coverage.OPERATORS:
+            kind, target, note = coverage.place(op)
+            self.assertIn(kind, ("screen", "tool", "pending"), op)
+            if kind == "screen":
+                self.assertIn(target, coverage.SCREENS, op)
+            elif kind == "tool":
+                self.assertIn(target, catalog.BY_ID, op)
+            else:
+                self.assertTrue(target, f"{op}: say why it is pending")
+
+    def test_the_pending_list_is_in_the_documentation(self):
+        from studio import coverage
+        with open(os.path.join(ROOT, "docs", "studio.md"), encoding="utf-8") as fh:
+            doc = fh.read()
+        for op in coverage.pending():
+            self.assertTrue(f"`{op}`" in doc, f"{op} is pending: docs/studio.md must say so")
 
 
 class Languages(unittest.TestCase):

@@ -94,17 +94,25 @@ class Jobs:
             job.proc = subprocess.Popen(job.cmd, cwd=job.cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                         stdin=subprocess.DEVNULL, env=env, creationflags=flags)
         except OSError as e:
+            _log().error("task %s could not start: %s (%s)", job.id, job.title, e)
             job.add(f"could not start: {e}")
             job.status, job.code, job.ended = "failed", -1, time.time()
             return
         job.status = "running"
+        _log().info("task %s started: %s", job.id, job.title)
         for raw in iter(job.proc.stdout.readline, b""):
             job.add(raw.decode("utf-8", "replace").rstrip("\r\n"))
+        job.proc.stdout.close()
         job.proc.wait()
         job.code = job.proc.returncode
         job.ended = time.time()
         if job.status != "cancelled":
             job.status = "done" if job.code == 0 else "failed"
+        if job.status == "failed":                 # its last lines, so the log says why
+            _log().warning("task %s failed (%s): %s\n  %s", job.id, job.code, job.title,
+                           "\n  ".join(job.lines[-15:]))
+        else:
+            _log().info("task %s %s: %s", job.id, job.status, job.title)
 
     def get(self, jid):
         return self.jobs.get(jid)
@@ -127,6 +135,11 @@ class Jobs:
         for j in list(self.jobs.values()):
             if j.status == "running":
                 self.cancel(j.id)
+
+
+def _log():
+    from .log import log
+    return log
 
 
 def kill_tree(proc):

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The studio's page: navigation, language, theme, and the screens.
-import { api, clear, h, loadLanguages, sayGoodbye, setLanguage, storeGet, storeSet, t, toast } from './core.js';
+import { api, clear, h, loadLanguages, sayGoodbye, setLanguage, storeGet, storeSet, t } from './core.js';
 import { buildingsScreen } from './buildings.js';
 import { areaScreen, toolScreen } from './tools.js';
 import { jobsScreen } from './jobs.js';
@@ -9,6 +9,7 @@ import { inspectScreen } from './inspect.js';
 import { retexScreen } from './retex.js';
 import { flagsScreen } from './flags.js';
 import { texmakerScreen } from './texmaker.js';
+import { welcomeScreen } from './welcome.js';
 
 const SCREENS = [
   { id: 'buildings', icon: '🏛' },
@@ -27,7 +28,8 @@ const SCREENS_OF = {
   art: [['flags', 'f.title', 'f.intro']],
 };
 // the area each of those screens belongs to, for the navigation
-const AREA_OF = Object.fromEntries(Object.entries(SCREENS_OF).flatMap(([a, list]) => list.map(([r]) => [r, a])));
+const AREA_OF = { welcome: 'settings',
+  ...Object.fromEntries(Object.entries(SCREENS_OF).flatMap(([a, list]) => list.map(([r]) => [r, a]))) };
 
 const app = {
   state: null,
@@ -62,6 +64,7 @@ async function show() {
     else if (head === 'retex') await retexScreen(main, app);
     else if (head === 'flags') await flagsScreen(main, app);
     else if (head === 'texmaker') await texmakerScreen(main, app);
+    else if (head === 'welcome') await welcomeScreen(main, app);
     else await areaScreen(main, app, head);
   } catch (e) {
     clear(main).append(h('div', { class: 'notice bad' }, e.message));
@@ -115,14 +118,12 @@ async function start() {
     toolAreas = Object.fromEntries(cat.tools.map(x => [x.id, x.area]));
   } catch { /* the tools screens say why */ }
   window.addEventListener('hashchange', show);
-  setInterval(() => api('/api/ping', {}).catch(() => {}), 10000);
+  setInterval(() => api('/api/ping', {}).catch(() => {}), 10000);   // a failed ping shows the offline bar
   window.addEventListener('pagehide', sayGoodbye);
   api('/api/ping', {}).catch(() => {});
+  // the first start: the welcome, until the game's folder is set or the user says later
+  if (!app.state.settings.paths.game && !storeGet('welcomed', false) && !location.hash) location.hash = '#/welcome';
   await show();
-  if (!app.state.settings.paths.game && !storeGet('welcomed', false)) {
-    storeSet('welcomed', true);
-    toast(t('welcome'), 'ok');
-  }
 }
 
 start().catch(e => {

@@ -22,10 +22,11 @@ folder) are kept in `%APPDATA%\aoe3-blender-tools\studio.json`. Nothing leaves t
 
 | Screen | What is there |
 |---|---|
-| Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes; the texture with its atlas regions, and the damaged texture; triangles against the style's target or the game's buildings of the same class; the technical sheet; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo |
+| Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes, a person 1.8 m tall for the scale, the obstruction on the ground, the low-poly model, the damaged texture, the player colour of a team; the texture with its atlas regions; triangles against the style's target or the game's buildings of the same class; the technical sheet; **Check** (the add-on's game-ready checks, `scripts/check.py`); with the PROP style, the prop sets side by side and their export; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo |
 | Textures and units | **Repaint a unit** and **Make a tileable texture** (below); the UV atlas, the recipe tool, LoRA dataset and training as forms |
 | Survey and inspection | The art, texture, model, grouping, shape and palette surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it, `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back |
 | Art utilities | **Design a civ flag** (below); avatar icons, ground rings, health bars, the HITPOINTBAR fix, bone scale fix, uncompressed models |
+| Settings | The folders, checked as they are chosen; what the studio found; Start and Check ComfyUI (the nodes and models a repaint needs); the log. The **welcome** opens on the first start until the game's folder is set |
 | Tasks | Every task of the session with its live log, progress, cancel and outputs (pictures shown, text files opened, folders shown) |
 | Developer tools | Technical sheets, sweep, galleries, AI sweep, the painter's fit, swatch download, add-on zips |
 
@@ -66,6 +67,17 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   for the export** keeps the texture as a PNG that `scripts/game_export.py --texture-png` puts in
   place of the painted one; a change to the building drops it.
 
+## When something goes wrong
+
+- **The log**: `%APPDATA%\aoe3-blender-tools\studio.log` keeps the start, every task and how it
+  ended (a failed task with its last lines), and every error with its trace (three files of 1 MB at
+  most). Settings shows it. A built program has no console: without it an error would be lost.
+- **One studio at a time**: a second start finds the first through `studio.lock` (beside the
+  settings) and opens a window on it.
+- **The studio stops** a little after its last window closes (a reload, or a second window, keeps
+  it), never while a task runs, and closes the browser it started. A page whose studio has stopped
+  says so in a red bar, and recovers if it starts again on the same address.
+
 ## How it is built
 
 - `studio/server.py`: a standard-library HTTP server on 127.0.0.1 only. The API writes files and
@@ -83,6 +95,10 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   it, else with an installed Blender 4.2 or newer in the background
   (`blender -b --factory-startup -P <script> -- <options>`). Without either, those buttons say
   what is missing.
+- Tests: `tests/test_studio.py` (the API, safety, every screen's engine, the forms against their
+  scripts, both languages, the rule above) and `tests/test_studio_ui.py`, which opens every screen in
+  a headless Edge or Chrome in English and Spanish (`tests/studio_ui.mjs`, Node 22+) and fails on a
+  page error, a key shown untranslated, a page wider than the window or a screen that did not draw.
 - `studio/web/`: the page, plain ES modules with no build step; three.js 0.160 (MIT) for the 3D
   view, vendored in `studio/web/vendor/`. Texts in `studio/web/i18n/en.json` and `es.json`; the
   catalog carries its own strings in both languages.
@@ -117,6 +133,30 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
 - The made-to-measure screens on synthetic data: a unit's live repaint of three steps on a
   1024 px texture, 0.35 s; a texture made from a photograph without ComfyUI, 1.6 s (it works at
   1024 px before bringing it to the swatch size); a flag set of ten textures, well under a second.
+
+## Every function reaches the studio
+
+A rule of this repository (CLAUDE.md): a new function is not done until it can be used from the
+studio, with its texts in English and Spanish and its test. Three lists hold it, each with a test
+that fails when something is left out:
+
+- every operator of the Blender add-on has its place in `studio/coverage.py` (a screen, a form, or
+  pending with the reason): `every_operator_reaches_the_studio` in `tests/run_tests.py` and
+  `EveryFunctionReachesTheStudio` in `tests/test_studio.py`;
+- every script of `tools/` and `scripts/` has its form in `studio/catalog.py`;
+- every `BuildingParams` field is described in `core/schema.py`.
+
+What the add-on does that the studio does not do yet:
+
+| Operator | Why |
+|---|---|
+| `aoe3.pack_set` | It packs meshes modelled in Blender into one texture; the studio has no meshes of its own to pack yet |
+| `aoe3.compose_settlement` | The settlement composer on a map is in the next round |
+| `aoe3.export_grouping` | Comes with the settlement composer |
+| `aoe3.import_grouping` | Comes with the settlement composer |
+
+The AI repaint of a mesh made elsewhere (the add-on's AI panel on any mesh) also waits: the studio
+repaints its own buildings.
 
 ## Still to do
 

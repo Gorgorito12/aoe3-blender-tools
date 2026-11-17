@@ -40,13 +40,25 @@ export async function retexScreen(main, app) {
   const src = h('select', { 'aria-label': t('r.source') },
     h('option', { value: 'game', text: t('r.source.game'), selected: last.source === 'game' }),
     h('option', { value: 'file', text: t('r.source.file'), selected: last.source === 'file' }));
-  const target = h('input', { type: 'text', value: last.target, placeholder: 'Musketeer', class: 'grow' });
+  const units = h('datalist', { id: 'retex-units' });
+  const target = h('input', { type: 'text', value: last.target, placeholder: t('r.target.ph'), class: 'grow', list: 'retex-units',
+    oninput: () => findUnits() });
+  const unitInfo = h('span', { class: 'small muted' });
+  // the game's units as the name is typed (its unit list, read once)
+  const findUnits = debounce(async () => {
+    if (!hasGame || target.value.trim().length < 2) return;
+    try {
+      const r = await api('/api/game/units', { q: target.value });
+      clear(units).append(...r.units.map(u => h('option', { value: u.name, label: u.anim })));
+      unitInfo.textContent = t('r.units', { n: r.count });
+    } catch (e) { unitInfo.textContent = e.message; }
+  }, 300);
   const prefer = h('input', { type: 'text', value: last.prefer, placeholder: t('r.prefer') });
   const model = h('input', { type: 'text', value: last.model, class: 'grow', placeholder: t('r.model') });
   const texture = h('input', { type: 'text', value: last.texture, class: 'grow', placeholder: t('r.texture') });
   const by = h('select', { 'aria-label': t('r.by') }, ['bone', 'position'].map(v => h('option', { value: v, text: t('r.by.' + v), selected: v === last.by })));
   const scale = h('select', { 'aria-label': t('r.scale') }, [1, 2, 4].map(v => h('option', { value: v, text: '× ' + v, selected: v === Number(last.scale) })));
-  const gameRow = h('div', { class: 'row' }, target, prefer,
+  const gameRow = h('div', { class: 'row' }, target, units, prefer, unitInfo,
     hasGame ? null : h('span', { class: 'small bad', text: t('r.nogame') }));
   const fileRow = h('div', { class: 'stack' },
     h('div', { class: 'row' }, model, h('button', { type: 'button', text: t('browse'), onclick: async () => {

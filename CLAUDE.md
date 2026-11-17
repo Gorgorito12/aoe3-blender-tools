@@ -52,7 +52,9 @@ python -I tests/test_named_models.py              # model_sheets --models lists:
 venv/bin/python -I tests/test_retexture.py        # uv_atlas, retexture, skin and attachments, synthetic data
 python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
 venv/bin/python -m studio [--no-window] [--port N]      # AoE3 Mod Studio: every tool in one window
-venv/bin/python -I tests/test_studio.py                # the studio: API, safety, forms, languages (about 35 s)
+venv/bin/python -I tests/test_studio.py                # the studio: API, safety, forms, languages (about 50 s)
+venv/bin/python -I tests/test_studio_ui.py             # every screen in a headless browser, both languages (Node 22+)
+venv/bin/python scripts/check.py --preset WHITE_HOUSE  # the add-on's game-ready checks, headless (--params, --json)
 python -I tools/build_app.py --zip                     # the studio as a program (a Python with pyinstaller and numpy)
 ```
 
@@ -178,9 +180,17 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   `core/schema.py` (the studio's form: the panel's range and choices, when it shows) and its
   Spanish label in `studio/web/i18n/es.json`; `the_schema_matches_the_panel` and
   `tests/test_studio.py` fail otherwise.
-- A new command-line tool gets its form in `studio/catalog.py` (strings in English and Spanish; a
-  trial or a confirmation when it changes files in place or in a test copy); `tests/test_studio.py`
-  fails on a script without one, or on a form option its script does not read.
+- **Every function reaches the studio** (the owner's rule, 2026-11-17). A new function (operator,
+  tool, option, style, generator, format) is not done until a modder can use it from `studio/`,
+  with its texts in English and Spanish (`studio/web/i18n/`), its test in `tests/test_studio.py`
+  and its line in `docs/studio.md`. Where it goes: a building option is a field of `core/schema.py`
+  (the form draws itself); a command-line tool a form of `studio/catalog.py` (a trial or a
+  confirmation when it changes files in place or in a test copy); an add-on operator an entry of
+  `studio/coverage.py` naming its screen or form; work that needs to be seen while it changes, a
+  screen of its own. `tests/run_tests.py` fails on an operator with no entry, `tests/test_studio.py`
+  on a script without its form, an option its script does not read, or a place that does not
+  exist. A function that cannot reach the studio yet is entered as `pending` with the reason, and
+  docs/studio.md lists it.
 - Test the add-on in the user's installed Blender too
   (`"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe" -b --factory-startup -P
   tests/run_tests.py`), and reinstall the zip there after a change

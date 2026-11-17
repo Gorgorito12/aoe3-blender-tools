@@ -89,6 +89,29 @@ export class Viewer {
     this.draw();
   }
 
+  // things beside the model, in Blender metres: a person 1.8 m tall for the scale, and the
+  // obstruction's rectangle on the ground (half sizes [hx, hy]); null hides them
+  setExtras({ person, obstruction }) {
+    if (this.extras) { this.root.remove(this.extras); this.extras.traverse(o => o.geometry?.dispose()); }
+    this.extras = new THREE.Group();
+    if (person) {
+      const skin = new THREE.MeshLambertMaterial({ color: 0x3f8fd8 });
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 1.5, 12), skin);
+      body.rotation.x = Math.PI / 2;                 // the cylinder stands along Blender's Z
+      body.position.set(person[0], person[1], 0.75);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8), skin);
+      head.position.set(person[0], person[1], 1.65);
+      this.extras.add(body, head);
+    }
+    if (obstruction) {
+      const [hx, hy] = obstruction;
+      const pts = [[-hx, -hy], [hx, -hy], [hx, hy], [-hx, hy], [-hx, -hy]].map(([x, y]) => new THREE.Vector3(x, y, 0.03));
+      this.extras.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xffde59 })));
+    }
+    this.root.add(this.extras);
+    this.draw();
+  }
+
   setTexture(url) {
     new THREE.TextureLoader().load(url, tex => {
       tex.colorSpace = THREE.SRGBColorSpace;

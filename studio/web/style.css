@@ -204,3 +204,10 @@ img.texout { display: block; width: 100%; max-width: 256px; border-radius: 4px; 
 .regionlist { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
 .regionlist .row { flex-wrap: nowrap; }
 .regionlist .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.checks { list-style: none; padding: 0; margin: 0; } .checks li { padding: 2px 0; }
+.offline { position: fixed; top: 0; left: 0; right: 0; z-index: 20; background: var(--bad); color: #fff;
+  padding: 8px 16px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.welcome { max-width: 820px; }
+.viewport .over .teamcolour { background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line);
+  border-radius: 6px; padding: 2px 6px; }
+.viewport .over .teamcolour input { width: 26px; height: 20px; }

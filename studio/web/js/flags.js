@@ -2,7 +2,7 @@
 // The flag designer: a design picture, cropped on screen, shown as every texture of a civ's flag
 // set (the in-game flag, the postgame flag, the buttons in their four states) as the game copy's
 // own sets are made, next to one of them; then the set written.
-import { api, clear, h, pick, storeGet, storeSet, t, toast } from './core.js';
+import { api, clear, dialog, h, pick, storeGet, storeSet, t, toast } from './core.js';
 import { ImageView, fileToPng } from './canvas2d.js';
 import { showOutputs } from './jobs.js';
 
@@ -25,8 +25,23 @@ export async function flagsScreen(main, app) {
       h('div', { class: 'row' }, h('strong', { text: t('f.copy') }), game,
         h('button', { type: 'button', text: t('browse'), onclick: async () => { const p = await pick('folder', { title: t('f.copy') }); if (p) game.value = p; } })),
       h('div', { class: 'row small' }, t('f.flags'), fdir, t('f.buttons'), bdir),
-      h('div', { class: 'row' }, measureBtn, measured)),
+      h('div', { class: 'row' }, measureBtn,
+        h('button', { type: 'button', text: t('f.find'), title: t('f.find.help'), onclick: () => findDirs() }), measured)),
     work);
+
+  // the folders of the copy's art that hold flag sets: the user picks, nothing to type
+  async function findDirs() {
+    try {
+      const r = await api('/api/game/flagdirs', { game: game.value });
+      if (!r.pairs.length) { toast(t('f.find.none'), 'bad'); return; }
+      const use = p => { fdir.value = p.flags; bdir.value = p.buttons; measure(); };
+      if (r.pairs.length === 1) { use(r.pairs[0]); return; }
+      const list = h('div', { class: 'stack' }, r.pairs.map(p => h('button', { type: 'button', class: 'card tool-card',
+        onclick: () => { document.getElementById('dialog').close(); use(p); } },
+        h('strong', { text: p.buttons }), h('span', { class: 'small muted', text: `${p.flags} · ${t('f.sets', { n: p.sets })}` }))));
+      dialog(t('f.find'), list, [{ value: 'no', label: t('cancel') }]);
+    } catch (e) { toast(e.message, 'bad'); }
+  }
 
   async function measure() {
     storeSet('flags', { ...saved, game: game.value, flags_dir: fdir.value, buttons_dir: bdir.value });
