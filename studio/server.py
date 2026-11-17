@@ -7,6 +7,7 @@ must name this server (no DNS rebinding)."""
 import json
 import mimetypes
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -439,6 +440,52 @@ def _tex():
     return texmaker_ui
 
 
+def _settle():
+    from . import settlement_ui
+    return settlement_ui
+
+
+def r_settlement_measured(st, rest, q, b):
+    """What the composer lays out by: the mod's settlements as measured."""
+    return _settle().measured()
+
+
+def r_settlement_compose(st, rest, q, b):
+    se = _settle()
+    try:
+        units = se.compose(b.get("units"), socket=b.get("socket") or "", obstruction=b.get("obstruction") or "",
+                           seed=int(b.get("seed") or 1), counts=b.get("counts"))
+    except (se.SettlementError, TypeError, ValueError) as e:
+        raise ApiError(str(e)) from None
+    return {"units": units, "meta": None}
+
+
+def r_settlement_open(st, rest, q, b):
+    se = _settle()
+    path = b.get("path") or ""
+    if not os.path.isfile(path):
+        raise ApiError(f"no such file: {path}")
+    try:
+        return dict(se.read(path), path=path)
+    except se.SettlementError as e:
+        raise ApiError(str(e)) from None
+
+
+def r_settlement_save(st, rest, q, b):
+    """Writes the grouping file: into the work folder unless a path is given (never the game's)."""
+    se = _settle()
+    name = (b.get("name") or "").strip()
+    if not b.get("path") and not re.match(r"^[A-Za-z0-9_ .-]{1,80}$", name):
+        raise ApiError("the grouping's name: letters, digits, spaces, _ . -")
+    path = b.get("path") or os.path.join(st.work_dir("settlements"),
+                                         name if name.lower().endswith(".xml") else name + ".xml")
+    st.output(path)
+    try:
+        return {"path": se.write(path, b.get("units") or [], b.get("meta"))}
+    except se.SettlementError as e:
+        raise ApiError(str(e)) from None
+
+
 def r_tex_source(st, rest, q, b):
     """The photograph a texture is made from (the page decodes it and sends it as a PNG)."""
     tx = _tex()
@@ -856,6 +903,10 @@ ROUTES = [
     ("POST", "/api/retex/paint", r_retex_paint),
     ("POST", "/api/retex/picture", r_retex_picture),
     ("POST", "/api/retex/save", r_retex_save),
+    ("POST", "/api/settlement/measured", r_settlement_measured),
+    ("POST", "/api/settlement/compose", r_settlement_compose),
+    ("POST", "/api/settlement/open", r_settlement_open),
+    ("POST", "/api/settlement/save", r_settlement_save),
     ("POST", "/api/flags/measure", r_flags_measure),
     ("POST", "/api/flags/preview", r_flags_preview),
     ("POST", "/api/flags/write", r_flags_write),

@@ -41,7 +41,8 @@ export async function buildingsScreen(main, app) {
     oninput: e => { state.filter = e.target.value; drawPresets(); } });
   const form = h('div', { class: 'scroll' });
   left.append(h('div', { class: 'head' }, h('div', {}, h('h1', { text: t('nav.buildings') }),
-    h('p', { class: 'muted small', text: t('b.intro') }))),
+    h('p', { class: 'muted small', text: t('b.intro') }),
+    h('button', { type: 'button', class: 'ghost small', text: t('b.more') + ' →', title: t('b.more.help'), onclick: () => app.go('buildtools') }))),
     h('div', { class: 'row', style: { marginBottom: '6px' } }, filter,
       h('button', { type: 'button', text: t('b.random'), title: t('b.random.help'), onclick: randomise })),
     presetBox, h('hr', { style: { border: 0, borderTop: '1px solid var(--line)', width: '100%' } }), form);

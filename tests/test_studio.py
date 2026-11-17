@@ -277,6 +277,64 @@ class Server(unittest.TestCase):
                                                              "options": {"ai": True, "ai_strength": 2}})
             self.assertEqual(status, 400)
 
+    def test_compose_a_settlement(self):
+        """Laid out as measured, written as a grouping in the work folder, read back unit for unit;
+        a read file's own orientation kept while a unit is not turned; never into the game."""
+        status, m = self.call("/api/settlement/measured", {})
+        self.assertEqual(status, 200, m)
+        self.assertGreater(m["counts"]["building"], 0)
+        rows = [{"class": "building", "proto": "TestHut", "variations": 3, "radius": 3.5},
+                {"class": "prop", "proto": "TestCrate", "variations": 2, "radius": 0.8}]
+        status, r = self.call("/api/settlement/compose", {"units": rows, "socket": "SocketTradeRoute",
+                                                          "obstruction": "TestObstruction", "seed": 3,
+                                                          "counts": {"building": 4, "prop": 5}})
+        self.assertEqual(status, 200, r)
+        units = r["units"]
+        self.assertEqual(units[0]["class"], "socket")
+        self.assertEqual(sum(u["class"] == "building" for u in units), 4)
+        self.assertEqual(sum(u["class"] == "obstruction" for u in units), 8)
+        status, again = self.call("/api/settlement/compose", {"units": rows, "seed": 3, "counts": {"building": 4, "prop": 5},
+                                                              "socket": "SocketTradeRoute", "obstruction": "TestObstruction"})
+        self.assertEqual(again["units"], units)                       # a seed gives its arrangement
+        status, err = self.call("/api/settlement/compose", {"units": [{"class": "castle", "proto": "X"}]})
+        self.assertEqual(status, 400)
+        status, err = self.call("/api/settlement/compose", {"units": []})
+        self.assertEqual(status, 400)
+
+        status, w = self.call("/api/settlement/save", {"name": "Test Settlement", "units": units})
+        self.assertEqual(status, 200, w)
+        self.assertTrue(w["path"].startswith(self.studio.settings.get("work")))
+        status, back = self.call("/api/settlement/open", {"path": w["path"]})
+        self.assertEqual(status, 200, back)
+        self.assertEqual([(u["proto"], u["variation"], round(u["x"], 4), round(u["z"], 4)) for u in back["units"]],
+                         [(u["proto"], u["variation"], round(u["x"], 4), round(u["z"], 4)) for u in units])
+        self.assertEqual(back["units"][0]["class"], "socket")
+        # written again unchanged: the same file; one unit turned: only its line changes
+        with open(w["path"], encoding="utf-8") as fh:
+            first = fh.read()
+        status, w2 = self.call("/api/settlement/save", {"name": "Test Settlement", "units": back["units"], "meta": back["meta"]})
+        with open(w2["path"], encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), first)
+        back["units"][1]["turn"] += 0.5
+        self.call("/api/settlement/save", {"name": "Test Settlement", "units": back["units"], "meta": back["meta"]})
+        with open(w2["path"], encoding="utf-8") as fh:
+            changed = [a for a, b in zip(first.splitlines(), fh.read().splitlines()) if a != b]
+        self.assertEqual(len(changed), 1)
+        self.assertIn(units[1]["proto"], changed[0])
+
+        status, err = self.call("/api/settlement/save", {"name": "../escape", "units": units})
+        self.assertEqual(status, 400)
+        status, err = self.call("/api/settlement/open", {"path": os.path.join(self.tmp.name, "none.xml")})
+        self.assertEqual(status, 400)
+        game = os.path.join(self.tmp.name, "game")
+        os.makedirs(game, exist_ok=True)
+        self.studio.settings.update({"paths": {"work": self.studio.settings.get("work"), "game": game}})
+        try:
+            status, err = self.call("/api/settlement/save", {"path": os.path.join(game, "x.xml"), "units": units})
+            self.assertEqual(status, 400)
+        finally:
+            self.studio.settings.update({"paths": {"work": self.studio.settings.get("work"), "game": ""}})
+
     def test_repaint_a_unit(self):
         """The unit repaint screen: load a model and its texture, paint live, add a picture, write."""
         import base64
@@ -539,13 +597,20 @@ class Server(unittest.TestCase):
 
     def test_an_error_is_logged(self):
         """A bug answers 500 and leaves its trace in the log the Settings screen shows."""
-        status, err = self.call("/api/building/preview", {"params": {"colors": "not a table"}, "texture": 128})
+        from unittest import mock
+        from studio import engine
+        with mock.patch.object(engine, "preview", side_effect=ZeroDivisionError("a bug")):
+            status, err = self.call("/api/building/preview", {"params": {}, "texture": 128})
         self.assertEqual(status, 500)
         self.assertIn("log", err["error"])
         status, log = self.call("/api/log")
         self.assertEqual(status, 200)
         self.assertIn("error answering POST /api/building/preview", log["text"])
         self.assertIn("Traceback", log["text"])
+        # a malformed parameter is the user's error, answered 400 with what is wrong
+        status, err = self.call("/api/building/preview", {"params": {"colors": "not a table"}, "texture": 128})
+        self.assertEqual(status, 400)
+        self.assertIn("colors", err["error"])
 
     def test_when_the_studio_stops(self):
         st = server.Studio(os.path.join(self.tmp.name, "stop", "s.json"))

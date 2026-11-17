@@ -22,7 +22,7 @@ folder) are kept in `%APPDATA%\aoe3-blender-tools\studio.json`. Nothing leaves t
 
 | Screen | What is there |
 |---|---|
-| Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes, a person 1.8 m tall for the scale, the obstruction on the ground, the low-poly model, the damaged texture, the player colour of a team; the texture with its atlas regions; triangles against the style's target or the game's buildings of the same class; the technical sheet; **Check** (the add-on's game-ready checks, `scripts/check.py`); with the PROP style, the prop sets side by side and their export; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo |
+| Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes, a person 1.8 m tall for the scale, the obstruction on the ground, the low-poly model, the damaged texture, the player colour of a team; the texture with its atlas regions; triangles against the style's target or the game's buildings of the same class; the technical sheet; **Check** (the add-on's game-ready checks, `scripts/check.py`); with the PROP style, the prop sets side by side and their export; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo. **Settlements and more forms** leads to the settlement composer (below) and the buildings' forms |
 | Textures and units | **Repaint a unit** and **Make a tileable texture** (below); the UV atlas, the recipe tool, LoRA dataset and training as forms |
 | Survey and inspection | The art, texture, model, grouping, shape and palette surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it, `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back |
 | Art utilities | **Design a civ flag** (below); avatar icons, ground rings, health bars, the HITPOINTBAR fix, bone scale fix, uncompressed models |
@@ -35,7 +35,7 @@ script has none, or when a form passes an option its script does not read).
 
 ## The screens made for their task
 
-A form is enough to run a survey; it is not enough to paint. Four screens work in the studio's
+A form is enough to run a survey; it is not enough to paint. Five screens work in the studio's
 own process and answer as you move a control (a ComfyUI step runs in a thread, a write as a task):
 
 - **Repaint a unit** (`studio/retex.py`, `web/js/retex.js`). A unit of the game copy (as
@@ -66,6 +66,16 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   region as it is done; **Stop** ends it between two regions (and interrupts ComfyUI). **Use it
   for the export** keeps the texture as a PNG that `scripts/game_export.py --texture-png` puts in
   place of the painted one; a change to the building drops it.
+- **Compose a settlement** (`studio/settlement_ui.py`, `web/js/settlement.js`). The units to lay out
+  (class, proto, variations, radius), the socket and an obstruction ring; `core/settlement.compose`
+  lays them as the mod's own settlements are (the counts default to the mod's medians, another seed
+  gives another arrangement). A plan from above shows the clear ground and the free lane; a unit is
+  dragged, turned by 15 degrees (wheel, Q and E) or edited by its numbers. **Open a grouping** reads
+  any grouping file (`aoe3game/grouping.read`); **Write it** writes it in the work folder, keeping a
+  read file's own width, height, flags, tiles and the orientation of every unit not turned (the
+  1,483 groupings of a Wars of Liberty copy come back unit for unit); **Deploy** fills the grouping
+  form with it and the test copy. Which way the game's x and z run on the plan, and a unit's
+  facing, are still **to verify in game**: the screen says so.
 
 ## When something goes wrong
 
@@ -151,9 +161,6 @@ What the add-on does that the studio does not do yet:
 | Operator | Why |
 |---|---|
 | `aoe3.pack_set` | It packs meshes modelled in Blender into one texture; the studio has no meshes of its own to pack yet |
-| `aoe3.compose_settlement` | The settlement composer on a map is in the next round |
-| `aoe3.export_grouping` | Comes with the settlement composer |
-| `aoe3.import_grouping` | Comes with the settlement composer |
 
 The AI repaint of a mesh made elsewhere (the add-on's AI panel on any mesh) also waits: the studio
 repaints its own buildings.
@@ -163,7 +170,5 @@ repaints its own buildings.
 - The game export without Blender: `core/gamemesh.py` gives Blender's mesh (above); the icon and
   portrait, the checks and the GLB writer still need Blender, and the result must be seen in game
   before Blender leaves that path.
-- The made-to-measure screens with the real art: a unit of the game copy and its flag sets have
-  only been tried on synthetic models and sets so far (no game copy set in this computer's
-  Settings during the work). The settlement composer on a map.
+- The settlement composer's axes and facing, in game.
 - A signed installer, and a first-run assistant beyond the welcome note.

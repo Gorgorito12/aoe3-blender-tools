@@ -9,6 +9,7 @@ import { inspectScreen } from './inspect.js';
 import { retexScreen } from './retex.js';
 import { flagsScreen } from './flags.js';
 import { texmakerScreen } from './texmaker.js';
+import { settlementScreen } from './settlement.js';
 import { welcomeScreen } from './welcome.js';
 
 const SCREENS = [
@@ -23,12 +24,13 @@ const SCREENS = [
 
 // the screens made for their task, shown first on their area: [route, title key, intro key]
 const SCREENS_OF = {
+  buildings: [['settlement', 'se.title', 'se.intro']],
   survey: [['inspect', 'i.title', 'i.intro']],
   textures: [['retex', 'r.title', 'r.intro'], ['texmaker', 'x.title', 'x.intro']],
   art: [['flags', 'f.title', 'f.intro']],
 };
 // the area each of those screens belongs to, for the navigation
-const AREA_OF = { welcome: 'settings',
+const AREA_OF = { welcome: 'settings', buildtools: 'buildings',
   ...Object.fromEntries(Object.entries(SCREENS_OF).flatMap(([a, list]) => list.map(([r]) => [r, a]))) };
 
 const app = {
@@ -65,6 +67,8 @@ async function show() {
     else if (head === 'flags') await flagsScreen(main, app);
     else if (head === 'texmaker') await texmakerScreen(main, app);
     else if (head === 'welcome') await welcomeScreen(main, app);
+    else if (head === 'settlement') await settlementScreen(main, app);
+    else if (head === 'buildtools') await areaScreen(main, app, 'buildings');   // the area's own forms
     else await areaScreen(main, app, head);
   } catch (e) {
     clear(main).append(h('div', { class: 'notice bad' }, e.message));

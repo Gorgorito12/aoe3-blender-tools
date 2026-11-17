@@ -44,7 +44,7 @@ export async function toolScreen(main, app, id) {
   const formBox = h('form', { class: 'card stack', onsubmit: e => e.preventDefault() });
   const jobBox = h('div', {});
   main.append(h('div', { class: 'head' }, h('div', {},
-    h('button', { type: 'button', class: 'ghost small', text: '← ' + tr(cat.areas[tool.area]), onclick: () => app.go(tool.area) }),
+    h('button', { type: 'button', class: 'ghost small', text: '← ' + tr(cat.areas[tool.area]), onclick: () => app.go(tool.area === 'buildings' ? 'buildtools' : tool.area) }),
     h('h1', { text: tr(tool.title) }), h('p', { class: 'muted', text: tr(tool.desc) }))),
     h('div', { class: 'tool' }, formBox, jobBox));
 
