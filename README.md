@@ -294,9 +294,9 @@ venv\Scripts\python -I tools\model_survey.py --from survey/mod/models.json --tex
 Download or build the zip (`python tools/build_zip.py` writes `dist/`), then:
 
 - **Blender 4.2 or later:** Edit > Preferences > Get Extensions > Install from Disk, and pick
-  `aoe3_blender_tools-0.2.0.zip`.
+  `aoe3_blender_tools-0.3.0.zip`.
 - **Blender 3.6 to 4.1:** Edit > Preferences > Add-ons > Install, and pick
-  `aoe3_blender_tools-0.2.0-legacy.zip`.
+  `aoe3_blender_tools-0.3.0-legacy.zip`.
 
 Tested with Blender 5.2 (as the `bpy` module, headless): install from the zip, generate, check and
 export all work. The Blender 3.6 to 4.1 path is untested.

@@ -745,6 +745,18 @@ class EveryFunctionReachesTheStudio(unittest.TestCase):
             self.assertTrue(f"`{op}`" in doc, f"{op} is pending: docs/studio.md must say so")
 
 
+class OneVersion(unittest.TestCase):
+    def test_the_addon_the_studio_and_the_changelog_agree(self):
+        import studio
+        with open(os.path.join(ROOT, "aoe3_blender_tools", "blender_manifest.toml"), encoding="utf-8") as fh:
+            manifest = re.search(r'^version = "([^"]+)"', fh.read(), re.M).group(1)
+        with open(os.path.join(ROOT, "aoe3_blender_tools", "__init__.py"), encoding="utf-8") as fh:
+            info = ".".join(re.search(r'"version": \((\d+), (\d+), (\d+)\)', fh.read()).groups())
+        with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as fh:
+            newest = re.search(r"^## (\d+\.\d+\.\d+)", fh.read(), re.M).group(1)
+        self.assertEqual({manifest, info, studio.VERSION, newest}, {manifest})
+
+
 class Languages(unittest.TestCase):
     def test_spanish_has_every_key(self):
         en, es = load_json("i18n", "en.json"), load_json("i18n", "es.json")

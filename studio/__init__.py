@@ -10,12 +10,25 @@ building previews run in this process (`engine.py`), every longer task in a subp
 import os
 import sys
 
-VERSION = "0.1.0"
 FROZEN = bool(getattr(sys, "frozen", False))
 HERE = os.path.dirname(os.path.abspath(__file__))
 # the repository's root (in a frozen build: the folder the build put the tree in)
 ROOT = os.path.join(sys._MEIPASS, "app") if FROZEN and hasattr(sys, "_MEIPASS") else os.path.dirname(HERE)
 ADDON = os.path.join(ROOT, "aoe3_blender_tools")
+
+
+def _version():
+    """One version for the add-on and the studio: the add-on's manifest says it."""
+    import re
+    try:
+        with open(os.path.join(ADDON, "blender_manifest.toml"), encoding="utf-8") as fh:
+            m = re.search(r'^version = "([^"]+)"', fh.read(), re.M)
+        return m.group(1) if m else "0"
+    except OSError:
+        return "0"
+
+
+VERSION = _version()
 WEB = os.path.join(HERE, "web") if not FROZEN else os.path.join(ROOT, "studio", "web")
 
 
