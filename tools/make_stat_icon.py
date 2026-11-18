@@ -13,7 +13,9 @@ Glyphs (the file name `--all` gives each one):
 - `hourglass` (`stat_icon_traintime.ddt`): a training time: two glass bulbs in a wooden frame, sand below;
 - `heart` (`stat_icon_hitpoints.ddt`): hit points: a red heart with a light highlight;
 - `shield` (`stat_icon_armor.ddt`): armor / resistance: a steel heater shield with a gold rim;
-- `eye` (`stat_icon_los.ddt`): line of sight: an open eye with a blue iris.
+- `eye` (`stat_icon_los.ddt`): line of sight: an open eye with a blue iris;
+- `house` (`stat_icon_pop.ddt`): population: a house from the front, a red gabled roof over plaster walls, a
+  door and a chimney, wide and low (a unit panel may draw its icons narrower than tall).
 
 Each picture is drawn analytically at 8 samples per texel side and averaged (soft edges, like the stock
 icons' anti-aliased outlines), then outlined in a dark brown as the stock stat icons are. No pixel comes from
@@ -220,12 +222,41 @@ def boot_lines():
     return k
 
 
+ROOF = (190, 64, 40)
+ROOF_DARK = (128, 38, 24)
+WALL = (236, 220, 178)
+WALL_DARK = (190, 168, 124)
+STONE = (164, 158, 150)
+BRICK = (170, 92, 64)
+
+
+def house():
+    """Population: a house seen from the front, a red gabled roof over plaster walls, a door and a chimney.
+    Wide and low on purpose: the minimized panel draws its icons narrower than tall, and a steep roof then
+    reads as a spike."""
+    k = Canvas()
+    x, y = k.x, k.y
+    # the chimney, behind the roof, in a brick close to the roof's red (one 4x4 DXT block holds both)
+    k.paint((x >= 10.6) & (x <= 12.6) & (y >= 2.6) & (y <= 6.0), BRICK)
+    walls = (x >= 2.4) & (x <= 13.6) & (y >= 7.6) & (y <= 14.8)
+    k.paint(walls, WALL)
+    k.paint(walls & (x >= 11.0), WALL_DARK)
+    # the roof: a low gable whose eaves overhang the walls, its right slope in shade
+    roof = (y >= 1.8) & (y <= 8.6) & (np.abs(x - 8.0) <= (y - 1.8) * 1.0)
+    k.paint(roof, ROOF)
+    k.paint(roof & (x > 8.0), ROOF_DARK)
+    k.paint(roof & (y >= 7.6), ROOF_DARK)  # the eaves' edge
+    k.paint((x >= 6.4) & (x <= 9.6) & (y >= 10.0) & (y <= 14.8), WOOD_DARK)  # the door
+    k.paint((x >= 2.4) & (x <= 13.6) & (y >= 14.2) & (y <= 14.8), STONE)  # the sill
+    return k
+
+
 GLYPHS = {"stopwatch": stopwatch, "hourglass": hourglass, "heart": heart, "shield": shield, "eye": eye,
-          "boot_wings": boot_wings, "boot_arrows": boot_arrows, "boot_lines": boot_lines}
+          "boot_wings": boot_wings, "boot_arrows": boot_arrows, "boot_lines": boot_lines, "house": house}
 FILES = {"stopwatch": "stat_icon_rof.ddt", "hourglass": "stat_icon_traintime.ddt",
          "heart": "stat_icon_hitpoints.ddt", "shield": "stat_icon_armor.ddt", "eye": "stat_icon_los.ddt",
          "boot_wings": "stat_icon_speed.ddt", "boot_arrows": "stat_icon_speed_arrows.ddt",
-         "boot_lines": "stat_icon_speed_lines.ddt"}
+         "boot_lines": "stat_icon_speed_lines.ddt", "house": "stat_icon_pop.ddt"}
 
 
 def render(glyph):
