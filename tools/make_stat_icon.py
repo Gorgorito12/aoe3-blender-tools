@@ -1,25 +1,34 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Draws small stat icons, the size and format of the game's own stat icons (the 16x16 pictures that rows
-of the unit panels put after a value: damage types, range, bonuses): 16x16 texels, DXT3, one mip level,
-transparent outside the glyph.
+"""Draws small stat icons for the unit panels (the pictures that rows of the panels put after a value: damage
+types, range, bonuses), in two styles:
 
-    venv\\Scripts\\python -I tools/make_stat_icon.py [--glyph stopwatch] [--out <file.ddt>] [--png <preview.png>]
-                                                  [--check]
-    venv\\Scripts\\python -I tools/make_stat_icon.py --all <folder> [--png <sheet.png>] [--check]
+- `--style bold` (the one to ship): 32x32 uncompressed BGRA, alpha "transparent", one level, as a mod's own stat
+  icons are made; solid shapes, strokes of 3 to 7 texels, alpha only 0 or 255 (one sample per texel, no
+  supersampling), each part with its own black contour and the glyph with a black outline 2 texels wide. The
+  panel draws icons at about 10 x 14 screen pixels (narrower than tall), so round parts are drawn wider than tall
+  (`AX`) to look round there;
+- `--style soft` (the first set, kept for comparison): 16x16 DXT3, one level, drawn at 8 samples per texel side
+  and averaged (soft edges), outlined in a dark brown. Drawn 10 pixels wide, its 1-texel strokes come out thin
+  and blurred.
 
-Glyphs (the file name `--all` gives each one):
-- `stopwatch` (`stat_icon_rof.ddt`): a rate of fire / reload time: a brass case with a crown, a pale face,
-  a dark rim and two hands;
-- `hourglass` (`stat_icon_traintime.ddt`): a training time: two glass bulbs in a wooden frame, sand below;
-- `heart` (`stat_icon_hitpoints.ddt`): hit points: a red heart with a light highlight;
+    venv\\Scripts\\python -I tools/make_stat_icon.py [--style bold] [--glyph stopwatch] [--out <file.ddt>]
+                                                  [--png <preview.png>] [--check]
+    venv\\Scripts\\python -I tools/make_stat_icon.py --style bold --all <folder> [--png <sheet.png>] [--check]
+
+Bold glyphs (the file name `--all` gives each one):
+- `stopwatch` (`stat_icon_rof.ddt`): a rate of fire: a brass case with a crown, a cream face, two hands;
+- `hourglass` (`stat_icon_traintime.ddt`): a training time: two glass bulbs between wooden boards and posts;
+- `eye` (`stat_icon_los.ddt`): line of sight: an open eye with a blue iris and a dark upper lid;
+- `boot_wings` (`stat_icon_speed.ddt`): speed: a riding boot with a white wing and two motion lines;
 - `shield` (`stat_icon_armor.ddt`): armor / resistance: a steel heater shield with a gold rim;
-- `eye` (`stat_icon_los.ddt`): line of sight: an open eye with a blue iris;
-- `house` (`stat_icon_pop.ddt`): population: a house from the front, a red gabled roof over plaster walls, a
-  door and a chimney, wide and low (a unit panel may draw its icons narrower than tall).
+- `cylinder` (`stat_icon_projectiles.ddt`): projectiles per reload: a revolver's cylinder seen from the
+  chambers' side, six chambers around the centre pin.
 
-Each picture is drawn analytically at 8 samples per texel side and averaged (soft edges, like the stock
-icons' anti-aliased outlines), then outlined in a dark brown as the stock stat icons are. No pixel comes from
-the game. `--check` exits with code 1 if a file on disk differs from what would be written.
+Soft glyphs: `stopwatch`, `hourglass`, `heart` (`stat_icon_hitpoints.ddt`), `shield`, `eye`, `boot_wings`,
+`boot_arrows`, `boot_lines` (speed variants) and `house` (`stat_icon_pop.ddt`).
+
+No pixel comes from the game. `--check` exits with code 1 if a file on disk differs from what would be written.
+Test: `tests/test_stat_icons.py`.
 """
 import argparse
 import math
@@ -251,6 +260,215 @@ def house():
     return k
 
 
+# ---- The bold style: 32x32 BGRA, hard edges, a black outline ----
+#
+# Measured on a mod's own stat icons that the panel shows next to ours (ui\ingame\stat_icon_ranged, _range, _attack,
+# _building): 32x32 uncompressed BGRA, alpha "transparent", one level (no mips), solid shapes with strokes of 4 to 7
+# texels and a pure black outline 1 to 2 texels wide. The panel draws an icon at about 10 x 14 screen pixels, so a
+# 16x16 picture with 1-texel strokes, soft edges and a grey outline comes out thin and blurred. The bold glyphs are
+# sampled once per texel (no supersampling), so the alpha is only 0 or 255, every part has its own black contour,
+# and the whole glyph a black outline 2 texels wide.
+
+BOLD = 32
+BLACK = (0, 0, 0)
+# The panel draws icons narrower than tall (about 10 x 14 pixels for a square texture): round parts are drawn
+# wider than tall by this factor so that they look round on screen.
+AX = 0.72
+
+
+class Bold:
+    """32x32 colour and coverage, one sample per texel centre (coordinates 0..32); later paints cover earlier ones."""
+
+    def __init__(self):
+        c = np.arange(BOLD) + 0.5
+        self.x, self.y = np.meshgrid(c, c)
+        self.rgb = np.zeros((BOLD, BOLD, 3), np.uint8)
+        self.cover = np.zeros((BOLD, BOLD), bool)
+
+    def paint(self, mask, colour):
+        self.rgb[mask] = colour
+        self.cover |= mask
+
+    def contour(self, mask, colour=BLACK):
+        """The texels of `mask` next to a texel outside it (4-neighbours): the part's own black line."""
+        inner = mask & np.roll(mask, 1, 0) & np.roll(mask, -1, 0) & np.roll(mask, 1, 1) & np.roll(mask, -1, 1)
+        self.paint(mask & ~inner, colour)
+
+    def part(self, mask, colour):
+        self.paint(mask, colour)
+        self.contour(mask)
+
+    def cut(self, mask):
+        self.cover &= ~mask
+
+    def round(self, cx, cy):
+        """The on-screen distance from (cx, cy): x counts AX as much as y."""
+        return np.hypot((self.x - cx) * AX, self.y - cy)
+
+
+def bold_stopwatch():
+    """Rate of fire: a brass stopwatch, its crown on top, a cream face with two thick hands."""
+    k = Bold()
+    x, y = k.x, k.y
+    cx, cy = 16.0, 19.5
+    k.part((np.abs(x - cx) <= 2.5) & (y >= 5.0) & (y <= 10.0), BRASS_DARK)  # the stem
+    k.part((np.abs(x - cx) <= 5.0) & (y >= 2.5) & (y <= 6.5), BRASS)  # the crown
+    d = k.round(cx, cy)
+    body = d <= 10.0
+    k.paint(body, BRASS)
+    k.paint(body & ((x - cx) * AX + (y - cy) > 6.0), BRASS_DARK)
+    k.paint(d <= 7.8, BLACK)
+    k.paint(d <= 6.7, FACE)
+    for mx in (cx - 5.2 / AX, cx + 5.2 / AX):  # the 9 and 3 o'clock marks
+        k.paint((np.abs(x - mx) <= 1.0) & (np.abs(y - cy) <= 1.0), MARK)
+    k.paint((np.abs(x - cx) <= 1.0) & (np.abs(y - (cy + 5.2)) <= 1.0), MARK)
+    k.paint((np.abs(x - cx) <= 1.5) & (y >= cy - 5.6) & (y <= cy), HAND)  # the minute hand, to 12
+    a = math.radians(60)
+    k.paint(_seg_dist(x, y, cx, cy, cx + 4.6 * math.sin(a) / AX, cy - 4.6 * math.cos(a)) <= 1.6, HAND)
+    k.paint(k.round(cx, cy) <= 2.2, HAND)
+    return k
+
+
+def bold_hourglass():
+    """Train time: an hourglass, two wooden boards and posts around two glass bulbs, sand running down."""
+    k = Bold()
+    x, y = k.x, k.y
+    for post in (7.5, 24.5):
+        k.part((np.abs(x - post) <= 2.0) & (y >= 6.0) & (y <= 26.0), WOOD_DARK)
+    t = np.abs(y - 16.0)
+    half = np.minimum(1.6 + 0.85 * np.clip(t - 1.0, 0, None), 7.0)
+    glass = (np.abs(x - 16.0) <= half) & (y >= 7.5) & (y <= 24.5)
+    k.paint(glass, GLASS)
+    k.paint(glass & (y >= 21.0), SAND)  # the heap below
+    k.paint(glass & (y >= 18.0) & (np.abs(x - 16.0) <= (y - 17.5) * 1.1), SAND)
+    k.paint(glass & (y >= 10.0) & (y <= 13.0), SAND)  # what is left above
+    k.paint((np.abs(x - 16.0) <= 1.0) & (y >= 13.0) & (y <= 21.0), SAND)  # the thread
+    k.contour(glass)
+    for top in (2.5, 24.5):
+        board = (x >= 3.5) & (x <= 28.5) & (y >= top) & (y <= top + 5.0)
+        k.paint(board, WOOD)
+        k.paint(board & (y >= top + 3.0), WOOD_DARK)
+        k.contour(board)
+    return k
+
+
+def bold_eye():
+    """Line of sight: an open eye, white with a blue iris, a black pupil, a highlight and a dark upper lid."""
+    k = Bold()
+    x, y = k.x, k.y
+    u = (x - 16.0) / 13.5
+    lid = 9.0 * np.clip(1 - u * u, 0, None)
+    almond = (np.abs(u) <= 1.0) & (y >= 16.0 - lid) & (y <= 16.0 + lid * 0.85)
+    k.part(almond, (244, 240, 230))
+    d = k.round(16.0, 16.0)
+    k.paint(almond & (d <= 6.4), (60, 120, 210))
+    k.paint(almond & (d <= 6.4) & (y > 17.5), (36, 82, 160))
+    k.paint(d <= 3.0, BLACK)
+    k.paint(k.round(13.0, 13.2) <= 1.3, (255, 255, 255))
+    k.paint((np.abs(u) <= 1.0) & (y >= 16.0 - lid - 1.5) & (y <= 16.0 - lid + 1.5), (90, 50, 20))  # the upper lid
+    return k
+
+
+def bold_boot_wings():
+    """Speed: a riding boot with a white wing at its back and two motion lines behind its foot."""
+    k = Bold()
+    x, y = k.x, k.y
+    # the wing: three feathers fanning back from the shaft, wide at the root, painted lowest first so that each
+    # upper one lies over the next
+    for i, (x1, y1) in enumerate(((7.0, 17.0), (4.5, 10.5), (5.0, 4.5))):
+        vx, vy = x1 - 15.0, y1 - 9.0
+        t = np.clip(((x - 15.0) * vx + (y - 9.0) * vy) / (vx * vx + vy * vy), 0.0, 1.0)
+        feather = np.hypot(x - (15.0 + t * vx), y - (9.0 + t * vy)) <= 3.8 - 1.6 * t
+        k.part(feather, WING_SHADE if i == 1 else WING)
+    for ly, x0 in ((21.5, 4.0), (25.5, 6.0)):  # two motion lines behind the foot
+        k.part(_seg_dist(x, y, x0, ly, 10.0, ly) <= 1.5, WING)
+    shaft = (x >= 13.0) & (x <= 21.0) & (y >= 3.0) & (y <= 22.0)
+    foot = ((x >= 13.0) & (x <= 25.5) & (y >= 18.0) & (y <= 26.0)) | (np.hypot(x - 25.5, y - 22.5) <= 3.6)
+    sole = ((x >= 12.0) & (x <= 29.0) & (y >= 25.5) & (y <= 28.5)) | ((x >= 12.0) & (x <= 17.0) & (y >= 25.5) &
+                                                                      (y <= 30.0))
+    boot = shaft | foot | sole
+    k.paint(boot, LEATHER)
+    k.paint(shaft & (x >= 18.5) & (y <= 18.5), LEATHER_DARK)
+    k.paint(sole, SOLE)
+    k.contour(boot)
+    k.part((x >= 12.0) & (x <= 22.0) & (y >= 2.5) & (y <= 7.0), LEATHER_DARK)  # the cuff
+    return k
+
+
+def bold_shield():
+    """Resists: a heater shield, a gold rim around steel, its right half in shade, a highlight on the left."""
+    k = Bold()
+    x, y = k.x, k.y
+
+    def heater(top, bottom, w):
+        t = np.clip((y - 13.0) / (bottom - 13.0), 0.0, 1.0)
+        half = w * np.cos(t * math.pi / 2) ** 0.7
+        return (y >= top) & (y <= bottom) & (np.abs(x - 16.0) <= half)
+
+    outer = heater(2.0, 30.0, 12.5)
+    k.part(outer, GOLD)
+    inner = heater(5.5, 26.0, 8.5)
+    k.paint(inner, STEEL)
+    k.paint(inner & (x > 16.0), STEEL_DARK)
+    k.paint(inner & (np.abs(x - 11.5) <= 1.5) & (y >= 8.0) & (y <= 17.0), (236, 240, 244))
+    k.contour(inner)
+    return k
+
+
+GUN = (168, 174, 186)
+GUN_DARK = (104, 110, 124)
+GUN_LIGHT = (214, 220, 230)
+
+
+def bold_cylinder():
+    """Projectiles per reload: a revolver's cylinder seen from the chambers' side: a steel disc, six round chambers
+    around the centre pin."""
+    k = Bold()
+    x, y = k.x, k.y
+    cx, cy = 16.0, 16.0
+    d = k.round(cx, cy)
+    body = d <= 10.0
+    k.paint(body, GUN)
+    k.paint(body & ((x - cx) * AX + (y - cy) > 4.5), GUN_DARK)
+    k.paint(body & ((x - cx) * AX + (y - cy) < -8.0), GUN_LIGHT)
+    for q in range(6):  # the chambers
+        a = math.radians(60 * q)
+        k.paint(k.round(cx + 6.0 * math.sin(a) / AX, cy - 6.0 * math.cos(a)) <= 1.9, BLACK)
+    k.paint(d <= 1.4, BLACK)  # the centre pin
+    return k
+
+
+BOLD_GLYPHS = {"stopwatch": bold_stopwatch, "hourglass": bold_hourglass, "eye": bold_eye,
+               "boot_wings": bold_boot_wings, "shield": bold_shield, "cylinder": bold_cylinder}
+BOLD_FILES = {"stopwatch": "stat_icon_rof.ddt", "hourglass": "stat_icon_traintime.ddt", "eye": "stat_icon_los.ddt",
+              "boot_wings": "stat_icon_speed.ddt", "shield": "stat_icon_armor.ddt",
+              "cylinder": "stat_icon_projectiles.ddt"}
+
+
+def render_bold(glyph):
+    """32 x 32 x 4 uint8 RGBA of a bold glyph: alpha 0 or 255, a black outline 2 texels wide around it."""
+    k = BOLD_GLYPHS[glyph]()
+    solid = k.cover
+    padded = np.pad(solid, 2)
+    near = np.zeros_like(padded)
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            if abs(dx) + abs(dy) <= 3:  # a round 2-texel ring, corners cut
+                near |= np.roll(np.roll(padded, dy, 0), dx, 1)
+    near = near[2:-2, 2:-2]
+    out = np.zeros((BOLD, BOLD, 4), np.uint8)
+    out[solid, :3] = k.rgb[solid]
+    ring = near & ~solid
+    out[ring, :3] = BLACK
+    out[solid | ring, 3] = 255
+    return out
+
+
+def encode_bold(glyph):
+    """As the mod's own stat icons: BGRA, alpha "transparent" (4), usage 0, one level."""
+    return ddt.write_bgra(render_bold(glyph), alpha=4, usage=0, mips=False)
+
+
 GLYPHS = {"stopwatch": stopwatch, "hourglass": hourglass, "heart": heart, "shield": shield, "eye": eye,
           "boot_wings": boot_wings, "boot_arrows": boot_arrows, "boot_lines": boot_lines, "house": house}
 FILES = {"stopwatch": "stat_icon_rof.ddt", "hourglass": "stat_icon_traintime.ddt",
@@ -290,11 +508,13 @@ def encode(glyph):
 
 
 def preview(datas):
-    """An 8x enlarged strip of the decoded icons, each on the panel's brown and on grey."""
+    """A strip of the decoded icons enlarged to 128 pixels (8x for 16x16, 4x for 32x32), each on the panel's brown
+    and on grey."""
     tiles = []
     for data in datas:
         dec = np.asarray(ddt.decode(data)).astype(np.float32)
-        big = dec.repeat(8, 0).repeat(8, 1)
+        scale = max(1, 128 // dec.shape[0])
+        big = dec.repeat(scale, 0).repeat(scale, 1)
         al = big[..., 3:4] / 255.0
         pair = [big[..., :3] * al + np.array(bg, np.float32) * (1 - al) for bg in ((60, 35, 25), (200, 200, 200))]
         tiles.append(np.concatenate([pair[0], np.full((big.shape[0], 4, 3), 40, np.float32), pair[1]], axis=1))
@@ -304,17 +524,22 @@ def preview(datas):
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--glyph", default="stopwatch", choices=sorted(GLYPHS))
+    ap.add_argument("--glyph", default="stopwatch", choices=sorted(set(GLYPHS) | set(BOLD_GLYPHS)))
+    ap.add_argument("--style", choices=("soft", "bold"), default="soft",
+                    help="soft: 16x16 DXT3 with soft edges (the first set); bold: 32x32 BGRA, hard edges, black outline")
     ap.add_argument("--out", default=str(OUT))
-    ap.add_argument("--all", metavar="FOLDER", help="write every glyph into this folder, under its file name")
+    ap.add_argument("--all", metavar="FOLDER", help="write every glyph of the style into this folder, under its file name")
     ap.add_argument("--png", help="also write an 8x enlarged preview on the panel's brown and on grey")
     ap.add_argument("--check", action="store_true")
     a = ap.parse_args(argv)
-    jobs = ([(g, pathlib.Path(a.all) / FILES[g]) for g in GLYPHS] if a.all else [(a.glyph, pathlib.Path(a.out))])
+    glyphs, files, enc = ((BOLD_GLYPHS, BOLD_FILES, encode_bold) if a.style == "bold" else (GLYPHS, FILES, encode))
+    if not a.all and a.glyph not in glyphs:
+        ap.error(f"no {a.style} glyph {a.glyph} (choices: {', '.join(sorted(glyphs))})")
+    jobs = ([(g, pathlib.Path(a.all) / files[g]) for g in glyphs] if a.all else [(a.glyph, pathlib.Path(a.out))])
     status = 0
     datas = []
     for glyph, out in jobs:
-        data = encode(glyph)
+        data = enc(glyph)
         datas.append(data)
         if a.check:
             same = out.exists() and out.read_bytes() == data

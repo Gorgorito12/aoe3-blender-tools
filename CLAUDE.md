@@ -40,6 +40,7 @@ python tools/build_zip.py                          # dist/ zips (extension and l
 python -I tests/test_game_formats.py               # game formats, plain Python (venv for numpy parts)
 python -I tests/test_xmbedit.py                    # compiled XML (.xmb) and its text round trip
 venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, make_bar (about 70 s)
+venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, hard edges, outline
 venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
 venv/bin/python -I tests/test_specs.py             # every building has its sheet and it is current
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
