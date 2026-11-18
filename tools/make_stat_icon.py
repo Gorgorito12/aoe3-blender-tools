@@ -356,15 +356,16 @@ def bold_eye():
     """Line of sight: an open eye, white with a blue iris, a black pupil, a highlight and a dark upper lid."""
     k = Bold()
     x, y = k.x, k.y
+    # flat on purpose: the panel squeezes an icon to about 0.7 of its width, and a taller almond then reads as a ring
     u = (x - 16.0) / 13.5
-    lid = 9.0 * np.clip(1 - u * u, 0, None)
+    lid = 6.8 * np.clip(1 - u * u, 0, None)
     almond = (np.abs(u) <= 1.0) & (y >= 16.0 - lid) & (y <= 16.0 + lid * 0.85)
     k.part(almond, (244, 240, 230))
     d = k.round(16.0, 16.0)
-    k.paint(almond & (d <= 6.4), (60, 120, 210))
-    k.paint(almond & (d <= 6.4) & (y > 17.5), (36, 82, 160))
-    k.paint(d <= 3.0, BLACK)
-    k.paint(k.round(13.0, 13.2) <= 1.3, (255, 255, 255))
+    k.paint(almond & (d <= 4.9), (60, 120, 210))
+    k.paint(almond & (d <= 4.9) & (y > 17.0), (36, 82, 160))
+    k.paint(d <= 2.3, BLACK)
+    k.paint(k.round(13.6, 14.0) <= 1.1, (255, 255, 255))
     k.paint((np.abs(u) <= 1.0) & (y >= 16.0 - lid - 1.5) & (y <= 16.0 - lid + 1.5), (90, 50, 20))  # the upper lid
     return k
 

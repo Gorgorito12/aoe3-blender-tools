@@ -50,7 +50,7 @@ class BoldStyle(unittest.TestCase):
         for glyph in msi.BOLD_GLYPHS:
             rgba = msi.render_bold(glyph)
             colour = (rgba[..., 3] == 255) & (rgba[..., :3].max(axis=2) > 40)
-            self.assertGreater(int(colour.sum()), 250, glyph)
+            self.assertGreater(int(colour.sum()), 200, glyph)
 
     def test_all_and_check(self):
         with tempfile.TemporaryDirectory() as tmp:
