@@ -362,6 +362,8 @@ venv/bin/python -I tests/test_comfy.py                # ComfyUI client (a stand-
 venv/bin/python -I tests/test_airepaint.py            # AI repaint by regions (no GPU)
 venv/bin/python -I tests/test_props.py                # props and treasures against the game's own
 venv/bin/python -I tests/test_group.py                # several meshes on one texture, generated sets
+venv/bin/pip install -r requirements-fonts.txt         # optional: fontTools and Pillow, for extend_font.py
+venv/bin/python tools/extend_font.py in.ttf out.ttf --family "My Font Ext" --proof proof.png   # missing accented letters
 python -I tests/test_settlement.py                    # the settlement composer and the grouping format
 venv/bin/python scripts/game_export.py --out out/cart --preset PROP_BROKEN_CART
 venv/bin/python scripts/game_export.py --out out/goods --set GOODS     # a prop set: one unit, 10 models

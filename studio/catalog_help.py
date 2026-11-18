@@ -312,6 +312,32 @@ HELP = {
             "The 16x8 DXT1 .ddt texture to write. Empty: health_bar.ddt in the work folder.",
             "La textura .ddt de 16x8 en DXT1 que se escribe. Vacío: health_bar.ddt en la carpeta de trabajo."),
     },
+    'extend_font': {
+        'input': (
+            "The TrueType font (.ttf) to extend. It is only read; mind its licence before sharing what comes out.",
+            "La fuente TrueType (.ttf) que se amplía. Solo se lee; mira su licencia antes de compartir el resultado."),
+        'output': (
+            "The new font. Empty: extended.ttf in the work folder. It can never be the input itself.",
+            "La fuente nueva. Vacío: extended.ttf en la carpeta de trabajo. Nunca puede ser la propia entrada."),
+        'family': (
+            "The family name of the new font, the name a mod's font list uses. Empty: the old name plus the suffix. At most 31 characters for Windows.",
+            "El nombre de familia de la fuente nueva, el que usa la lista de fuentes de un mod. Vacío: el nombre viejo más el sufijo. Como mucho 31 caracteres para Windows."),
+        'suffix': (
+            "Added to the old family name when no new name is given, so the new font never clashes with the original.",
+            "Se añade al nombre de familia viejo si no se da uno nuevo, para que la fuente nueva nunca choque con la original."),
+        'only': (
+            "Letters or ranges to add instead of all of Latin-1, Latin Extended-A and the Romanian comma letters, separated by commas.",
+            "Letras o rangos que se añaden en lugar de todo Latin-1, Latin Extended-A y las letras rumanas con coma, separados por comas."),
+        'proof': (
+            "A PNG with every added letter at 14, 20 and 40 pixels, rendered from the new font.",
+            "Un PNG con cada letra añadida a 14, 20 y 40 píxeles, dibujado con la fuente nueva."),
+        'report': (
+            "A JSON report: letters added, letters not built and why, accents made from other shapes, accents lowered to fit.",
+            "Un informe JSON: letras añadidas, letras no hechas y por qué, acentos hechos con otras formas, acentos bajados para caber."),
+        'no_kern': (
+            "Leaves the kerning table as it is. By default each new letter kerns like its base letter.",
+            "Deja la tabla de interletraje como está. Por defecto cada letra nueva se espacia como su letra base."),
+    },
     'make_flag': {
         'buttons_dir': (
             "Folder under art where the copy's flag buttons are measured and the new buttons are written. Empty: War of the Triple Alliance\\Buttons.",

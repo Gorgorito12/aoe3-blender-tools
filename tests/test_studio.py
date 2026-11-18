@@ -881,6 +881,15 @@ class Forms(unittest.TestCase):
             self.assertEqual(cmd[cmd.index("--colour") + 1], "11AA22")
             # an output left empty goes to the work folder, never the tool's default in this program
             self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_bar", "health_bar.ddt"))
+            cmd, *_ = catalog.command(st, "extend_font", {"input": "f.ttf", "family": "F Plus", "no_kern": True})
+            work = os.path.join(tmp, "extend_font")
+            i = cmd.index("f.ttf")                           # the input, then the output
+            self.assertEqual(cmd[i + 1], os.path.join(work, "extended.ttf"))
+            self.assertEqual(cmd[cmd.index("--family") + 1], "F Plus")
+            self.assertEqual(cmd[cmd.index("--proof") + 1], os.path.join(work, "proof.png"))
+            self.assertIn("--no-kern", cmd)
+            with self.assertRaises(catalog.ToolError):
+                catalog.command(st, "extend_font", {})              # the font is needed
             for tid in ("make_rings", "make_icons", "generate"):
                 cmd, *_ = catalog.command(st, tid, {})
                 self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, tid), tid)

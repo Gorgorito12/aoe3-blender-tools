@@ -37,6 +37,8 @@ NEEDS = {
     "test_copy": L("A test copy of the game (Settings)", "Una copia de prueba del juego (Ajustes)"),
     "profile": L("A texture profile (texture survey)", "Un perfil de texturas (estudio de texturas)"),
     "network": L("Internet access", "Acceso a Internet"),
+    "fonttools": L("fontTools and Pillow (pip install -r requirements-fonts.txt)",
+                   "fontTools y Pillow (pip install -r requirements-fonts.txt)"),
 }
 
 # what a tool writes: shown on its form
@@ -110,6 +112,7 @@ IMAGES = (("Images", "*.png *.jpg *.jpeg *.ddt"),)
 JSON = (("JSON", "*.json"),)
 XML = (("XML", "*.xml *.xmb"),)
 GR2 = (("Granny model", "*.gr2"),)
+TTF = (("TrueType font", "*.ttf"),)
 
 
 def out_dir(required=True, key="out", flag="--out", label=None, help=None):
@@ -639,6 +642,23 @@ TOOLS = [
          [Arg("colour", "--colour", "color", L("Colour", "Color"), default="FF8C00"),
           Arg("out", "--out", "save", L("Texture to write", "Textura a escribir"), filters=DDT, work="health_bar.ddt")],
          outputs=("out",)),
+    Tool("extend_font", "tools/extend_font.py", "art",
+         L("Missing letters in a font", "Letras que faltan en una fuente"),
+         L("Adds the accented Latin letters a TrueType font lacks (ă ș ț ő ł ...), built from its own letters and "
+           "accents, under a new family name. Writes a new font, a proof sheet and a report.",
+           "Añade a una fuente TrueType las letras latinas con acento que le faltan (ă ș ț ő ł ...), hechas con sus "
+           "propias letras y acentos, con un nombre de familia nuevo. Escribe una fuente nueva, una hoja de prueba y "
+           "un informe."),
+         [Arg("input", None, "file", L("Font", "Fuente"), required=True, filters=TTF),
+          Arg("output", None, "save", L("Font to write", "Fuente a escribir"), filters=TTF, work="extended.ttf"),
+          Arg("family", "--family", "text", L("New family name", "Nuevo nombre de familia"),
+              placeholder="Formal436 BT WoL"),
+          Arg("suffix", "--suffix", "text", L("Suffix of the name", "Sufijo del nombre"), default="Ext"),
+          Arg("only", "--only", "text", L("Only these letters", "Solo estas letras"), placeholder="ăâîșț,U+0218-U+021B"),
+          Arg("proof", "--proof", "save", L("Proof sheet", "Hoja de prueba"), filters=PNG, work="proof.png"),
+          Arg("report", "--report", "save", L("Report", "Informe"), filters=JSON, work="report.json"),
+          Arg("no_kern", "--no-kern", "bool", L("No kerning copied", "Sin copiar el interletraje"))],
+         needs=("fonttools",), outputs=("output", "proof", "report")),
     Tool("fix_hitpointbar", "tools/fix_hitpointbar_tags.py", "art",
          L("Fix jumping health bars", "Arreglar barras de vida que saltan"),
          L("Adds the HITPOINTBAR tag to the animations of a unit that lack it, so its health bar stops jumping.",
@@ -799,6 +819,8 @@ def requirements(st):
            "game": bool(s.get("game")) and os.path.isdir(s.get("game")),
            "test_copy": bool(s.get("test_copy")) and os.path.isdir(s.get("test_copy")),
            "network": True}
+    import importlib.util
+    out["fonttools"] = importlib.util.find_spec("fontTools") is not None
     out["comfy"] = comfy_alive(s.get("comfy_url"))
     try:
         from . import use_core

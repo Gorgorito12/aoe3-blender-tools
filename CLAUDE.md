@@ -49,6 +49,7 @@ venv/bin/python -I scripts/game_export_noblender.py --out out/wh_nb --preset WHI
 python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
+venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
 python -I tests/test_named_models.py              # model_sheets --models lists: protos to models, plain Python
 venv/bin/python -I tests/test_retexture.py        # uv_atlas, retexture, skin and attachments, synthetic data
 python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
