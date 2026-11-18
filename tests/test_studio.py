@@ -183,6 +183,33 @@ class Server(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual([f["rel"] for f in listing["files"]], ["bar.ddt"])
 
+    def test_recolour_textures_through_its_form(self):
+        """A texture recoloured into the chosen folder, its bump map skipped, the report and the picture written."""
+        import numpy as np
+        sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
+        from aoe3game import ddt
+        src = os.path.join(self.tmp.name, "recolour_in")
+        os.makedirs(src, exist_ok=True)
+        img = np.zeros((16, 16, 4), np.uint8)
+        img[...] = (200, 30, 40, 255)
+        with open(os.path.join(src, "grass.ddt"), "wb") as fh:
+            fh.write(ddt.write(img, ddt.DXT1))
+        with open(os.path.join(src, "grass_b.ddt"), "wb") as fh:
+            fh.write(ddt.write_normal_map(np.full((16, 16, 4), 128, np.uint8)))
+        out = os.path.join(self.tmp.name, "recoloured")
+        status, r = self.call("/api/tools/recolor_textures", {"values": {
+            "inputs": [src], "out": out, "hue": "-10", "chroma": "0.8", "lightness": "0.66",
+            "against": "p2=210,40,40;p1=45,45,245", "report": os.path.join(out, "report.json"),
+            "preview": os.path.join(out, "preview.png")}})
+        self.assertEqual(status, 200, r)
+        j = self.wait(r["job"])
+        self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"])
+        self.assertEqual(sorted(os.listdir(out)), ["grass.ddt", "preview.png", "report.json"])
+        with open(os.path.join(out, "report.json"), encoding="utf-8") as fh:
+            report = json.load(fh)
+        self.assertEqual(set(report["references"]), {"p1", "p2"})
+        self.assertEqual(report["skipped"][0]["file"], "grass_b.ddt")
+
     def test_deploy_and_undo_through_the_forms(self):
         """The building screen's Deploy and Undo: the copy changed, then back byte for byte."""
         sys.path.insert(0, os.path.join(ROOT, "tests"))
