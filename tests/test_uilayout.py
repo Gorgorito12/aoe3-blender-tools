@@ -122,6 +122,10 @@ class Edits(unittest.TestCase):
         self.assertEqual(ul.find(ul.parse(self.doc.data()), "child")[0].parent.get("name"), "panel-hp")
 
     def test_ui_preview_reads_the_same_tree(self):
+        try:
+            import numpy  # noqa: F401  (ui_preview draws with it)
+        except ImportError:
+            self.skipTest("tools/ui_preview.py needs numpy")
         import ui_preview
         root = ui_preview.parse(ODD)
         self.assertEqual([n.name for n, _, _ in ui_preview.gadgets(root)],

@@ -2,7 +2,7 @@
 // The game interface screen: a game copy's in-game HUD (the main screen and its panels, normal or
 // minimised) drawn as the game draws it, at a chosen screen size and culture; its gadgets as a
 // tree; the one under the mouse or chosen in the tree outlined, with everything it says.
-import { api, clear, fetchBlob, h, storeGet, storeSet, t, toast } from './core.js';
+import { api, clear, fetchBlob, h, pick, storeGet, storeSet, t, toast } from './core.js';
 import { ASSUMED, HudRenderer, displayText, fontAt } from './hud_render.js';
 
 const SIZES = ['1024x768', '1280x720', '1280x768', '1280x800', '1280x1024', '1366x768', '1600x900', '1680x1050', '1920x1080'];
@@ -70,7 +70,10 @@ export async function hudScreen(main, app) {
   function opts() {
     return { variant: scene.variant, culture: culture.value, showHidden: showHidden.checked, backdrop: '#3a4a2a',
       moments: Object.fromEntries(scene.rules.moments.map(m => [m.id, moments[m.id] ?? m.on])),
-      oneOf: Object.fromEntries(scene.rules.oneOf.map(o => [o.re, oneOf[o.re] || o.show])) };
+      oneOf: Object.fromEntries(scene.rules.oneOf.map(o => [o.re, oneOf[o.re] || o.show])),
+      // the unit's simulation: what the game writes into the gadgets it fills, and the live texts
+      live: sim && !sim.error && (moments.selected ?? true) ? sim.gadgets : null,
+      liveTexts: sim && !sim.error ? sim.live : {} };
   }
 
   // ---- assets: textures as bitmaps, the copy's typefaces as fonts of the page
@@ -128,9 +131,11 @@ export async function hudScreen(main, app) {
       selected = hover = null;
       await loadFaces();
       view.fitted = false;
+      sim = null;
       drawTree();
       redraw();
       drawDetails();
+      runSim();
     } catch (e) {
       status.textContent = '';
       clear(details).append(h('p', { class: 'notice bad', text: e.message }));
@@ -260,18 +265,141 @@ export async function hudScreen(main, app) {
     momentsBox.append(box);
   }
 
-  // ---- what the chosen gadget says: its properties, or where each thing it names leads
-  let tab = storeGet('hud.tab', 'refs');
+  // ---- the unit the panels are filled for (aoe3game/unitpanel.py on the server)
+  let sim = null;
+  const unitSaved = storeGet('hud.unit', { name: 'Musketeer', state: {}, keys: [], rows: '' });
+  const KEYS = ['minUIStats', 'overhealHitpointBars', 'damageOverTime', 'veterancyBonus', 'randomCost', 'shipmentCounts',
+    'showGatherRate', 'buildingWorkRateAuras', 'resourceGatherAuras', 'unitResourceAuras'];
+  async function runSim() {
+    if (!scene) return;
+    // a unit of this copy: the one asked if the copy has it, else its first
+    const found = await api('/api/hud/units', { session: scene.session, q: unitSaved.name || '' }).catch(() => ({ units: [] }));
+    if (!found.units.some(u => u.name.toLowerCase() === (unitSaved.name || '').toLowerCase())) {
+      const first = found.units[0] || (await api('/api/hud/units', { session: scene.session, q: '' }).catch(() => ({ units: [] }))).units[0];
+      if (!first) { sim = { error: t('h.u.nounits') }; if (tab === 'unit') drawDetails(); return; }
+      unitSaved.name = first.name;
+    }
+    try {
+      sim = await api('/api/hud/sim', { session: scene.session, unit: unitSaved.name, state: unitSaved.state,
+        keys: unitSaved.keys, rows: unitSaved.rows || null });
+    } catch (e) { sim = { error: e.message }; }
+    storeSet('hud.unit', unitSaved);
+    redraw();
+    if (tab === 'unit') drawDetails();
+  }
+
+  // ---- what the chosen gadget says: its properties, or where each thing it names leads; the unit
+  let tab = storeGet('hud.tab', 'unit');
   function drawDetails() {
     clear(details);
     if (!scene) return;
-    if (!selected) { details.append(h('p', { class: 'small muted', text: t('h.pick') })); return; }
-    const g = selected;
-    const tabs = h('div', { class: 'row' }, [['refs', t('h.refs')], ['props', t('h.props')]].map(([k, l]) =>
+    const tabs = h('div', { class: 'row' }, [['unit', t('h.unit')], ['refs', t('h.refs')], ['props', t('h.props')]].map(([k, l]) =>
       h('button', { type: 'button', class: 'small' + (tab === k ? ' primary' : ''), text: l,
         onclick: () => { tab = k; storeSet('hud.tab', k); drawDetails(); } })));
-    details.append(h('h3', { text: g.name || '(' + g.type + ')' }), tabs);
+    details.append(tabs);
+    if (tab === 'unit') { drawUnit(); return; }
+    if (!selected) { details.append(h('p', { class: 'small muted', text: t('h.pick') })); return; }
+    const g = selected;
+    details.append(h('h3', { text: g.name || '(' + g.type + ')' }));
     if (tab === 'refs') drawRefs(g); else drawProps(g);
+  }
+
+  function drawUnit() {
+    const lang = document.documentElement.lang === 'es' ? 'es' : 'en';
+    const box = h('div', { class: 'stack small hud-unit' });
+    details.append(box);
+    // the unit
+    const results = h('div', { class: 'hud-units' });
+    const q = h('input', { type: 'search', class: 'grow', placeholder: t('h.u.search'), oninput: async () => {
+      const r = await api('/api/hud/units', { session: scene.session, q: q.value }).catch(() => ({ units: [] }));
+      clear(results).append(...r.units.map(u => h('button', { type: 'button', class: 'hud-node', title: u.name,
+        text: u.display && u.display !== u.name ? `${u.display} · ${u.name}` : u.name,
+        onclick: () => { unitSaved.name = u.name; q.value = ''; clear(results); runSim(); } })));
+    } });
+    box.append(h('div', { class: 'row' }, q), results);
+    if (!sim) { box.append(h('p', { class: 'muted', text: t('b.working') })); return; }
+    if (sim.error) { box.append(h('p', { class: 'bad', text: sim.error })); return; }
+    const u = sim.unit;
+    box.append(h('p', {}, h('strong', { text: u.name }), ` · ${u.hp} HP · LOS ${u.los} · ${t('h.u.attacks', { list: sim.attacks.join(', ') || '—' })}`),
+      h('p', { class: 'muted', text: t('h.u.types', { n: u.types.length }) + ' ' + u.types.slice(0, 12).join(', ') + (u.types.length > 12 ? '…' : '') }));
+    // what it is doing
+    const st = unitSaved.state;
+    const num = (key, label, attrs = {}) => h('label', { class: 'row' }, h('span', { class: 'grow', text: label }),
+      h('input', { type: 'number', value: st[key] ?? '', style: { width: '76px' }, ...attrs,
+        onchange: e => { st[key] = e.target.value === '' ? null : Number(e.target.value); runSim(); } }));
+    const flag = (key, label) => h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: !!st[key],
+      onchange: e => { st[key] = e.target.checked; runSim(); } }), label);
+    box.append(h('details', { open: true }, h('summary', { text: t('h.u.state') }),
+      h('div', { class: 'stack' },
+        num('hp', t('h.u.hp'), { placeholder: String(u.hp), min: 0 }), num('hp_bonus', t('h.u.hpbonus'), { min: 0 }),
+        num('overheal', t('h.u.overheal'), { min: 0 }), num('garrison', t('h.u.garrison'), { min: 0 }),
+        num('construction', t('h.u.construction'), { min: 0, max: 100, placeholder: '—' }), num('regen', t('h.u.regen'), { min: 0 }),
+        num('player', t('h.u.player'), { min: 1, max: 8, placeholder: '1' }),
+        h('label', { class: 'row' }, h('span', { class: 'grow', text: t('h.u.civ') }),
+          h('input', { type: 'text', value: st.civ || '', style: { width: '120px' }, onchange: e => { st.civ = e.target.value; runSim(); } })),
+        flag('poison', t('h.u.poison')), flag('gathering', t('h.u.gathering')), flag('building', t('h.u.building')),
+        flag('veterancy', t('h.u.veterancy')), flag('aura', t('h.u.aura')))));
+    // the DLL's keys
+    box.append(h('details', {}, h('summary', { text: t('h.u.keys', { n: Object.keys(sim.keys).length }) }),
+      h('p', { class: 'muted', text: sim.dll ? t('h.u.dll', { files: sim.files.cfg.join(', ') }) : t('h.u.nodll') }),
+      h('div', { class: 'stack' }, KEYS.map(k => {
+        const inFile = k.toLowerCase() in sim.keys && !unitSaved.keys.includes(k);
+        return h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: inFile || unitSaved.keys.includes(k), disabled: inFile,
+          onchange: e => { unitSaved.keys = e.target.checked ? [...new Set([...unitSaved.keys, k])] : unitSaved.keys.filter(x => x !== k); runSim(); } }),
+          h('span', { class: 'mono', text: k }), inFile ? h('span', { class: 'pill', text: t('h.u.infile') }) : null);
+      }))));
+    // the rows file
+    const rowsPath = h('input', { type: 'text', class: 'grow', value: unitSaved.rows || '', placeholder: sim.files.rows_asked });
+    box.append(h('details', { open: !sim.files.rows }, h('summary', { text: t('h.u.rows') }),
+      h('p', { class: sim.files.rows ? 'muted' : 'warn', text: sim.files.rows ? t('h.u.rowsfrom', { path: sim.files.rows }) : t('h.u.norows', { path: sim.files.rows_asked }) }),
+      h('div', { class: 'row' }, rowsPath,
+        h('button', { type: 'button', class: 'small', text: t('browse'), onclick: async () => { const p = await pick('file', { title: t('h.u.rows'), filters: [['XML', '*.xml']] }); if (p) { rowsPath.value = p; unitSaved.rows = p; runSim(); } } }),
+        h('button', { type: 'button', class: 'small', text: t('h.u.use'), onclick: () => { unitSaved.rows = rowsPath.value.trim(); runSim(); } }))));
+    // what the DLL shows
+    if (sim.rows.length) {
+      box.append(h('h4', { text: t('h.u.dllrows') }), ...sim.rows.map(r => h('p', {},
+        h('span', { class: 'mono', text: r.gadget.replace(/^unitselectionpanel-/, '') + ': ' }),
+        r.text ? h('span', { text: r.text.replace(/<[^>]*>/g, '◆') }) : h('span', { class: 'muted', text: t('h.why.' + r.why, { gadget: r.gadget, types: (r.types || []).join(', ') }) }))));
+    }
+    // what exists and this unit does not show: the game's items, then the DLL's; a reason every DLL
+    // item shares (the key off, no rows file) is said once, above them
+    const why = r => h('li', {}, t('h.why.' + r.code, { ...r, keys: r.keys || (r.enable && r.enable.keys || []).join(', ') }), enabler(r.enable));
+    const item = (a, reasons) => h('div', { class: 'hud-absent' },
+      h('p', {}, h('strong', { text: a.item }), a.ref ? h('span', { class: 'mono muted', text: ` {${a.ref}}` }) : null,
+        a.value ? h('span', { class: 'muted', text: ' = ' + a.value.replace(/<[^>]*>/g, '◆') }) : null),
+      a[lang] ? h('p', { class: 'muted', text: a[lang] }) : null,
+      h('ul', {}, reasons.map(why)));
+    const stock = sim.absent.filter(a => a.kind !== 'dll'), dll = sim.absent.filter(a => a.kind === 'dll');
+    const codes = dll.length ? dll[0].reasons.map(r => r.code).filter(c => dll.every(a => a.reasons.some(r => r.code === c))) : [];
+    const common = dll.length ? dll[0].reasons.filter(r => codes.includes(r.code)) : [];
+    box.append(h('h4', { text: t('h.u.absent', { n: sim.absent.length }) }),
+      h('h5', { text: t('h.u.ofgame', { n: stock.length }) }), ...stock.map(a => item(a, a.reasons)));
+    if (dll.length) {
+      const own = dll.map(a => [a, a.reasons.filter(r => !codes.includes(r.code))]);
+      own.sort((x, y) => (y[0].value ? 1 : 0) - (x[0].value ? 1 : 0));
+      box.append(h('h5', { text: t('h.u.ofdll', { n: dll.length }) }),
+        common.length ? h('div', { class: 'notice small' }, h('p', { text: t('h.u.allof') }), h('ul', {}, common.map(why))) : null,
+        h('details', { open: dll.length <= 10 }, h('summary', { text: t('h.u.items', { n: dll.length }) }),
+          ...own.map(([a, reasons]) => item(a, reasons.length ? reasons : [{ code: 'only_common' }]))));
+    }
+  }
+
+  // a button that makes an absent item appear: a state, keys, the other UI
+  function enabler(en) {
+    if (!en) return null;
+    const b = (text, fn) => h('button', { type: 'button', class: 'small ghost', text: text, onclick: fn });
+    if (en.state) return b(t('h.en.state'), () => {
+      const st = unitSaved.state;
+      ({ overheal: () => { st.overheal = 30; }, garrison: () => { st.garrison = 2; }, poison: () => { st.poison = true; },
+        construction: () => { st.construction = 40; }, building: () => { st.building = true; }, gathering: () => { st.gathering = true; },
+        veterancy: () => { st.veterancy = true; }, aura: () => { st.aura = true; }, regen: () => { st.regen = 1; },
+        lifespan: () => { st.lifespan = 30; } }[en.state] || (() => {}))();
+      runSim();
+    });
+    if (en.keys) return b(t('h.en.keys', { keys: en.keys.join(', ') }), () => { unitSaved.keys = [...new Set([...unitSaved.keys, ...en.keys])]; runSim(); });
+    if (en.variant) return b(t('h.en.variant'), () => { variant.value = en.variant; keep(); open(); });
+    if (en.gadget || en.row) return h('span', { class: 'muted', text: ' ' + t('h.en.editor') });
+    return null;
   }
 
   async function drawRefs(g) {

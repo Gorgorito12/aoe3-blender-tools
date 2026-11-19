@@ -372,6 +372,27 @@ class Server(unittest.TestCase):
         self.assertTrue(train["live"][0]["works"])
         status, err = self.call("/api/hud/refs", {"session": sid, "id": 999})
         self.assertEqual(status, 400)
+        # the unit the panels are filled for, and what it does not show
+        status, u = self.call("/api/hud/units", {"session": sid, "q": "gun"})
+        self.assertEqual(u["units"], [{"name": "Gunman", "display": "Gunman"}])
+        status, s = self.call("/api/hud/sim", {"session": sid, "unit": "Gunman"})
+        self.assertEqual(status, 200, s)
+        self.assertEqual(s["gadgets"]["unitselectionpanel-unittypename"]["text"], "Gunman")
+        self.assertTrue(s["gadgets"]["unitselectionpanel-stacklabel0"]["text"].startswith("Ranged ATK: 23"))
+        self.assertEqual(s["files"]["tactics"], "gun.tactics")
+        self.assertTrue(s["dll"])
+        self.assertFalse(s["key"])                                                # minUIStats not in the .cfg
+        overheal = next(a for a in s["absent"] if a["item"] == "overheal")
+        self.assertIn("key_off", [r["code"] for r in overheal["reasons"]])
+        self.assertIn("needs_state", [r["code"] for r in overheal["reasons"]])
+        cost = next(a for a in s["absent"] if a["item"] == "cost")
+        self.assertIn("gadget_missing", [r["code"] for r in cost["reasons"]])
+        status, s = self.call("/api/hud/sim", {"session": sid, "unit": "Gunman", "keys": ["minUIStats"],
+                                               "state": {"overheal": 30}})
+        self.assertEqual(s["gadgets"]["unitselectionpanel-uhcrow0"]["text"], "LOS: 16   Overheal +30")
+        self.assertNotIn("overheal", [a["item"] for a in s["absent"]])
+        status, err = self.call("/api/hud/sim", {"session": sid, "unit": "Nobody"})
+        self.assertEqual(status, 400)
         status, normal = self.call("/api/hud/open", {"game": copy, "variant": "normal"})
         self.assertEqual(status, 200, normal)
         self.assertEqual([f["stem"] for f in normal["files"]], ["uimainnew"])     # no normal panel here

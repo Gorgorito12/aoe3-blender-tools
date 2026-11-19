@@ -27,6 +27,9 @@ SELECTION = """<?xml version="1.0" encoding="utf-8"?>
 \t<gadget name="unitselectionpanel" type="unitselectionpanel" size1024="342 629 700 768" z="105">
 \t\t<gadget name="unitselectionpanel-unitHitPointsLabel" type="formatText" size1024="410 680 578 734" textfont="Missing" textfontsize="10"/>
 \t\t<gadget name="TrainTime" type="formatText" size1024="338 656 408 726" textfont="Test" textfontsize="12">Train Points: {currentUnitTrainPoints}</gadget>
+\t\t<gadget name="unitselectionpanel-unitTypeName" type="formatText" size1024="400 640 560 660" textfont="Test" textfontsize="12"/>
+\t\t<gadget name="unitselectionpanel-StackLabel0" type="formatText" size1024="400 700 560 715" textfont="Test" textfontsize="12"/>
+\t\t<gadget name="unitselectionpanel-uhcRow0" type="formatText" size1024="560 640 700 660" textfont="Test" textfontsize="12"/>
 \t</gadget>
 </layout>
 """
@@ -34,6 +37,9 @@ STRINGS = """<?xml version="1.0" encoding="UTF-16"?>\r
 <StringTable version="8"><Language name="English">\r
 <String _locID='101' symbol='cStringAge'>Colonial Age</String>\r
 <String _locID='102'>Unused &amp; kept</String>\r
+<String _locID='103'>Gunman</String>\r
+<String _locID='104'>Hall</String>\r
+<String _locID='105'>Ranged ATK</String>\r
 </Language></StringTable>\r
 """
 FONTS = """<?xml version="1.0" encoding="UTF-16"?>\r
@@ -51,6 +57,36 @@ FONTS = """<?xml version="1.0" encoding="UTF-16"?>\r
 \t\t<ResolutionOverride ResX="1280"><param AscentHeight="14"/></ResolutionOverride>\r
 \t</Font>\r
 </Fonts>\r
+"""
+
+
+PROTO = """<?xml version="1.0" encoding="utf-8"?>\r
+<proto version="4">\r
+<Unit id="5" name="Gunman">\r
+  <DisplayNameID>103</DisplayNameID>\r
+  <MaxVelocity>4.0000</MaxVelocity><InitialHitpoints>150</InitialHitpoints><MaxHitpoints>150</MaxHitpoints>\r
+  <LOS>16</LOS><TrainPoints>30</TrainPoints>\r
+  <Armor type="Hand" value="0.2" />\r
+  <UnitType>Unit</UnitType><UnitType>AbstractInfantry</UnitType>\r
+  <Tactics>gun.tactics</Tactics>\r
+  <ProtoAction><Name>RangedAttack</Name><Damage>23</Damage><DamageType>Ranged</DamageType><MaxRange>12</MaxRange></ProtoAction>\r
+</Unit>\r
+<Unit id="6" name="Hall">\r
+  <DisplayNameID>104</DisplayNameID><MaxHitpoints>2500</MaxHitpoints><LOS>12</LOS><UnitType>Building</UnitType>\r
+</Unit>\r
+</proto>\r
+"""
+TACTICS = """<?xml version="1.0"?>
+<tactics>
+  <action><name stringid="105">RangedAttack</name><type>Attack</type><attackaction>1</attackaction></action>
+  <tactic>Normal<action priority="99">RangedAttack</action></tactic>
+</tactics>
+"""
+ROWS = """<?xml version="1.0" encoding="utf-8"?>
+<minUIRows>
+  <row gadget="unitselectionpanel-uhcRow0" text="LOS: {los}|Overheal {overheal}"/>
+  <row gadget="unitselectionpanel-uhcRowGone" item="cost" label="Cost: "/>
+</minUIRows>
 """
 
 
@@ -103,6 +139,19 @@ def make(folder):
     with open(os.path.join(folder, "FONTS", "fonts3.xml"), "wb") as fh:
         fh.write(FONTS.encode("utf-16"))
     write_bar(os.path.join(folder, "FONTS", "Fonts.bar"), "Fonts\\", [("Fonts\\test.ttf", ttf_with_name("Test Face"))])
+    with open(os.path.join(folder, "data", "protoy.xml"), "wb") as fh:
+        fh.write(PROTO.encode("utf-8"))
+    os.makedirs(os.path.join(folder, "data", "tactics"), exist_ok=True)
+    with open(os.path.join(folder, "data", "tactics", "gun.tactics"), "w", encoding="utf-8") as fh:
+        fh.write(TACTICS)
+    os.makedirs(os.path.join(folder, "data", "uhc"), exist_ok=True)
+    with open(os.path.join(folder, "data", "uhc", "minuirows.xml"), "w", encoding="utf-8") as fh:
+        fh.write(ROWS)
+    os.makedirs(os.path.join(folder, "Startup"), exist_ok=True)
+    with open(os.path.join(folder, "Startup", "uhc.cfg"), "w", encoding="utf-8") as fh:
+        fh.write("overhealHitpointBars AbstractInfantry\n")
+    with open(os.path.join(folder, "uhc.dll"), "wb") as fh:
+        fh.write(b"MZ stands for the DLL")
     img = np.zeros((4, 4, 4), np.uint8)
     img[...] = (200, 120, 40, 255)
     with open(os.path.join(folder, "art", "ui", "ingame", "bar.ddt"), "wb") as fh:

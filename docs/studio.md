@@ -84,7 +84,24 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   as), the typeface's file and its cell at that screen; each live text, what it reads in protoy.xml
   or that the stock game leaves it empty (`uidata/ui_functions.json`); what the game writes into a
   gadget it fills by name, and when (`uidata/engine_gadgets.json`); its commands; the parents it
-  shows and hides with, and whether it lies outside its parent. **Save the
+  shows and hides with, and whether it lies outside its parent.
+  **A unit to try it on** (the Unit tab; `aoe3game/unitpanel.py`): any unit or building of the copy,
+  and the panels are filled as the game fills them: its name and owner in the player's colour, hit
+  points, resists (only a unit of type Unit with armor), the resource it holds, its attack rows (the
+  attacks of its first tactic by priority, switched-off ones left out, damage and range from the
+  proto or the tactic, the first bonus with the icon the `attackTypeIcons` key gives; three at most
+  in the minimised UI), the health bar by the share left, its portrait; the live texts
+  (`{currentUnitLOS}`...) with its values. The UHC DLL's rows (`data\uhc\minuirows.xml`, or a file
+  chosen) are filled for it with the keys of the copy's Startup .cfg and any switched on by hand.
+  What it is doing is set by hand (hit points, what techs add, overheal, units inside, under
+  construction, poisoned, gathering, a veteran, an aura, the player and civilization). And **what
+  exists but this unit does not show**: each of the game's rows and each of the DLL's 30 items
+  (`aoe3game/uidata/uhc_minui_items.json`), with every reason (no such data, only for type Unit,
+  no room, the other UI, the DLL or its key missing, no row places it, its row's gadget is not in
+  the layout, its row's types, the key it needs, its type not listed by that key, a state it needs)
+  and a button to see it: simulate the state, switch the key on, see the other UI. Measured against
+  a capture: a Musketeer's minimised panel comes out with the capture's rows, values, colours and
+  icons. Techs, auras and a game's running values are not known offline: the values are the proto's. **Save the
   picture** writes it to the work folder. The files are read as a tree that keeps every byte
   (`aoe3game/uilayout.py`: the 55 interface files of a Wars of Liberty copy and the 551 compiled
   ones in its archives come back identical). Measured against a capture of the game at 1920 x 1080:

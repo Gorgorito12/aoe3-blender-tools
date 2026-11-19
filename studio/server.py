@@ -505,6 +505,26 @@ def r_hud_refs(st, rest, q, b):
         raise ApiError(str(e)) from None
 
 
+def r_hud_units(st, rest, q, b):
+    """The copy's units whose name or shown name holds the words asked."""
+    h = _hud()
+    scene = st.sessions.get(b.get("session"))
+    try:
+        return {"units": scene.game.units(b.get("q") or "")}
+    except (h.HudError, OSError) as e:
+        raise ApiError(str(e)) from None
+
+
+def r_hud_sim(st, rest, q, b):
+    """The panels filled for one unit, with the moments and keys asked (aoe3game/unitpanel.py)."""
+    h = _hud()
+    scene = st.sessions.get(b.get("session"))
+    try:
+        return scene.simulate(b.get("unit") or "", b.get("state") or {}, b.get("keys") or [], b.get("rows") or None)
+    except (h.HudError, OSError, ValueError) as e:
+        raise ApiError(str(e)) from None
+
+
 def r_hud_snapshot(st, rest, q, b):
     """The drawn HUD as a PNG in the work folder."""
     import base64
@@ -991,6 +1011,8 @@ ROUTES = [
     ("GET", "/api/hud/font", r_hud_font),
     ("POST", "/api/hud/snapshot", r_hud_snapshot),
     ("POST", "/api/hud/refs", r_hud_refs),
+    ("POST", "/api/hud/units", r_hud_units),
+    ("POST", "/api/hud/sim", r_hud_sim),
     ("POST", "/api/settlement/measured", r_settlement_measured),
     ("POST", "/api/settlement/compose", r_settlement_compose),
     ("POST", "/api/settlement/open", r_settlement_open),

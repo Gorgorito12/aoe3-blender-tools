@@ -15,7 +15,25 @@ export const ASSUMED = {
   fontsize: 'measured: AscentHeight is the text cell (ascent + descent) in screen pixels, as Windows sizes a font ("Tactics", StatAreaText 12, at 1920 x 1080)',
   fontmissing: 'measured: a font fonts3.xml lacks (StatText 10, IngameDialogs 12) is drawn as "Arial nobold nodrop 12" whatever its size (regular Arial, a 14-pixel cell at 1920 x 1080: "Train Points", "LOS"); whether the game takes that entry or a default of the same values is to verify',
   fontwidth: 'which fonts3.xml override applies at a screen width: the base values at 1024, an override from its ResX upward',
+  icons: 'an icon in a text, <icon="(16)(path)">, is drawn as tall as the text cell and 0.72 as wide (about 10 x 14 at 1920 x 1080, as measured for make_stat_icon)',
+  progress: 'a progressBar is drawn as its progressbarbackground, then its progressbarmask over the share done',
+  engine: 'what the game writes into the gadgets it fills, and its colours (labels yellow, attack rows cyan), is the unit simulation: aoe3game/unitpanel.py',
 };
+
+const ICON = /<icon="\((\d+)\)\(([^)]*)\)">/g;
+
+// a line of text as runs: [{text}] and [{icon: path}], other markup taken out
+export function runs(line) {
+  const out = [];
+  let last = 0;
+  for (const m of line.matchAll(ICON)) {
+    if (m.index > last) out.push({ text: line.slice(last, m.index).replace(/<[^>]*>/g, '') });
+    out.push({ icon: m[2], size: Number(m[1]) });
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) out.push({ text: line.slice(last).replace(/<[^>]*>/g, '') });
+  return out.filter(r => r.icon || r.text);
+}
 
 // sample values for the live texts the screen shows without a game running
 export const SAMPLES = {
@@ -106,6 +124,9 @@ export class HudRenderer {
         if (!opts.override[x.id]) return false;
         continue;
       }
+      const engine = opts.live && opts.live[x.name.toLowerCase()];
+      if (engine && engine.show === false) return false;
+      if (engine && engine.show === true) continue;          // the game shows it, whatever the file says
       if ('hidden' in x.attrs && !opts.showHidden) return false;
       const m = this.skin.exec(x.name);
       if (m && !(m[1] === opts.culture && m[2] === (opts.variant === 'min' ? 'Min' : 'Max'))) return false;
@@ -149,9 +170,20 @@ export class HudRenderer {
         ctx.fillStyle = `rgba(${r},${gg},${b},${alpha})`;
         ctx.fillRect(x, y, w, h);
       }
-      const bg = a.background || (g.states.length ? g.states[opts.state || 0] || g.states[0] : '');
-      if (bg) this.texture(ctx, bg, a, x, y, w, h, width, missing);
-      if (g.text || (opts.live && opts.live[g.name])) this.text(ctx, g, x, y, w, h, width, opts, missing);
+      const engine = opts.live && opts.live[g.name.toLowerCase()];
+      const bg = (engine && engine.background) || a.background || (g.states.length ? g.states[opts.state || 0] || g.states[0] : '');
+      if (bg) this.texture(ctx, bg, engine && engine.background ? {} : a, x, y, w, h, width, missing);
+      if (g.type === 'progressbar') {
+        // a progress bar: its background, then its mask over the share done (the game's: to verify)
+        const share = engine && engine.fraction !== undefined && engine.fraction !== null ? engine.fraction : 1;
+        if (a.progressbarbackground) this.texture(ctx, a.progressbarbackground, {}, x, y, w, h, width, missing);
+        if (a.progressbarmask && share > 0) {
+          ctx.save(); ctx.beginPath(); ctx.rect(x, y, w * Math.min(1, share), h); ctx.clip();
+          this.texture(ctx, a.progressbarmask, {}, x, y, w, h, width, missing);
+          ctx.restore();
+        }
+      }
+      if (g.text || (engine && engine.text)) this.text(ctx, g, x, y, w, h, width, opts, missing, engine);
       if (a.foreground) this.texture(ctx, a.foreground, a, x, y, w, h, width, missing);
     }
     return { list, missing };
@@ -183,9 +215,9 @@ export class HudRenderer {
     if (swp > 0 && shp > 0) ctx.drawImage(img, sxp, syp, swp, shp, x, y, w, h);
   }
 
-  text(ctx, g, x, y, w, h, width, opts, missing) {
+  text(ctx, g, x, y, w, h, width, opts, missing, engine) {
     const a = g.attrs;
-    const shown = opts.live && opts.live[g.name] !== undefined ? opts.live[g.name] : displayText(g.text, this.scene.strings, opts.liveTexts || {});
+    const shown = engine && engine.text ? engine.text : displayText(g.text, this.scene.strings, opts.liveTexts || {});
     if (!shown) return;
     const size = a.textfontsize || '12';
     const f = fontAt(this.scene.fonts, a.textfont, size, width, this.height);
@@ -200,35 +232,50 @@ export class HudRenderer {
     ctx.save();
     ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
     ctx.font = `${f && f.Bold ? 'bold ' : ''}${f && f.Italic ? 'italic ' : ''}${px.toFixed(2)}px "${family}", Arial, sans-serif`;
-    const [r, gg, b] = parseColour(a.textcolor);
+    const [r, gg, b] = engine && engine.colour ? engine.colour : parseColour(a.textcolor);
     const colour = `rgb(${r},${gg},${b})`;
     const centre = 'textcenterhoriz' in a, right = 'textjustifyright' in a;
     ctx.textAlign = centre ? 'center' : right ? 'right' : 'left';
     ctx.textBaseline = 'alphabetic';
     const lines = [];
     for (const para of shown.split('\n')) {
-      if ('textwrapon' in a) lines.push(...wrap(ctx, para.replace(/<[^>]*>/g, ''), w));
-      else lines.push(para.replace(/<[^>]*>/g, ''));
+      if ('textwrapon' in a && !para.includes('<icon')) lines.push(...wrap(ctx, para.replace(/<[^>]*>/g, ''), w));
+      else lines.push(para);
     }
+    const iconH = cell, iconW = cell * 0.72;
+    const widthOf = parts => parts.reduce((s, r) => s + (r.icon ? iconW : ctx.measureText(r.text).width), 0);
     const lineH = cell;
     const total = lines.length * lineH;
     let top = y;
     if ('textcentervert' in a || 'texttruecentervert' in a) top = y + (h - total) / 2;
     else if ('textbottomfill' in a) top = y + h - total;
-    const tx = centre ? x + w / 2 : right ? x + w : x;
+    ctx.textAlign = 'left';
     lines.forEach((line, i) => {
       const base = top + i * lineH + ascent;
-      if (f && f.BackgroundShadow) {
-        const off = Math.max(1, Number(f.BackgroundOffset) || 0);
-        ctx.fillStyle = 'rgba(0,0,0,0.85)';
-        ctx.fillText(line, tx + off, base + off);
+      const parts = runs(line);
+      const lw = widthOf(parts);
+      let cx = centre ? x + (w - lw) / 2 : right ? x + w - lw : x;
+      for (const part of parts) {
+        if (part.icon) {
+          const img = this.assets.image(part.icon);
+          if (img) ctx.drawImage(img, cx, top + i * lineH + (lineH - iconH) / 2, iconW, iconH);
+          else if (img === null) missing.textures.add(part.icon);
+          cx += iconW;
+          continue;
+        }
+        if (f && f.BackgroundShadow) {
+          const off = Math.max(1, Number(f.BackgroundOffset) || 0);
+          ctx.fillStyle = 'rgba(0,0,0,0.85)';
+          ctx.fillText(part.text, cx + off, base + off);
+        }
+        if (f && f.BackgroundOutline) {
+          ctx.strokeStyle = 'rgba(0,0,0,0.9)'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+          ctx.strokeText(part.text, cx, base);
+        }
+        ctx.fillStyle = colour;
+        ctx.fillText(part.text, cx, base);
+        cx += ctx.measureText(part.text).width;
       }
-      if (f && f.BackgroundOutline) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.9)'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
-        ctx.strokeText(line, tx, base);
-      }
-      ctx.fillStyle = colour;
-      ctx.fillText(line, tx, base);
     });
     ctx.restore();
   }

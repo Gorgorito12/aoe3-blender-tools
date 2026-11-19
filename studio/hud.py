@@ -18,16 +18,18 @@ import json
 import os
 import re
 import threading
+import xml.etree.ElementTree as ET
 
 from . import use_core
 
 use_core()
 import bar  # noqa: E402  (tools/)
-from aoe3game import ddt, proto, uifonts, uilayout  # noqa: E402
+from aoe3game import ddt, proto, uifonts, uilayout, unitpanel  # noqa: E402
 from core import paint as painter  # noqa: E402
 from fix_hitpointbar_tags import Art  # noqa: E402
 
 MAIN = "uimainnew"
+KNOWN_KEYS = None       # filled below: the DLL keys the simulation knows
 # the panels the game loads by name beside the main screen (age3y.exe's strings), each with a
 # minimised twin "<name>min"
 PANELS = ("uiunitselection", "uiunitstatpanel3", "uicommandpanelnew", "uiminimappanelnew",
@@ -54,6 +56,14 @@ def table(name):
     """One of aoe3game/uidata's tables."""
     with open(os.path.join(UIDATA, name + ".json"), encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def _known_keys():
+    items = table("uhc_minui_items")
+    out = {items["key"].lower(), "attacktypeicons"}
+    for it in items["items"]:
+        out.update(n.lower() for n in it.get("needs", []))
+    return out
 
 
 class HudError(ValueError):
@@ -174,6 +184,95 @@ class Game:
     def faces(self):
         self.fonts
         return sorted(name for name in self._ttf)
+
+    # ---- the units, their tactics, the DLL's keys and rows
+    @property
+    def protos(self):
+        """(protoy.xml's text, its index), read once."""
+        with self._lock:
+            if getattr(self, "_protos", None) is None:
+                path = self.loose.get("protoy.xml")
+                if path is None:
+                    raise HudError("this copy has no loose data\\protoy.xml")
+                text = proto.read_text(path)[0]
+                self._protos = (text, proto.Index(text))
+            return self._protos
+
+    def units(self, q="", limit=60):
+        """[{"name", "display"}] of the units whose name or shown name holds q."""
+        text, index = self.protos
+        st = self.strings
+        low = q.strip().lower()
+        out = []
+        for key, name in sorted(index.names.items()):
+            s, e = index.spans[key]
+            m = re.search(r"<DisplayNameID>(\d+)</DisplayNameID>", text[s:min(e, s + 4000)])
+            shown = st.get(int(m.group(1)), ("", None))[0] if m else ""
+            if not low or low in key or low in shown.lower():
+                out.append({"name": name, "display": shown})
+                if len(out) >= limit:
+                    break
+        return out
+
+    def unit(self, name):
+        text, index = self.protos
+        try:
+            return unitpanel.read_unit(proto.unit_text(text, name, index))
+        except proto.ProtoError as e:
+            raise HudError(str(e)) from None
+
+    def tactics(self, filename):
+        """A tactics file of data\\tactics (loose, then the data archives), read, or None."""
+        if not filename:
+            return None
+        path = os.path.join(self.folder, "data", "tactics", filename)
+        data = None
+        if os.path.isfile(path):
+            with open(path, "rb") as fh:
+                data = fh.read()
+        else:
+            for archive, entries in self.bars:
+                for key in (filename.lower(), filename.lower() + ".xmb"):
+                    if key in entries:
+                        data = _read(archive, entries[key])
+                        break
+                if data:
+                    break
+        if not data:
+            return None
+        if data[:4] == b"l33t" or data[:2] == b"X1":
+            import xmbedit
+            xml = xmbedit.to_xml(*xmbedit.parse(xmbedit.decode(data)))
+            data = xml.encode("utf-8") if isinstance(xml, str) else xml
+        text = uilayout.decode(data)[0]
+        try:
+            return unitpanel.read_tactics(text)
+        except ET.ParseError:
+            return None
+
+    def keys(self):
+        """The DLL's keys in Startup\\*.cfg ({lower key: [arguments]}) and the files read."""
+        folder = os.path.join(self.folder, "Startup")
+        texts, files = [], []
+        if os.path.isdir(folder):
+            for n in sorted(os.listdir(folder)):
+                if n.lower().endswith(".cfg"):
+                    with open(os.path.join(folder, n), "rb") as fh:
+                        texts.append(uilayout.decode(fh.read())[0])
+                    files.append(n)
+        return unitpanel.read_cfg(texts), files
+
+    def rows_file(self, path=None):
+        """(read_rows of a minuirows.xml, where) — the copy's data\\uhc\\minuirows.xml by default."""
+        path = path or os.path.join(self.folder, "data", "uhc", "minuirows.xml")
+        if not os.path.isfile(path):
+            return None, path
+        with open(path, "rb") as fh:
+            text = uilayout.decode(fh.read())[0]
+        try:
+            return unitpanel.read_rows(text), path
+        except ET.ParseError as e:
+            raise HudError(f"{path}: {e}") from None
 
     @property
     def strings(self):
@@ -338,6 +437,31 @@ class Scene:
         out["commands"] = [c.own_text().strip() for c in e.elements() if c.name_lower == "command"]
         return out
 
+    def simulate(self, unit_name, state=None, keys_on=(), rows_path=None):
+        """The panels filled for one unit of the copy (aoe3game/unitpanel.py)."""
+        g = self.game
+        unit = g.unit(unit_name)
+        tactics = g.tactics(unit["tactics"])
+        attack_list = unitpanel.attacks(unit, tactics)
+        keys, cfg_files = g.keys()
+        for k in keys_on:
+            keys.setdefault(str(k).lower(), [])
+        rows, rows_where = g.rows_file(rows_path)
+        gadgets = {}
+        for _i, e in self.gadgets():
+            name = (e.get("name") or "").lower()
+            parent = e.parent
+            gadgets[name] = {"parent": (parent.get("name") or "").lower()
+                             if parent is not None and parent.name_lower == "gadget" else None,
+                             "hidden": e.has("hidden")}
+        dll = os.path.isfile(os.path.join(g.folder, "uhc.dll"))
+        r = unitpanel.simulate(unit, attack_list, variant=self.variant, gadgets=gadgets, strings=g.strings,
+                               keys=keys, rows=rows, dll=dll, state=state)
+        r["files"] = {"cfg": cfg_files, "rows": rows_where if rows is not None else None, "rows_asked": rows_where,
+                      "tactics": unit["tactics"] if tactics else None}
+        r["keys"] = {k: v for k, v in keys.items() if k in KNOWN_KEYS}
+        return r
+
     def texture_png(self, path):
         """(png bytes, where) of a texture, kept for the session; None when not found."""
         key = path.strip().replace("/", "\\").lower()
@@ -345,3 +469,6 @@ class Scene:
             hit = self.game.texture(path)
             self.pngs[key] = (painter.png_bytes(hit[0], level=1), hit[1]) if hit else None
         return self.pngs[key]
+
+
+KNOWN_KEYS = _known_keys()

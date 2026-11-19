@@ -45,6 +45,7 @@ venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, mak
 venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, hard edges, outline
 venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout file's gadgets as boxes
 python -I tests/test_uilayout.py                  # interface layouts byte for byte, fonts, string table
+python -I tests/test_unitpanel.py                 # the unit panels filled for a unit, the DLL's rows, why an item is absent
 venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
 venv/bin/python -I tests/test_specs.py             # every building has its sheet and it is current
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
@@ -156,7 +157,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   `core/gamemesh.py` is the game mesh without Blender (measured against Blender's).
 - The game interface: `aoe3game/uilayout.py` (a layout file as a tree that keeps every byte; edits
   change only what they are about), `aoe3game/uifonts.py` (fonts3.xml, a TTF's family name),
-  `aoe3game/uidata/` (what the engine shows that the files do not say), `studio/hud.py` and
+  `aoe3game/uidata/` (what the engine shows that the files do not say), `aoe3game/unitpanel.py` (the
+  panels filled for one unit, the UHC DLL's rows, what it does not show and why), `studio/hud.py` and
   `studio/web/js/hud*.js` (the screen). `tests/test_uilayout.py`, `tests/hud_copy.py` (a synthetic
   copy). Engine facts there are measured on captures or marked to verify, as everywhere.
 - `aoe3_blender_tools/aoe3game/collision.py`: a building's own collision shape (`.shp`, Havok XML),
