@@ -466,6 +466,41 @@ def _hud():
     return hud
 
 
+def _meshin():
+    from . import meshin
+    return meshin
+
+
+def r_mesh_load(st, rest, q, b):
+    """A model file of the modder's own, prepared as the game export will take it, for the 3D view."""
+    m = _meshin()
+    try:
+        return m.load(b.get("path"), m.options(b), b.get("picture") or None, (b.get("kind") or "BUILDING").upper())
+    except m.MeshinError as e:
+        raise ApiError(str(e)) from None
+
+
+def r_mesh_export(st, rest, q, b):
+    """The model as a game bundle: scripts/mesh_to_game.py as a job."""
+    m = _meshin()
+    name = (b.get("name") or "").strip()
+    if not name or not name.replace("_", "").isalnum():
+        raise ApiError("a name of letters, digits and _ is needed")
+    path = b.get("path")
+    if not path or not os.path.isfile(path):
+        raise ApiError("choose a model file (.obj, .glb, .gltf)")
+    try:
+        opts = m.options(b)
+        picture = m.keep_picture(st.work_dir("models", name), b["picture"]) if b.get("picture") else None
+    except m.MeshinError as e:
+        raise ApiError(str(e)) from None
+    out = st.output(b.get("out") or st.work_dir("models", name, "game"))
+    os.makedirs(out, exist_ok=True)
+    cmd = jobs.python_command() + [os.path.join(ROOT, "scripts", "mesh_to_game.py")] + m.command_args(path, out, name, opts, b, picture)
+    job = st.jobs.start(f"Your model: {name}", cmd, cwd=ROOT, outputs=[out], tool="mesh_to_game")
+    return {"job": job.id, "out": out}
+
+
 def r_hud_open(st, rest, q, b):
     """A game copy's in-game HUD, normal or minimised, for the interface screen (read only)."""
     h = _hud()
@@ -1051,6 +1086,8 @@ ROUTES = [
     ("POST", "/api/retex/picture", r_retex_picture),
     ("POST", "/api/retex/save", r_retex_save),
     ("POST", "/api/results", r_results),
+    ("POST", "/api/mesh/load", r_mesh_load),
+    ("POST", "/api/mesh/export", r_mesh_export),
     ("POST", "/api/hud/open", r_hud_open),
     ("GET", "/api/hud/texture", r_hud_texture),
     ("GET", "/api/hud/font", r_hud_font),

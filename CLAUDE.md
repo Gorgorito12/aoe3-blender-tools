@@ -50,6 +50,8 @@ venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/
 venv/bin/python -I tests/test_specs.py             # every building has its sheet and it is current
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
 venv/bin/python -I scripts/game_export_noblender.py --out out/wh_nb --preset WHITE_HOUSE --compare out/wh   # experimental
+venv/bin/python -I scripts/mesh_to_game.py --in <model.obj|.glb> --out <dir> --name <Name> --fit-units 4   # your own model
+venv/bin/python -I tests/test_meshfile.py          # OBJ / glTF reading, preparation, the bundle
 python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
 python -I tools/game_deploy.py --install <test copy> --files <folder laid out as the copy>   # the interface's edits
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
@@ -102,7 +104,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   and `validate.py` (the checks' Blender side) need Blender. `checks.py` holds the checks' rules
   on plain mesh data (`mesh_of(model)`: the generator's mesh as Blender's modifier cuts it) and
   `softrender.py` draws an icon in numpy: with `gamemesh.py` they make the Blender-free export
-  (`scripts/game_export_noblender.py`, experimental until seen in game).
+  (`scripts/game_export_noblender.py`, experimental until seen in game). `objio.py`, `glbio.py`
+  (an .obj or glTF read without Blender) and `meshprep.py` (axes, size, ground, normals, vertex
+  split) bring a modder's own static model to the same bundle (`scripts/mesh_to_game.py`).
 - `aoe3_blender_tools/aoe3game/`: the game formats, pure Python, never importing `core` or bpy
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_types.py`

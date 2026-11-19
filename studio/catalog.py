@@ -169,6 +169,35 @@ STYLES = ("NEOCLASSICAL", "COLONIAL", "TIMBER", "AFRICAN", "PROP")
 
 TOOLS = [
     # -- buildings --------------------------------------------------------------------------
+    Tool("mesh_to_game", "scripts/mesh_to_game.py", "buildings",
+         L("Your own model for the game", "Tu propio modelo para el juego"),
+         L("A static model of your own (.obj with its .mtl, .glb, .gltf) as a game bundle, without Blender: "
+           "model, texture, anim file, proto and strings, icons. The screen \"Your own model\" shows it first.",
+           "Un modelo estático tuyo (.obj con su .mtl, .glb, .gltf) como paquete del juego, sin Blender: modelo, "
+           "textura, archivo de animación, proto y textos, iconos. La pantalla \"Tu propio modelo\" lo muestra antes."),
+         [Arg("in", "--in", "file", L("Model", "Modelo"), required=True,
+              filters=(("Model", "*.obj *.glb *.gltf"),)),
+          out_dir(),
+          Arg("name", "--name", "text", L("Name", "Nombre"), L("Letters, digits and _", "Letras, cifras y _"), required=True),
+          Arg("up", "--up", "choice", L("Vertical axis of the file", "Eje vertical del archivo"), choices=("y", "z"), default="y"),
+          Arg("scale", "--scale", "float", L("Scale into metres", "Escala a metros"),
+              L("A model in centimetres: 0.01", "Un modelo en centímetros: 0,01"), default=1.0),
+          Arg("fit_units", "--fit-units", "float", L("Size in game units", "Tamaño en unidades del juego"),
+              L("The plot's longer side: 4 for a building of the 4x4 class (instead of the scale)",
+                "El lado mayor de la parcela: 4 para un edificio de la clase 4x4 (en lugar de la escala)")),
+          Arg("turn", "--turn", "choice", L("Turn (degrees)", "Girar (grados)"), choices=("0", "90", "180", "270"), default="0"),
+          Arg("flat", "--flat", "bool", L("Flat faces", "Caras planas")),
+          Arg("texture_png", "--texture-png", "file", L("Another texture (PNG)", "Otra textura (PNG)"), filters=PNG),
+          Arg("kind", "--kind", "choice", L("Kind", "Tipo"), choices=("BUILDING", "PROP"), default="BUILDING"),
+          Arg("template", "--template", "text", L("Proto template", "Plantilla de proto"),
+              L("The unit whose proto entry it copies", "La unidad cuya entrada de proto copia"), default="House"),
+          Arg("prefix", "--prefix", "text", L("Mod folder", "Carpeta del mod"), default="mod"),
+          Arg("display", "--display", "text", L("Name in game", "Nombre en el juego")),
+          Arg("folder", "--folder", "text", L("Art folder", "Carpeta de arte")),
+          Arg("texture", "--texture", "choice", L("Texture format", "Formato de textura"),
+              choices=("DXT3", "DXT1", "BGRA"), default="DXT3"),
+          Arg("no_icons", "--no-icons", "bool", L("No icon or portrait", "Sin icono ni retrato")),
+          Arg("check_only", "--check-only", "bool", L("Only check, write nothing", "Solo comprobar, sin escribir"))]),
     Tool("game_export", "scripts/game_export.py", "buildings",
          L("Export a preset for the game", "Exportar un preset al juego"),
          L("Writes a preset as a game bundle: model, texture, anim file, proto fields and strings, icons, "

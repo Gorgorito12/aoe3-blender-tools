@@ -270,3 +270,7 @@ table.results th.sortable:hover { color: var(--accent); }
 .hud-sample { background: #3b2a1e; padding: 6px 8px; border-radius: 4px; margin: 6px 0; white-space: nowrap; overflow: hidden; }
 .hud-edit input[type=color] { width: 32px; padding: 0; flex: none; }
 .hud-edit select { max-width: 140px; }
+.meshin-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 12px; margin: 12px 0; }
+.meshin-view { min-height: 420px; }
+.meshin-side { max-height: 520px; overflow: auto; }
+@media (max-width: 800px) { .meshin-grid { grid-template-columns: 1fr; } }

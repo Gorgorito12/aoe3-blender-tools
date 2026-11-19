@@ -304,6 +304,49 @@ class Server(unittest.TestCase):
                                                              "options": {"ai": True, "ai_strength": 2}})
             self.assertEqual(status, 400)
 
+    def test_your_own_model_is_seen_checked_and_exported(self):
+        import base64
+        sys.path.insert(0, os.path.join(ROOT, "tests"))
+        import test_meshfile as tm
+        from core import paint
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, data in (("cube.obj", tm.CUBE.encode()), ("cube.mtl", tm.MTL.encode()), ("tex.png", tm.png())):
+                with open(os.path.join(tmp, name), "wb") as fh:
+                    fh.write(data)
+            obj = os.path.join(tmp, "cube.obj")
+            status, r = self.call("/api/mesh/load", {"path": obj, "fit_units": 4})
+            self.assertEqual(status, 200, r)
+            self.assertEqual((r["triangles"], r["vertices"]), (12, 24))
+            self.assertEqual(r["units"], [4.0, 4.0])
+            self.assertEqual(len(r["mesh"]["indices"]), 36)
+            self.assertTrue(r["texture"].startswith("data:image/png;base64,"))
+            self.assertTrue(any(c["level"] == "INFO" for c in r["checks"]))
+            status, z = self.call("/api/mesh/load", {"path": obj, "fit_units": 4, "turn": 90, "up": "z"})
+            self.assertEqual(status, 200, z)
+            # a picture it cannot read goes back to the page, which returns it as a PNG
+            with open(os.path.join(tmp, "tex.png"), "wb") as fh:
+                fh.write(b"\xff\xd8\xff\xe0 not really a jpeg")
+            status, d = self.call("/api/mesh/load", {"path": obj})
+            self.assertTrue(d["decode"].startswith("data:image/jpeg;base64,"))
+            png = "data:image/png;base64," + base64.b64encode(paint.png_bytes(tm.np.zeros((32, 32, 4), tm.np.uint8) + 200)).decode()
+            status, r2 = self.call("/api/mesh/load", {"path": obj, "picture": png})
+            self.assertEqual(r2["texture_size"], [32, 32])
+            # refused: a bad file, a bad option, a bad name
+            status, e = self.call("/api/mesh/load", {"path": os.path.join(tmp, "nothing.obj")})
+            self.assertEqual(status, 400)
+            status, e = self.call("/api/mesh/load", {"path": obj, "turn": 45})
+            self.assertEqual(status, 400)
+            status, e = self.call("/api/mesh/export", {"path": obj, "name": "bad name"})
+            self.assertEqual(status, 400)
+            out = os.path.join(tmp, "out")
+            status, x = self.call("/api/mesh/export", {"path": obj, "name": "MyCube", "fit_units": 4, "picture": png,
+                                                       "out": out, "display": "My cube"})
+            self.assertEqual(status, 200, x)
+            j = self.wait(x["job"])
+            self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"])
+            self.assertTrue(os.path.isfile(os.path.join(out, "art", "mod", "buildings", "mycube", "mycube.gr2")))
+            self.assertTrue(any("--texture-png" in line or "MyCube" in line for line in j["lines"]))
+
     def test_the_game_interface_of_a_copy(self):
         """The HUD of a (synthetic) copy: each layout found as the game finds it (loose first, then
         Data3.bar before Data.bar, the hidden copies listed), its texts, textures and fonts; the

@@ -22,7 +22,7 @@ from studio.__main__ import BROWSERS  # noqa: E402
 
 GAME_ROUTES = ("hud",)                   # drawn again with a synthetic game copy
 ROUTES = ("buildings", "textures", "survey", "art", "jobs", "settings", "dev", "welcome", "inspect", "retex", "flags",
-          "texmaker", "settlement", "buildtools", "results", "hud", "tool/deploy", "tool/make_bar", "tool/fix_bone_scale", "tool/art_survey")
+          "texmaker", "settlement", "buildtools", "results", "hud", "meshin", "tool/deploy", "tool/make_bar", "tool/fix_bone_scale", "tool/art_survey")
 
 
 def node():

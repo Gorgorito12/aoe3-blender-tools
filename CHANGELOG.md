@@ -6,6 +6,11 @@ three together).
 
 ## Unreleased
 
+- **Your own model** (`scripts/mesh_to_game.py`, a studio screen and form): a static `.obj`, `.glb`
+  or `.gltf` as a game building or prop without Blender: read (`core/objio.py`, `core/glbio.py`),
+  sized in metres or game units, set on the ground, checked, seen in 3D beside a person, exported
+  by the same bundle writer.
+
 - `tools/recolor_textures.py` (and its studio form, Textures and units): recolours textures in OKLCH,
   only the hues you choose, keeping each file's header, alpha and mip levels, and reports CIEDE2000 to the
   player colours before and after. Made for a terrain whose red hid player 2.

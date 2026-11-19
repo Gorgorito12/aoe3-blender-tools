@@ -257,6 +257,19 @@ repaints its own buildings.
   strings byte for byte; the models with the same vertices, normals and UVs (some flat quads cut
   along the other diagonal: rendered alike, under 0.3 % of the pixels differ). Whether it looks the
   same in game is **to verify** (`docs/game-test.md`); Blender stays the default until then.
+- **Your own model** (Buildings, `studio/meshin.py`, `web/js/meshin.js`; its form and
+  `scripts/mesh_to_game.py`): a static `.obj` (with its `.mtl` and picture), `.glb` or `.gltf` of
+  your own as a game building or prop. It is read without Blender (`core/objio.py`,
+  `core/glbio.py`), turned to Blender's axes, sized (a scale into metres, or the plot's longer side
+  in game units: 4 for the 4x4 class), set on the ground at the middle of its plot, its normals kept
+  or worked out from the smoothing groups (`core/meshprep.py`); then seen in 3D beside a person and
+  its obstruction, checked as a generated building (`core/checks.py`), and written by the same
+  `bundle.write` (model, texture, bump map, anim file, proto, strings, icon and portrait). A JPEG
+  picture is decoded by the page and handed over as PNG. Refused, with the reason: no texture
+  coordinates, two pictures (the game takes one), Draco or meshopt compression, a skin (a unit).
+  Measured: the 16 example GLBs (written by Blender's glTF exporter) read back with the generator's
+  triangles, area and corners. No low-poly or damaged variant, no technical sheet. Whether it
+  looks right in game is **to verify**.
 - GLB, FBX and OBJ, the renders of `scripts/generate.py`, `model_sheets` and the galleries still
   need Blender.
 

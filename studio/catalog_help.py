@@ -5,6 +5,30 @@ catalog.py fills an option's empty help from here; tests/test_studio.py fails on
 left without help in either language."""
 
 HELP = {
+    'mesh_to_game': {
+        'in': ("The model: an .obj (its .mtl and picture beside it), a .glb or a .gltf. One picture for the whole model.",
+               "El modelo: un .obj (con su .mtl y su imagen al lado), un .glb o un .gltf. Una sola imagen para todo el modelo."),
+        'out': ("Folder for the game bundle (art and data laid out as the game's).",
+                "Carpeta del paquete del juego (art y data con la estructura del juego)."),
+        'up': ("The file's vertical axis: y for OBJ and glTF as most programs write them, z for an OBJ written Z up.",
+               "El eje vertical del archivo: y para OBJ y glTF como los escriben casi todos los programas, z para un OBJ escrito con Z arriba."),
+        'turn': ("Degrees round the vertical, to face the model the way the game shows buildings.",
+                 "Grados alrededor de la vertical, para orientar el modelo como el juego muestra los edificios."),
+        'flat': ("Every face flat-shaded, ignoring the file's normals and smoothing groups.",
+                 "Todas las caras con sombreado plano, sin las normales ni los grupos de suavizado del archivo."),
+        'texture_png': ("A PNG in place of the model's own picture (a JPEG one must be given here as PNG).",
+                        "Un PNG en lugar de la imagen del modelo (una JPEG debe darse aquí como PNG)."),
+        'kind': ("BUILDING: construction stages, rubble, placement. PROP: a map object, one Idle anim.",
+                 "BUILDING: fases de construcción, escombros, colocación. PROP: un objeto del mapa, una animación Idle."),
+        'prefix': ("The mod's own folder under art; default mod.", "La carpeta propia del mod dentro de art; por defecto mod."),
+        'display': ("The name the game shows; default the name.", "El nombre que muestra el juego; por defecto el nombre."),
+        'folder': ("The art folder it goes under; default buildings (objects for a prop).",
+                   "La carpeta de arte donde va; por defecto buildings (objects para un objeto)."),
+        'texture': ("DXT3 keeps the alpha (player colour); DXT1 has none; BGRA is uncompressed.",
+                    "DXT3 conserva el alfa (color del jugador); DXT1 no tiene; BGRA va sin comprimir."),
+        'no_icons': ("Writes no icon and no portrait.", "No escribe icono ni retrato."),
+        'check_only': ("Prints the checks and writes nothing.", "Muestra las comprobaciones y no escribe nada."),
+    },
     'ai_sweep': {
         'presets': (
             "Comma-separated presets to repaint. Empty: COLONIAL_HOUSE, COLONIAL_TRADING_HOUSE, TIMBER_HOUSE, TIMBER_INN and WHITE_HOUSE.",
