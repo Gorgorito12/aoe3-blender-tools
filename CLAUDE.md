@@ -62,6 +62,11 @@ venv/bin/python -I tests/test_studio.py                # the studio: API, safety
 venv/bin/python -I tests/test_studio_ui.py             # every screen in a headless browser, both languages (Node 22+)
 venv/bin/python scripts/check.py --preset WHITE_HOUSE  # the add-on's game-ready checks, headless (--params, --json)
 python -I tools/build_app.py --zip                     # the studio as a program (a Python with pyinstaller and numpy)
+python -I tests/test_hc_survey.py                 # home-city inventory and move plan, plain Python
+python -I tests/test_hc_move.py                   # the move itself: stage, edits, install and undo
+python -I tools/hc_survey.py --game <copy> --out <dir outside repo> --target "<Mod>\homecity" [--plan <civ>]
+venv/bin/python -I tests/test_reencode_textures.py   # texture re-encoding: rules, chain, carried blocks
+venv/bin/python -I tools/reencode_textures.py run --in <list or folder> --out <dir> --tad <tad.json> [--sheets <dir>]
 ```
 
 On Windows the venv interpreter is `venv/Scripts/python`. `-X utf8` matters: the mod's
