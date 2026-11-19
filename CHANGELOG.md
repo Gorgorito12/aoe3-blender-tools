@@ -6,6 +6,11 @@ three together).
 
 ## Unreleased
 
+- `aoe3game/gr2_skin.py`: a unit's skeleton with its rotations followed (every bone's local, world
+  and bind frame), four bones and weights a vertex, skinning to a pose. The model reader places
+  the bones with it (they were placed by their positions alone). Measured: a unit's rest pose is
+  its bind pose in 96.9 % of the skinned models (`docs/game-formats.md` said otherwise).
+
 - **Your own model** (`scripts/mesh_to_game.py`, a studio screen and form): a static `.obj`, `.glb`
   or `.gltf` as a game building or prop without Blender: read (`core/objio.py`, `core/glbio.py`),
   sized in metres or game units, set on the ground, checked, seen in 3D beside a person, exported

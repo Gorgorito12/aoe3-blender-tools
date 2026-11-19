@@ -75,8 +75,15 @@ trust that declaration. The writer uses the stock basis, so no conversion is inv
 transform, local = translate(Position) x rotate(Orientation, a quaternion x y z w) x ScaleShear (a
 3 x 3, used only when bit 4 of the transform's flags is set; bit 1 position, bit 2 orientation). The
 stored InverseWorldTransform is the inverse of that frame in row-vector form (translation in the
-last row): their product is the identity to 1e-6 on stock and mod buildings. On skinned units it is
-the bind pose instead and does not match the rest pose.
+last row): their product is the identity to 1e-6 on stock and mod buildings. **Units too**
+(**measured** 2026-11-19, correcting an earlier note that said otherwise, which had not followed
+the parents' rotations): with the rotations followed, a skinned unit's rest pose is its bind pose
+to 1e-3 in 313 of 323 skinned models drawn at random from a Wars of Liberty copy (96.9 %; 125 of
+129 in a second draw). `aoe3game/gr2_skin.py` composes the frames and says per skeleton whether it
+holds (`matches`); a vertex has up to four bones (`BoneIndices`, `BoneWeights` as bytes adding up
+to 255; the packed stream two), and the game's animations find their bones by name. Skinning a
+unit at its rest pose (world x inverse bind, weighted) gives its stored vertices back (2e-7 on the
+Musketeer).
 
 - Stock buildings: the impact bones (`boneimpactNN`) and attach bones have world axes of length 1;
   some helper bones are 0.918, and across all stock models helper bones from 0.24 to 4 are common.

@@ -1326,6 +1326,18 @@ class Inspector(unittest.TestCase):
             self.assertEqual((r["kind"], r["triangles"], r["vertices"]), ("gr2", 2, 4), r.get("error"))
             self.assertEqual(r["texture_name"], "box.ddt")           # its own texture, found beside it
             self.assertAlmostEqual(r["size"][2], 3.0, places=3)
+            self.assertIn("bone_flag_civ", [b[0] for b in r["skeleton"]])     # the bones, for the skeleton view
+            self.assertEqual(len(r["skin"]["bones"]), 4 * r["vertices"])     # four bones a vertex
+            # a unit's skin: each vertex's bones named as the skeleton's, its weights kept
+            model = {"meshes": [{"name": "m", "positions": np.zeros((2, 3)), "uvs": None, "triangles": np.zeros((0, 3)),
+                                 "bound_to": ["b", "a"], "skin_names": ["b", "a"],
+                                 "vertex_bones4": np.array([[0, 1, -1, -1], [1, -1, -1, -1]]),
+                                 "vertex_weights4": np.array([[0.75, 0.25, 0, 0], [1, 0, 0, 0]])}],
+                     "bones": [("a", -1, (0, 0, 0)), ("b", 0, (0, 0, 1))], "skeletons": [{"matches": True}]}
+            shown = inspector.mesh_of(model)
+            self.assertEqual(shown["skin"]["bones"], [1, 0, -1, -1, 0, -1, -1, -1])
+            self.assertEqual(shown["skin"]["weights"][:2], [0.75, 0.25])
+            self.assertTrue(shown["bind_matches"])
             xml = b'<?xml version="1.0" encoding="utf-8"?>\n<root>\n  <unit name="House">x</unit>\n</root>\n'
             with open(os.path.join(tmp, "a.xml.xmb"), "wb") as fh:
                 fh.write(xmbedit.wrap(xmbedit.encode(*xmbedit.from_xml(xml)), True))

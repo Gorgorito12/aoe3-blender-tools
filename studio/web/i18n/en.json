@@ -771,5 +771,11 @@
   "m.out.ph": "Empty: the work folder (models\\<name>\\game)",
   "m.go": "Export",
   "m.deploy": "Deploy to the test copy…",
-  "m.done": "Written into {out}"
+  "m.done": "Written into {out}",
+  "i.skeleton": "Skeleton",
+  "i.skin": "Skeleton and skin",
+  "i.bone.help": "Colour the vertices by this bone's weight (blue none, red all); again to clear",
+  "i.bind.ok": "Its rest pose is its bind pose: the game's animations of these bones fit it.",
+  "i.bind.no": "Its rest pose differs from its bind pose in some bone: its own animations are needed (to verify).",
+  "i.skin.help": "{n} bones move vertices (the number beside each); up to {most} bones a vertex. Choose a bone to see its weights."
 }

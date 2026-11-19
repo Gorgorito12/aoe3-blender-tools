@@ -5,6 +5,7 @@ gr2_write.static_model. Pure Python with numpy; core/gr2_import.py makes the obj
     model = read(data)
     model["meshes"][0]["positions"]     N x 3, metres, Z up, front toward -Y
     model["bones"]                      [(name, parent index, (x, y, z))], the same space
+    model["skeletons"]                  gr2_skin.skeletons: every bone's frames, in the file's axes
 
 A file says how its axes lie (ArtToolInfo: right, up, back, units per metre) and those are
 followed: x = p.right, y = -p.back, z = p.up, over the units per metre. V is stored from the top
@@ -14,13 +15,15 @@ What it reads: meshes with a plain Position, and meshes whose vertices are in th
 stream (a single one-byte member named FD; more than half of the units, see "Packed vertices"
 in docs/game-formats.md), of which it takes the positions, the UVs and the skin (two bones and
 their weights per vertex). Any other mesh is listed in `skipped` and left out. `bind` holds every
-bone's rest-pose world matrix (file axes), to place an attachment on a bone.
+bone's rest-pose world matrix (file axes), to place an attachment on a bone. A mesh's
+`vertex_bones4` / `vertex_weights4` keep up to four bones a vertex (gr2_skin.vertex_skin); a bone's
+place follows its parents' rotations (gr2_skin.skeletons).
 """
 import struct
 
 import numpy as np
 
-from . import gr2
+from . import gr2, gr2_skin
 
 STOCK_UPM = 0.615157485
 
@@ -213,17 +216,19 @@ def read(data):
         vd, tt = m.get("PrimaryVertexData"), m.get("PrimaryTopology")
         vs = vd.get("Vertices") if vd is not None else None
         pos = _column(vs, "Position", 3) if vs is not None else None
-        nor = uv = skin = None
+        nor = uv = skin = skin4 = None
         if pos is None and vs is not None and is_packed(vs):
             try:
                 pos, uv = packed(vs.raw)
                 skin = packed_skin(vs.raw)
+                skin4 = gr2_skin.vertex_skin(vs, len(pos), vs.raw)
             except gr2.Gr2Error:
                 pos = None
         elif pos is not None:
             nor = _column(vs, "Normal", 3)
             uv = _column(vs, "TextureCoordinates0", 2)
             skin = _skin_columns(vs)
+            skin4 = gr2_skin.vertex_skin(vs, len(pos))
         if pos is None or tt is None:
             skipped.append(m.get("Name"))
             continue
@@ -247,21 +252,19 @@ def read(data):
             "skin_names": names,
             "vertex_bones": skin[0] if skin is not None else np.zeros((len(pos), 2), np.int64) - (0 if names else 1),
             "vertex_weights": skin[1] if skin is not None else np.tile(np.array([[1.0, 0.0]], np.float32), (len(pos), 1)),
+            "vertex_bones4": skin4[0] if skin4 is not None else np.pad(np.zeros((len(pos), 1), np.int64) - (0 if names else 1), ((0, 0), (0, 3)), constant_values=-1),
+            "vertex_weights4": skin4[1] if skin4 is not None else np.tile(np.array([[1.0, 0.0, 0.0, 0.0]], np.float32), (len(pos), 1)),
             "file_positions": np.asarray(pos, np.float32).reshape(-1, 3),
         })
     bones = []
-    for sk in root.get("Skeletons") or []:
-        rows = [b for b in ((sk.get("Bones") if sk else None) or [])]
-        world = []
-        for b in rows:
-            local = np.array(b.get("Transform")["position"], np.float32)
-            parent = b.get("ParentIndex")
-            at = local + (world[parent] if 0 <= parent < len(world) else 0.0)   # rotations are not followed
-            world.append(at)
-            bones.append((b.get("Name"), int(parent), tuple(float(v) for v in to_blender(at, right, up, back, upm)[0])))
+    skels = gr2_skin.skeletons(root)
+    for sk in skels:
+        for b in sk["bones"]:                            # the world frame, rotations followed
+            at = b["world"][:3, 3]
+            bones.append((b["name"], b["parent"], tuple(float(v) for v in to_blender(at, right, up, back, upm)[0])))
     return {"meshes": meshes, "bones": bones, "skipped": skipped, "units_per_meter": upm,
             "textures": [t.get("FromFileName") if t is not None else None for t in textures],
-            "basis": (right, up, back, upm), "bind": bind_matrices(root)}
+            "basis": (right, up, back, upm), "bind": bind_matrices(root), "skeletons": skels}
 
 
 def _to_blender_matrix(basis):

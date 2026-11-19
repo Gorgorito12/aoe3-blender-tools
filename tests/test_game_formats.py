@@ -710,6 +710,63 @@ class FilesDeploy(unittest.TestCase):
                 d.add_files(src, log=lambda s: None)                                           # only data and art
 
 
+@unittest.skipIf(np is None, "needs numpy")
+class Skin(unittest.TestCase):
+    """aoe3game/gr2_skin.py on a skeleton made here: a root turned a quarter round Z and moved, an
+    arm along its X; the bind pose stored as the game stores it (the inverse world, row vectors)."""
+
+    @staticmethod
+    def skeleton(break_bind=False):
+        from aoe3game import gr2_skin
+        q = (0.0, 0.0, 0.7071067811865476, 0.7071067811865476)
+        bones = [{"Name": "root", "ParentIndex": -1,
+                  "Transform": {"flags": 3, "position": (0.0, 0.0, 2.0), "orientation": q, "scale_shear": (1, 0, 0, 0, 1, 0, 0, 0, 1)}},
+                 {"Name": "arm", "ParentIndex": 0,
+                  "Transform": {"flags": 5, "position": (1.0, 0.0, 0.0), "orientation": (0, 0, 0, 1), "scale_shear": (2, 0, 0, 0, 2, 0, 0, 0, 2)}}]
+        world = [gr2_skin.local_matrix(bones[0]["Transform"])]
+        world.append(world[0] @ gr2_skin.local_matrix(bones[1]["Transform"]))
+        for b, w in zip(bones, world):
+            b["InverseWorldTransform"] = list(np.linalg.inv(w).T.ravel())
+        if break_bind:
+            bones[1]["InverseWorldTransform"] = list(np.eye(4).ravel())
+        return {"Skeletons": [{"Name": "test", "Bones": bones}]}
+
+    def test_the_world_frame_follows_the_parents_rotation_and_matches_the_bind_pose(self):
+        from aoe3game import gr2_skin
+        sk = gr2_skin.skeletons(self.skeleton())[0]
+        self.assertTrue(sk["matches"])
+        arm = sk["bones"][1]
+        np.testing.assert_allclose(arm["world"][:3, 3], [0, 1, 2], atol=1e-9)     # (1,0,0) turned to (0,1,0)
+        np.testing.assert_allclose(np.linalg.norm(arm["world"][:3, 0]), 2)         # its scale kept
+        np.testing.assert_allclose(arm["bind"], arm["world"], atol=1e-9)
+        self.assertFalse(gr2_skin.skeletons(self.skeleton(break_bind=True))[0]["matches"])
+
+    def test_four_weights_heaviest_first_and_the_rest_pose_moves_nothing(self):
+        from aoe3game import gr2_skin
+        vs = [{"Position": (0.0, 1.0, 2.0), "BoneIndices": (0, 1, 0, 0), "BoneWeights": (64, 191, 0, 0)},
+              {"Position": (0.0, 2.0, 2.0), "BoneIndices": (1, 0, 0, 0), "BoneWeights": (255, 0, 0, 0)}]
+        bones, weights = gr2_skin.vertex_skin(vs, 2)
+        np.testing.assert_array_equal(bones, [[1, 0, -1, -1], [1, -1, -1, -1]])
+        np.testing.assert_allclose(weights[0], [191 / 255, 64 / 255, 0, 0], atol=1e-6)
+        sk = gr2_skin.skeletons(self.skeleton())[0]
+        p = np.array([v["Position"] for v in vs])
+        np.testing.assert_allclose(gr2_skin.deform(p, bones, weights, ["root", "arm"], sk), p, atol=1e-9)
+        # the arm turned a half round its own Z: the vertex bound to it alone swings through the root
+        arm = sk["bones"][1]
+        half = arm["world"] @ np.diag([-1.0, -1.0, 1.0, 1.0])
+        moved = gr2_skin.deform(p, bones, weights, ["root", "arm"], sk, {"arm": half})
+        np.testing.assert_allclose(moved[1], [0, 0, 2], atol=1e-9)
+        self.assertIsNone(gr2_skin.vertex_skin([{"Position": (0, 0, 0)}], 1))
+
+    def test_a_frame_in_blenders_axes(self):
+        from aoe3game import gr2_skin
+        m = np.eye(4)
+        m[:3, 3] = (-0.615157485, 0, 0)          # one metre along the stock right axis (-x)
+        b = gr2_skin.to_blender_frame(m, (-1, 0, 0), (0, 1, 0), (0, 0, 1), 0.615157485)
+        np.testing.assert_allclose(b[:3, 3], [1, 0, 0], atol=1e-9)
+        np.testing.assert_allclose(b[:3, :3], np.eye(3), atol=1e-9)
+
+
 class PropSet(unittest.TestCase):
     """One unit, many models on one texture: the Variation layout of the stock colony props."""
 

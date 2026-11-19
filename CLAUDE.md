@@ -109,7 +109,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   split) bring a modder's own static model to the same bundle (`scripts/mesh_to_game.py`).
 - `aoe3_blender_tools/aoe3game/`: the game formats, pure Python, never importing `core` or bpy
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
-  (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_types.py`
+  (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_skin.py` (a
+  unit's skeleton with rotations followed, four weights a vertex, skinning to a pose), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
   portrait framing; numpy), `animxml.py`, `precomp.py` (an animation's tag file,
