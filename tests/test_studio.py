@@ -926,6 +926,15 @@ class Forms(unittest.TestCase):
             cmd, *_ = catalog.command(st, "make_stat_icon", {"glyph": "eye", "style": "bold"})   # as the page sends it
             self.assertEqual(cmd[cmd.index("--style") + 1], "bold")
             self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_stat_icon", "stat_icon.ddt"))
+            # the helper is built where the compression form looks for it by default
+            cmd, *_ = catalog.command(st, "recompress_helper", {})
+            built = os.path.join(tmp, "recompress_helper", "granny_recompress.exe")
+            self.assertEqual(cmd[-2:], ["--build-helper", built])
+            cmd, *_ = catalog.command(st, "recompress_models", {"input": "fixed", "granny_install": "game",
+                                                                "format": "oodle1"})
+            self.assertEqual(cmd[cmd.index("--helper") + 1], built)
+            self.assertEqual(cmd[cmd.index("-o") + 1], os.path.join(tmp, "recompress_models"))
+            self.assertEqual(cmd[cmd.index("--granny-install") + 1], "game")
             for tid in ("make_rings", "make_icons", "generate"):
                 cmd, *_ = catalog.command(st, tid, {})
                 self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, tid), tid)

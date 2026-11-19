@@ -794,6 +794,58 @@ TOOLS = [
           Arg("workers", "--workers", "int", L("Workers", "Procesos")),
           Arg("work", "--work", "folder", L("Work folder", "Carpeta de trabajo"))],
          needs=("granny", "test_copy"), writes="copy", trial=[], commit=["--install"], minutes=5),
+    Tool("recompress_models", "tools/recompress_models.py", "art",
+         L("Compress models again", "Volver a comprimir modelos"),
+         L("Compresses Granny models a tool wrote uncompressed (a bone scale fix, an own texture, a rebake) through "
+           "the game's own granny2.dll, so they ship at the originals' size. Every result is checked; nothing is "
+           "written over an input.",
+           "Comprime de nuevo, con el granny2.dll del propio juego, los modelos Granny que una herramienta escribió "
+           "sin comprimir (escala de huesos, textura propia, un rebake), para que ocupen lo que los originales. Cada "
+           "resultado se comprueba; nunca se escribe sobre una entrada."),
+         [Arg("input", None, "folder", L("Models", "Modelos"),
+              L("A folder: every .gr2 below it is compressed, at the same relative path below the output.",
+                "Una carpeta: se comprime cada .gr2 que contenga, en la misma ruta relativa bajo la salida."),
+              required=True),
+          out_dir(flag="-o", help=L("Where the compressed models go. Empty: a folder in the work folder. Never an "
+                                    "input folder or a Steam library.",
+                                    "Dónde van los modelos comprimidos. Vacío: una carpeta en la de trabajo. Nunca "
+                                    "una carpeta de entrada ni una biblioteca de Steam.")),
+          Arg("granny_install", "--granny-install", "folder", L("Game folder (for granny2.dll)",
+                                                                "Carpeta del juego (para granny2.dll)"),
+              L("Its granny2.dll is used, never copied or changed.",
+                "Se usa su granny2.dll, que nunca se copia ni se modifica."), required=True, setting="game"),
+          Arg("like", "--like", "folder", L("Originals (same relative paths)", "Originales (mismas rutas relativas)"),
+              L("Each section is stored as the original stores it (a section it keeps uncompressed stays so). "
+                "Empty: every section in the chosen format.",
+                "Cada sección se guarda como la guarda el original (la que deja sin comprimir, sigue así). Vacío: "
+                "todas las secciones en el formato elegido.")),
+          Arg("format", "--format", "choice", L("Format", "Formato"),
+              L("oodle1 is the format of almost every model of the game; none writes them uncompressed.",
+                "oodle1 es el formato de casi todos los modelos del juego; none los escribe sin comprimir."),
+              choices=("oodle1", "oodle0", "none"), default="oodle1"),
+          Arg("helper", "--helper", "file", L("Helper program", "Programa auxiliar"),
+              L("granny_recompress.exe, built by \"Build the recompression helper\". Empty: the one built there.",
+                "granny_recompress.exe, hecho con \"Construir el auxiliar de recompresión\". Vacío: el que se "
+                "construyó ahí."),
+              filters=(("Program", "*.exe"),), work=os.path.join("..", "recompress_helper", "granny_recompress.exe")),
+          Arg("workers", "--workers", "int", L("Workers", "Procesos"),
+              L("Models compressed at once. Default: half the processors.",
+                "Modelos que se comprimen a la vez. Por defecto: la mitad de los procesadores.")),
+          Arg("verbose", "-v", "bool", L("One line per model", "Una línea por modelo"),
+              L("Lists every model with its sizes, not only the totals.",
+                "Lista cada modelo con sus tamaños, no solo los totales."))],
+         needs=("game",), outputs=("out",), minutes=3),
+    Tool("recompress_helper", "tools/recompress_models.py", "art",
+         L("Build the recompression helper", "Construir el auxiliar de recompresión"),
+         L("Compiles the small 32-bit program that hosts the game's granny2.dll (tools/granny_recompress.c), with "
+           "Visual Studio's C++ tools or zig. Needed once, before compressing models again.",
+           "Compila el pequeño programa de 32 bits que carga el granny2.dll del juego (tools/granny_recompress.c), "
+           "con las herramientas C++ de Visual Studio o con zig. Hace falta una vez, antes de volver a comprimir."),
+         [Arg("out", None, "save", L("Program to write", "Programa a escribir"),
+              L("Empty: granny_recompress.exe in the work folder, where the compression form looks for it.",
+                "Vacío: granny_recompress.exe en la carpeta de trabajo, donde lo busca el formulario de compresión."),
+              filters=(("Program", "*.exe"),), work="granny_recompress.exe")],
+         fixed=["--build-helper"], outputs=("out",)),
     Tool("uncompress_check", "tools/uncompress_models.py", "art",
          L("Check the uncompressed models", "Comprobar los modelos sin comprimir"),
          L("Reads the manifest back: every copy present and unchanged.",
@@ -1022,7 +1074,7 @@ def command(st, tool_id, values, apply=False):
     values = dict(values)
     for a in tool.args:                     # an output the form left empty: in the work folder
         if a.work is not None and not values.get(a.key):
-            values[a.key] = os.path.join(st.work_dir(tool.id), a.work) if a.work else st.work_dir(tool.id)
+            values[a.key] = os.path.normpath(os.path.join(st.work_dir(tool.id), a.work)) if a.work else st.work_dir(tool.id)
     pos, flags, rest = build_args(tool, values)
     args = tool.fixed + pos + flags
     trial = None
