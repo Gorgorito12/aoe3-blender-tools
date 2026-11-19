@@ -57,6 +57,8 @@ python -I tools/game_deploy.py --install <test copy> --files <folder laid out as
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
 python -I tools/recompress_models.py <folder> -o <out> --granny-install <game> [--like <originals>]   # --build-helper once
 python -I tests/test_recompress_models.py         # recompression with a fake runtime, plain Python
+python -I tools/gr2_check.py <model.gr2|folder> --granny-install <game> --rewrite   # the game's runtime as the judge
+python -I tests/test_gr2_edit.py                  # a model's whole tree written again; the runtime check (fake)
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
 python -I tests/test_named_models.py              # model_sheets --models lists: protos to models, plain Python
@@ -110,7 +112,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 - `aoe3_blender_tools/aoe3game/`: the game formats, pure Python, never importing `core` or bpy
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_skin.py` (a
-  unit's skeleton with rotations followed, four weights a vertex, skinning to a pose), `gr2_types.py`
+  unit's skeleton with rotations followed, four weights a vertex, skinning to a pose), `gr2_edit.py`
+  (a model's whole tree copied and written again: the start of a transplant), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
   portrait framing; numpy), `animxml.py`, `precomp.py` (an animation's tag file,
@@ -273,6 +276,7 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   quartile of the mod's grain and saturation). Refit after changing an African painting, and keep
   the flat roofs smoother than the walls (`tests/test_african_skin.py`).
 - `aoe3game/gr2_mesh.py` and `core/gr2_import.py` (Import a Game Model) read an uncompressed
-  model back; `core/resolution.py` is the one place a round body's segments are decided;
+  model back (a unit with its Armature and vertex groups, `aoe3game/gr2_skin.py`); `AOE3_ONLY=<part of a
+  test's name>` runs only those tests of `tests/run_tests.py`; `core/resolution.py` is the one place a round body's segments are decided;
   `core/texmaker.py`, `core/texlib.py`, `core/meshtex.py` are the texture maker, its library and
   the repaint of a mesh the generator did not make.

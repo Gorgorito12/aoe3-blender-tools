@@ -865,6 +865,74 @@ def a_game_model_is_imported_and_exports_again():
 
 
 @test
+def a_skinned_unit_comes_in_with_its_armature_and_poses_as_the_game_does():
+    """A unit made here (a root turned a quarter round, an arm along it; one vertex on each bone,
+    one shared) imported with an Armature: its bones where gr2_skin puts them, a vertex group per
+    bone, the rest pose leaving the mesh alone, the arm's pose moving only what it weighs. Then the
+    Musketeer of a Wars of Liberty copy, when this PC's model cache holds it."""
+    import numpy as np
+    from aoe3_blender_tools.aoe3game import gr2_skin
+    from aoe3_blender_tools.core import gr2_import
+    q = (0.0, 0.0, 0.7071067811865476, 0.7071067811865476)
+    t_root = {"flags": 3, "position": (0.0, 0.0, 2.0), "orientation": q, "scale_shear": (1, 0, 0, 0, 1, 0, 0, 0, 1)}
+    t_arm = {"flags": 1, "position": (1.0, 0.0, 0.0), "orientation": (0, 0, 0, 1), "scale_shear": (1, 0, 0, 0, 1, 0, 0, 0, 1)}
+    w_root = gr2_skin.local_matrix(t_root)
+    w_arm = w_root @ gr2_skin.local_matrix(t_arm)
+    skel = {"name": "s", "matches": True, "bones": [
+        {"name": "root", "parent": -1, "world": w_root, "bind": w_root},
+        {"name": "arm", "parent": 0, "world": w_arm, "bind": w_arm}]}
+    basis = ((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), 1.0)      # the file in Blender's own axes
+    pos = np.array([[0.0, 0.0, 2.0], [0.0, 1.0, 2.0], [0.0, 2.0, 2.0]])
+    model = {"meshes": [{"name": "body", "positions": pos, "uvs": np.zeros((3, 2)), "triangles": np.array([[0, 1, 2]]),
+                         "skin_names": ["root", "arm"], "bound_to": ["root", "arm"],
+                         "vertex_bones4": np.array([[0, -1, -1, -1], [0, 1, -1, -1], [1, -1, -1, -1]]),
+                         "vertex_weights4": np.array([[1.0, 0, 0, 0], [0.5, 0.5, 0, 0], [1.0, 0, 0, 0]])}],
+             "bones": [("root", -1, (0, 0, 2)), ("arm", 0, (0, 1, 2))], "skeletons": [skel], "basis": basis}
+    obj = gr2_import.create(model, "UnitTest")
+    rig = obj.parent
+    assert rig is not None and rig.type == "ARMATURE" and obj.get("aoe3_skinned")
+    assert [b.name for b in rig.data.bones] == ["root", "arm"]
+    assert abs(rig.data.bones["arm"].head_local.y - 1.0) < 1e-5 and abs(rig.data.bones["arm"].head_local.z - 2.0) < 1e-5
+    assert sorted(g.name for g in obj.vertex_groups) == ["arm", "root"]
+    assert rig.get("aoe3_bind_matches") is True
+
+    def evaluated():
+        deps = bpy.context.evaluated_depsgraph_get()
+        ev = obj.evaluated_get(deps)
+        return np.array([tuple(v.co) for v in ev.data.vertices])
+    assert np.abs(evaluated() - pos).max() < 1e-5                        # the rest pose moves nothing
+    pb = rig.pose.bones["arm"]
+    pb.rotation_mode = "XYZ"
+    pb.rotation_euler = (1.5707963, 0.0, 0.0)                          # round its X: the tip swings
+    bpy.context.view_layer.update()
+    moved = np.linalg.norm(evaluated() - pos, axis=1)
+    assert moved[0] < 1e-5 and moved[2] > 1e-3, moved                  # the root's vertex stays, the arm's moves
+    pb.rotation_euler = (0.0, 0.0, 0.0)
+    bpy.context.view_layer.update()
+
+    cached = r"C:\aoe3bt-cache\all\raw\024b3e166018bb2abc47f5b37132cb01.gr2"
+    if os.path.isfile(cached):                                         # this PC: the Musketeer
+        unit = gr2_import.load(cached, "Musketeer")
+        rig = unit.parent
+        assert rig.type == "ARMATURE" and len(rig.data.bones) == 27 and rig.get("aoe3_bind_matches") is True
+        assert len(unit.vertex_groups) == 19
+        deps = bpy.context.evaluated_depsgraph_get()
+        rest = np.array([tuple(v.co) for v in unit.evaluated_get(deps).data.vertices])
+        stored = np.array([tuple(v.co) for v in unit.data.vertices])
+        assert np.abs(rest - stored).max() < 1e-4
+        head = rig.pose.bones["Bip01 Head"]
+        head.rotation_mode = "XYZ"
+        head.rotation_euler = (0.0, 0.0, 1.2)
+        bpy.context.view_layer.update()
+        deps = bpy.context.evaluated_depsgraph_get()
+        posed = np.array([tuple(v.co) for v in unit.evaluated_get(deps).data.vertices])
+        moved = np.linalg.norm(posed - stored, axis=1) > 1e-4
+        group = unit.vertex_groups["Bip01 Head"].index
+        on_head = np.array([any(g.group == group for g in v.groups) for v in unit.data.vertices])
+        assert moved.any() and not (moved & ~on_head).any(), (int(moved.sum()), int((moved & ~on_head).sum()))
+
+
+@test
 def three_meshes_are_packed_into_one_texture_and_exported_as_a_set():
     """Three cubes with three textures: one atlas, every UV inside it, no two boxes overlapping,
     each cube's colour found again through its new UVs; then a set bundle of three models on one
@@ -1014,9 +1082,11 @@ def main():
                   a_mesh_we_did_not_make_is_repainted_and_exported_as_a_prop,
                   the_texture_maker_makes_a_tileable_swatch_and_keeps_it,
                   a_game_model_is_imported_and_exports_again,
+                  a_skinned_unit_comes_in_with_its_armature_and_poses_as_the_game_does,
                   three_meshes_are_packed_into_one_texture_and_exported_as_a_set,
                   a_settlement_is_composed_moved_and_written_as_a_grouping):
-            t()
+            if os.environ.get("AOE3_ONLY", "") in t.__name__:      # AOE3_ONLY=<part of a name>: those alone
+                t()
     finally:
         addon.unregister()
     print(f"\n{'FAILED: ' + ', '.join(FAILED) if FAILED else 'all tests passed'}")

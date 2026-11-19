@@ -293,6 +293,28 @@ texture path) that should ship at the size of the original.
 - Tests: `python -I tests/test_recompress_models.py` (synthetic models, a fake runtime with zlib in
   place of Oodle).
 
+### A whole model written again (`aoe3game/gr2_edit.py`)
+
+The start of a unit transplant: a model's whole tree (skeleton, materials, meshes, everything)
+copied into the writer's terms with every type as the file declares it, then written again.
+**Measured** (2026-11-19) on the 16,294 uncompressed models of a Wars of Liberty copy's cache
+(15,030 of version 6, 1,264 of version 7): every one written again has a valid CRC and the same
+`gr2.dump_tree` as the original. Two things it needed: an object reached from two places stays
+one object; and some `ExtendedData` types name two members alike (a material's
+`ESEffectName`), so the writer takes a value by member index where a name repeats (24 files
+failed or differed before).
+
+**The game's runtime as the judge** (`tools/gr2_check.py`, the helper's `info` verb): the game's
+granny2.dll (2.5.0.10) loads a model as the game does (`GrannyReadEntireFile`,
+`GrannyGetFileInfo`) and lists its meshes (vertices, indices, triangles, bone bindings) and
+skeletons (bones, parents); the helper finds each member by name in the runtime's own type
+tables, so nothing about the structures' layout is assumed (each export such as
+`GrannyFileInfoType` holds a pointer to its table; `GrannyGetTotalTypeSize` measures the table,
+32 bytes a record, not an object). **Measured** on 400 models of the cache: what the runtime reads
+equals what `gr2.load` reads in all 400, and each one written again reads alike in the runtime with
+a valid CRC. Whether the game draws and animates a written unit as the original is **to verify**
+in game (test T0 in `docs/game-test.md`).
+
 ## Textures (.ddt)
 
 | Offset | Content |

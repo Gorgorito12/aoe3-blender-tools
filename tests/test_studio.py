@@ -1190,6 +1190,16 @@ class Forms(unittest.TestCase):
             self.assertEqual(cmd[cmd.index("--helper") + 1], built)
             self.assertEqual(cmd[cmd.index("-o") + 1], os.path.join(tmp, "recompress_models"))
             self.assertEqual(cmd[cmd.index("--granny-install") + 1], "game")
+            # the runtime's check of a model uses that same helper, and changes nothing
+            cmd, *_ = catalog.command(st, "gr2_check", {"model": "unit.gr2", "granny_install": "game", "rewrite": True})
+            self.assertEqual(cmd[cmd.index("--helper") + 1], built)
+            self.assertIn("--rewrite", cmd)
+            self.assertEqual(catalog.BY_ID["gr2_check"].writes, "out")
+            self.assertFalse(catalog.BY_ID["gr2_check"].outputs)
+            r = subprocess.run(cmd[:cmd.index("--helper")] + ["--helper", os.path.join(tmp, "none.exe")],
+                               capture_output=True, text=True, cwd=ROOT)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("granny2.dll", r.stdout)                  # no game here: it says what it needs
             for tid in ("make_rings", "make_icons", "generate"):
                 cmd, *_ = catalog.command(st, tid, {})
                 self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, tid), tid)

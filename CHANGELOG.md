@@ -6,10 +6,18 @@ three together).
 
 ## Unreleased
 
+- `aoe3game/gr2_edit.py`: a model's whole tree copied and written again (all 16,294 models of a
+  WoL copy's cache come back with the same tree and a valid CRC), the start of a unit transplant.
+  `tools/gr2_check.py` (a form in Art utilities): the game's own granny2.dll reads a model and its
+  rewrite, beside the studio's reader (the helper's new `info` verb); alike on 400 of 400.
+
 - `aoe3game/gr2_skin.py`: a unit's skeleton with its rotations followed (every bone's local, world
   and bind frame), four bones and weights a vertex, skinning to a pose. The model reader places
   the bones with it (they were placed by their positions alone). Measured: a unit's rest pose is
   its bind pose in 96.9 % of the skinned models (`docs/game-formats.md` said otherwise).
+- Import a Game Model (Blender): a unit comes in with an Armature (its bones where the game has
+  them), a vertex group per bone with its weights and an Armature modifier, so posing a bone moves
+  the mesh as the game does; each bone keeps its frame in the file (`aoe3_frame`).
 
 - **Your own model** (`scripts/mesh_to_game.py`, a studio screen and form): a static `.obj`, `.glb`
   or `.gltf` as a game building or prop without Blender: read (`core/objio.py`, `core/glbio.py`),

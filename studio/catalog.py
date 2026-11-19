@@ -883,6 +883,41 @@ TOOLS = [
               L("Lists every model with its sizes, not only the totals.",
                 "Lista cada modelo con sus tamaños, no solo los totales."))],
          needs=("game",), outputs=("out",), minutes=3),
+    Tool("gr2_check", "tools/gr2_check.py", "art",
+         L("Check models with the game's runtime", "Comprobar modelos con el motor del juego"),
+         L("What the game's own granny2.dll reads in a model (meshes, vertices, bone bindings, skeletons), beside "
+           "what the studio reads; optionally the model written again from its own tree, which must read the same. "
+           "Writes nothing.",
+           "Lo que el granny2.dll del propio juego lee en un modelo (mallas, vértices, enlaces de huesos, esqueletos), "
+           "junto a lo que lee el estudio; si se pide, el modelo escrito de nuevo desde su propio árbol, que debe "
+           "leerse igual. No escribe nada."),
+         [Arg("model", None, "file", L("Model, or a folder of them", "Modelo, o una carpeta de ellos"),
+              L("A .gr2, or a folder: every .gr2 below it.", "Un .gr2, o una carpeta: cada .gr2 que contenga."),
+              required=True, filters=(("Granny model", "*.gr2"),)),
+          Arg("granny_install", "--granny-install", "folder", L("Game folder (for granny2.dll)",
+                                                                "Carpeta del juego (para granny2.dll)"),
+              L("Its granny2.dll is used, never copied or changed.",
+                "Se usa su granny2.dll, que nunca se copia ni se modifica."), required=True, setting="game"),
+          Arg("helper", "--helper", "file", L("Helper program", "Programa auxiliar"),
+              L("granny_recompress.exe, built by \"Build the recompression helper\". Empty: the one built there.",
+                "granny_recompress.exe, hecho con \"Construir el auxiliar de recompresión\". Vacío: el que se "
+                "construyó ahí."),
+              filters=(("Program", "*.exe"),), work=os.path.join("..", "recompress_helper", "granny_recompress.exe")),
+          Arg("rewrite", "--rewrite", "bool", L("Also write it again from its own tree", "También escribirlo de nuevo desde su árbol"),
+              L("The copy a unit transplant starts from: the runtime must read it as the original, its CRC valid.",
+                "La copia de la que parte un trasplante de unidad: el motor debe leerla como el original, con su CRC válido.")),
+          Arg("save", "--save", "save", L("Keep the rewritten copy", "Guardar la copia reescrita"),
+              L("One model only: its rewritten copy, kept when the runtime reads it alike. Save it under a folder laid "
+                "out as the copy (art/units/...) and deploy that folder for the in-game test.",
+                "Un solo modelo: su copia reescrita, guardada si el motor la lee igual. Guárdala en una carpeta con la "
+                "estructura de la copia (art/units/...) y despliega esa carpeta para la prueba en el juego."),
+              filters=(("Granny model", "*.gr2"),)),
+          Arg("limit", "--limit", "int", L("At most this many models", "Como mucho tantos modelos"),
+              L("Of a folder, the first ones by name. Empty: all.", "De una carpeta, los primeros por nombre. Vacío: todos.")),
+          Arg("verbose", "-v", "bool", L("One line per model", "Una línea por modelo"),
+              L("Every model with what the runtime read, not only those that differ.",
+                "Cada modelo con lo que leyó el motor, no solo los que difieren."))],
+         needs=("game",), minutes=2),
     Tool("hc_survey", "tools/hc_survey.py", "survey",
          L("Home-city models survey", "Estudio de los modelos de las metrópolis"),
          L("Inventories the home-city models of a game copy or a mod (basis, bone scale, stored texture names and "

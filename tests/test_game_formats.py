@@ -767,6 +767,7 @@ class Skin(unittest.TestCase):
         np.testing.assert_allclose(b[:3, :3], np.eye(3), atol=1e-9)
 
 
+@unittest.skipIf(np is None, "needs numpy")
 class PropSet(unittest.TestCase):
     """One unit, many models on one texture: the Variation layout of the stock colony props."""
 
@@ -809,6 +810,7 @@ class PropSet(unittest.TestCase):
         self.assertIn("variation", readme)
 
 
+@unittest.skipIf(np is None, "needs numpy")
 class PropBundle(unittest.TestCase):
     def _write(self, tmp, **kw):
         P, N, UV, T = box()

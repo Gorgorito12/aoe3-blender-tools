@@ -126,6 +126,27 @@ class Runtime:
                 if os.path.exists(p):
                     os.remove(p)
 
+    def info(self, data, tag):
+        """(exit status, lines) of the helper's `info`: what the runtime reads in `data` (meshes,
+        their counts and bone bindings, skeletons and their bones), as granny_recompress.c says."""
+        work = self.folder(tag)
+        path = os.path.join(work, "info.gr2")
+        env = dict(os.environ, TEMP=work, TMP=work)
+        try:
+            with open(path, "wb") as fh:
+                fh.write(data)
+            try:
+                r = subprocess.run([self.helper, self.dll, "info", "info.gr2"], cwd=work, env=env,
+                                   capture_output=True, timeout=300)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise Refused(f"the helper failed: {type(exc).__name__}") from exc
+            if r.returncode in (2, 3):
+                raise Refused(f"the helper could not run (exit {r.returncode}): build it again with --build-helper")
+            return r.returncode, r.stdout.decode("cp1252", "replace").splitlines()
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
     def crc_ok(self, data, tag):
         path = os.path.join(self.folder(tag), "crc.gr2")
         try:
