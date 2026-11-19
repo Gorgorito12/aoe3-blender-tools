@@ -43,6 +43,7 @@ python -I tests/test_game_formats.py               # game formats, plain Python 
 python -I tests/test_xmbedit.py                    # compiled XML (.xmb) and its text round trip
 venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, make_bar (about 70 s)
 venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, hard edges, outline
+venv/bin/python -I tests/test_command_icons.py     # make_command_icon: format, frame, tick and cross
 venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout file's gadgets as boxes
 python -I tests/test_uilayout.py                  # interface layouts byte for byte, fonts, string table
 python -I tests/test_unitpanel.py                 # the unit panels filled for a unit, the DLL's rows, why an item is absent
