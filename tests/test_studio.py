@@ -917,6 +917,15 @@ class Forms(unittest.TestCase):
             self.assertIn("--no-kern", cmd)
             with self.assertRaises(catalog.ToolError):
                 catalog.command(st, "extend_font", {})              # the font is needed
+            cmd, *_ = catalog.command(st, "ui_preview", {"layout": "uiunitselectionmin.xml", "text": True,
+                                                         "mark": "uhcRow", "vline": "512"})
+            self.assertEqual(cmd[cmd.index("uiunitselectionmin.xml") + 1:cmd.index("uiunitselectionmin.xml") + 3],
+                             ["--out", os.path.join(tmp, "ui_preview", "ui_preview.png")])
+            self.assertIn("--text", cmd)
+            self.assertEqual(cmd[cmd.index("--mark") + 1], "uhcRow")
+            cmd, *_ = catalog.command(st, "make_stat_icon", {"glyph": "eye", "style": "bold"})   # as the page sends it
+            self.assertEqual(cmd[cmd.index("--style") + 1], "bold")
+            self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_stat_icon", "stat_icon.ddt"))
             for tid in ("make_rings", "make_icons", "generate"):
                 cmd, *_ = catalog.command(st, tid, {})
                 self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, tid), tid)
