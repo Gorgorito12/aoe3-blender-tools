@@ -2,7 +2,7 @@
 // The game interface screen: a game copy's in-game HUD (the main screen and its panels, normal or
 // minimised) drawn as the game draws it, at a chosen screen size and culture; its gadgets as a
 // tree; the one under the mouse or chosen in the tree outlined, with everything it says.
-import { api, clear, fetchBlob, h, pick, storeGet, storeSet, t, toast } from './core.js';
+import { api, clear, confirmDialog, dialog, fetchBlob, h, pick, storeGet, storeSet, t, toast } from './core.js';
 import { ASSUMED, HudRenderer, displayText, fontAt } from './hud_render.js';
 
 const SIZES = ['1024x768', '1280x720', '1280x768', '1280x800', '1280x1024', '1366x768', '1600x900', '1680x1050', '1920x1080'];
@@ -42,6 +42,17 @@ export async function hudScreen(main, app) {
   stage.append(canvas);
   const details = h('div', { class: 'hud-details stack' });
   const status = h('span', { class: 'small muted' });
+  // editing: undo, redo, what changed, the check, save
+  const undoBtn = h('button', { type: 'button', class: 'small', text: '↶ ' + t('h.undo'), title: 'Ctrl+Z', onclick: () => undo(false) });
+  const redoBtn = h('button', { type: 'button', class: 'small', text: '↷ ' + t('h.redo'), title: 'Ctrl+Y', onclick: () => undo(true) });
+  const changesBtn = h('button', { type: 'button', class: 'small', onclick: () => showChanges() });
+  const editBar = h('div', { class: 'card row hud-bar' }, undoBtn, redoBtn, changesBtn,
+    h('button', { type: 'button', class: 'small', text: t('h.check'), onclick: () => runCheck() }),
+    h('button', { type: 'button', class: 'small primary', text: t('h.save'), onclick: () => save() }),
+    h('label', { class: 'small row' }, h('input', { type: 'checkbox', checked: storeGet('hud.original', false),
+      onchange: e => { storeSet('hud.original', e.target.checked); showOriginal = e.target.checked; redraw(); } }), t('h.original')),
+    h('span', { class: 'small muted', text: t('h.edithelp') }));
+  let showOriginal = storeGet('hud.original', false), originalRenderer = null;
   const notes = h('details', { class: 'small' }, h('summary', { text: t('h.assumed') }),
     h('ul', {}, Object.values(ASSUMED).map(s => h('li', { text: s }))));
 
@@ -58,6 +69,7 @@ export async function hudScreen(main, app) {
       h('button', { type: 'button', class: 'small', text: t('h.fit'), onclick: () => { view.fitted = false; paint(); } }),
       h('button', { type: 'button', class: 'small', text: t('h.snapshot'), onclick: () => snapshot() }),
       status),
+    editBar,
     h('div', { class: 'hud-body' },
       h('div', { class: 'card stack hud-left' }, h('div', { class: 'row' }, search), tree),
       h('div', { class: 'stack' }, stage, notes),
@@ -127,7 +139,9 @@ export async function hudScreen(main, app) {
       scene = await api('/api/hud/open', { variant: variant.value });
       images.clear();
       renderer = new HudRenderer(scene, assets);
+      originalRenderer = new HudRenderer(scene, assets);
       drawMoments();
+      drawEditBar();
       selected = hover = null;
       await loadFaces();
       view.fitted = false;
@@ -143,6 +157,71 @@ export async function hudScreen(main, app) {
     }
   }
 
+  // ---- edits: the server applies them to the files as read and answers the scene again
+  function drawEditBar() {
+    undoBtn.disabled = !scene || !scene.undo;
+    redoBtn.disabled = !scene || !scene.redo;
+    changesBtn.textContent = t('h.changes', { n: scene ? scene.changed : 0 });
+  }
+  function refresh(r, focus) {
+    const keepName = selected ? [selected.file, selected.name] : null;
+    scene = r;
+    renderer = new HudRenderer(scene, assets);
+    if (focus !== undefined && focus !== null) selected = scene.gadgets[focus] || null;
+    else if (keepName) selected = scene.gadgets.find(g => g.file === keepName[0] && g.name === keepName[1]) || null;
+    hover = null;
+    drawEditBar();
+    drawTree();
+    redraw();
+    drawDetails();
+    runSim();
+  }
+  async function op(ops, label) {
+    try {
+      const r = await api('/api/hud/op', { session: scene.session, ops, label: label || '' });
+      refresh(r, r.focus);
+    } catch (e) { toast(e.message, 'bad'); }
+  }
+  async function undo(again) {
+    try {
+      const r = await api('/api/hud/undo', { session: scene.session, redo: !!again });
+      if (r.done) refresh(r);
+    } catch (e) { toast(e.message, 'bad'); }
+  }
+  async function showChanges() {
+    const r = await api('/api/hud/changes', { session: scene.session }).catch(e => { toast(e.message, 'bad'); return null; });
+    if (!r) return;
+    const body = h('div', { class: 'stack hud-diff' }, r.changes.length ? r.changes.map(c => h('div', {},
+      h('h4', { text: c.stem }), h('pre', { class: 'log' }, c.lines.map(l => h('span', { class: l.startsWith('+') ? 'ok' : l.startsWith('-') ? 'bad' : '', text: l + String.fromCharCode(10) }))),
+      c.more ? h('p', { class: 'small muted', text: t('h.more', { n: c.more }) }) : null)) : [h('p', { text: t('h.nochanges') })]);
+    dialog(t('h.changes', { n: r.changes.length }), body, [{ value: 'ok', label: t('close') }]);
+  }
+  function findingsList(findings) {
+    return findings.length ? h('ul', { class: 'small' }, findings.map(f => h('li', { class: f.level === 'error' ? 'bad' : f.level === 'warning' ? 'warn' : 'muted' },
+      t('h.f.' + f.code, f) + (f.stem ? ` (${f.stem})` : '')))) : h('p', { class: 'ok', text: t('h.f.none') });
+  }
+  async function runCheck() {
+    const r = await api('/api/hud/check', { session: scene.session, width: dims()[0] }).catch(e => { toast(e.message, 'bad'); return null; });
+    if (r) dialog(t('h.check'), findingsList(r.findings), [{ value: 'ok', label: t('close') }]);
+  }
+  async function save(force) {
+    const name = storeGet('hud.project', 'interface');
+    try {
+      const r = await api('/api/hud/save', { session: scene.session, name, width: dims()[0], force: !!force });
+      if (r.refused) {
+        const go = await confirmDialog(t('h.save'), t('h.saverefused'), t('h.saveanyway'));
+        if (go) save(true);
+        return;
+      }
+      const body = h('div', { class: 'stack small' },
+        r.written.length ? h('p', { text: t('h.saved', { path: r.folder }) }) : h('p', { text: t('h.nochanges') }),
+        h('ul', {}, r.written.map(w => h('li', { class: 'mono', text: `${w.path}  ← ${w.from}` }))),
+        r.findings.length ? h('h4', { text: t('h.check') }) : null, r.findings.length ? findingsList(r.findings) : null);
+      dialog(t('h.save'), body, [{ value: 'open', label: t('open.folder') }, { value: 'ok', label: t('close') }])
+        .then(v => { if (v === 'open' && r.folder) api('/api/open', { path: r.folder }).catch(() => {}); });
+    } catch (e) { toast(e.message, 'bad'); }
+  }
+
   // ---- drawing: the frame at the screen's pixels, then shown zoomed in the stage
   let pending = 0;
   function redrawSoon() { if (!pending) pending = requestAnimationFrame(() => { pending = 0; redraw(); }); }
@@ -151,7 +230,7 @@ export async function hudScreen(main, app) {
     const [w, hh] = dims();
     frame = frame || document.createElement('canvas');
     frame.width = w; frame.height = hh;
-    const r = renderer.draw(frame.getContext('2d'), w, hh, opts());
+    const r = (showOriginal && originalRenderer ? originalRenderer : renderer).draw(frame.getContext('2d'), w, hh, opts());
     list = r.list;
     const loading = [...images.values()].filter(v => v === undefined).length;
     status.textContent = t('h.status', { n: list.length, files: scene.files.length })
@@ -190,28 +269,109 @@ export async function hudScreen(main, app) {
     };
     if (outlines.checked) for (const [g] of list) box(g, 'rgba(120,200,255,0.35)', 1);
     if (hover && hover !== selected) box(hover, 'rgba(255,255,255,0.8)', 1);
-    if (selected) box(selected, '#ffcc33', 2);
+    if (selected) {
+      box(selected, '#ffcc33', 2);
+      const b = list.find(e => e[0] === selected);
+      if (b && !showOriginal) {
+        const [, x, y, w, hh] = b;
+        const sx = view.x + x * view.zoom, sy = view.y + y * view.zoom, sw = w * view.zoom, sh = hh * view.zoom;
+        ctx.fillStyle = '#ffcc33';
+        for (const [hx, hy] of [[sx, sy], [sx + sw, sy], [sx, sy + sh], [sx + sw, sy + sh]]) ctx.fillRect(hx - 4, hy - 4, 8, 8);
+        if (edit && (edit.dx || edit.dy)) {
+          const [w0, h0] = dims();
+          const kx = w0 / 1024 * view.zoom, ky = h0 / 768 * view.zoom;
+          let [gx, gy, gw, gh] = [sx, sy, sw, sh];
+          if (edit.mode === 'move') { gx += edit.dx * kx; gy += edit.dy * ky; }
+          else {
+            if (edit.handle.includes('w')) { gx += edit.dx * kx; gw -= edit.dx * kx; } else gw += edit.dx * kx;
+            if (edit.handle.includes('n')) { gy += edit.dy * ky; gh -= edit.dy * ky; } else gh += edit.dy * ky;
+          }
+          ctx.setLineDash([5, 4]); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+          ctx.strokeRect(gx, gy, gw, gh); ctx.setLineDash([]);
+          ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(gx, gy - 18, 120, 16);
+          ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif';
+          ctx.fillText(edit.mode === 'move' ? `Δ ${edit.dx}, ${edit.dy}` : `${edit.handle} ${edit.dx}, ${edit.dy}`, gx + 4, gy - 6);
+        }
+      }
+    }
   }
   const resizer = new ResizeObserver(() => { view.fitted = false; paint(); });
   resizer.observe(stage);
   app.onLeave(() => resizer.disconnect());
 
   const toFrame = e => { const b = canvas.getBoundingClientRect(); return [(e.clientX - b.left - view.x) / view.zoom, (e.clientY - b.top - view.y) / view.zoom]; };
-  let drag = null;
+  // the screen pixels of a frame point, and the layout units of a frame distance
+  const units = () => { const [w, hh] = dims(); return [1024 / w, 768 / hh]; };
+  const selBox = () => (selected ? list.find(e => e[0] === selected) : null);
+  function handleAt(fx, fy) {
+    const b = selBox();
+    if (!b) return null;
+    const [, x, y, w, hh] = b;
+    const r = 6 / view.zoom;
+    for (const [name, hx, hy] of [['nw', x, y], ['ne', x + w, y], ['sw', x, y + hh], ['se', x + w, y + hh]]) {
+      if (Math.abs(fx - hx) <= r && Math.abs(fy - hy) <= r) return name;
+    }
+    return null;
+  }
+  let drag = null, edit = null;
   canvas.addEventListener('pointermove', e => {
     if (drag) { view.x = drag.vx + e.clientX - drag.x; view.y = drag.vy + e.clientY - drag.y; view.fitted = true; paint(); return; }
     if (!renderer) return;
     const [x, y] = toFrame(e);
+    if (edit) {
+      const [ux, uy] = units();
+      edit.dx = Math.round((x - edit.fx) * ux);
+      edit.dy = Math.round((y - edit.fy) * uy);
+      paint();
+      return;
+    }
+    const hd = handleAt(x, y);
+    canvas.style.cursor = hd ? (hd === 'nw' || hd === 'se' ? 'nwse-resize' : 'nesw-resize') : 'crosshair';
     const g = renderer.hit(list, x, y);
     if (g !== hover) { hover = g; paint(); canvas.title = g ? g.name : ''; }
   });
   canvas.addEventListener('pointerdown', e => {
-    if (e.button === 1 || e.button === 2 || e.altKey) { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y }; canvas.setPointerCapture(e.pointerId); return; }
-    if (!renderer) return;
+    if (e.button === 1 || e.button === 2) { drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y }; canvas.setPointerCapture(e.pointerId); return; }
+    if (!renderer || showOriginal) return;
     const [x, y] = toFrame(e);
-    select(renderer.hit(list, x, y));
+    const hd = handleAt(x, y);
+    if (hd) { edit = { mode: 'resize', handle: hd, fx: x, fy: y, dx: 0, dy: 0 }; canvas.setPointerCapture(e.pointerId); return; }
+    const g = renderer.hit(list, x, y);
+    if (g !== selected) select(g);
+    if (g && g.rect.length === 4) { edit = { mode: 'move', fx: x, fy: y, dx: 0, dy: 0, alone: e.altKey }; canvas.setPointerCapture(e.pointerId); }
   });
-  canvas.addEventListener('pointerup', () => { drag = null; });
+  canvas.addEventListener('pointerup', () => {
+    drag = null;
+    if (!edit) return;
+    const done = edit; edit = null;
+    if (!selected || (!done.dx && !done.dy)) { paint(); return; }
+    if (done.mode === 'move') op([{ op: 'shift', id: selected.id, dx: done.dx, dy: done.dy, children: !done.alone }], 'move');
+    else {
+      let [x1, y1, x2, y2] = selected.rect;
+      if (done.handle.includes('w')) x1 += done.dx; else x2 += done.dx;
+      if (done.handle.includes('n')) y1 += done.dy; else y2 += done.dy;
+      const r = [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
+      op([{ op: 'set', id: selected.id, attrs: { size1024: r.join(' ') } }], 'resize');
+    }
+  });
+  canvas.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(e.shiftKey); return; }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); undo(true); return; }
+    if (!selected || showOriginal) return;
+    const step = e.shiftKey ? 10 : 1;
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[e.key]) {
+      e.preventDefault();
+      op([{ op: 'shift', id: selected.id, dx: moves[e.key][0], dy: moves[e.key][1], children: !e.altKey }], 'nudge');
+    } else if (e.key === 'Delete') {
+      e.preventDefault();
+      confirmDialog(t('h.del'), t('h.delsure', { name: selected.name || selected.type }), t('h.del'))
+        .then(ok => { if (ok) op([{ op: 'del', id: selected.id }], 'del'); });
+    } else if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
+      e.preventDefault();
+      op([{ op: 'dup', id: selected.id }], 'dup');
+    }
+  });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
@@ -461,19 +621,49 @@ export async function hudScreen(main, app) {
     const [w] = dims();
     const font = g.attrs.textfont ? fontAt(scene.fonts, g.attrs.textfont, g.attrs.textfontsize || '12', w, dims()[1]) : null;
     const row = (k, v) => h('tr', {}, h('th', { text: k }), h('td', { class: 'mono', text: v }));
+    // what it is, then every attribute editable (Enter or leaving the field applies it)
+    const edit = (k, v) => {
+      const input = h('input', { type: 'text', class: 'mono', value: v,
+        onkeydown: e => { if (e.key === 'Enter') e.target.blur(); },
+        onchange: e => op([{ op: 'set', id: g.id, attrs: { [k]: e.target.value } }], `${k}`) });
+      return h('tr', {}, h('th', { text: k }), h('td', {}, h('div', { class: 'row' }, input,
+        h('button', { type: 'button', class: 'ghost small', text: '×', title: t('h.delattr'), onclick: () => op([{ op: 'set', id: g.id, attrs: { [k]: null } }], `-${k}`) }))));
+    };
+    const newKey = h('input', { type: 'text', class: 'mono', placeholder: t('h.attrname'), style: { width: '120px' } });
+    const newVal = h('input', { type: 'text', class: 'mono grow', placeholder: t('h.attrvalue') });
+    const text = h('textarea', { class: 'mono', rows: 2, value: g.text,
+      onchange: e => op([{ op: 'text', id: g.id, text: e.target.value }], 'text') });
+    const others = scene.gadgets.filter(o => o.file === g.file && o.id !== g.id);
+    const into = h('select', {}, [h('option', { value: '', text: t('h.toplevel') }),
+      ...others.slice(0, 1500).map(o => h('option', { value: o.id, selected: o.id === g.parent, text: o.name || '(' + o.type + ')' }))]);
     details.append(
+      h('div', { class: 'row hud-actions' },
+        h('button', { type: 'button', class: 'small', text: t('h.dup'), onclick: () => op([{ op: 'dup', id: g.id }], 'dup') }),
+        h('button', { type: 'button', class: 'small', text: 'hidden' in g.attrs ? t('h.show') : t('h.hide'),
+          onclick: () => op([{ op: 'set', id: g.id, attrs: { hidden: 'hidden' in g.attrs ? null : '' } }], 'hidden') }),
+        h('button', { type: 'button', class: 'small', text: t('h.addchild'), onclick: () => {
+          const [x1, y1] = g.rect.length ? g.rect : [0, 0];
+          op([{ op: 'add', parent: g.id, xml: `<gadget name="${(g.name || 'gadget')}-new" type="formatText" size1024="${x1} ${y1} ${x1 + 100} ${y1 + 16}" textfont="StatText" textfontsize="12" textcolor="255 255 255">Text</gadget>` }], 'add');
+        } }),
+        h('button', { type: 'button', class: 'small danger', text: t('h.del'), onclick: async () => {
+          if (await confirmDialog(t('h.del'), t('h.delsure', { name: g.name || g.type }), t('h.del'))) op([{ op: 'del', id: g.id }], 'del');
+        } })),
+      h('div', { class: 'row small' }, t('h.into') + ' ', into,
+        h('button', { type: 'button', class: 'small', text: t('h.move'), onclick: () => op([{ op: 'move', id: g.id, parent: into.value === '' ? null : Number(into.value), file: g.file }], 'move') })),
       h('table', { class: 'hud-props small' },
         row(t('h.type'), g.type),
-        row(t('h.file'), `${f.stem} (${f.where.split(/[\\/]/).pop()}), ${t('h.line')} ${g.line}`),
-        row('size1024', g.rect.join(' ')),
-        g.text ? row(t('h.text'), g.text) : null,
-        g.text ? row(t('h.shows'), displayText(g.text, scene.strings)) : null,
+        row(t('h.file'), `${f.stem} (${f.where.split(/[\/]/).pop()}), ${t('h.line')} ${g.line}`),
         g.attrs.textfont ? row(t('h.font'), font && !font.Fallback ? `${font.Name} → ${font.TypeFace}, ${font.AscentHeight} px`
           : t('h.nofont', { f: `${g.attrs.textfont} ${g.attrs.textfontsize || ''}` }) + (font ? ` (${font.Name}, ${Number(font.AscentHeight).toFixed(1)} px)` : '')) : null,
+        g.text ? row(t('h.shows'), displayText(g.text, scene.strings)) : null,
         g.states.length ? row(t('h.states'), g.states.join(' · ')) : null,
         g.commands.length ? row(t('h.commands'), g.commands.join(' · ')) : null),
+      h('h4', { text: t('h.text') }), text,
       h('h4', { text: t('h.attrs') }),
-      h('table', { class: 'hud-props small' }, Object.entries(g.attrs).map(([k, v]) => row(k, v))));
+      h('table', { class: 'hud-props hud-edit small' }, Object.entries(g.attrs).map(([k, v]) => edit(k, v))),
+      h('div', { class: 'row' }, newKey, newVal, h('button', { type: 'button', class: 'small', text: t('h.addattr'), onclick: () => {
+        if (newKey.value.trim()) op([{ op: 'set', id: g.id, attrs: { [newKey.value.trim()]: newVal.value } }], 'attr');
+      } })));
   }
 
   async function snapshot() {

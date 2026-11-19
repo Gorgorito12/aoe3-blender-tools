@@ -283,6 +283,21 @@ class Game:
             return self._strings
 
 
+def _num(v):
+    return str(int(v)) if abs(v - round(v)) < 1e-6 else f"{v:.2f}".rstrip("0").rstrip(".")
+
+
+def _outside(g, tolerance=4.0):
+    p = g.parent
+    if p is None or p.name_lower != "gadget":
+        return False
+    r, pr = uilayout.rect(g), uilayout.rect(p)
+    if not r or not pr:
+        return False
+    t = tolerance
+    return r[0] < pr[0] - t or r[1] < pr[1] - t or r[2] > pr[2] + t or r[3] > pr[3] + t
+
+
 def _read(path, entry):
     with open(path, "rb") as fh:
         if entry is None:
@@ -328,8 +343,10 @@ class Scene:
                 doc = uilayout.parse(data)
             except uilayout.LayoutError as e:
                 raise HudError(f"{stem}: {e}") from None
-            self.files.append({"stem": stem, "where": where, "hidden": hidden, "doc": doc,
+            # the baseline of an edit is the file as read: a compiled .xmb's XML text, not its bytes
+            self.files.append({"stem": stem, "where": where, "hidden": hidden, "doc": doc, "original": doc.data(),
                                "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)})
+        self.undo_stack, self.redo_stack = [], []
 
     def gadgets(self):
         """[(file index, element)] of every gadget, file by file in document order."""
@@ -364,7 +381,9 @@ class Scene:
                         "states": states, "line": e.line,
                         "commands": [c.own_text().strip() for c in e.elements() if c.name_lower == "command"]})
         st = self.game.strings
-        return {"variant": self.variant, "files": files, "gadgets": out,
+        changed = sum(1 for f in self.files if f["doc"].data() != f["original"])
+        return {"variant": self.variant, "files": files, "gadgets": out, "changed": changed,
+                "undo": len(self.undo_stack), "redo": len(self.redo_stack),
                 "textures": sorted(textures, key=str.lower),
                 "strings": {n: list(st[n]) for n in sorted(strings) if n in st},
                 "fonts": self.game.fonts, "faces": self.game.faces(),
@@ -461,6 +480,226 @@ class Scene:
                       "tactics": unit["tactics"] if tactics else None}
         r["keys"] = {k: v for k, v in keys.items() if k in KNOWN_KEYS}
         return r
+
+    # ---- editing: each operation changes only the pieces it is about (aoe3game/uilayout.py)
+    def _element(self, n):
+        pairs = self.gadgets()
+        if not isinstance(n, int) or not 0 <= n < len(pairs):
+            raise HudError("no such gadget")
+        return pairs[n]
+
+    def _layout_of(self, i):
+        doc = self.files[i]["doc"]
+        tops = [e for e in doc.root.elements() if e.name_lower == "layout"]
+        return tops[0] if tops else doc.root
+
+    def _texts(self):
+        return [f["doc"].text() for f in self.files]
+
+    def _restore(self, i, text):
+        f = self.files[i]
+        f["doc"] = uilayout.Doc(uilayout.parse_text(text), f["doc"].encoding, f["doc"].bom)
+
+    def apply(self, ops, label=""):
+        """Applies operations as one step that Undo takes back. Returns the id of the gadget the
+        last operation was about (after it), or None.
+
+        {"op": "set", "id", "attrs": {name: value or None}}  an attribute set or removed
+        {"op": "text", "id", "text"}                         the gadget's own text
+        {"op": "add", "parent": id or None, "file": i, "xml"}  a new gadget (None: top level of file i)
+        {"op": "dup", "id"}                                  a copy beside it, named "<name>-copy"
+        {"op": "del", "id"}                                  taken out with what it holds
+        {"op": "move", "id", "parent": id or None, "file": i}  moved under another parent
+        {"op": "shift", "id", "dx", "dy", "children": bool}  size1024 moved, with its children or alone"""
+        if not isinstance(ops, list) or not ops:
+            raise HudError("ops: a list of operations")
+        before = self._texts()
+        focus = None
+        try:
+            for op in ops:
+                focus = self._one(op)
+        except (HudError, uilayout.LayoutError, KeyError, TypeError, ValueError) as e:
+            for i, text in enumerate(before):          # all or nothing
+                if self.files[i]["doc"].text() != text:
+                    self._restore(i, text)
+            raise HudError(f"{e}") from None
+        after = self._texts()
+        changed = {i: (before[i], after[i]) for i in range(len(before)) if before[i] != after[i]}
+        if changed:
+            self.undo_stack.append({"label": label, "files": changed})
+            self.redo_stack.clear()
+            del self.undo_stack[:-200]
+        ids = {id(e): k for k, (_i, e) in enumerate(self.gadgets())}
+        return ids.get(id(focus)) if focus is not None else None
+
+    def _one(self, op):
+        kind = op.get("op")
+        if kind == "set":
+            _i, e = self._element(op.get("id"))
+            for k, v in (op.get("attrs") or {}).items():
+                if not re.match(r"^[A-Za-z_][\w.:-]*$", k):
+                    raise HudError(f"not an attribute name: {k}")
+                uilayout.set_attr(e, k, None if v is None else str(v))
+            return e
+        if kind == "text":
+            _i, e = self._element(op.get("id"))
+            uilayout.set_text(e, str(op.get("text") or ""))
+            return e
+        if kind == "shift":
+            _i, e = self._element(op.get("id"))
+            dx, dy = float(op.get("dx") or 0), float(op.get("dy") or 0)
+            targets = [e] + ([g for g in e.walk() if g.name_lower == "gadget"] if op.get("children", True) else [])
+            for g in targets:
+                r = g.get("size1024")
+                if not r:
+                    continue
+                nums = r.split()
+                try:
+                    vals = [float(v) for v in nums[:4]]
+                except ValueError:
+                    continue
+                moved = [vals[0] + dx, vals[1] + dy, vals[2] + dx, vals[3] + dy]
+                uilayout.set_attr(g, "size1024", " ".join(_num(v) for v in moved) + ("" if len(nums) <= 4 else " " + " ".join(nums[4:])))
+            return e
+        if kind == "add":
+            parent = self._element(op["parent"])[1] if op.get("parent") is not None else self._layout_of(int(op.get("file") or 0))
+            new = uilayout.insert(parent, None, str(op.get("xml") or ""))
+            return new[-1]
+        if kind == "dup":
+            _i, e = self._element(op.get("id"))
+            index = e.parent.children.index(e) + 1
+            copy = uilayout.insert(e.parent, index, e.text())[0]
+            names = {(g.get("name") or "").lower() for _f, g in self.gadgets()}
+            base = (e.get("name") or "gadget") + "-copy"
+            name, k = base, 2
+            while name.lower() in names:
+                name, k = f"{base}{k}", k + 1
+            uilayout.set_attr(copy, "name", name)
+            return copy
+        if kind == "del":
+            _i, e = self._element(op.get("id"))
+            uilayout.remove(e)
+            return None
+        if kind == "move":
+            _i, e = self._element(op.get("id"))
+            parent = self._element(op["parent"])[1] if op.get("parent") is not None else self._layout_of(int(op.get("file") or 0))
+            p = parent
+            while p is not None:
+                if p is e:
+                    raise HudError("a gadget cannot go inside itself")
+                p = p.parent
+            text = e.text()
+            uilayout.remove(e)
+            return uilayout.insert(parent, None, text)[-1]
+        raise HudError(f"unknown operation: {kind}")
+
+    def undo(self):
+        if not self.undo_stack:
+            return False
+        step = self.undo_stack.pop()
+        for i, (before, _after) in step["files"].items():
+            self._restore(int(i), before)
+        self.redo_stack.append(step)
+        return True
+
+    def redo(self):
+        if not self.redo_stack:
+            return False
+        step = self.redo_stack.pop()
+        for i, (_before, after) in step["files"].items():
+            self._restore(int(i), after)
+        self.undo_stack.append(step)
+        return True
+
+    def changes(self):
+        """[{"stem", "lines": unified diff lines}] of every file that differs from the copy's."""
+        import difflib
+        out = []
+        for f in self.files:
+            now = f["doc"].data()
+            if now == f["original"]:
+                continue
+            a = uilayout.decode(f["original"])[0].splitlines()
+            b = f["doc"].text().splitlines()
+            diff = list(difflib.unified_diff(a, b, f["stem"] + " (copy)", f["stem"] + " (edited)", n=1, lineterm=""))
+            out.append({"stem": f["stem"], "where": f["where"], "lines": diff[:400], "more": max(0, len(diff) - 400)})
+        return out
+
+    def check(self, width=1024):
+        """Findings of the edited files against the copy's own: [{"level", "code", "stem", "name",
+        ...}]. Only what the edit brought is an error or a warning; what the copy already had is
+        not repeated."""
+        engine = [re.compile(g["re"], re.I) for g in table("engine_gadgets")["gadgets"]]
+        found = []
+        for i, f in enumerate(self.files):
+            if f["doc"].data() == f["original"]:
+                continue
+            old = uilayout.parse(f["original"])
+            old_names = [(g.get("name") or "") for g in old.gadgets()]
+            new_gadgets = f["doc"].gadgets()
+            new_names = [(g.get("name") or "") for g in new_gadgets]
+            low_new = {n.lower() for n in new_names}
+            for n in set(old_names):
+                if n and any(r.search(n) for r in engine) and n.lower() not in low_new:
+                    found.append({"level": "error", "code": "engine_gone", "stem": f["stem"], "name": n})
+            counts_old = {}
+            for n in old_names:
+                counts_old[n.lower()] = counts_old.get(n.lower(), 0) + 1
+            seen = {}
+            for n in new_names:
+                seen[n.lower()] = seen.get(n.lower(), 0) + 1
+            for n, c in seen.items():
+                if n and c > 1 and c > counts_old.get(n, 0):
+                    found.append({"level": "warning", "code": "duplicate", "stem": f["stem"], "name": n})
+            old_out = {(g.get("name") or "") for g in old.gadgets() if _outside(g)}
+            for g in new_gadgets:
+                n = g.get("name") or ""
+                if _outside(g) and n not in old_out:
+                    found.append({"level": "warning", "code": "outside", "stem": f["stem"], "name": n})
+                if g.get("size1024") and uilayout.rect(g) is None:
+                    found.append({"level": "error", "code": "bad_rect", "stem": f["stem"], "name": n})
+                font = g.get("textfont")
+                if font and uifonts.lookup(self.game.fonts, font, g.get("textfontsize") or "12", width) is None:
+                    if not any((o.get("textfont") or "").lower() == font.lower() and (o.get("textfontsize") or "") == (g.get("textfontsize") or "")
+                               for o in old.gadgets()):
+                        found.append({"level": "warning", "code": "font_missing", "stem": f["stem"], "name": n,
+                                      "font": f"{font} {g.get('textfontsize') or ''}"})
+                for key in ("background", "foreground"):
+                    path = g.get(key)
+                    if path and self.texture_png(path) is None and not any(o.get(key) == path for o in old.gadgets()):
+                        found.append({"level": "warning", "code": "texture_missing", "stem": f["stem"], "name": n, "path": path})
+                for m in re.finditer(r"\$\$(\d+)\$\$", g.own_text() + (g.get("mouseovertext") or "")):
+                    if int(m.group(1)) not in self.game.strings:
+                        found.append({"level": "warning", "code": "string_missing", "stem": f["stem"], "name": n, "id": m.group(1)})
+            twin = self.game.loose.get(f"{f['stem']}.xml.xmb".lower())
+            if twin:
+                found.append({"level": "warning", "code": "xmb_twin", "stem": f["stem"], "path": twin})
+        rows, where = self.game.rows_file()
+        if rows:
+            names = {(e.get("name") or "").lower() for _i, e in self.gadgets()}
+            for r in rows["rows"]:
+                if r["gadget"].lower() not in names:
+                    found.append({"level": "info", "code": "row_without_gadget", "stem": "minuirows", "name": r["gadget"]})
+        return found
+
+    def save(self, folder):
+        """Writes the edited files into `folder` with the copy's structure (data\\<name>.xml, loose,
+        even for a file that came from an archive) and a note of what they came from."""
+        written = []
+        for f in self.files:
+            data = f["doc"].data()
+            if data == f["original"]:
+                continue
+            path = os.path.join(folder, "data", f["stem"] + ".xml")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as fh:
+                fh.write(data)
+            written.append({"path": path, "from": f["where"], "sha256_copy": f["sha256"],
+                            "sha256": hashlib.sha256(data).hexdigest()})
+        if written:
+            with open(os.path.join(folder, "hud-edits.json"), "w", encoding="utf-8") as fh:
+                json.dump({"game": self.game.folder, "variant": self.variant, "files": written}, fh, indent=1)
+        return written
 
     def texture_png(self, path):
         """(png bytes, where) of a texture, kept for the session; None when not found."""

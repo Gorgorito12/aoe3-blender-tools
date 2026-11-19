@@ -101,7 +101,19 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   the layout, its row's types, the key it needs, its type not listed by that key, a state it needs)
   and a button to see it: simulate the state, switch the key on, see the other UI. Measured against
   a capture: a Musketeer's minimised panel comes out with the capture's rows, values, colours and
-  icons. Techs, auras and a game's running values are not known offline: the values are the proto's. **Save the
+  icons. Techs, auras and a game's running values are not known offline: the values are the proto's.
+  **Editing**: drag a gadget to move it (with its children; Alt: alone), its corners to resize it,
+  arrows to nudge it (Shift: 10 units); in Properties, every attribute and the text, add or remove an
+  attribute, duplicate (Ctrl+D), hide or show, add a child, delete (Delete), put it inside another
+  gadget. Each edit is one step of Undo and Redo (Ctrl+Z, Ctrl+Y); the server applies it to the
+  tree that keeps every byte, so the rest of each file stays as it was. **Changes** shows each file's
+  difference with the copy's; **The copy's original** draws it as it was. **Check** says what the
+  edits brought, not what the copy already had: a gadget the game fills by name taken out (an
+  error), a new duplicate name, a gadget outside its parent, a rectangle that is not four numbers, a
+  font, texture or text id the copy lacks, a compiled twin beside the file, a row of the DLL whose
+  gadget is missing. **Save** writes the changed files into the work folder with the copy's layout
+  (`data\<name>.xml`, loose even when it came from an archive) and `hud-edits.json` (where each came
+  from, its hashes); it asks first when the check found an error. **Save the
   picture** writes it to the work folder. The files are read as a tree that keeps every byte
   (`aoe3game/uilayout.py`: the 55 interface files of a Wars of Liberty copy and the 551 compiled
   ones in its archives come back identical). Measured against a capture of the game at 1920 x 1080:

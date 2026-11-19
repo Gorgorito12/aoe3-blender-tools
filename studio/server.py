@@ -525,6 +525,46 @@ def r_hud_sim(st, rest, q, b):
         raise ApiError(str(e)) from None
 
 
+def _hud_scene(st, b):
+    return st.sessions.get(b.get("session"))
+
+
+def r_hud_op(st, rest, q, b):
+    """Edits of the interface (one step for Undo); answers the scene again and the gadget edited."""
+    h = _hud()
+    scene = _hud_scene(st, b)
+    try:
+        focus = scene.apply(b.get("ops"), b.get("label") or "")
+    except h.HudError as e:
+        raise ApiError(str(e)) from None
+    return dict(scene.public(), session=b.get("session"), focus=focus)
+
+
+def r_hud_undo(st, rest, q, b):
+    scene = _hud_scene(st, b)
+    done = scene.redo() if b.get("redo") else scene.undo()
+    return dict(scene.public(), session=b.get("session"), done=done)
+
+
+def r_hud_changes(st, rest, q, b):
+    return {"changes": _hud_scene(st, b).changes()}
+
+
+def r_hud_check(st, rest, q, b):
+    return {"findings": _hud_scene(st, b).check(int(b.get("width") or 1024))}
+
+
+def r_hud_save(st, rest, q, b):
+    """The edited layouts into the work folder (never the game's), with the check's findings."""
+    scene = _hud_scene(st, b)
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", b.get("name") or "interface").strip("._") or "interface"
+    folder = st.output(os.path.join(st.work_dir("hud"), name))
+    findings = scene.check(int(b.get("width") or 1024))
+    if any(f["level"] == "error" for f in findings) and not b.get("force"):
+        return {"written": [], "findings": findings, "refused": True}
+    return {"written": scene.save(folder), "folder": folder, "findings": findings}
+
+
 def r_hud_snapshot(st, rest, q, b):
     """The drawn HUD as a PNG in the work folder."""
     import base64
@@ -1013,6 +1053,11 @@ ROUTES = [
     ("POST", "/api/hud/refs", r_hud_refs),
     ("POST", "/api/hud/units", r_hud_units),
     ("POST", "/api/hud/sim", r_hud_sim),
+    ("POST", "/api/hud/op", r_hud_op),
+    ("POST", "/api/hud/undo", r_hud_undo),
+    ("POST", "/api/hud/changes", r_hud_changes),
+    ("POST", "/api/hud/check", r_hud_check),
+    ("POST", "/api/hud/save", r_hud_save),
     ("POST", "/api/settlement/measured", r_settlement_measured),
     ("POST", "/api/settlement/compose", r_settlement_compose),
     ("POST", "/api/settlement/open", r_settlement_open),

@@ -393,6 +393,54 @@ class Server(unittest.TestCase):
         self.assertNotIn("overheal", [a["item"] for a in s["absent"]])
         status, err = self.call("/api/hud/sim", {"session": sid, "unit": "Nobody"})
         self.assertEqual(status, 400)
+        # editing: every operation, undone back to the same bytes; the check; save into the work folder
+        def gid(scene, name):
+            return next(g["id"] for g in scene["gadgets"] if g["name"] == name)
+        status, e1 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "shift", "id": ids["titleBar"], "dx": 10, "dy": 5}]})
+        self.assertEqual(status, 200, e1)
+        self.assertEqual(next(g for g in e1["gadgets"] if g["name"] == "titleBar-age")["rect"], [20, 7, 210, 33])  # a child too
+        self.assertEqual(e1["focus"], gid(e1, "titleBar"))
+        self.assertEqual((e1["changed"], e1["undo"]), (1, 1))
+        status, e2 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "set", "id": gid(e1, "titleBar-age"), "attrs": {"textcolor": "1 2 3", "z": None}},
+            {"op": "text", "id": gid(e1, "titleBar-age"), "text": "$$102$$Other"},
+            {"op": "add", "parent": gid(e1, "titleBar"), "xml": '<gadget name="added" type="formatText" size1024="0 0 5 5"/>'},
+            {"op": "dup", "id": gid(e1, "pausePanel")}]})
+        self.assertEqual(status, 200, e2)
+        self.assertIn("pausePanel-copy", [g["name"] for g in e2["gadgets"]])
+        self.assertEqual(e2["undo"], 2)                                            # one step for the batch
+        status, e3 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "move", "id": gid(e2, "added"), "parent": None, "file": 0},
+            {"op": "del", "id": gid(e2, "unitselectionpanel-unitTypeName")}]})
+        self.assertEqual(status, 200, e3)
+        status, bad = self.call("/api/hud/op", {"session": sid, "ops": [{"op": "set", "id": 9999, "attrs": {"z": "1"}}]})
+        self.assertEqual(status, 400)
+        status, ch = self.call("/api/hud/changes", {"session": sid})
+        self.assertEqual(sorted(c["stem"] for c in ch["changes"]), ["uimainnew", "uiunitselectionmin"])
+        status, chk = self.call("/api/hud/check", {"session": sid})
+        codes = {f["code"] for f in chk["findings"]}
+        self.assertIn("engine_gone", codes)                                        # unitTypeName deleted
+        status, sv = self.call("/api/hud/save", {"session": sid, "name": "try"})
+        self.assertTrue(sv["refused"])
+        status, sv = self.call("/api/hud/save", {"session": sid, "name": "try", "force": True})
+        self.assertEqual(status, 200, sv)
+        self.assertTrue(sv["folder"].startswith(self.studio.settings.get("work")))
+        self.assertEqual(sorted(os.path.basename(w["path"]) for w in sv["written"]), ["uimainnew.xml", "uiunitselectionmin.xml"])
+        with open(os.path.join(sv["folder"], "data", "uimainnew.xml"), encoding="utf-8") as fh:
+            saved = fh.read()
+        self.assertIn('textcolor="1 2 3"', saved)
+        self.assertIn('size1024="10 5 1034 35"', saved)
+        for _ in range(3):
+            status, u = self.call("/api/hud/undo", {"session": sid})
+            self.assertTrue(u["done"])
+        status, u = self.call("/api/hud/undo", {"session": sid})
+        self.assertFalse(u["done"])
+        self.assertEqual(u["changed"], 0)                                          # back to the copy, byte for byte
+        status, u = self.call("/api/hud/undo", {"session": sid, "redo": True})
+        self.assertEqual(u["changed"], 1)
+        with open(os.path.join(copy, "data", "uimainnew.xml"), "rb") as fh:
+            self.assertEqual(fh.read(), hud_copy.MAIN.encode("utf-8"))             # the copy never written
         status, normal = self.call("/api/hud/open", {"game": copy, "variant": "normal"})
         self.assertEqual(status, 200, normal)
         self.assertEqual([f["stem"] for f in normal["files"]], ["uimainnew"])     # no normal panel here

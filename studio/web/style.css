@@ -259,3 +259,8 @@ table.results th.sortable:hover { color: var(--accent); }
 .hud-absent .pill { margin-left: 6px; }
 .hud-unit h5 { margin: 8px 0 2px; font-size: 12px; }
 .hud-unit .notice ul { margin: 2px 0 0 16px; padding: 0; }
+.hud-edit input { width: 100%; }
+.hud-actions { flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.hud-details textarea { width: 100%; }
+.hud-diff pre { max-height: 50vh; overflow: auto; font-size: 11px; }
+.hud-diff .ok { color: var(--ok); } .hud-diff .bad { color: var(--bad); }
