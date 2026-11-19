@@ -25,9 +25,9 @@ OPERATORS = {
     "aoe3.pack_set": ("pending:packs meshes modelled in Blender: the studio has no meshes of its own to pack yet",
                       "core/group.pack_objects needs Blender objects"),
     "aoe3.export_set": ("tool:game_export_set", "the prop set's export, in the building screen or its form"),
-    "aoe3.compose_settlement": ("pending:the settlement composer on a map is in the next round", ""),
-    "aoe3.export_grouping": ("pending:comes with the settlement composer", ""),
-    "aoe3.import_grouping": ("pending:comes with the settlement composer", ""),
+    "aoe3.compose_settlement": ("screen:settlement", "Compose a settlement: laid out, then moved and turned on a plan"),
+    "aoe3.export_grouping": ("screen:settlement", "Write it, in the settlement composer"),
+    "aoe3.import_grouping": ("screen:settlement", "Open a grouping, in the settlement composer"),
     "aoe3.ai_check": ("screen:settings", "Check ComfyUI: which nodes and models it lacks"),
     "aoe3.ai_repaint": ("screen:buildings", "AI repaint, region by region (generated buildings; a mesh made "
                                             "elsewhere is pending)"),
@@ -39,7 +39,7 @@ OPERATORS = {
 
 # the routes of the page (studio/web/js/app.js): areas and screens made for their task
 SCREENS = ("buildings", "textures", "survey", "art", "jobs", "settings", "dev", "inspect", "retex", "flags",
-           "texmaker")
+           "texmaker", "settlement", "buildtools", "results", "hud")
 
 
 def place(operator):

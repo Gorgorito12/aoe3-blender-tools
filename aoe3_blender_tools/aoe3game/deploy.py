@@ -185,6 +185,48 @@ class Deployment:
             self.save_manifest(m)
         return written
 
+    def add_files(self, folder, log=print, skip=("hud-edits.json",)):
+        r"""Copies a folder laid out as the copy (data\..., art\...) into it, noted in the
+        manifest: a file it replaces is backed up and put back by `undo`, a new one is taken out.
+        A compiled twin of an edited XML (data\x.xml beside data\x.xml.xmb) is backed up and
+        taken out too, or the game would read that one. Returns the paths written, relative."""
+        folder = os.path.abspath(folder)
+        if not os.path.isdir(folder):
+            raise RefusedPath(f"no such folder: {folder}")
+        if os.path.normcase(folder).startswith(os.path.normcase(self.install) + os.sep):
+            raise RefusedPath("the files to deploy are inside the copy itself")
+        m = self.manifest()
+        written = []
+        try:
+            for base, _dirs, files in os.walk(folder):
+                for name in sorted(files):
+                    if name in skip:
+                        continue
+                    src = os.path.join(base, name)
+                    rel = os.path.relpath(src, folder)
+                    top = rel.split(os.sep, 1)[0].lower()
+                    if top not in ("data", "art"):
+                        raise RefusedPath(f"{rel}: only the data and art folders of a copy are deployed")
+                    dst = os.path.join(self.install, rel)
+                    refuse_steam(dst)
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    if os.path.exists(dst):
+                        self._backup(m, dst)
+                    elif rel not in m["created"]:
+                        m["created"].append(rel)
+                    shutil.copy2(src, dst)
+                    written.append(rel)
+                    log(f"wrote    {rel}")
+                    twin = dst + ".xmb"
+                    if name.lower().endswith(".xml") and os.path.exists(twin):
+                        self._backup(m, twin)
+                        os.remove(twin)
+                        log(f"took out {os.path.relpath(twin, self.install)} (its compiled twin; Undo puts it back)")
+            m["files"] = m.get("files", []) + [folder]
+        finally:
+            self.save_manifest(m)
+        return written
+
     def undo(self, log=print):
         m = self.manifest()
         for rel in reversed(m.get("created", [])):
@@ -193,8 +235,8 @@ class Deployment:
                 os.remove(p)
                 log(f"removed  {rel}")
             d = os.path.dirname(p)
-            while d.startswith(os.path.join(self.install, "art")) and os.path.isdir(d) \
-                    and not os.listdir(d):
+            ours = (os.path.join(self.install, "art"), os.path.join(self.install, "data", "uhc"))
+            while d.startswith(ours) and os.path.isdir(d) and not os.listdir(d):
                 os.rmdir(d)
                 d = os.path.dirname(d)
         for rel, info in m.get("modified", {}).items():

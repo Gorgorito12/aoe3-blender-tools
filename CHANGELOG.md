@@ -4,6 +4,12 @@ One version for the Blender add-on and AoE3 Mod Studio: `aoe3_blender_tools/blen
 says it, the add-on's `bl_info` repeats it and the studio reads it (`tests/test_studio.py` holds the
 three together).
 
+## Unreleased
+
+- `tools/recolor_textures.py` (and its studio form, Textures and units): recolours textures in OKLCH,
+  only the hues you choose, keeping each file's header, alpha and mip levels, and reports CIEDE2000 to the
+  player colours before and after. Made for a terrain whose red hid player 2.
+
 ## 0.3.0 (2026-11-17)
 
 **AoE3 Mod Studio** (`studio/`, `docs/studio.md`): every tool of the repository in one window, in
@@ -13,8 +19,20 @@ English and Spanish, for modders who use neither Blender nor a terminal.
   triangle budget, the technical sheet, the add-on's checks (`scripts/check.py`), prop sets, the AI
   repaint region by region, exports, deployment to a test copy and undo.
 - Screens made for their task: repaint a unit by its UV islands, design a civ flag set, make
-  tileable textures from photographs, look inside `.ddt`, `.gr2`, `.xmb` and `.bar` files.
-- Every command-line tool as a form with its live log; a trial before any change in place.
+  tileable textures from photographs, compose a settlement and write its grouping, a survey's
+  results as a sortable table, look inside `.ddt`, `.gr2`, `.xmb` and `.bar` files.
+- Every command-line tool as a form with its live log, every option with its help in both
+  languages; a trial before any change in place.
+- **Game interface**: the in-game HUD of a game copy drawn as the game draws it (normal or
+  minimised, any screen size, culture and moment), each gadget with everything it points to, and
+  a unit of the copy to fill the panels with: what it shows, and what exists but it does not show,
+  with why (the game's rows and the UHC DLL's 30 items); edited by dragging and in its properties,
+  with undo, the changes, a check and saving into the work folder; design tools (arrange, snap,
+  grid, colour, font and texture pickers) and a DLL row added with one click; deployed to the test
+  copy and undone (`tools/game_deploy.py --files`).
+- Without Blender: the checks (the same findings as Blender's on every preset), and an
+  experimental game export (`scripts/game_export_noblender.py`) to be seen in game before it
+  replaces Blender's.
 - A program without Python (`tools/build_app.py`), which uses an installed Blender for the exports.
 - The rule that every new function reaches the studio, held by its tests (`studio/coverage.py`).
 

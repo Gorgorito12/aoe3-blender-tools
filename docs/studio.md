@@ -22,20 +22,22 @@ folder) are kept in `%APPDATA%\aoe3-blender-tools\studio.json`. Nothing leaves t
 
 | Screen | What is there |
 |---|---|
-| Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes, a person 1.8 m tall for the scale, the obstruction on the ground, the low-poly model, the damaged texture, the player colour of a team; the texture with its atlas regions; triangles against the style's target or the game's buildings of the same class; the technical sheet; **Check** (the add-on's game-ready checks, `scripts/check.py`); with the PROP style, the prop sets side by side and their export; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo |
-| Textures and units | **Repaint a unit** and **Make a tileable texture** (below); the UV atlas, the recipe tool, LoRA dataset and training as forms |
-| Survey and inspection | The art, texture, model, grouping, shape and palette surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it, `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back |
-| Art utilities | **Design a civ flag** (below); avatar icons, ground rings, health bars, the HITPOINTBAR fix, bone scale fix, uncompressed models |
+| Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes, a person 1.8 m tall for the scale, the obstruction on the ground, the low-poly model, the damaged texture, the player colour of a team; the texture with its atlas regions; triangles against the style's target or the game's buildings of the same class; the technical sheet; **Check** (the add-on's game-ready checks, `scripts/check.py`); with the PROP style, the prop sets side by side and their export; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo. **Settlements and more forms** leads to the settlement composer (below) and the buildings' forms |
+| Textures and units | **Repaint a unit** and **Make a tileable texture** (below); the UV atlas, the recipe tool, textures re-encoded for older cards (choose them, measure the stock limit, re-encode: never in place), **Recolour textures** (`tools/recolor_textures.py`: hue, saturation and lightness of a terrain's or a plant's textures, with their distance to the player colours before and after), LoRA dataset and training as forms |
+| Survey and inspection | The art, texture, model, grouping, shape, palette and home-city model surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it, `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back; **a survey's results** as a table (below) |
+| Art utilities | **Game interface** and **Design a civ flag** (below); avatar icons, ground rings, health bars, stat icons for the unit panels, a preview of an interface layout (every gadget's box), missing letters in a font, the HITPOINTBAR fix, bone scale fix, uncompressed models, models compressed again through the game's granny2.dll (and the helper it needs, built once), a home city's models moved into a folder of their own (prepare outside the copy, install into the test copy with a confirmation, undo) |
 | Settings | The folders, checked as they are chosen; what the studio found; Start and Check ComfyUI (the nodes and models a repaint needs); the log. The **welcome** opens on the first start until the game's folder is set |
 | Tasks | Every task of the session with its live log, progress, cancel and outputs (pictures shown, text files opened, folders shown) |
 | Developer tools | Technical sheets, sweep, galleries, AI sweep, the painter's fit, swatch download, add-on zips |
 
 Every command-line tool has its form (`studio/catalog.py`; `tests/test_studio.py` fails when a
-script has none, or when a form passes an option its script does not read).
+script has none, or when a form passes an option its script does not read). Every option says
+what it does, its unit and its default, in both languages (`studio/catalog_help.py` for those the
+catalog declares without help; a test fails on an option left without it).
 
 ## The screens made for their task
 
-A form is enough to run a survey; it is not enough to paint. Four screens work in the studio's
+A form is enough to run a survey; it is not enough to paint. Seven screens work in the studio's
 own process and answer as you move a control (a ComfyUI step runs in a thread, a write as a task):
 
 - **Repaint a unit** (`studio/retex.py`, `web/js/retex.js`). A unit of the game copy (as
@@ -66,6 +68,89 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   region as it is done; **Stop** ends it between two regions (and interrupts ComfyUI). **Use it
   for the export** keeps the texture as a PNG that `scripts/game_export.py --texture-png` puts in
   place of the painted one; a change to the building drops it.
+- **Game interface** (`studio/hud.py`, `web/js/hud.js`, `web/js/hud_render.js`). The in-game HUD
+  of the game copy in Settings, read only: the main screen (`uimainnew.xml`) and the panels the game
+  loads beside it, normal or minimised, each found as the game finds it (loose first, then
+  Data3, Data2, Data.bar: the order of the archives is an assumption; the copies a file hides
+  are listed). Drawn at the screen's own pixels at any size, with the copy's textures (cropped,
+  tiled, by state), its own TrueType fonts from `FONTS\Fonts.bar` (sent to the page, never copied)
+  and its string table. The skin of the chosen culture; **moments of the game** the engine shows
+  gadgets for (a unit selected, paused, victory, subtitles, a wonder, training, a trade route...)
+  and the health bar's colour, from `aoe3game/uidata/hud_scene.json`. The gadgets as a tree; a
+  gadget chosen on the picture or in the tree shows its properties and **what it points to**: its
+  file and line and the copies it hides; each text id with its text and symbol in the string table;
+  each texture (background, foreground, states) with a thumbnail, where it was found, its size and
+  crop, and the copies it hides; its font, the entry fonts3.xml gives (or what a missing one is drawn
+  as), the typeface's file and its cell at that screen; each live text, what it reads in protoy.xml
+  or that the stock game leaves it empty (`uidata/ui_functions.json`); what the game writes into a
+  gadget it fills by name, and when (`uidata/engine_gadgets.json`); its commands; the parents it
+  shows and hides with, and whether it lies outside its parent.
+  **A unit to try it on** (the Unit tab; `aoe3game/unitpanel.py`): any unit or building of the copy,
+  and the panels are filled as the game fills them: its name and owner in the player's colour, hit
+  points, resists (only a unit of type Unit with armor), the resource it holds, its attack rows (the
+  attacks of its first tactic by priority, switched-off ones left out, damage and range from the
+  proto or the tactic, the first bonus with the icon the `attackTypeIcons` key gives; three at most
+  in the minimised UI), the health bar by the share left, its portrait; the live texts
+  (`{currentUnitLOS}`...) with its values. The UHC DLL's rows (`data\uhc\minuirows.xml`, or a file
+  chosen) are filled for it with the keys of the copy's Startup .cfg and any switched on by hand.
+  What it is doing is set by hand (hit points, what techs add, overheal, units inside, under
+  construction, poisoned, gathering, a veteran, an aura, the player and civilization). And **what
+  exists but this unit does not show**: each of the game's rows and each of the DLL's 30 items
+  (`aoe3game/uidata/uhc_minui_items.json`), with every reason (no such data, only for type Unit,
+  no room, the other UI, the DLL or its key missing, no row places it, its row's gadget is not in
+  the layout, its row's types, the key it needs, its type not listed by that key, a state it needs)
+  and a button to see it: simulate the state, switch the key on, see the other UI. Measured against
+  a capture: a Musketeer's minimised panel comes out with the capture's rows, values, colours and
+  icons. Techs, auras and a game's running values are not known offline: the values are the proto's.
+  **Editing**: drag a gadget to move it (with its children; Alt: alone), its corners to resize it,
+  arrows to nudge it (Shift: 10 units); in Properties, every attribute and the text, add or remove an
+  attribute, duplicate (Ctrl+D), hide or show, add a child, delete (Delete), put it inside another
+  gadget. Each edit is one step of Undo and Redo (Ctrl+Z, Ctrl+Y); the server applies it to the
+  tree that keeps every byte, so the rest of each file stays as it was. **Changes** shows each file's
+  difference with the copy's; **The copy's original** draws it as it was. **Check** says what the
+  edits brought, not what the copy already had: a gadget the game fills by name taken out (an
+  error), a new duplicate name, a gadget outside its parent, a rectangle that is not four numbers, a
+  font, texture or text id the copy lacks, a compiled twin beside the file, a row of the DLL whose
+  gadget is missing. **Save** writes the changed files into the work folder with the copy's layout
+  (`data\<name>.xml`, loose even when it came from an archive) and `hud-edits.json` (where each came
+  from, its hashes); it asks first when the check found an error.
+  **Design tools**: several gadgets chosen with Shift + click, then **Arrange** (align edges or
+  centres, spread evenly, same width or height; the one chosen last is the guide); a move snaps to
+  the edges and centres of the gadgets around, with a guide line (Ctrl holds it free), or to the
+  **grid**; pickers for a colour, a font of fonts3.xml (with a sample in its own typeface and size)
+  and a texture of the copy (found by a word of its path, with thumbnails); **Stat icons** opens the
+  form that draws new ones. **Add its row**, on an item of the DLL the unit does not show because no
+  row places it or its gadget is missing, adds the gadget at the top level of the selection panel
+  and its line in the rows file, as one step: the simulation shows it at once. The rows file is
+  edited, undone and saved like a layout (into `data\uhc\minuirows.xml` of the work folder).
+  **Deploy to the test copy**, once saved: the files go into the test copy of Settings after a
+  confirmation (`tools/game_deploy.py --files`, `aoe3game/deploy.Deployment.add_files`): what they
+  replace is backed up, a compiled twin of an edited XML is taken out (or the game would read
+  it), and **Undo the deployment** puts the copy back as it was. The UHC keys are not written: the
+  screen says which line a `.cfg` needs. **Save the
+  picture** writes it to the work folder. The files are read as a tree that keeps every byte
+  (`aoe3game/uilayout.py`: the 55 interface files of a Wars of Liberty copy and the 551 compiled
+  ones in its archives come back identical). Measured against a capture of the game at 1920 x 1080:
+  each axis scaled on its own from 1024 x 768; a font's `AscentHeight` is its text cell (ascent +
+  descent) in pixels; a font `fonts3.xml` lacks is drawn as `Arial nobold nodrop 12`. What is still
+  assumed is listed under the picture.
+- **A survey's results** (`studio/results.py`, `web/js/results.js`). A texture or model survey's
+  report (`textures.json`, `models.json`: the profile is computed with the survey's own
+  `profile()`) or a profile (`--profile-out`, or this program's own in
+  `aoe3_blender_tools/profiles/`) as a table: every group (origin, category, role, material) with
+  its quartiles drawn as bars (the middle half and the median, each column on its scale), its
+  shares, its palette and its most common sizes and formats; sorted by any column, filtered by a
+  word. A finished survey offers **See the results**. Only groups are shown, which name no file.
+- **Compose a settlement** (`studio/settlement_ui.py`, `web/js/settlement.js`). The units to lay out
+  (class, proto, variations, radius), the socket and an obstruction ring; `core/settlement.compose`
+  lays them as the mod's own settlements are (the counts default to the mod's medians, another seed
+  gives another arrangement). A plan from above shows the clear ground and the free lane; a unit is
+  dragged, turned by 15 degrees (wheel, Q and E) or edited by its numbers. **Open a grouping** reads
+  any grouping file (`aoe3game/grouping.read`); **Write it** writes it in the work folder, keeping a
+  read file's own width, height, flags, tiles and the orientation of every unit not turned (the
+  1,483 groupings of a Wars of Liberty copy come back unit for unit); **Deploy** fills the grouping
+  form with it and the test copy. Which way the game's x and z run on the plan, and a unit's
+  facing, are still **to verify in game**: the screen says so.
 
 ## When something goes wrong
 
@@ -146,24 +231,37 @@ that fails when something is left out:
 - every script of `tools/` and `scripts/` has its form in `studio/catalog.py`;
 - every `BuildingParams` field is described in `core/schema.py`.
 
+Two options of `tools/hc_move.py stage` stay on the command line: `--convert` (off: in game the converted models were drawn misplaced and out of scale) and `--recompress` (it starts `recompress_models.py` with the Python running it and the helper at its default place, which the built program has not; compress the stage's models with **Compress models again** instead).
+
 What the add-on does that the studio does not do yet:
 
 | Operator | Why |
 |---|---|
 | `aoe3.pack_set` | It packs meshes modelled in Blender into one texture; the studio has no meshes of its own to pack yet |
-| `aoe3.compose_settlement` | The settlement composer on a map is in the next round |
-| `aoe3.export_grouping` | Comes with the settlement composer |
-| `aoe3.import_grouping` | Comes with the settlement composer |
 
 The AI repaint of a mesh made elsewhere (the add-on's AI panel on any mesh) also waits: the studio
 repaints its own buildings.
 
+## Without Blender
+
+- **Check** runs everywhere: without Blender, `scripts/check.py` applies the same rules to the
+  generator's own mesh (`core/checks.py`; `core/validate.py` is now the Blender side of the same
+  rules). The same findings on all 102 presets and details (`the_checks_without_blender_match_blenders`
+  in `tests/run_tests.py`).
+- **Export for the game, without Blender** (experimental): a box of the Export card (the only way
+  when Blender is missing), and its own form (`scripts/game_export_noblender.py`, `--compare` lists
+  how its bundle differs from one made with Blender). The mesh is `core/gamemesh.py`'s; the icon and
+  portrait come from `core/softrender.py` (Blender's camera, its light fitted to Blender's: within
+  4 / 255 on average); the low-poly and damaged variants as `blender_io.game_variants` makes them.
+  Measured against Blender's bundles of four presets: textures, bump maps, anim file, proto and
+  strings byte for byte; the models with the same vertices, normals and UVs (some flat quads cut
+  along the other diagonal: rendered alike, under 0.3 % of the pixels differ). Whether it looks the
+  same in game is **to verify** (`docs/game-test.md`); Blender stays the default until then.
+- GLB, FBX and OBJ, the renders of `scripts/generate.py`, `model_sheets` and the galleries still
+  need Blender.
+
 ## Still to do
 
-- The game export without Blender: `core/gamemesh.py` gives Blender's mesh (above); the icon and
-  portrait, the checks and the GLB writer still need Blender, and the result must be seen in game
-  before Blender leaves that path.
-- The made-to-measure screens with the real art: a unit of the game copy and its flag sets have
-  only been tried on synthetic models and sets so far (no game copy set in this computer's
-  Settings during the work). The settlement composer on a map.
+- The bundle made without Blender, seen in game beside its Blender twin.
+- The settlement composer's axes and facing, in game.
 - A signed installer, and a first-run assistant beyond the welcome note.

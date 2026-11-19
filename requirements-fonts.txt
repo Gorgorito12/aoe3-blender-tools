@@ -1,0 +1,4 @@
+# Optional: what tools/extend_font.py needs (the proof sheet needs Pillow).
+#   venv\Scripts\pip install -r requirements-fonts.txt
+fonttools>=4.50
+pillow>=10

@@ -29,7 +29,16 @@ python -I -X utf8 tools\game_deploy.py --install C:\AoE3-BT-Test --bundle out\wh
 ```
 
 Or, in Blender: Sidebar > AoE3 > Game Export, then the second command. Deploying again replaces
-the earlier deployment; `--undo` restores the copy.
+the earlier deployment (`--keep` adds to it instead); `--undo` restores the copy.
+
+**To verify: a bundle made without Blender.** `scripts/game_export_noblender.py` (same options;
+the studio's "Without Blender, experimental") writes the same bundle from the generator's own mesh
+(`core/gamemesh.py`) and its own icon renderer (`core/softrender.py`). Measured against Blender's
+bundle of the same building (2026-11-17, four presets): the textures, bump maps, anim file, proto
+and strings byte for byte; the models with the same vertices, normals and UVs, some quads cut
+along the other diagonal (rendered alike, under 0.3 % of the pixels differ); the icons framed the
+same, within 4 / 255 on average. In game: deploy one of each beside its Blender twin and compare
+them placed, lit, selected (icon) and destroyed. Until then Blender stays the default.
 
 ## 3. Look at it
 

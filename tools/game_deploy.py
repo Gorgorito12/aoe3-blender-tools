@@ -4,6 +4,7 @@
     python -I tools/game_deploy.py --install <copy> --bundle <folder> [--bundle <folder> ...]
                                    [--keep] [--validate] [--show-as <Unit>] [--builder <Unit>]
     python -I tools/game_deploy.py --install <copy> --grouping <file.xml> [--grouping ...]
+    python -I tools/game_deploy.py --install <copy> --files <folder laid out as the copy: data, art>
     python -I tools/game_deploy.py --install <copy> --undo
     python -I tools/game_deploy.py --install <copy> --validate
 
@@ -14,7 +15,9 @@ Refuses any folder inside a Steam library. Backups are kept as <file>.aoe3bt-ori
 changes are listed in <copy>/aoe3bt-manifest.json, which --undo reads. --show-as TownCenter also
 points that unit's model, icon and portrait at the new building, so it stands at the start of
 any skirmish (to look at it without placing it in the editor; the copy only). --builder Settler
-adds the building to that unit's build list.
+adds the building to that unit's build list. --files copies a folder laid out as the copy (the
+game interface screen's saved layouts and rows file, say): what it replaces is backed up, a
+compiled twin of an edited XML is taken out (and put back by --undo).
 """
 import json
 import os
@@ -30,7 +33,7 @@ def main(argv):
         return argv[argv.index(name) + 1] if name in argv else None
 
     install = opt("--install")
-    if not install or not (opt("--bundle") or opt("--grouping") or "--undo" in argv or "--validate" in argv):
+    if not install or not (opt("--bundle") or opt("--grouping") or opt("--files") or "--undo" in argv or "--validate" in argv):
         print(__doc__)
         return 2
     try:
@@ -59,6 +62,12 @@ def main(argv):
     for g in [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--grouping"]:
         try:                                               # a settlement: into every RM*/groupings
             print(f"grouping {os.path.basename(g)}: {len(d.add_grouping(g, log=lambda s: None))} folders")
+        except deploy.RefusedPath as e:
+            print(e)
+            return 1
+    for folder in [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--files"]:
+        try:
+            print(f"files: {len(d.add_files(folder))} written from {folder}")
         except deploy.RefusedPath as e:
             print(e)
             return 1

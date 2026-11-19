@@ -183,6 +183,33 @@ class Server(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual([f["rel"] for f in listing["files"]], ["bar.ddt"])
 
+    def test_recolour_textures_through_its_form(self):
+        """A texture recoloured into the chosen folder, its bump map skipped, the report and the picture written."""
+        import numpy as np
+        sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
+        from aoe3game import ddt
+        src = os.path.join(self.tmp.name, "recolour_in")
+        os.makedirs(src, exist_ok=True)
+        img = np.zeros((16, 16, 4), np.uint8)
+        img[...] = (200, 30, 40, 255)
+        with open(os.path.join(src, "grass.ddt"), "wb") as fh:
+            fh.write(ddt.write(img, ddt.DXT1))
+        with open(os.path.join(src, "grass_b.ddt"), "wb") as fh:
+            fh.write(ddt.write_normal_map(np.full((16, 16, 4), 128, np.uint8)))
+        out = os.path.join(self.tmp.name, "recoloured")
+        status, r = self.call("/api/tools/recolor_textures", {"values": {
+            "inputs": [src], "out": out, "hue": "-10", "chroma": "0.8", "lightness": "0.66",
+            "against": "p2=210,40,40;p1=45,45,245", "report": os.path.join(out, "report.json"),
+            "preview": os.path.join(out, "preview.png")}})
+        self.assertEqual(status, 200, r)
+        j = self.wait(r["job"])
+        self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"])
+        self.assertEqual(sorted(os.listdir(out)), ["grass.ddt", "preview.png", "report.json"])
+        with open(os.path.join(out, "report.json"), encoding="utf-8") as fh:
+            report = json.load(fh)
+        self.assertEqual(set(report["references"]), {"p1", "p2"})
+        self.assertEqual(report["skipped"][0]["file"], "grass_b.ddt")
+
     def test_deploy_and_undo_through_the_forms(self):
         """The building screen's Deploy and Undo: the copy changed, then back byte for byte."""
         sys.path.insert(0, os.path.join(ROOT, "tests"))
@@ -277,6 +304,322 @@ class Server(unittest.TestCase):
                                                              "options": {"ai": True, "ai_strength": 2}})
             self.assertEqual(status, 400)
 
+    def test_the_game_interface_of_a_copy(self):
+        """The HUD of a (synthetic) copy: each layout found as the game finds it (loose first, then
+        Data3.bar before Data.bar, the hidden copies listed), its texts, textures and fonts; the
+        copy never written."""
+        import hashlib
+        sys.path.insert(0, os.path.join(ROOT, "tests"))
+        import hud_copy
+        copy = hud_copy.make(os.path.join(self.tmp.name, "hudcopy"))
+
+        def digest():
+            out = {}
+            for base, _d, files in os.walk(copy):
+                for f in files:
+                    with open(os.path.join(base, f), "rb") as fh:
+                        out[os.path.relpath(os.path.join(base, f), copy)] = hashlib.sha256(fh.read()).hexdigest()
+            return out
+        before = digest()
+        status, r = self.call("/api/hud/open", {"game": copy, "variant": "min"})
+        self.assertEqual(status, 200, r)
+        files = {f["stem"]: f for f in r["files"]}
+        self.assertEqual(set(files), {"uimainnew", "uiunitselectionmin"})
+        self.assertTrue(files["uimainnew"]["where"].endswith("uimainnew.xml"))
+        self.assertTrue(files["uiunitselectionmin"]["where"].startswith("Data3.bar:"))
+        self.assertEqual(len(files["uiunitselectionmin"]["hidden"]), 1)          # Data.bar's older one
+        names = [g["name"] for g in r["gadgets"]]
+        self.assertIn("TrainTime", names)                                       # Data3's, not Data's
+        self.assertNotIn("Old", names)
+        age = next(g for g in r["gadgets"] if g["name"] == "titleBar-age")
+        self.assertEqual(age["parent"], names.index("titleBar"))
+        self.assertEqual(r["strings"]["101"], ["Colonial Age", "cStringAge"])
+        self.assertIn("test 12", r["fonts"])
+        self.assertEqual(r["faces"], ["test face"])
+        self.assertTrue(r["rules"]["moments"] and r["rules"]["oneOf"])
+        sid = r["session"]
+        status, png = self.call(f"/api/hud/texture?s={sid}&path=ui%5Cingame%5Cbar")
+        self.assertEqual(status, 200)
+        self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+        status, nothing = self.call(f"/api/hud/texture?s={sid}&path=ui%5Cingame%5Cnothere")
+        self.assertEqual((status, nothing), (200, b""))                          # nothing to draw
+        status, ttf = self.call(f"/api/hud/font?s={sid}&face=Test%20Face")
+        self.assertEqual(status, 200)
+        self.assertEqual(ttf[:4], b"\x00\x01\x00\x00")
+        status, _ = self.call(f"/api/hud/font?s={sid}&face=Arial")                # a system font
+        self.assertEqual(status, 404)
+        # where each thing a gadget names leads
+        ids = {g["name"]: g["id"] for g in r["gadgets"]}
+        status, a = self.call("/api/hud/refs", {"session": sid, "id": ids["titleBar-age"], "width": 1920})
+        self.assertEqual(status, 200, a)
+        self.assertEqual(a["strings"][0]["text"], "Colonial Age")
+        self.assertEqual(a["strings"][0]["symbol"], "cStringAge")
+        self.assertEqual((a["font"]["found"], a["font"]["typeface"], a["font"]["cell"]), (True, "Test Face", 16))
+        self.assertTrue(a["font"]["file"].startswith("Fonts.bar:"))
+        self.assertEqual(a["parents"][0]["name"], "titleBar")
+        status, bar_ = self.call("/api/hud/refs", {"session": sid, "id": ids["titleBar"]})
+        self.assertTrue(bar_["textures"][0]["found"][0].endswith("bar.ddt"))
+        self.assertEqual(bar_["textures"][0]["size"], [4, 4])
+        status, pause = self.call("/api/hud/refs", {"session": sid, "id": ids["pausePanel"]})
+        self.assertEqual(pause["textures"][0]["found"], [])                     # not in this copy
+        status, hp = self.call("/api/hud/refs", {"session": sid, "id": ids["unitselectionpanel-unitHitPointsLabel"]})
+        self.assertTrue(hp["engine"] and hp["engine"][0]["es"])                  # what the game writes there
+        self.assertFalse(hp["font"]["found"])                                     # Missing 10: the fallback
+        self.assertEqual(hp["font"]["typeface"], "Arial")
+        self.assertTrue(hp["file"]["where"].startswith("Data3.bar:"))
+        status, train = self.call("/api/hud/refs", {"session": sid, "id": ids["TrainTime"]})
+        self.assertEqual(train["live"][0]["proto"], "TrainPoints")
+        self.assertTrue(train["live"][0]["works"])
+        status, err = self.call("/api/hud/refs", {"session": sid, "id": 999})
+        self.assertEqual(status, 400)
+        # the unit the panels are filled for, and what it does not show
+        status, u = self.call("/api/hud/units", {"session": sid, "q": "gun"})
+        self.assertEqual(u["units"], [{"name": "Gunman", "display": "Gunman"}])
+        status, s = self.call("/api/hud/sim", {"session": sid, "unit": "Gunman"})
+        self.assertEqual(status, 200, s)
+        self.assertEqual(s["gadgets"]["unitselectionpanel-unittypename"]["text"], "Gunman")
+        self.assertTrue(s["gadgets"]["unitselectionpanel-stacklabel0"]["text"].startswith("Ranged ATK: 23"))
+        self.assertEqual(s["files"]["tactics"], "gun.tactics")
+        self.assertTrue(s["dll"])
+        self.assertFalse(s["key"])                                                # minUIStats not in the .cfg
+        overheal = next(a for a in s["absent"] if a["item"] == "overheal")
+        self.assertIn("key_off", [r["code"] for r in overheal["reasons"]])
+        self.assertIn("needs_state", [r["code"] for r in overheal["reasons"]])
+        cost = next(a for a in s["absent"] if a["item"] == "cost")
+        self.assertIn("gadget_missing", [r["code"] for r in cost["reasons"]])
+        status, s = self.call("/api/hud/sim", {"session": sid, "unit": "Gunman", "keys": ["minUIStats"],
+                                               "state": {"overheal": 30}})
+        self.assertEqual(s["gadgets"]["unitselectionpanel-uhcrow0"]["text"], "LOS: 16   Overheal +30")
+        self.assertNotIn("overheal", [a["item"] for a in s["absent"]])
+        status, err = self.call("/api/hud/sim", {"session": sid, "unit": "Nobody"})
+        self.assertEqual(status, 400)
+        # editing: every operation, undone back to the same bytes; the check; save into the work folder
+        def gid(scene, name):
+            return next(g["id"] for g in scene["gadgets"] if g["name"] == name)
+        status, e1 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "shift", "id": ids["titleBar"], "dx": 10, "dy": 5}]})
+        self.assertEqual(status, 200, e1)
+        self.assertEqual(next(g for g in e1["gadgets"] if g["name"] == "titleBar-age")["rect"], [20, 7, 210, 33])  # a child too
+        self.assertEqual(e1["focus"], gid(e1, "titleBar"))
+        self.assertEqual((e1["changed"], e1["undo"]), (1, 1))
+        status, e2 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "set", "id": gid(e1, "titleBar-age"), "attrs": {"textcolor": "1 2 3", "z": None}},
+            {"op": "text", "id": gid(e1, "titleBar-age"), "text": "$$102$$Other"},
+            {"op": "add", "parent": gid(e1, "titleBar"), "xml": '<gadget name="added" type="formatText" size1024="0 0 5 5"/>'},
+            {"op": "dup", "id": gid(e1, "pausePanel")}]})
+        self.assertEqual(status, 200, e2)
+        self.assertIn("pausePanel-copy", [g["name"] for g in e2["gadgets"]])
+        self.assertEqual(e2["undo"], 2)                                            # one step for the batch
+        status, e3 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "move", "id": gid(e2, "added"), "parent": None, "file": 0},
+            {"op": "del", "id": gid(e2, "unitselectionpanel-unitTypeName")}]})
+        self.assertEqual(status, 200, e3)
+        status, bad = self.call("/api/hud/op", {"session": sid, "ops": [{"op": "set", "id": 9999, "attrs": {"z": "1"}}]})
+        self.assertEqual(status, 400)
+        status, ch = self.call("/api/hud/changes", {"session": sid})
+        self.assertEqual(sorted(c["stem"] for c in ch["changes"]), ["uimainnew", "uiunitselectionmin"])
+        status, chk = self.call("/api/hud/check", {"session": sid})
+        codes = {f["code"] for f in chk["findings"]}
+        self.assertIn("engine_gone", codes)                                        # unitTypeName deleted
+        status, sv = self.call("/api/hud/save", {"session": sid, "name": "try"})
+        self.assertTrue(sv["refused"])
+        status, sv = self.call("/api/hud/save", {"session": sid, "name": "try", "force": True})
+        self.assertEqual(status, 200, sv)
+        self.assertTrue(sv["folder"].startswith(self.studio.settings.get("work")))
+        self.assertEqual(sorted(os.path.basename(w["path"]) for w in sv["written"]), ["uimainnew.xml", "uiunitselectionmin.xml"])
+        with open(os.path.join(sv["folder"], "data", "uimainnew.xml"), encoding="utf-8") as fh:
+            saved = fh.read()
+        self.assertIn('textcolor="1 2 3"', saved)
+        self.assertIn('size1024="10 5 1034 35"', saved)
+        for _ in range(3):
+            status, u = self.call("/api/hud/undo", {"session": sid})
+            self.assertTrue(u["done"])
+        status, u = self.call("/api/hud/undo", {"session": sid})
+        self.assertFalse(u["done"])
+        self.assertEqual(u["changed"], 0)                                          # back to the copy, byte for byte
+        status, u = self.call("/api/hud/undo", {"session": sid, "redo": True})
+        self.assertEqual(u["changed"], 1)
+        with open(os.path.join(copy, "data", "uimainnew.xml"), "rb") as fh:
+            self.assertEqual(fh.read(), hud_copy.MAIN.encode("utf-8"))             # the copy never written
+        # a row of the DLL for an item: its gadget and its line of the rows file, as one step
+        status, u = self.call("/api/hud/undo", {"session": sid})                 # back to the copy
+        panel = gid(u, "unitselectionpanel")
+        status, e4 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "row", "gadget": "unitselectionpanel-uhcRow5", "text": "Cost: {cost}"},
+            {"op": "add", "parent": panel, "xml": '<gadget name="unitselectionpanel-uhcRow5" type="formatText" size1024="507 712 700 726"/>'}]})
+        self.assertEqual(status, 200, e4)
+        self.assertEqual(e4["focus"], gid(e4, "unitselectionpanel-uhcRow5"))
+        status, s = self.call("/api/hud/sim", {"session": sid, "unit": "Gunman", "keys": ["minUIStats"]})
+        self.assertIn("unitselectionpanel-uhcrow5", s["gadgets"])
+        self.assertEqual(s["gadgets"]["unitselectionpanel-uhcrow5"]["why"], "no_data")   # the Gunman has no cost
+        status, e5 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "row", "gadget": "unitselectionpanel-uhcRow5", "item": "los", "label": "LOS: "}]})
+        status, s = self.call("/api/hud/sim", {"session": sid, "unit": "Gunman", "keys": ["minUIStats"]})
+        self.assertEqual(s["gadgets"]["unitselectionpanel-uhcrow5"]["text"], "LOS: 16")  # replaced, not added
+        status, sv = self.call("/api/hud/save", {"session": sid, "name": "rows"})
+        with open(os.path.join(sv["folder"], "data", "uhc", "minuirows.xml"), encoding="utf-8") as fh:
+            rows = fh.read()
+        self.assertEqual(rows.count('gadget="unitselectionpanel-uhcRow5"'), 1)
+        self.assertIn('item="los" label="LOS: "', rows)
+        self.assertIn('gadget="unitselectionpanel-uhcRow0"', rows)                # the file's own rows kept
+        with open(os.path.join(copy, "data", "uhc", "minuirows.xml"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), hud_copy.ROWS)                             # the copy's rows file untouched
+        status, err = self.call("/api/hud/op", {"session": sid, "ops": [{"op": "row", "gadget": "bad name!", "item": "los"}]})
+        self.assertEqual(status, 400)
+        # deployed into a test copy through the form, then undone: the copy as it was, byte for byte
+        status, r1 = self.call("/api/tools/deploy_files", {"values": {"install": copy, "files": sv["folder"]}})
+        self.assertEqual(status, 200, r1)
+        j = self.wait(r1["job"])
+        self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"])
+        with open(os.path.join(copy, "data", "uhc", "minuirows.xml"), encoding="utf-8") as fh:
+            self.assertIn("uhcRow5", fh.read())
+        status, r2 = self.call("/api/tools/deploy_undo", {"values": {"install": copy}})
+        j = self.wait(r2["job"])
+        self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"])
+        self.assertEqual(digest(), before)
+        status, normal = self.call("/api/hud/open", {"game": copy, "variant": "normal"})
+        self.assertEqual(status, 200, normal)
+        self.assertEqual([f["stem"] for f in normal["files"]], ["uimainnew"])     # no normal panel here
+        status, err = self.call("/api/hud/open", {"game": os.path.join(self.tmp.name, "nothing"), "variant": "min"})
+        self.assertEqual(status, 400)
+        status, err = self.call("/api/hud/open", {"game": copy, "variant": "huge"})
+        self.assertEqual(status, 400)
+        import base64
+        sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
+        from core import paint
+        import numpy as np
+        pic = "data:image/png;base64," + base64.b64encode(paint.png_bytes(np.zeros((2, 2, 4), np.uint8))).decode()
+        status, w = self.call("/api/hud/snapshot", {"picture": pic, "name": "../min test"})
+        self.assertEqual(status, 200, w)
+        self.assertTrue(w["path"].startswith(self.studio.settings.get("work")))
+        self.assertTrue(os.path.basename(w["path"]).endswith(".png") and ".." not in os.path.basename(w["path"]))
+        status, _ = self.call("/api/hud/snapshot", {"picture": "data:text/plain;base64,aGk=", "name": "x"})
+        self.assertEqual(status, 400)
+        self.assertEqual(digest(), before)                                        # the copy untouched
+
+    def test_without_blender_the_check_and_the_export_still_run(self):
+        """With no Blender at all, Check runs core/checks.py and the game export runs the
+        experimental scripts/game_export_noblender.py: a whole bundle, icons included."""
+        from unittest import mock
+        bridge = self.studio.bridge
+        p = engine.preset("AFRICAN_HOUSE_SAHEL")
+        p["texture_size"] = 256
+        with mock.patch.object(bridge, "module", False), mock.patch.object(bridge, "app", None):
+            self.assertFalse(bridge.available)
+            status, r = self.call("/api/building/check", {"params": p})
+            self.assertEqual(status, 200, r)
+            j = self.wait(r["job"], 300)
+            self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"][-10:])
+            self.assertIn("--no-blender", j["command"])
+            found = [json.loads(line) for line in j["lines"] if line.startswith("{")]
+            self.assertTrue(any("triangles" in f["message"] for f in found), found)
+            with tempfile.TemporaryDirectory() as tmp:
+                status, r = self.call("/api/building/export", {"kind": "game", "params": p, "out": tmp,
+                                                               "options": {"no_blender": True}})
+                self.assertEqual(status, 200, r)
+                j = self.wait(r["job"], 600)
+                self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"][-20:])
+                self.assertIn("game_export_noblender.py", j["command"])
+                names = {f for _b, _d, files in os.walk(tmp) for f in files}
+                for want in ("africanhousesahel.gr2", "africanhousesahel_icon.ddt", "africanhousesahel_portrait.ddt",
+                             "africanhousesahel_lp.gr2", "SPECS.md"):
+                    self.assertIn(want, names)
+        self.assertIn("game_export_noblender", catalog.BY_ID)
+
+    def test_a_surveys_results_as_a_table(self):
+        """The program's own profiles, and a texture survey's report (its profile computed as the
+        tool does), as groups with their columns; anything else refused."""
+        for name, kind, col in (("textures", "textures", "grain"), ("models", "models", "tris")):
+            status, r = self.call("/api/results", {"profile": name})
+            self.assertEqual(status, 200, r)
+            self.assertEqual(r["kind"], kind)
+            self.assertGreater(len(r["rows"]), 5)
+            self.assertIn(col, [c["key"] for c in r["columns"]])
+            self.assertTrue(all(c["label"]["en"] and c["label"]["es"] for c in r["columns"]))
+            self.assertTrue(r["help"]["en"] and r["help"]["es"])
+            q = next(x[col] for x in r["rows"] if x[col])
+            self.assertEqual(len(q), 3)
+            self.assertLessEqual(q[0], q[1])
+        import numpy as np
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import texture_survey
+        rng = np.random.default_rng(1)
+        records = []
+        for i in range(10):
+            rec = texture_survey.measure(rng.integers(0, 255, (64, 64, 4), dtype=np.uint8))
+            rec.update({"path": f"art/units/u{i}.ddt", "md5": str(i), "w": 64, "h": 64, "format": 1, "alpha": 0,
+                        "origin": "own", "category": "units", "role": "diffuse", "material": ""})
+            records.append(rec)
+        report = os.path.join(self.tmp.name, "textures.json")
+        with open(report, "w", encoding="utf-8") as fh:
+            json.dump({"folders": [], "reference": [], "textures": records}, fh)
+        status, r = self.call("/api/results", {"path": report})
+        self.assertEqual(status, 200, r)
+        self.assertEqual(r["facts"]["textures"], 10)
+        self.assertTrue(any(x["category"] == "units" and x["count"] == 10 for x in r["rows"]))
+        self.assertNotIn("u0.ddt", json.dumps(r))                     # groups only: no file named
+        for bad in ({"path": os.path.join(self.tmp.name, "none.json")}, {"path": self.config}, {"profile": "x"}):
+            status, err = self.call("/api/results", bad)
+            self.assertEqual(status, 400, bad)
+
+    def test_compose_a_settlement(self):
+        """Laid out as measured, written as a grouping in the work folder, read back unit for unit;
+        a read file's own orientation kept while a unit is not turned; never into the game."""
+        status, m = self.call("/api/settlement/measured", {})
+        self.assertEqual(status, 200, m)
+        self.assertGreater(m["counts"]["building"], 0)
+        rows = [{"class": "building", "proto": "TestHut", "variations": 3, "radius": 3.5},
+                {"class": "prop", "proto": "TestCrate", "variations": 2, "radius": 0.8}]
+        status, r = self.call("/api/settlement/compose", {"units": rows, "socket": "SocketTradeRoute",
+                                                          "obstruction": "TestObstruction", "seed": 3,
+                                                          "counts": {"building": 4, "prop": 5}})
+        self.assertEqual(status, 200, r)
+        units = r["units"]
+        self.assertEqual(units[0]["class"], "socket")
+        self.assertEqual(sum(u["class"] == "building" for u in units), 4)
+        self.assertEqual(sum(u["class"] == "obstruction" for u in units), 8)
+        status, again = self.call("/api/settlement/compose", {"units": rows, "seed": 3, "counts": {"building": 4, "prop": 5},
+                                                              "socket": "SocketTradeRoute", "obstruction": "TestObstruction"})
+        self.assertEqual(again["units"], units)                       # a seed gives its arrangement
+        status, err = self.call("/api/settlement/compose", {"units": [{"class": "castle", "proto": "X"}]})
+        self.assertEqual(status, 400)
+        status, err = self.call("/api/settlement/compose", {"units": []})
+        self.assertEqual(status, 400)
+
+        status, w = self.call("/api/settlement/save", {"name": "Test Settlement", "units": units})
+        self.assertEqual(status, 200, w)
+        self.assertTrue(w["path"].startswith(self.studio.settings.get("work")))
+        status, back = self.call("/api/settlement/open", {"path": w["path"]})
+        self.assertEqual(status, 200, back)
+        self.assertEqual([(u["proto"], u["variation"], round(u["x"], 4), round(u["z"], 4)) for u in back["units"]],
+                         [(u["proto"], u["variation"], round(u["x"], 4), round(u["z"], 4)) for u in units])
+        self.assertEqual(back["units"][0]["class"], "socket")
+        # written again unchanged: the same file; one unit turned: only its line changes
+        with open(w["path"], encoding="utf-8") as fh:
+            first = fh.read()
+        status, w2 = self.call("/api/settlement/save", {"name": "Test Settlement", "units": back["units"], "meta": back["meta"]})
+        with open(w2["path"], encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), first)
+        back["units"][1]["turn"] += 0.5
+        self.call("/api/settlement/save", {"name": "Test Settlement", "units": back["units"], "meta": back["meta"]})
+        with open(w2["path"], encoding="utf-8") as fh:
+            changed = [a for a, b in zip(first.splitlines(), fh.read().splitlines()) if a != b]
+        self.assertEqual(len(changed), 1)
+        self.assertIn(units[1]["proto"], changed[0])
+
+        status, err = self.call("/api/settlement/save", {"name": "../escape", "units": units})
+        self.assertEqual(status, 400)
+        status, err = self.call("/api/settlement/open", {"path": os.path.join(self.tmp.name, "none.xml")})
+        self.assertEqual(status, 400)
+        game = os.path.join(self.tmp.name, "game")
+        os.makedirs(game, exist_ok=True)
+        self.studio.settings.update({"paths": {"work": self.studio.settings.get("work"), "game": game}})
+        try:
+            status, err = self.call("/api/settlement/save", {"path": os.path.join(game, "x.xml"), "units": units})
+            self.assertEqual(status, 400)
+        finally:
+            self.studio.settings.update({"paths": {"work": self.studio.settings.get("work"), "game": ""}})
+
     def test_repaint_a_unit(self):
         """The unit repaint screen: load a model and its texture, paint live, add a picture, write."""
         import base64
@@ -313,6 +656,14 @@ class Server(unittest.TestCase):
             self.assertEqual(img[56, 56, :3].tolist(), [200, 200, 200])   # the leg, untouched
             status, err = self.call("/api/retex/paint", {"session": sid, "ops": [{"op": "melt", "where": ["all"]}]})
             self.assertEqual(status, 400)
+            # a part this unit has not: skipped with a note while painting, refused when writing
+            torso = [{"op": "recolour", "where": ["part:torso"], "colour": "#204080"}]
+            status, p2 = self.call("/api/retex/paint", {"session": sid, "ops": torso + head})
+            self.assertEqual(status, 200, p2)
+            self.assertEqual([m[0] for m in p2["missing"]], [0])
+            status, err = self.call("/api/retex/save", {"session": sid, "ops": torso})
+            self.assertEqual(status, 400)
+            self.assertIn("torso", err["error"])
             # a swatch the page sends, then a fill with it
             swatch = np.zeros((8, 8, 3), np.uint8)
             swatch[..., 1] = 180
@@ -531,13 +882,20 @@ class Server(unittest.TestCase):
 
     def test_an_error_is_logged(self):
         """A bug answers 500 and leaves its trace in the log the Settings screen shows."""
-        status, err = self.call("/api/building/preview", {"params": {"colors": "not a table"}, "texture": 128})
+        from unittest import mock
+        from studio import engine
+        with mock.patch.object(engine, "preview", side_effect=ZeroDivisionError("a bug")):
+            status, err = self.call("/api/building/preview", {"params": {}, "texture": 128})
         self.assertEqual(status, 500)
         self.assertIn("log", err["error"])
         status, log = self.call("/api/log")
         self.assertEqual(status, 200)
         self.assertIn("error answering POST /api/building/preview", log["text"])
         self.assertIn("Traceback", log["text"])
+        # a malformed parameter is the user's error, answered 400 with what is wrong
+        status, err = self.call("/api/building/preview", {"params": {"colors": "not a table"}, "texture": 128})
+        self.assertEqual(status, 400)
+        self.assertIn("colors", err["error"])
 
     def test_when_the_studio_stops(self):
         st = server.Studio(os.path.join(self.tmp.name, "stop", "s.json"))
@@ -743,6 +1101,52 @@ class Forms(unittest.TestCase):
             self.assertEqual(cmd[cmd.index("--colour") + 1], "11AA22")
             # an output left empty goes to the work folder, never the tool's default in this program
             self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_bar", "health_bar.ddt"))
+            cmd, *_ = catalog.command(st, "extend_font", {"input": "f.ttf", "family": "F Plus", "no_kern": True})
+            work = os.path.join(tmp, "extend_font")
+            i = cmd.index("f.ttf")                           # the input, then the output
+            self.assertEqual(cmd[i + 1], os.path.join(work, "extended.ttf"))
+            self.assertEqual(cmd[cmd.index("--family") + 1], "F Plus")
+            self.assertEqual(cmd[cmd.index("--proof") + 1], os.path.join(work, "proof.png"))
+            self.assertIn("--no-kern", cmd)
+            with self.assertRaises(catalog.ToolError):
+                catalog.command(st, "extend_font", {})              # the font is needed
+            cmd, *_ = catalog.command(st, "ui_preview", {"layout": "uiunitselectionmin.xml", "text": True,
+                                                         "mark": "uhcRow", "vline": "512"})
+            self.assertEqual(cmd[cmd.index("uiunitselectionmin.xml") + 1:cmd.index("uiunitselectionmin.xml") + 3],
+                             ["--out", os.path.join(tmp, "ui_preview", "ui_preview.png")])
+            self.assertIn("--text", cmd)
+            self.assertEqual(cmd[cmd.index("--mark") + 1], "uhcRow")
+            cmd, *_ = catalog.command(st, "make_stat_icon", {"glyph": "eye", "style": "bold"})   # as the page sends it
+            self.assertEqual(cmd[cmd.index("--style") + 1], "bold")
+            self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_stat_icon", "stat_icon.ddt"))
+            # the home-city tools: a plan per civ, each after its own flag; install asks first
+            cmd, *_ = catalog.command(st, "hc_survey", {"game": "copy", "target": r"WoL\homecity",
+                                                        "plan": "Spanish British"})
+            plans = [cmd[i + 1] for i, x in enumerate(cmd) if x == "--plan"]
+            self.assertEqual(plans, ["Spanish", "British"])
+            self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "hc_survey"))
+            cmd, *_ = catalog.command(st, "reencode_textures", {"input": "tex", "limit": "512x512"})
+            script = next(i for i, x in enumerate(cmd) if x.endswith("reencode_textures.py"))
+            self.assertEqual(cmd[script + 1], "run")
+            cmd, *_ = catalog.command(st, "reencode_select", {"game": "copy"})
+            self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "reencode_select", "select.txt"))
+            for tid in ("hc_move_install", "hc_move_undo"):
+                self.assertEqual(catalog.BY_ID[tid].writes, "copy")
+                self.assertTrue(catalog.BY_ID[tid].confirm["es"])
+            cmd, *_ = catalog.command(st, "hc_move_stage", {"game": "copy", "civ": "Spanish", "target": r"W\h",
+                                                           "granny": "b.exe", "form": "A"})
+            script = next(i for i, x in enumerate(cmd) if x.endswith("hc_move.py"))
+            self.assertEqual(cmd[script + 1], "stage")
+            self.assertNotIn("--convert", cmd)                # off: in game it drew the models misplaced
+            # the helper is built where the compression form looks for it by default
+            cmd, *_ = catalog.command(st, "recompress_helper", {})
+            built = os.path.join(tmp, "recompress_helper", "granny_recompress.exe")
+            self.assertEqual(cmd[-2:], ["--build-helper", built])
+            cmd, *_ = catalog.command(st, "recompress_models", {"input": "fixed", "granny_install": "game",
+                                                                "format": "oodle1"})
+            self.assertEqual(cmd[cmd.index("--helper") + 1], built)
+            self.assertEqual(cmd[cmd.index("-o") + 1], os.path.join(tmp, "recompress_models"))
+            self.assertEqual(cmd[cmd.index("--granny-install") + 1], "game")
             for tid in ("make_rings", "make_icons", "generate"):
                 cmd, *_ = catalog.command(st, tid, {})
                 self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, tid), tid)
@@ -902,6 +1306,40 @@ class Inspector(unittest.TestCase):
             self.assertEqual((r["kind"], r["width"]), ("ddt", 64))
             with self.assertRaises(inspector.InspectError):
                 inspector.inspect(os.path.join(tmp, "Art1.bar"), "nothing")
+
+
+class FormHelp(unittest.TestCase):
+    def test_every_option_has_its_help_in_both_languages(self):
+        from studio import catalog_help
+        missing = [f"{t.id}.{a.key}" for t in catalog.TOOLS for a in t.args
+                   if not (a.help["en"].strip() and a.help["es"].strip())]
+        self.assertEqual(missing, [], "options without help: add them to studio/catalog_help.py")
+        known = {(t.id, a.key) for t in catalog.TOOLS for a in t.args}
+        stale = [f"{t}.{k}" for t, opts in catalog_help.HELP.items() for k in opts if (t, k) not in known]
+        self.assertEqual(stale, [], "help for options that no longer exist")
+
+    def test_several_swatch_names_are_passed_one_by_one(self):
+        cmd = catalog.command(None, "fetch_materials", {"names": "plaster clay"})[0]
+        self.assertEqual(cmd[-2:], ["plaster", "clay"])
+
+
+class InspectorCache(unittest.TestCase):
+    def test_a_compressed_model_is_read_from_the_cache(self):
+        """A model the game stores compressed is shown from its uncompressed copy in the cache,
+        found by the original's MD5 (as tools/model_survey.py names them)."""
+        import hashlib
+        from unittest import mock
+        from aoe3game import gr2
+        from studio import inspector
+        compressed = b"stands for a compressed model"
+        with tempfile.TemporaryDirectory() as cache:
+            os.makedirs(os.path.join(cache, "raw"))
+            with open(os.path.join(cache, "raw", hashlib.md5(compressed).hexdigest() + ".gr2"), "wb") as fh:
+                fh.write(b"the uncompressed copy")
+            with mock.patch.object(gr2, "header_facts", return_value={"raw": False}):
+                self.assertEqual(inspector._uncompressed(compressed, cache), b"the uncompressed copy")
+                self.assertEqual(inspector._uncompressed(b"not in the cache", cache), b"not in the cache")
+                self.assertEqual(inspector._uncompressed(compressed, None), compressed)
 
 
 class Picker(unittest.TestCase):

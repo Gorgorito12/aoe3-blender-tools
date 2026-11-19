@@ -159,6 +159,48 @@ texture, at the same length so nothing else in the file moves, with the CRC reco
 (`retexture.py --own-texture`). The game resolves the stored path below `art\` (the artist's
 drive and folders before it are ignored).
 
+### Moving a home city's models (`tools/hc_move.py`)
+
+**In game** (2026-11-17, a mod's home city of 32 models and the one that shares four of them,
+before and after, from the same six views; the screenshots differ by 0.1 to 0.6 levels out of 255
+on average where the move works, by 50 to 190 where it does not):
+
+- **A stored texture name drops only its last extension.** `...\art\x\name.jpg`,
+  `...\art\x\name.tga` and `...\art\x\name.ddt` all reach `art\x\name.ddt`, and a model whose stored
+  names follow its moved textures draws as before. A name written `name.(0,4,8,8).tga` (the
+  `(usage,alpha,format,mips)` suffix of a source texture's file name) makes the game look for
+  `name.(0,4,8,8).ddt`: the models drew black until copies of their textures with that name were
+  added. So a suffix in a model's stored name needs the `.ddt` renamed with it.
+- **A home city's `<visual>` may climb out of `art\homecity\`** with `..\` (a path relative to
+  `art\homecity\` such as `..\Mod\homecity\Name\x.xml` loads), and a path under `art\homecity\`
+  works as well.
+- **A suffix in the name and on the file works.** With the `.ddt` renamed `name.(0,4,8,8).ddt`
+  (its own header's digits, the file unchanged) and the stored name `name.(0,4,8,8).tga`, the models
+  draw as before (2026-11-17, every home city of a mod: 22 home cities, 161 models, 240 textures).
+- **Of a loose plain anim file and its loose compiled twin, the newer one is read.** A home city
+  whose plain `x.xml` (2019) named one model and whose `x.xml.xmb` (2015) another drew the plain
+  file's model; once both were copied to a new folder, the twin was a few milliseconds newer and
+  the game drew the twin's model. A move must carry only the twin the game reads.
+- **A raw 3ds Max export converted to the stock basis** (`rebake --convert`: inches to 0.615 units
+  per metre, Z up to Y up, every value checked to the units ratio offline) **does not draw as the
+  original in a home city.** **In game:** with the converted files still named `3D Studio MAX` in
+  `ArtToolInfo.FromArtToolName`, the buildings and background stood misplaced and out of scale and
+  the camera saw the wrong scene; renamed `ESPostExport` (nothing else changed), the camera and the
+  layout came back, but the converted buildings and background were drawn as stretched, broken
+  polygons and the sky was missing. The converted vertex positions are the originals through
+  (x, y, z) -> (-x, z, -y) / 64 exactly, and the bones' rotations and scales are conjugated as
+  expected. So the game picks how it reads a file by its art tool's name (it ignores the declared
+  units: a file declaring 1,000 per metre is drawn as if in inches), and something else in a
+  converted file (the bones' inverse world transforms or the meshes' bindings: **to verify**) is
+  not read the way the conversion writes it. Until that is known, keep raw exports as they are:
+  the game draws them right.
+- Rebuilt models compressed again with `recompress_models.py` (each section in the original's
+  format where the rebuild kept the sections' sizes, else Oodle1) drew as before, at the
+  originals' total size, **except** models of type tag `0x80000010`: their recompressed copies
+  pass the CRC check but the Granny runtime cannot open them (an access violation in
+  `GrannyGetFileInfo`), and the game exits (code 0) as soon as it meets one. `hc_move.py` opens
+  every recompressed model through the runtime and ships it uncompressed when it fails.
+
 ### Uncompressed copies
 
 - **Why** (**measured** by sampling the stack of the game's main thread): the
@@ -203,6 +245,47 @@ drive and folders before it are ignored).
   the tool's: it is left in place and forgotten.
 - Tests: `python -I tests/test_uncompress_models.py` (synthetic archives and models, a fake bridge).
 
+### Recompressed copies
+
+`tools/recompress_models.py` goes the other way, for a model a tool wrote uncompressed (a bone fix, a
+texture path) that should ship at the size of the original.
+
+- **The call** (**measured**): `GrannyRecompressFile(src, dst, n, map)` of the game's `granny2.dll`
+  stores every section whose stored format is k (0 none, 1 Oodle0, 2 Oodle1) in format `map[k]`; it
+  keeps the sections' order, records (expanded size, alignment, Oodle stops) and fixup tables. With
+  the map "everything to 2" an uncompressed file comes out Oodle1; with the identity map a stock
+  compressed model keeps its size. It writes the file packed (per section: pointer fixups,
+  marshalling fixups, data, no padding; the bridge's rebuild pads an uncompressed section's data to
+  its alignment, and both read the same) and the root type reference as 0:0, which the tool puts
+  back (see above).
+- **Its temporary file** (**measured**): two calls at once with the same `%TEMP%` fail (it returns
+  false); the tool gives each call its own `TEMP` and folder.
+- **32 bits**: the DLL is x86, so `tools/granny_recompress.c`, a small x86 program, hosts it
+  (`recompress` and `crc`, `GrannyFileCRCIsValid`). `--build-helper` compiles it with Visual Studio's
+  x86 compiler (found by `vswhere`) or `zig cc -target x86-windows-gnu`.
+- **Which format**: with `--like <original>` each section gets the original's; else Oodle1, except a
+  section whose compressed bytes would not be fewer than its expanded size (the stock exports keep
+  such a section uncompressed: a section of 17,880 bytes of vertex data came out of Oodle1 at
+  18,065).
+- **Checks** before a file is written: the header is the input's but for the total size and the
+  CRC; every section has its target format, its record and its fixups; an uncompressed section its
+  bytes; the CRC is valid by the bytes and by the runtime; and the runtime expands the result back to
+  exactly the bytes it expands the input to.
+- **On 107 building models of Wars of Liberty** whose bones `fix_bone_scale.py` fixed (**measured**,
+  2026-11-17): 16,543,100 bytes uncompressed → 6,963,269 bytes, against 6,959,543 for the mod's
+  originals (+0.05 %); the formats chosen without `--like` were the originals' in all 107 (one model
+  keeps one of its eight sections uncompressed, as the original does). The Oodle1 bytes are not the
+  originals' (0 of 107 identical) but expand to the same data. 2.7 s with 8 calls at a time. Each
+  result expanded again by the bridge (`rebake --noop`, as `uncompress_models.py` does) was the fixed
+  uncompressed file byte for byte (107 of 107), and the runtime found every CRC valid.
+- **In game** (**measured**, a copy of Wars of Liberty, 42 of them as loose files: the Persian
+  Mahalla, Temple, Royal Court, Madrasah and Forge): the game opened 23 of them in a skirmish
+  (each read at its recompressed size, by the file log of the engine-extension DLL), drew the
+  buildings standing and, damaged by trigger to 60 % of their hit points, their damage models, with the Royal Court's
+  flag and the Forge's smoke and flag where the uncompressed set puts them.
+- Tests: `python -I tests/test_recompress_models.py` (synthetic models, a fake runtime with zlib in
+  place of Oodle).
+
 ## Textures (.ddt)
 
 | Offset | Content |
@@ -225,6 +308,58 @@ BGRA), DXT1 without alpha, or BGRA, each with mip levels down to 4 x 4. Its DXT 
 inset bounding box of each 4 x 4 block and picks the nearest of the four palette colours; on a
 mod's 1024 x 1024 texture the decoded result differs from the source by 1.7 levels out of 255 on
 average, and the file has the size of the game's own (**measured**).
+
+**The closer encoder** (`refine=True` on `compress`, `compress_dxt5`, `write_dxt`, `encode_level`;
+the default stays the fast one, so existing output does not change): it also starts from the ends
+of each block's principal colour axis, solves the endpoints by least squares for the chosen
+indices (twice), tries one 565 step either way on each channel of each endpoint, and keeps per
+block whichever is closest. On a decoded DXT texture it finds the original blocks again: on a
+mod's 1024 x 1024 textures, 1.9 and 0.75 levels of difference with the fast encoder against 0.00
+(**measured**, about 5 s a 1024 x 1024 level). Other helpers: `chain_length(w, h, smallest)`,
+`mip_chain(..., bump=True)` (each level's normals made unit length again; `write_normal_map` with
+`mips=True` uses it), `area_resize`/`halve` (area average, the 2 x 2 box at exactly half),
+`colour_blocks_as_dxt1` (DXT3/DXT5 colour blocks as DXT1 blocks that decode the same: endpoints
+in the wrong order swapped with their indices, a one-colour block given index 0, as DXT1 reads
+c0 == c1 as the 3-colour mode whose index 3 is transparent black), `level_blocks`,
+`alpha_blocks`, `pack`. `fitted()` halves until the **longer** side fits (it looked at the height
+only, so a 2:1 texture was never reduced).
+
+**The game's own home-city building textures** (**measured**, `tools/reencode_textures.py tad`:
+the home-city files in `Data*.bar`, each `<building><visual>`, its anim files and models, the
+`.ddt` each model stores, people standing in for buildings left out): 215 textures of 98 models,
+mean 454 x 395; 152 are 512 x 512, 53 are 512 x 256, 43 are 256 x 256, none is above 512. Colour
+textures are DXT3 (`0,1,8,x` and `0,4,8,x`) or DXT1 with alpha 0 (`0,0,4,x`; no DXT1 declares an
+alpha); bump maps are DXT5 (`6,0,9,x`, `6,4,9,x`). Their chains stop at 4 px on the short side
+(512 x 512: 8 levels) or at 8 (7 levels); 32 bump maps have one level.
+
+### Re-encoding (`tools/reencode_textures.py`)
+
+Rules (the header's alpha value is always kept): a bump map (usage bit 4) becomes DXT5; alpha 0
+becomes DXT1, or DXT3 when its alpha channel is not opaque everywhere (an `alphatest` shader may
+cut holes with it); alpha 1, 4 or 8 becomes DXT3; BGRA follows the same rule; grey is kept. A side
+above twice the game's mean (above) halves both sides until both fit; the chain goes down to 4 px
+on the short side (a longer existing chain is kept). A level whose size does not change keeps its
+blocks when they can be carried over (DXT3/DXT5 to DXT1 exactly; a DXT3/DXT5 alpha re-quantised
+from its decoded values); a halved texture's level is either the original's own level of that
+size or a new encoding of the area average, whichever is closer. The check compares the new top
+level with the original's (area averaged when halved): the mean absolute difference per channel
+must stay at or below 6 and the worst 4 x 4 block's mean at or below 32 (0-255); a sound DXT1
+encoding of a detailed texture (roof tiles, thatch, stone) **measured** 2 to 6 and up to 21.
+`hc_move.py --reencoded` ships the re-encoded copy of every moved texture and writes the new header
+into its suffix.
+
+**Textures re-encoded under their own name** (**in game**, 2026-11-17, a mod's 22 home cities opened
+one after the other in one session): ten building textures that stay in their folders (eight of a
+statue, among them two uncompressed one-level textures of 133 x 108 and 166 x 357, and two shared
+roof textures) were re-encoded in place. Home cities opened later in the same session then lost
+their `<replacetexture>` swaps, in scenes that never draw those textures: a room lost its wallpaper
+and floor, a market its roof tiles and its grass, a background its sky. Opened first in a fresh
+session, the same cities drew right; each group alone passed a short sequence; with the ten put
+back, all 22 drew as before in one session, with the textures that move under a new name
+re-encoded. The cause is **to verify** (a size or format the game keeps per name, the sides that
+are not powers of two, or the session's texture memory). Until then: `hc_move.py --reencoded`
+ships re-encoded only the textures that move, and `reencode_textures.py` keeps any texture whose
+sides are not powers of two (the stock game has none: all 215 measured are).
 
 **Player colour** (**measured** on the stock textures that use the `pixelxform` shader): about 2 %
 of their pixels, in thin bands (trim strips under the windows), have alpha below 128, and those

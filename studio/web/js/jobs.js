@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Tasks running in their own process: a live log with progress and cancel, their outputs, and
 // the screen that lists them all.
-import { api, clear, dialog, fileText, fileUrl, fmt, h, t, toast } from './core.js';
+import { api, clear, dialog, fileText, fileUrl, fmt, h, storeSet, t, toast } from './core.js';
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
 const TEXT = /\.(txt|md|json|xml|csv|log)$/i;
@@ -59,6 +59,11 @@ export async function showOutputs(paths, box) {
     } catch { continue; }
     const imgs = files.filter(f => IMAGE.test(f.path)).slice(0, 24);
     const texts = files.filter(f => TEXT.test(f.path)).slice(0, 12);
+    // a survey's report or profile: its groups as a table
+    for (const f of files.filter(f => /(^|[\\/])(textures|models)\.json$|profile[^\\/]*\.json$/i.test(f.path)).slice(0, 2)) {
+      box.append(h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary small', text: t('rs.see') + ' · ' + f.rel,
+        onclick: () => { storeSet('results.open', { path: f.path }); location.hash = '#/results'; } })));
+    }
     if (imgs.length) {
       const grid = h('div', { class: 'outputs' });
       box.append(grid);

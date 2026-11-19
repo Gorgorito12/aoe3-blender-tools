@@ -7,6 +7,7 @@ must name this server (no DNS rebinding)."""
 import json
 import mimetypes
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -306,6 +307,10 @@ def r_building_export(st, rest, q, b):
                 args.append(flag)
         script = os.path.join(ROOT, "scripts", "game_export.py")
         title = f"Game export: {params.name}"
+        if opts.get("no_blender"):          # experimental: scripts/game_export_noblender.py
+            cmd = jobs.python_command() + [os.path.join(ROOT, "scripts", "game_export_noblender.py")] + args
+            job = st.jobs.start(title + " (without Blender)", cmd, cwd=ROOT, outputs=[out], tool="building_game")
+            return {"job": job.id, "out": out}
     elif kind == "files":
         args = ["--params", spec, "--out", out]
         views = opts.get("views")
@@ -325,7 +330,7 @@ def r_building_export(st, rest, q, b):
 def r_inspect(st, rest, q, b):
     from . import inspector
     try:
-        return inspector.inspect(b.get("path") or "", b.get("entry"))
+        return inspector.inspect(b.get("path") or "", b.get("entry"), st.settings.get("cache") or None)
     except inspector.InspectError as e:
         raise ApiError(str(e)) from None
 
@@ -437,6 +442,194 @@ def r_flags_write(st, rest, q, b):
 def _tex():
     from . import texmaker_ui
     return texmaker_ui
+
+
+def r_results(st, rest, q, b):
+    """A survey's result (a report or a profile) as a table; `profile`: one of this program's."""
+    from . import results
+    from . import ADDON
+    name = b.get("profile")
+    if name:
+        if name not in ("textures", "models"):
+            raise ApiError("profile: textures or models")
+        path = os.path.join(ADDON, "profiles", name + ".json")
+    else:
+        path = b.get("path") or ""
+    try:
+        return results.table(path)
+    except results.ResultsError as e:
+        raise ApiError(str(e)) from None
+
+
+def _hud():
+    from . import hud
+    return hud
+
+
+def r_hud_open(st, rest, q, b):
+    """A game copy's in-game HUD, normal or minimised, for the interface screen (read only)."""
+    h = _hud()
+    folder = b.get("game") or st.settings.get("game")
+    try:
+        scene = h.Scene(h.game(folder), b.get("variant") or "min")
+    except (h.HudError, OSError) as e:
+        raise ApiError(str(e)) from None
+    return dict(scene.public(), session=st.sessions.add(scene), game=folder)
+
+
+def r_hud_texture(st, rest, q, b):
+    """A texture of the scene's copy as PNG (the bytes; `where` in a header)."""
+    scene = st.sessions.get(q.get("s"))
+    hit = scene.texture_png(q.get("path") or "")
+    if hit is None:                     # not in this copy (the stock layouts name some): nothing to draw
+        return b"", "image/png"
+    return hit[0], "image/png"
+
+
+def r_hud_font(st, rest, q, b):
+    """A typeface's TrueType file from the copy's Fonts.bar, for the page to draw with."""
+    scene = st.sessions.get(q.get("s"))
+    data = scene.game.font_file(q.get("face") or "")
+    if data is None:
+        raise ApiError("not a font of this copy (a system font)", 404)
+    return data, "font/ttf"
+
+
+def r_hud_refs(st, rest, q, b):
+    """Where each thing a gadget names leads (the interface screen's "Points to")."""
+    h = _hud()
+    scene = st.sessions.get(b.get("session"))
+    try:
+        return scene.refs(int(b.get("id", -1)), int(b.get("width") or 1024))
+    except h.HudError as e:
+        raise ApiError(str(e)) from None
+
+
+def r_hud_units(st, rest, q, b):
+    """The copy's units whose name or shown name holds the words asked."""
+    h = _hud()
+    scene = st.sessions.get(b.get("session"))
+    try:
+        return {"units": scene.game.units(b.get("q") or "")}
+    except (h.HudError, OSError) as e:
+        raise ApiError(str(e)) from None
+
+
+def r_hud_sim(st, rest, q, b):
+    """The panels filled for one unit, with the moments and keys asked (aoe3game/unitpanel.py)."""
+    h = _hud()
+    scene = st.sessions.get(b.get("session"))
+    try:
+        return scene.simulate(b.get("unit") or "", b.get("state") or {}, b.get("keys") or [], b.get("rows") or None)
+    except (h.HudError, OSError, ValueError) as e:
+        raise ApiError(str(e)) from None
+
+
+def _hud_scene(st, b):
+    return st.sessions.get(b.get("session"))
+
+
+def r_hud_op(st, rest, q, b):
+    """Edits of the interface (one step for Undo); answers the scene again and the gadget edited."""
+    h = _hud()
+    scene = _hud_scene(st, b)
+    try:
+        focus = scene.apply(b.get("ops"), b.get("label") or "")
+    except h.HudError as e:
+        raise ApiError(str(e)) from None
+    return dict(scene.public(), session=b.get("session"), focus=focus)
+
+
+def r_hud_undo(st, rest, q, b):
+    scene = _hud_scene(st, b)
+    done = scene.redo() if b.get("redo") else scene.undo()
+    return dict(scene.public(), session=b.get("session"), done=done)
+
+
+def r_hud_changes(st, rest, q, b):
+    return {"changes": _hud_scene(st, b).changes()}
+
+
+def r_hud_check(st, rest, q, b):
+    return {"findings": _hud_scene(st, b).check(int(b.get("width") or 1024))}
+
+
+def r_hud_save(st, rest, q, b):
+    """The edited layouts into the work folder (never the game's), with the check's findings."""
+    scene = _hud_scene(st, b)
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", b.get("name") or "interface").strip("._") or "interface"
+    folder = st.output(os.path.join(st.work_dir("hud"), name))
+    findings = scene.check(int(b.get("width") or 1024))
+    if any(f["level"] == "error" for f in findings) and not b.get("force"):
+        return {"written": [], "findings": findings, "refused": True}
+    return {"written": scene.save(folder), "folder": folder, "findings": findings}
+
+
+def r_hud_textures(st, rest, q, b):
+    """The copy's interface textures whose path holds the words asked (the texture picker)."""
+    return {"textures": _hud_scene(st, b).game.textures(b.get("q") or "")}
+
+
+def r_hud_snapshot(st, rest, q, b):
+    """The drawn HUD as a PNG in the work folder."""
+    import base64
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", b.get("name") or "hud").strip("._") or "hud"
+    head, _, body = (b.get("picture") or "").partition(",")
+    if head != "data:image/png;base64":
+        raise ApiError("a PNG picture is expected")
+    data = base64.b64decode(body)
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ApiError("a PNG picture is expected")
+    path = os.path.join(st.work_dir("hud"), name + ".png")
+    with open(path, "wb") as fh:
+        fh.write(data)
+    return {"path": path}
+
+
+def _settle():
+    from . import settlement_ui
+    return settlement_ui
+
+
+def r_settlement_measured(st, rest, q, b):
+    """What the composer lays out by: the mod's settlements as measured."""
+    return _settle().measured()
+
+
+def r_settlement_compose(st, rest, q, b):
+    se = _settle()
+    try:
+        units = se.compose(b.get("units"), socket=b.get("socket") or "", obstruction=b.get("obstruction") or "",
+                           seed=int(b.get("seed") or 1), counts=b.get("counts"))
+    except (se.SettlementError, TypeError, ValueError) as e:
+        raise ApiError(str(e)) from None
+    return {"units": units, "meta": None}
+
+
+def r_settlement_open(st, rest, q, b):
+    se = _settle()
+    path = b.get("path") or ""
+    if not os.path.isfile(path):
+        raise ApiError(f"no such file: {path}")
+    try:
+        return dict(se.read(path), path=path)
+    except se.SettlementError as e:
+        raise ApiError(str(e)) from None
+
+
+def r_settlement_save(st, rest, q, b):
+    """Writes the grouping file: into the work folder unless a path is given (never the game's)."""
+    se = _settle()
+    name = (b.get("name") or "").strip()
+    if not b.get("path") and not re.match(r"^[A-Za-z0-9_ .-]{1,80}$", name):
+        raise ApiError("the grouping's name: letters, digits, spaces, _ . -")
+    path = b.get("path") or os.path.join(st.work_dir("settlements"),
+                                         name if name.lower().endswith(".xml") else name + ".xml")
+    st.output(path)
+    try:
+        return {"path": se.write(path, b.get("units") or [], b.get("meta"))}
+    except se.SettlementError as e:
+        raise ApiError(str(e)) from None
 
 
 def r_tex_source(st, rest, q, b):
@@ -561,10 +754,11 @@ def r_building_check(st, rest, q, b):
     spec = os.path.join(st.work_dir("jobs"), f"{params.name}-check-{int(time.time() * 1000)}.json")
     with open(spec, "w", encoding="utf-8") as fh:
         json.dump(schema.params_to_dict(params), fh)
-    try:
-        cmd = st.bridge.command(os.path.join(ROOT, "scripts", "check.py"), ["--params", spec, "--json"])
-    except RuntimeError as e:
-        raise ApiError(str(e)) from None
+    script, args = os.path.join(ROOT, "scripts", "check.py"), ["--params", spec, "--json"]
+    if st.bridge.available or st.bridge.module:
+        cmd = st.bridge.command(script, args)
+    else:                                   # the same rules without Blender (core/checks.py)
+        cmd = jobs.python_command() + [script] + args + ["--no-blender"]
     job = st.jobs.start(f"Check: {params.name}", cmd, cwd=ROOT, tool="check")
     return {"job": job.id}
 
@@ -856,6 +1050,24 @@ ROUTES = [
     ("POST", "/api/retex/paint", r_retex_paint),
     ("POST", "/api/retex/picture", r_retex_picture),
     ("POST", "/api/retex/save", r_retex_save),
+    ("POST", "/api/results", r_results),
+    ("POST", "/api/hud/open", r_hud_open),
+    ("GET", "/api/hud/texture", r_hud_texture),
+    ("GET", "/api/hud/font", r_hud_font),
+    ("POST", "/api/hud/snapshot", r_hud_snapshot),
+    ("POST", "/api/hud/refs", r_hud_refs),
+    ("POST", "/api/hud/units", r_hud_units),
+    ("POST", "/api/hud/sim", r_hud_sim),
+    ("POST", "/api/hud/op", r_hud_op),
+    ("POST", "/api/hud/undo", r_hud_undo),
+    ("POST", "/api/hud/changes", r_hud_changes),
+    ("POST", "/api/hud/check", r_hud_check),
+    ("POST", "/api/hud/save", r_hud_save),
+    ("POST", "/api/hud/textures", r_hud_textures),
+    ("POST", "/api/settlement/measured", r_settlement_measured),
+    ("POST", "/api/settlement/compose", r_settlement_compose),
+    ("POST", "/api/settlement/open", r_settlement_open),
+    ("POST", "/api/settlement/save", r_settlement_save),
     ("POST", "/api/flags/measure", r_flags_measure),
     ("POST", "/api/flags/preview", r_flags_preview),
     ("POST", "/api/flags/write", r_flags_write),
@@ -883,12 +1095,18 @@ ROUTES = [
 ]
 
 
+class Server(ThreadingHTTPServer):
+    # a page asks for many textures at once: the default queue of 5 refuses the rest on Windows
+    request_queue_size = 128
+    daemon_threads = True
+
+
 def serve(port=0, config=None):
     """Starts the server in a thread; returns (studio, httpd)."""
     studio = Studio(config)
     studio_log.setup(os.path.dirname(studio.settings.path))
     handler = type("BoundHandler", (Handler,), {"studio": studio})
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    httpd = Server(("127.0.0.1", port), handler)
     httpd.daemon_threads = True
     studio.port = httpd.server_address[1]
     studio_log.log.info("studio %s on port %s (%s, Python %s)", VERSION, studio.port,

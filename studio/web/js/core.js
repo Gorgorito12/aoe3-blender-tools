@@ -37,6 +37,12 @@ export async function fileUrl(path) {
   return URL.createObjectURL(await res.blob());
 }
 
+export async function fetchBlob(url) {
+  // any binary answer of the API (it needs the token): the blob, or null when there is none
+  const res = await fetch(url, { headers: { 'X-Studio-Token': TOKEN } });
+  return res.ok ? res.blob() : null;
+}
+
 export async function fileText(path) {
   return api('/api/file?path=' + encodeURIComponent(path));
 }

@@ -670,6 +670,46 @@ class GroupingDeploy(unittest.TestCase):
             self.assertEqual(open(old, encoding="utf-8").read(), "<grouping/>")
 
 
+class FilesDeploy(unittest.TestCase):
+    def test_a_folder_laid_out_as_the_copy_goes_in_and_undo_restores_it_byte_for_byte(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            copy, src = os.path.join(tmp, "copy"), os.path.join(tmp, "edits")
+            for d in ("art", "data"):
+                os.makedirs(os.path.join(copy, d))
+            files = {os.path.join("data", "uimain.xml"): b"<layout>old</layout>",
+                     os.path.join("data", "uimain.xml.xmb"): b"l33t compiled twin",
+                     os.path.join("data", "other.xml"): b"<x/>"}
+            for rel, data in files.items():
+                with open(os.path.join(copy, rel), "wb") as fh:
+                    fh.write(data)
+            for rel, data in ((os.path.join("data", "uimain.xml"), b"<layout>new</layout>"),
+                              (os.path.join("data", "uhc", "minuirows.xml"), b"<minUIRows/>"),
+                              ("hud-edits.json", b"{}")):
+                os.makedirs(os.path.dirname(os.path.join(src, rel)) or src, exist_ok=True)
+                with open(os.path.join(src, rel), "wb") as fh:
+                    fh.write(data)
+            d = deploy.Deployment(copy)
+            written = d.add_files(src, log=lambda s: None)
+            self.assertEqual(sorted(written), [os.path.join("data", "uhc", "minuirows.xml"), os.path.join("data", "uimain.xml")])
+            with open(os.path.join(copy, "data", "uimain.xml"), "rb") as fh:
+                self.assertEqual(fh.read(), b"<layout>new</layout>")
+            self.assertFalse(os.path.exists(os.path.join(copy, "data", "uimain.xml.xmb")))    # the twin taken out
+            self.assertFalse(os.path.exists(os.path.join(copy, "hud-edits.json")))
+            d.undo(log=lambda s: None)
+            for rel, data in files.items():
+                with open(os.path.join(copy, rel), "rb") as fh:
+                    self.assertEqual(fh.read(), data, rel)
+            self.assertFalse(os.path.exists(os.path.join(copy, "data", "uhc")))                # the folder it made
+            self.assertEqual(sorted(os.listdir(os.path.join(copy, "data"))), ["other.xml", "uimain.xml", "uimain.xml.xmb"])
+            with self.assertRaises(deploy.RefusedPath):
+                d.add_files(os.path.join(copy, "data"))                                        # from inside the copy
+            os.makedirs(os.path.join(src, "elsewhere"))
+            with open(os.path.join(src, "elsewhere", "x.txt"), "w") as fh:
+                fh.write("x")
+            with self.assertRaises(deploy.RefusedPath):
+                d.add_files(src, log=lambda s: None)                                           # only data and art
+
+
 class PropSet(unittest.TestCase):
     """One unit, many models on one texture: the Variation layout of the stock colony props."""
 

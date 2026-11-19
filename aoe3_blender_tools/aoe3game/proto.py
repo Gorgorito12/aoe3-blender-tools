@@ -192,6 +192,29 @@ def locids(text):
     return {int(x) for x in LOCID_RE.findall(text)}
 
 
+_STRING_RE = re.compile(r"<String\b([^>]*?)(?:/>|>(.*?)</String>)", re.S)
+_ATTR_RE = re.compile(r"(\w+)\s*=\s*(?:'([^']*)'|\"([^\"]*)\")")
+
+
+def _unescape(s):
+    return (s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&apos;", "'")
+            .replace("&amp;", "&"))
+
+
+def strings_index(text):
+    """{string number: (text, symbol or None)} of a string table's text (the last one of a number
+    wins, as later lines do in the game: to verify)."""
+    out = {}
+    for m in _STRING_RE.finditer(text):
+        attrs = {k.lower(): (a if a is not None else b) for k, a, b in _ATTR_RE.findall(m.group(1))}
+        try:
+            n = int(attrs.get("_locid", ""))
+        except ValueError:
+            continue
+        out[n] = (_unescape(m.group(2) or ""), attrs.get("symbol"))
+    return out
+
+
 def free_locids(text, count, start=9_000_000):
     """`count` consecutive unused string numbers from `start` on."""
     used = locids(text)

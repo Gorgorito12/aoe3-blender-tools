@@ -511,11 +511,61 @@ def the_schema_matches_the_panel():
 
 
 @test
+def the_checks_without_blender_match_blenders():
+    """core/checks.py on the generator's own mesh (checks.mesh_of) gives what validate.check gives
+    on Blender's object, every preset at both details (measured 2026-11-17: all 102 alike)."""
+    import dataclasses
+
+    from aoe3_blender_tools.core import checks
+    from aoe3_blender_tools.core import profile as calibration
+    prof = calibration.load()
+    for key, p0 in building.PRESETS.items():
+        for detail in ("LOW", "MEDIUM"):
+            p = dataclasses.replace(p0, detail=detail, texture_size=256)
+            model = building.build(p)
+            texture = paint.paint(model)
+            prop = None
+            if p.style == "PROP":
+                _kind, folder = building.STYLES["PROP"].game(building.clamp_params(p))
+                prop = calibration.prop_group(folder or "objects")
+            obj = blender_io.create_object(model, texture)
+            try:
+                assert validate.check(obj, 6000, prof, prop) ==                     checks.check(checks.mesh_of(model, texture.shape), 6000, prof, prop), (key, detail)
+            finally:
+                bpy.data.objects.remove(obj)
+
+
+@test
+def the_icon_without_blender_matches_blenders():
+    """core/softrender.py frames a building as core/render.py does and its light is fitted to
+    Blender's: the same silhouette, colours within a few levels (measured 2026-11-17: overlap
+    0.996 or more, 3.6 to 4.4 / 255 on four presets)."""
+    import numpy as np
+    from aoe3_blender_tools.core import gamemesh, render, softrender
+    for key in ("WHITE_HOUSE", "AFRICAN_TOWN_CENTER_SAHEL"):
+        model = building.build(building.PRESETS[key])
+        texture = paint.paint(model)
+        obj = blender_io.create_object(model, texture)
+        try:
+            a = render.render_rgba(obj, 256)
+        finally:
+            bpy.data.objects.remove(obj)
+        b = softrender.render_rgba(*gamemesh.mesh(model), texture, 256)
+        sa, sb = a[..., 3] > 127, b[..., 3] > 127
+        assert (sa & sb).sum() / (sa | sb).sum() > 0.99, key
+        both = (a[..., 3] > 250) & (b[..., 3] > 250)
+        diff = np.abs(a[..., :3][both].astype(int) - b[..., :3][both].astype(int)).mean()
+        assert diff < 8, (key, diff)
+
+
+@test
 def the_mesh_without_blender_matches_blenders():
     """core/gamemesh.py against the game mesh Blender gives: the same triangle count and area,
     every corner's position and UV, and the vertices with their normals (measured 2026-11-17: all
     alike in 100 of the 102 preset and detail pairs; the burnt hut differs where a non-planar
-    polygon of five sides or more is cut otherwise than Blender's beauty fill)."""
+    polygon of five sides or more is cut otherwise than Blender's beauty fill). A convex polygon with
+    points along one edge is fanned from a corner that leaves no flat triangle, as Blender's fill
+    leaves none; rendered alike, the two meshes differ on under 0.3 % of the pixels."""
     import dataclasses
 
     import numpy as np
@@ -958,7 +1008,8 @@ def main():
                   square_hipped_roof_builds, roof_kit_parts_have_no_overlaps,
                   ui_has_a_property_for_every_param_field, the_schema_matches_the_panel,
                   every_operator_reaches_the_studio,
-                  the_mesh_without_blender_matches_blenders, ai_repaint_and_revert,
+                  the_mesh_without_blender_matches_blenders, the_checks_without_blender_match_blenders,
+                  the_icon_without_blender_matches_blenders, ai_repaint_and_revert,
                   round_kit_parts_have_no_overlaps, round_roofs_export_smooth_normals,
                   a_mesh_we_did_not_make_is_repainted_and_exported_as_a_prop,
                   the_texture_maker_makes_a_tileable_swatch_and_keeps_it,
