@@ -441,6 +441,31 @@ class Server(unittest.TestCase):
         self.assertEqual(u["changed"], 1)
         with open(os.path.join(copy, "data", "uimainnew.xml"), "rb") as fh:
             self.assertEqual(fh.read(), hud_copy.MAIN.encode("utf-8"))             # the copy never written
+        # a row of the DLL for an item: its gadget and its line of the rows file, as one step
+        status, u = self.call("/api/hud/undo", {"session": sid})                 # back to the copy
+        panel = gid(u, "unitselectionpanel")
+        status, e4 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "row", "gadget": "unitselectionpanel-uhcRow5", "text": "Cost: {cost}"},
+            {"op": "add", "parent": panel, "xml": '<gadget name="unitselectionpanel-uhcRow5" type="formatText" size1024="507 712 700 726"/>'}]})
+        self.assertEqual(status, 200, e4)
+        self.assertEqual(e4["focus"], gid(e4, "unitselectionpanel-uhcRow5"))
+        status, s = self.call("/api/hud/sim", {"session": sid, "unit": "Gunman", "keys": ["minUIStats"]})
+        self.assertIn("unitselectionpanel-uhcrow5", s["gadgets"])
+        self.assertEqual(s["gadgets"]["unitselectionpanel-uhcrow5"]["why"], "no_data")   # the Gunman has no cost
+        status, e5 = self.call("/api/hud/op", {"session": sid, "ops": [
+            {"op": "row", "gadget": "unitselectionpanel-uhcRow5", "item": "los", "label": "LOS: "}]})
+        status, s = self.call("/api/hud/sim", {"session": sid, "unit": "Gunman", "keys": ["minUIStats"]})
+        self.assertEqual(s["gadgets"]["unitselectionpanel-uhcrow5"]["text"], "LOS: 16")  # replaced, not added
+        status, sv = self.call("/api/hud/save", {"session": sid, "name": "rows"})
+        with open(os.path.join(sv["folder"], "data", "uhc", "minuirows.xml"), encoding="utf-8") as fh:
+            rows = fh.read()
+        self.assertEqual(rows.count('gadget="unitselectionpanel-uhcRow5"'), 1)
+        self.assertIn('item="los" label="LOS: "', rows)
+        self.assertIn('gadget="unitselectionpanel-uhcRow0"', rows)                # the file's own rows kept
+        with open(os.path.join(copy, "data", "uhc", "minuirows.xml"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), hud_copy.ROWS)                             # the copy's rows file untouched
+        status, err = self.call("/api/hud/op", {"session": sid, "ops": [{"op": "row", "gadget": "bad name!", "item": "los"}]})
+        self.assertEqual(status, 400)
         status, normal = self.call("/api/hud/open", {"game": copy, "variant": "normal"})
         self.assertEqual(status, 200, normal)
         self.assertEqual([f["stem"] for f in normal["files"]], ["uimainnew"])     # no normal panel here

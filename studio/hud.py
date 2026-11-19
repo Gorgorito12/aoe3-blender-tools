@@ -169,6 +169,16 @@ class Game:
                             self._art_all.setdefault(norm(stored), []).append(f"{name}:{stored}")
         return out + self._art_all.get(key, [])
 
+    def textures(self, q="", limit=240):
+        """The art paths (without .ddt) of the copy's textures under ui whose path holds q."""
+        art = self.art
+        low = q.strip().lower().replace("/", "\\")
+        out = set()
+        for key in list(art.loose) + list(art.archived):
+            if key.endswith(".ddt") and ("ui\\" in key) and (not low or low in key):
+                out.add(key[:-4])
+        return sorted(out)[:limit]
+
     def font_where(self, face):
         """Where a typeface's file is: Fonts.bar's entry, or None (a system font)."""
         self.fonts
@@ -347,16 +357,15 @@ class Scene:
             self.files.append({"stem": stem, "where": where, "hidden": hidden, "doc": doc, "original": doc.data(),
                                "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)})
         self.undo_stack, self.redo_stack = [], []
+        self.rows_index = None             # the index in self.files of the DLL's rows file, once loaded
 
-    def gadgets(self):
-        """[(file index, element)] of every gadget, file by file in document order."""
-        return [(i, e) for i, f in enumerate(self.files) for e in f["doc"].gadgets()]
 
     def public(self):
         files, out = [], []
         ids = {}
         for i, f in enumerate(self.files):
-            files.append({"stem": f["stem"], "where": f["where"], "hidden": f["hidden"], "size": f["size"]})
+            files.append({"stem": f["stem"], "where": f["where"], "hidden": f["hidden"], "size": f["size"],
+                          "rows": bool(f.get("rows"))})
         for n, (i, e) in enumerate(self.gadgets()):
             ids[id(e)] = n
         textures, strings = set(), set()
@@ -456,6 +465,37 @@ class Scene:
         out["commands"] = [c.own_text().strip() for c in e.elements() if c.name_lower == "command"]
         return out
 
+    EMPTY_ROWS = '<?xml version="1.0" encoding="utf-8"?>\r\n<minUIRows>\r\n</minUIRows>\r\n'
+
+    def rows_doc(self, path=None, create=False):
+        """The DLL's rows file in the session (the copy's data\\uhc\\minuirows.xml, or the file
+        chosen): its index in self.files, or None. `create`: a new empty one when there is none.
+        Chosen again while it holds no edit, it is read again."""
+        path = path or os.path.join(self.game.folder, "data", "uhc", "minuirows.xml")
+        if self.rows_index is not None:
+            f = self.files[self.rows_index]
+            if os.path.normcase(f["where"]) == os.path.normcase(path) or f["doc"].data() != f["original"]:
+                return self.rows_index
+            self.files.pop(self.rows_index)
+            self.rows_index = None
+        if os.path.isfile(path):
+            with open(path, "rb") as fh:
+                data = fh.read()
+        elif create:
+            data = self.EMPTY_ROWS.encode("utf-8")
+        else:
+            return None
+        doc = uilayout.parse(data)
+        self.files.append({"stem": "minuirows", "where": path, "hidden": [], "doc": doc, "original": doc.data(),
+                           "sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "rows": True,
+                           "new": not os.path.isfile(path)})
+        self.rows_index = len(self.files) - 1
+        return self.rows_index
+
+    def gadgets(self):
+        """[(file index, element)] of every gadget of the layouts, file by file in document order."""
+        return [(i, e) for i, f in enumerate(self.files) if not f.get("rows") for e in f["doc"].gadgets()]
+
     def simulate(self, unit_name, state=None, keys_on=(), rows_path=None):
         """The panels filled for one unit of the copy (aoe3game/unitpanel.py)."""
         g = self.game
@@ -465,7 +505,15 @@ class Scene:
         keys, cfg_files = g.keys()
         for k in keys_on:
             keys.setdefault(str(k).lower(), [])
-        rows, rows_where = g.rows_file(rows_path)
+        k = self.rows_doc(rows_path)
+        if k is not None:
+            try:
+                rows = unitpanel.read_rows(self.files[k]["doc"].text())
+            except ET.ParseError as e:
+                raise HudError(f"minuirows.xml: {e}") from None
+            rows_where = self.files[k]["where"]
+        else:
+            rows, rows_where = None, rows_path or os.path.join(g.folder, "data", "uhc", "minuirows.xml")
         gadgets = {}
         for _i, e in self.gadgets():
             name = (e.get("name") or "").lower()
@@ -530,7 +578,7 @@ class Scene:
             self.redo_stack.clear()
             del self.undo_stack[:-200]
         ids = {id(e): k for k, (_i, e) in enumerate(self.gadgets())}
-        return ids.get(id(focus)) if focus is not None else None
+        return ids.get(id(focus)) if focus is not None else None    # a row of the rows file is not a gadget
 
     def _one(self, op):
         kind = op.get("op")
@@ -591,6 +639,38 @@ class Scene:
             text = e.text()
             uilayout.remove(e)
             return uilayout.insert(parent, None, text)[-1]
+        if kind == "row":
+            # a row of the DLL's rows file: replaced when its gadget has one, else added
+            k = self.rows_doc(op.get("rows") or None, create=True)
+            root = [e for e in self.files[k]["doc"].root.elements() if e.name_lower == "minuirows"]
+            if not root:
+                raise HudError("the rows file has no <minUIRows>")
+            gadget = str(op.get("gadget") or "")
+            if not re.match(r"^[\w.-]+$", gadget):
+                raise HudError("a row needs its gadget's name")
+            for old in [r for r in root[0].elements() if r.name_lower == "row" and (r.get("gadget") or "").lower() == gadget.lower()]:
+                uilayout.remove(old)
+            attrs = [f'gadget="{gadget}"']
+            if op.get("text"):
+                attrs.append('text="' + uilayout._escape(str(op["text"])) + '"')
+            else:
+                attrs.append('item="' + uilayout._escape(str(op.get("item") or "")) + '"')
+                if op.get("label"):
+                    attrs.append('label="' + uilayout._escape(str(op["label"])) + '"')
+            if op.get("types"):
+                attrs.append('types="' + uilayout._escape(str(op["types"])) + '"')
+            first_other = next((c for c in root[0].elements() if c.name_lower != "row"), None)
+            index = root[0].children.index(first_other) if first_other is not None else None
+            return uilayout.insert(root[0], index, "<row " + " ".join(attrs) + "/>")[0]
+        if kind == "rowdel":
+            k = self.rows_doc(op.get("rows") or None)
+            if k is None:
+                raise HudError("there is no rows file")
+            root = [e for e in self.files[k]["doc"].root.elements() if e.name_lower == "minuirows"]
+            for old in [r for r in (root[0].elements() if root else []) if r.name_lower == "row"
+                        and (r.get("gadget") or "").lower() == str(op.get("gadget") or "").lower()]:
+                uilayout.remove(old)
+            return None
         raise HudError(f"unknown operation: {kind}")
 
     def undo(self):
@@ -632,7 +712,7 @@ class Scene:
         engine = [re.compile(g["re"], re.I) for g in table("engine_gadgets")["gadgets"]]
         found = []
         for i, f in enumerate(self.files):
-            if f["doc"].data() == f["original"]:
+            if f["doc"].data() == f["original"] or f.get("rows"):
                 continue
             old = uilayout.parse(f["original"])
             old_names = [(g.get("name") or "") for g in old.gadgets()]
@@ -674,7 +754,13 @@ class Scene:
             twin = self.game.loose.get(f"{f['stem']}.xml.xmb".lower())
             if twin:
                 found.append({"level": "warning", "code": "xmb_twin", "stem": f["stem"], "path": twin})
-        rows, where = self.game.rows_file()
+        k = self.rows_index
+        rows = None
+        if k is not None:
+            try:
+                rows = unitpanel.read_rows(self.files[k]["doc"].text())
+            except ET.ParseError as e:
+                found.append({"level": "error", "code": "rows_unreadable", "stem": "minuirows", "name": str(e)})
         if rows:
             names = {(e.get("name") or "").lower() for _i, e in self.gadgets()}
             for r in rows["rows"]:
@@ -690,7 +776,8 @@ class Scene:
             data = f["doc"].data()
             if data == f["original"]:
                 continue
-            path = os.path.join(folder, "data", f["stem"] + ".xml")
+            path = os.path.join(folder, "data", "uhc", "minuirows.xml") if f.get("rows") else \
+                os.path.join(folder, "data", f["stem"] + ".xml")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as fh:
                 fh.write(data)

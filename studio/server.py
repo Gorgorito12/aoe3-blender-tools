@@ -565,6 +565,11 @@ def r_hud_save(st, rest, q, b):
     return {"written": scene.save(folder), "folder": folder, "findings": findings}
 
 
+def r_hud_textures(st, rest, q, b):
+    """The copy's interface textures whose path holds the words asked (the texture picker)."""
+    return {"textures": _hud_scene(st, b).game.textures(b.get("q") or "")}
+
+
 def r_hud_snapshot(st, rest, q, b):
     """The drawn HUD as a PNG in the work folder."""
     import base64
@@ -1058,6 +1063,7 @@ ROUTES = [
     ("POST", "/api/hud/changes", r_hud_changes),
     ("POST", "/api/hud/check", r_hud_check),
     ("POST", "/api/hud/save", r_hud_save),
+    ("POST", "/api/hud/textures", r_hud_textures),
     ("POST", "/api/settlement/measured", r_settlement_measured),
     ("POST", "/api/settlement/compose", r_settlement_compose),
     ("POST", "/api/settlement/open", r_settlement_open),

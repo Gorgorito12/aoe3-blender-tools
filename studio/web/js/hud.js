@@ -46,7 +46,15 @@ export async function hudScreen(main, app) {
   const undoBtn = h('button', { type: 'button', class: 'small', text: '↶ ' + t('h.undo'), title: 'Ctrl+Z', onclick: () => undo(false) });
   const redoBtn = h('button', { type: 'button', class: 'small', text: '↷ ' + t('h.redo'), title: 'Ctrl+Y', onclick: () => undo(true) });
   const changesBtn = h('button', { type: 'button', class: 'small', onclick: () => showChanges() });
-  const editBar = h('div', { class: 'card row hud-bar' }, undoBtn, redoBtn, changesBtn,
+  const grid = h('input', { type: 'checkbox', checked: storeGet('hud.grid', false), onchange: e => { storeSet('hud.grid', e.target.checked); paint(); } });
+  const arrangeBox = h('details', { class: 'hud-moments small' }, h('summary', { text: t('h.arrange') }),
+    h('div', { class: 'stack' }, h('p', { class: 'muted', text: t('h.arrangehelp') }),
+      ...[['left', 'h.a.left'], ['right', 'h.a.right'], ['top', 'h.a.top'], ['bottom', 'h.a.bottom'], ['hcentre', 'h.a.hcentre'],
+        ['vcentre', 'h.a.vcentre'], ['hspread', 'h.a.hspread'], ['vspread', 'h.a.vspread'], ['samew', 'h.a.samew'], ['sameh', 'h.a.sameh']]
+        .map(([k, key]) => h('button', { type: 'button', class: 'small', text: t(key), onclick: () => arrange(k) }))));
+  const editBar = h('div', { class: 'card row hud-bar' }, undoBtn, redoBtn, changesBtn, arrangeBox,
+    h('label', { class: 'small row' }, grid, t('h.grid')),
+    h('button', { type: 'button', class: 'small', text: t('h.staticons'), title: t('h.staticons.help'), onclick: () => app.go('tool/make_stat_icon') }),
     h('button', { type: 'button', class: 'small', text: t('h.check'), onclick: () => runCheck() }),
     h('button', { type: 'button', class: 'small primary', text: t('h.save'), onclick: () => save() }),
     h('label', { class: 'small row' }, h('input', { type: 'checkbox', checked: storeGet('hud.original', false),
@@ -182,6 +190,45 @@ export async function hudScreen(main, app) {
       refresh(r, r.focus);
     } catch (e) { toast(e.message, 'bad'); }
   }
+
+  // several gadgets chosen with Shift: align, distribute, same size (one step of Undo)
+  const multi = new Set();
+  function chosen() { return [...multi].map(id => scene.gadgets[id]).filter(g => g && g.rect.length === 4); }
+  function arrange(kind) {
+    const gs = chosen();
+    if (gs.length < 2) { toast(t('h.pickmore'), 'bad'); return; }
+    const anchor = selected && multi.has(selected.id) ? selected : gs[0];
+    const ops = [];
+    const shift = (g, dx, dy) => { if (dx || dy) ops.push({ op: 'shift', id: g.id, dx, dy, children: true }); };
+    const [ax1, ay1, ax2, ay2] = anchor.rect;
+    if (kind === 'left') gs.forEach(g => shift(g, ax1 - g.rect[0], 0));
+    if (kind === 'right') gs.forEach(g => shift(g, ax2 - g.rect[2], 0));
+    if (kind === 'top') gs.forEach(g => shift(g, 0, ay1 - g.rect[1]));
+    if (kind === 'bottom') gs.forEach(g => shift(g, 0, ay2 - g.rect[3]));
+    if (kind === 'hcentre') gs.forEach(g => shift(g, Math.round((ax1 + ax2) / 2 - (g.rect[0] + g.rect[2]) / 2), 0));
+    if (kind === 'vcentre') gs.forEach(g => shift(g, 0, Math.round((ay1 + ay2) / 2 - (g.rect[1] + g.rect[3]) / 2)));
+    if (kind === 'hspread' || kind === 'vspread') {
+      const k = kind === 'hspread' ? 0 : 1;
+      const sorted = [...gs].sort((a, b) => a.rect[k] - b.rect[k]);
+      const total = sorted.reduce((s, g) => s + g.rect[k + 2] - g.rect[k], 0);
+      const span = sorted[sorted.length - 1].rect[k + 2] - sorted[0].rect[k];
+      const gap = (span - total) / (sorted.length - 1);
+      let at = sorted[0].rect[k];
+      for (const g of sorted) {
+        const d = Math.round(at - g.rect[k]);
+        shift(g, k === 0 ? d : 0, k === 1 ? d : 0);
+        at += g.rect[k + 2] - g.rect[k] + gap;
+      }
+    }
+    if (kind === 'samew' || kind === 'sameh') {
+      for (const g of gs) {
+        const [x1, y1, x2, y2] = g.rect;
+        const r = kind === 'samew' ? [x1, y1, x1 + (ax2 - ax1), y2] : [x1, y1, x2, y1 + (ay2 - ay1)];
+        ops.push({ op: 'set', id: g.id, attrs: { size1024: r.join(' ') } });
+      }
+    }
+    if (ops.length) op(ops, kind);
+  }
   async function undo(again) {
     try {
       const r = await api('/api/hud/undo', { session: scene.session, redo: !!again });
@@ -269,6 +316,23 @@ export async function hudScreen(main, app) {
     };
     if (outlines.checked) for (const [g] of list) box(g, 'rgba(120,200,255,0.35)', 1);
     if (hover && hover !== selected) box(hover, 'rgba(255,255,255,0.8)', 1);
+    for (const id of multi) if (!selected || id !== selected.id) box(scene.gadgets[id], '#55aaff', 2);
+    for (const gd of guides) {
+      ctx.strokeStyle = '#ff44cc'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+      const [w0, h0] = dims();
+      ctx.beginPath();
+      if (gd.x !== undefined) { const X = view.x + gd.x * w0 / 1024 * view.zoom; ctx.moveTo(X, view.y); ctx.lineTo(X, view.y + h0 * view.zoom); }
+      else { const Y = view.y + gd.y * h0 / 768 * view.zoom; ctx.moveTo(view.x, Y); ctx.lineTo(view.x + w0 * view.zoom, Y); }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (grid.checked) {
+      const [w0, h0] = dims();
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let gx = 0; gx <= 1024; gx += GRID) { const X = view.x + gx * w0 / 1024 * view.zoom; ctx.moveTo(X, view.y); ctx.lineTo(X, view.y + h0 * view.zoom); }
+      for (let gy = 0; gy <= 768; gy += GRID) { const Y = view.y + gy * h0 / 768 * view.zoom; ctx.moveTo(view.x, Y); ctx.lineTo(view.x + w0 * view.zoom, Y); }
+      ctx.stroke();
+    }
     if (selected) {
       box(selected, '#ffcc33', 2);
       const b = list.find(e => e[0] === selected);
@@ -313,7 +377,34 @@ export async function hudScreen(main, app) {
     }
     return null;
   }
-  let drag = null, edit = null;
+  let drag = null, edit = null, guides = [];
+  const GRID = 8;
+  // the move snaps to an edge or centre of a gadget drawn (not inside the one moved), within a few
+  // screen pixels; with the grid on, to the grid; Ctrl holds it free
+  function snapMove(ux) {
+    const [x1, y1, x2, y2] = selected.rect;
+    const inside = new Set([selected.id]);
+    for (const g of scene.gadgets) { for (let p = g.parent; p !== null && p !== undefined; p = scene.gadgets[p].parent) if (inside.has(p)) { inside.add(g.id); break; } }
+    const tol = 6 / view.zoom * ux;
+    let best = [null, null];
+    for (const [g] of list) {
+      if (inside.has(g.id) || g.rect.length !== 4) continue;
+      const [ox1, oy1, ox2, oy2] = g.rect;
+      for (const [k, mine, theirs] of [[0, [x1, x2, (x1 + x2) / 2], [ox1, ox2, (ox1 + ox2) / 2]], [1, [y1, y2, (y1 + y2) / 2], [oy1, oy2, (oy1 + oy2) / 2]]]) {
+        const d = k === 0 ? edit.dx : edit.dy;
+        for (const m of mine) for (const o of theirs) {
+          const diff = o - (m + d);
+          if (Math.abs(diff) <= tol && (!best[k] || Math.abs(diff) < Math.abs(best[k].diff))) best[k] = { diff, at: o };
+        }
+      }
+    }
+    if (best[0]) { edit.dx = Math.round(edit.dx + best[0].diff); guides.push({ x: best[0].at }); }
+    if (best[1]) { edit.dy = Math.round(edit.dy + best[1].diff); guides.push({ y: best[1].at }); }
+    if (grid.checked) {
+      if (!best[0]) edit.dx = Math.round((x1 + edit.dx) / GRID) * GRID - x1;
+      if (!best[1]) edit.dy = Math.round((y1 + edit.dy) / GRID) * GRID - y1;
+    }
+  }
   canvas.addEventListener('pointermove', e => {
     if (drag) { view.x = drag.vx + e.clientX - drag.x; view.y = drag.vy + e.clientY - drag.y; view.fitted = true; paint(); return; }
     if (!renderer) return;
@@ -322,6 +413,8 @@ export async function hudScreen(main, app) {
       const [ux, uy] = units();
       edit.dx = Math.round((x - edit.fx) * ux);
       edit.dy = Math.round((y - edit.fy) * uy);
+      guides = [];
+      if (edit.mode === 'move' && selected && !e.ctrlKey) snapMove(ux, uy);
       paint();
       return;
     }
@@ -337,11 +430,13 @@ export async function hudScreen(main, app) {
     const hd = handleAt(x, y);
     if (hd) { edit = { mode: 'resize', handle: hd, fx: x, fy: y, dx: 0, dy: 0 }; canvas.setPointerCapture(e.pointerId); return; }
     const g = renderer.hit(list, x, y);
+    if (e.shiftKey) { select(g, true); return; }
     if (g !== selected) select(g);
     if (g && g.rect.length === 4) { edit = { mode: 'move', fx: x, fy: y, dx: 0, dy: 0, alone: e.altKey }; canvas.setPointerCapture(e.pointerId); }
   });
   canvas.addEventListener('pointerup', () => {
     drag = null;
+    guides = [];
     if (!edit) return;
     const done = edit; edit = null;
     if (!selected || (!done.dx && !done.dy)) { paint(); return; }
@@ -382,7 +477,9 @@ export async function hudScreen(main, app) {
     paint();
   }, { passive: false });
 
-  function select(g) {
+  function select(g, add) {
+    if (!add) multi.clear();
+    if (g) { if (add && multi.has(g.id)) multi.delete(g.id); else multi.add(g.id); }
     selected = g;
     paint();
     drawDetails();
@@ -544,6 +641,28 @@ export async function hudScreen(main, app) {
     }
   }
 
+  // a row of the DLL for an item: a formatText gadget at the top level of the selection panel (as the
+  // DLL's own proposal places them) and its line in the rows file, as one step of Undo
+  function addRow(gadget, item) {
+    const panel = scene.gadgets.find(g => g.name.toLowerCase() === 'unitselectionpanel-unit')
+      || scene.gadgets.find(g => g.name.toLowerCase() === 'unitselectionpanel');
+    if (!panel) { toast(t('h.nopanel'), 'bad'); return; }
+    const names = new Set(scene.gadgets.map(g => g.name.toLowerCase()));
+    let name = gadget;
+    if (!name) { let k = 0; while (names.has(`unitselectionpanel-uhcrow${k}`)) k++; name = `unitselectionpanel-uhcRow${k}`; }
+    const rows = scene.gadgets.filter(g => /uhcrow|uhc/i.test(g.name) && g.rect.length === 4);
+    const y = rows.length ? Math.max(...rows.map(g => g.rect[3])) + 2 : 712;
+    const ops = [];
+    if (item) {
+      const label = item.charAt(0).toUpperCase() + item.slice(1).replace(/([A-Z])/g, ' $1').toLowerCase();
+      ops.push({ op: 'row', gadget: name, text: `${label}: {${item}}`, rows: unitSaved.rows || null });
+    }
+    if (!names.has(name.toLowerCase())) {
+      ops.push({ op: 'add', parent: panel.id, xml: `<gadget name="${name}" type="formatText" size1024="507 ${y} 700 ${y + 14}" textfont="StatText" textfontsize="10" textcolor="255 255 255" textmarkup="" formattextusedatareplace="" z="107"/>` });
+    }
+    if (ops.length) op(ops, 'row').then(() => { tab = 'unit'; drawDetails(); });
+  }
+
   // a button that makes an absent item appear: a state, keys, the other UI
   function enabler(en) {
     if (!en) return null;
@@ -558,7 +677,7 @@ export async function hudScreen(main, app) {
     });
     if (en.keys) return b(t('h.en.keys', { keys: en.keys.join(', ') }), () => { unitSaved.keys = [...new Set([...unitSaved.keys, ...en.keys])]; runSim(); });
     if (en.variant) return b(t('h.en.variant'), () => { variant.value = en.variant; keep(); open(); });
-    if (en.gadget || en.row) return h('span', { class: 'muted', text: ' ' + t('h.en.editor') });
+    if (en.gadget || en.row) return b(t('h.en.addrow'), () => addRow(en.gadget, en.row));
     return null;
   }
 
@@ -622,11 +741,12 @@ export async function hudScreen(main, app) {
     const font = g.attrs.textfont ? fontAt(scene.fonts, g.attrs.textfont, g.attrs.textfontsize || '12', w, dims()[1]) : null;
     const row = (k, v) => h('tr', {}, h('th', { text: k }), h('td', { class: 'mono', text: v }));
     // what it is, then every attribute editable (Enter or leaving the field applies it)
+    const set = (k, v) => op([{ op: 'set', id: g.id, attrs: { [k]: v } }], k);
     const edit = (k, v) => {
       const input = h('input', { type: 'text', class: 'mono', value: v,
         onkeydown: e => { if (e.key === 'Enter') e.target.blur(); },
-        onchange: e => op([{ op: 'set', id: g.id, attrs: { [k]: e.target.value } }], `${k}`) });
-      return h('tr', {}, h('th', { text: k }), h('td', {}, h('div', { class: 'row' }, input,
+        onchange: e => set(k, e.target.value) });
+      return h('tr', {}, h('th', { text: k }), h('td', {}, h('div', { class: 'row' }, input, picker(k, v, set),
         h('button', { type: 'button', class: 'ghost small', text: '×', title: t('h.delattr'), onclick: () => op([{ op: 'set', id: g.id, attrs: { [k]: null } }], `-${k}`) }))));
     };
     const newKey = h('input', { type: 'text', class: 'mono', placeholder: t('h.attrname'), style: { width: '120px' } });
@@ -658,12 +778,57 @@ export async function hudScreen(main, app) {
         g.text ? row(t('h.shows'), displayText(g.text, scene.strings)) : null,
         g.states.length ? row(t('h.states'), g.states.join(' · ')) : null,
         g.commands.length ? row(t('h.commands'), g.commands.join(' · ')) : null),
+      font ? h('p', { class: 'hud-sample', text: displayText(g.text, scene.strings) || 'Aa Bb 123', style: {
+        fontFamily: `"${assets.face(font.TypeFace)}", Arial`, fontWeight: font.Bold ? 'bold' : 'normal',
+        fontSize: (Number(font.AscentHeight) / assets.metrics(assets.face(font.TypeFace)).reduce((a, b) => a + b, 0)).toFixed(1) + 'px',
+        color: `rgb(${(g.attrs.textcolor || '255 255 255').split(/\s+/).join(',')})` } }) : null,
       h('h4', { text: t('h.text') }), text,
       h('h4', { text: t('h.attrs') }),
       h('table', { class: 'hud-props hud-edit small' }, Object.entries(g.attrs).map(([k, v]) => edit(k, v))),
       h('div', { class: 'row' }, newKey, newVal, h('button', { type: 'button', class: 'small', text: t('h.addattr'), onclick: () => {
         if (newKey.value.trim()) op([{ op: 'set', id: g.id, attrs: { [newKey.value.trim()]: newVal.value } }], 'attr');
       } })));
+  }
+
+  // a picker beside an attribute: a colour, a font of fonts3.xml with a sample, a texture of the copy
+  function picker(k, v, set) {
+    if (k === 'textcolor' || k === 'backgroundcolor') {
+      const [r, gg, b] = (v || '255 255 255').split(/[\s,]+/).map(Number);
+      const hex = '#' + [r, gg, b].map(n => Math.max(0, Math.min(255, n || 0)).toString(16).padStart(2, '0')).join('');
+      return h('input', { type: 'color', value: hex, title: t('h.pickcolour'),
+        onchange: e => { const x = e.target.value; set(k, [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)).join(' ')); } });
+    }
+    if (k === 'textfont') {
+      const names = [...new Set(Object.values(scene.fonts).map(f => f.name.replace(/\s+\d+$/, '')))].sort();
+      return h('select', { title: t('h.pickfont'), onchange: e => set(k, e.target.value) },
+        names.map(n => h('option', { value: n, selected: n.toLowerCase() === (v || '').toLowerCase(), text: n })));
+    }
+    if (['background', 'foreground', 'progressbarbackground', 'progressbarmask'].includes(k)) {
+      return h('button', { type: 'button', class: 'small', text: '…', title: t('h.picktex'), onclick: () => texturePicker(v, path => set(k, path)) });
+    }
+    return null;
+  }
+
+  // the copy's interface textures, found by a word, shown as thumbnails
+  function texturePicker(current, done) {
+    const q = h('input', { type: 'search', class: 'grow', value: (current || '').split(/[\\/]/).pop(), placeholder: t('h.texsearch') });
+    const gridBox = h('div', { class: 'hud-texgrid' });
+    const find = async () => {
+      const r = await api('/api/hud/textures', { session: scene.session, q: q.value }).catch(() => ({ textures: [] }));
+      clear(gridBox).append(...r.textures.map(path => {
+        const img = h('img', { alt: path });
+        fetchSoon(`/api/hud/texture?s=${scene.session}&path=${encodeURIComponent(path)}`, bmp => {
+          if (!bmp) return;
+          const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+          c.getContext('2d').drawImage(bmp, 0, 0); img.src = c.toDataURL();
+        });
+        return h('button', { type: 'button', class: 'hud-tex', title: path, onclick: () => { document.getElementById('dialog').close(); done(path); } },
+          img, h('span', { text: path.split('\\').pop() }));
+      }));
+    };
+    q.addEventListener('input', () => { clearTimeout(q.timer); q.timer = setTimeout(find, 250); });
+    find();
+    dialog(t('h.picktex'), h('div', { class: 'stack' }, h('div', { class: 'row' }, q), gridBox), [{ value: 'no', label: t('cancel') }]);
   }
 
   async function snapshot() {

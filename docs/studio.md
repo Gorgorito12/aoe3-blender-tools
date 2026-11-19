@@ -113,7 +113,16 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   font, texture or text id the copy lacks, a compiled twin beside the file, a row of the DLL whose
   gadget is missing. **Save** writes the changed files into the work folder with the copy's layout
   (`data\<name>.xml`, loose even when it came from an archive) and `hud-edits.json` (where each came
-  from, its hashes); it asks first when the check found an error. **Save the
+  from, its hashes); it asks first when the check found an error.
+  **Design tools**: several gadgets chosen with Shift + click, then **Arrange** (align edges or
+  centres, spread evenly, same width or height; the one chosen last is the guide); a move snaps to
+  the edges and centres of the gadgets around, with a guide line (Ctrl holds it free), or to the
+  **grid**; pickers for a colour, a font of fonts3.xml (with a sample in its own typeface and size)
+  and a texture of the copy (found by a word of its path, with thumbnails); **Stat icons** opens the
+  form that draws new ones. **Add its row**, on an item of the DLL the unit does not show because no
+  row places it or its gadget is missing, adds the gadget at the top level of the selection panel
+  and its line in the rows file, as one step: the simulation shows it at once. The rows file is
+  edited, undone and saved like a layout (into `data\uhc\minuirows.xml` of the work folder). **Save the
   picture** writes it to the work folder. The files are read as a tree that keeps every byte
   (`aoe3game/uilayout.py`: the 55 interface files of a Wars of Liberty copy and the 551 compiled
   ones in its archives come back identical). Measured against a capture of the game at 1920 x 1080:
