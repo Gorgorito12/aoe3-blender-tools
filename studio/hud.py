@@ -11,7 +11,8 @@ assumption). The copies a file hides are listed with it.
 
 Textures are `art\\<path>.ddt` (loose first, then the art archives: `tools/fix_hitpointbar_tags.Art`),
 sent as PNG; fonts are `FONTS\\fonts3.xml` (`aoe3game/uifonts.py`) and the TrueType files of
-`FONTS\\Fonts.bar`, sent as they are to the page (never copied anywhere); texts are
+`FONTS\\` (loose first, as an extended font of `tools/game_fonts.py` is, then `Fonts.bar`), sent as
+they are to the page (never copied anywhere); texts are
 `data\\stringtabley.xml`. Nothing of the copy is written."""
 import hashlib
 import json
@@ -139,15 +140,13 @@ class Game:
                 if os.path.isfile(path):
                     with open(path, "rb") as fh:
                         self._fonts = uifonts.parse(fh.read())
-                self._ttf = {}
-                archive = os.path.join(self.folder, "FONTS", "Fonts.bar")
-                if os.path.isfile(archive):
-                    for stored, off, size in bar.read_entries(archive):
-                        if stored.lower().endswith((".ttf", ".otf")):
-                            head = _read(archive, (stored, off, min(size, 1 << 20)))
-                            fam = uifonts.ttf_names(head).get("family")
-                            if fam:
-                                self._ttf.setdefault(fam.lower(), (archive, (stored, off, size)))
+                # the fonts' files: loose in FONTS\ first (an extended font, tools/game_fonts.py),
+                # then those of its archives, Fonts.bar first; by family name
+                import game_fonts
+                try:
+                    self._ttf = game_fonts.by_family(game_fonts.font_files(game_fonts.fonts_dir(self.folder)))
+                except game_fonts.FontsError:
+                    self._ttf = {}
             return self._fonts
 
     def art_copies(self, path):
@@ -180,16 +179,16 @@ class Game:
         return sorted(out)[:limit]
 
     def font_where(self, face):
-        """Where a typeface's file is: Fonts.bar's entry, or None (a system font)."""
+        """Where a typeface's file is (FONTS\\x.ttf, or Fonts.bar's entry), or None (a system font)."""
         self.fonts
         hit = self._ttf.get((face or "").lower())
-        return f"{os.path.basename(hit[0])}:{hit[1][0]}" if hit else None
+        return hit["where"] if hit else None
 
     def font_file(self, face):
-        """The bytes of a typeface's TrueType file of Fonts.bar, or None (a system font)."""
+        """The bytes of a typeface's TrueType file, or None (a system font)."""
         self.fonts
         hit = self._ttf.get((face or "").lower())
-        return _read(*hit) if hit else None
+        return hit["read"]() if hit else None
 
     def faces(self):
         self.fonts

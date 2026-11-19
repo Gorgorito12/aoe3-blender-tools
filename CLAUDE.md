@@ -61,6 +61,8 @@ python -I tools/gr2_check.py <model.gr2|folder> --granny-install <game> --rewrit
 python -I tests/test_gr2_edit.py                  # a model's whole tree written again; the runtime check (fake)
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
+venv/bin/python -I -X utf8 tools/game_fonts.py stage --game <copy> --out <dir outside it> --suffix WoL   # a copy's fonts, extended
+venv/bin/python -I -X utf8 tests/test_game_fonts.py  # a copy's fonts surveyed, extended, deployed and undone
 python -I tests/test_named_models.py              # model_sheets --models lists: protos to models, plain Python
 venv/bin/python -I tests/test_retexture.py        # uv_atlas, retexture, skin and attachments, synthetic data
 python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run

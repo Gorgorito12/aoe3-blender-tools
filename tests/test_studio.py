@@ -1191,6 +1191,17 @@ class Forms(unittest.TestCase):
             self.assertEqual(cmd[cmd.index("-o") + 1], os.path.join(tmp, "recompress_models"))
             self.assertEqual(cmd[cmd.index("--granny-install") + 1], "game")
             # the runtime's check of a model uses that same helper, and changes nothing
+            # a copy's fonts: survey reads only; stage writes into the work folder, laid out as the copy
+            cmd, *_ = catalog.command(st, "game_fonts_survey", {"game": "copy"})
+            script = next(i for i, x in enumerate(cmd) if x.endswith("game_fonts.py"))
+            self.assertEqual(cmd[script + 1:script + 4], ["survey", "--game", "copy"])
+            cmd, *_ = catalog.command(st, "game_fonts_stage", {"game": "copy", "suffix": "WoL",
+                                                              "families": "Formal436 BT,Monotype Corsiva"})
+            self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "game_fonts_stage"))
+            self.assertEqual(cmd[cmd.index("--families") + 1], "Formal436 BT,Monotype Corsiva")   # one value, commas kept
+            self.assertIn("fonttools", catalog.BY_ID["game_fonts_stage"].needs)
+            with self.assertRaises(catalog.ToolError):
+                catalog.command(st, "game_fonts_stage", {"game": "copy"})                   # the word is needed
             cmd, *_ = catalog.command(st, "gr2_check", {"model": "unit.gr2", "granny_install": "game", "rewrite": True})
             self.assertEqual(cmd[cmd.index("--helper") + 1], built)
             self.assertIn("--rewrite", cmd)
