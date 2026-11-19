@@ -835,6 +835,203 @@ TOOLS = [
               L("Lists every model with its sizes, not only the totals.",
                 "Lista cada modelo con sus tamaños, no solo los totales."))],
          needs=("game",), outputs=("out",), minutes=3),
+    Tool("hc_survey", "tools/hc_survey.py", "survey",
+         L("Home-city models survey", "Estudio de los modelos de las metrópolis"),
+         L("Inventories the home-city models of a game copy or a mod (basis, bone scale, stored texture names and "
+           "what uses each) and plans moving one home city's models into a folder of their own. Only reads the "
+           "copy; the reports name the mod's files: keep them private.",
+           "Inventaría los modelos de las metrópolis de una copia del juego o de un mod (base, escala de huesos, "
+           "nombres de textura guardados y qué usa cada uno) y planifica mover los de una metrópoli a una carpeta "
+           "propia. Solo lee la copia; los informes nombran archivos del mod: guárdalos en privado."),
+         [Arg("game", "--game", "folder", L("Game copy", "Copia del juego"),
+              L("Read only.", "Solo se lee."), required=True, setting="game"),
+          out_dir(help=L("The reports: models.csv, textures.csv, refs.csv, summary.md, report.json, and a plan per "
+                         "home city asked. Must be outside the game copy.",
+                         "Los informes: models.csv, textures.csv, refs.csv, summary.md, report.json, y un plan por "
+                         "cada metrópoli pedida. Debe estar fuera de la copia del juego.")),
+          Arg("target", "--target", "text", L("Target tree", "Árbol de destino"),
+              L("Where each home city's files should end, below art: <target>\\<civ>\\ (e.g. WoL\\homecity).",
+                "Dónde deben acabar los archivos de cada metrópoli, bajo art: <destino>\\<civ>\\ (p. ej. "
+                "WoL\\homecity)."), required=True, placeholder="WoL\\homecity"),
+          Arg("plan", "--plan", "text", L("Plan for these home cities", "Plan para estas metrópolis"),
+              L("A civ or file stem per plan, separated by spaces: plan_<name>.md lists its moves, texture renames "
+                "and line changes.",
+                "Una civ o nombre de archivo por plan, separados por espacios: plan_<nombre>.md lista sus "
+                "movimientos, renombres de texturas y cambios de líneas."), repeat=True),
+          cache_dir(),
+          Arg("granny", "--granny", "file", L("Granny bridge", "Puente Granny"),
+              L("The external .exe that expands compressed models the cache does not hold; needs a work folder.",
+                "El .exe externo que expande los modelos comprimidos que la caché no tiene; necesita una carpeta "
+                "de trabajo."), setting="granny", filters=(("Program", "*.exe"),)),
+          Arg("work", "--work", "outdir", L("Bridge work folder", "Carpeta de trabajo del puente"),
+              L("Where the bridge writes the expanded models, outside the game copy. Empty: the work folder.",
+                "Dónde el puente escribe los modelos expandidos, fuera de la copia del juego. Vacío: la carpeta "
+                "de trabajo."), work="bridge")],
+         needs=("game",), outputs=("out",), minutes=5),
+    Tool("reencode_textures", "tools/reencode_textures.py", "textures",
+         L("Re-encode textures for older cards", "Recodificar texturas para tarjetas antiguas"),
+         L("Each .ddt in a folder or list re-encoded by the rules (the format its header and pixels call for, "
+           "halved above a size limit, a full mip chain) and compared with its original: one that strays too far "
+           "is kept as it was. Writes the results and a report, never in place.",
+           "Cada .ddt de una carpeta o lista recodificado según las reglas (el formato que piden su cabecera y sus "
+           "píxeles, reducido a la mitad por encima de un límite, una cadena de mips completa) y comparado con su "
+           "original: el que se aleja demasiado se queda como estaba. Escribe los resultados y un informe, nunca "
+           "encima."),
+         [Arg("input", "--in", "folder", L("Textures", "Texturas"),
+              L("A folder of .ddt, or a list file of paths (the select step writes one).",
+                "Una carpeta de .ddt, o un archivo con una lista de rutas (el paso de selección escribe una)."),
+              required=True),
+          out_dir(help=L("The re-encoded textures at their relative paths, report.json and report.csv.",
+                         "Las texturas recodificadas en sus rutas relativas, report.json y report.csv.")),
+          Arg("root", "--root", "folder", L("Folder the list is relative to", "Carpeta a la que se refiere la lista"),
+              L("Only for a list file: its paths are relative to this folder.",
+                "Solo para una lista: sus rutas son relativas a esta carpeta.")),
+          Arg("limit", "--limit", "text", L("Size limit", "Límite de tamaño"),
+              L("WxH: a texture with a side above it is halved until both fit. Give this or a measured limit.",
+                "AxA: una textura con un lado mayor se reduce a la mitad hasta que ambos quepan. Indica esto o un "
+                "límite medido."), placeholder="512x512"),
+          Arg("tad", "--tad", "file", L("Measured limit (tad.json)", "Límite medido (tad.json)"),
+              L("The stock home-city building textures' mean, from \"Measure the stock home-city textures\": the "
+                "limit is twice it.",
+                "La media de las texturas de edificios de las metrópolis originales, de \"Medir las texturas de "
+                "las metrópolis originales\": el límite es el doble."), filters=JSON),
+          Arg("smallest", "--smallest", "int", L("Smallest mip", "Mip más pequeño"),
+              L("The chain goes down to this many pixels on the short side. Default 4, as the stock game.",
+                "La cadena baja hasta estos píxeles en el lado corto. Por defecto 4, como el juego original.")),
+          Arg("max_mean", "--max-mean", "float", L("Largest mean difference", "Diferencia media máxima"),
+              L("Per channel, 0 to 255; above it the texture is kept as it was. Default 6.",
+                "Por canal, de 0 a 255; por encima la textura se queda como estaba. Por defecto 6.")),
+          Arg("max_block", "--max-block", "float", L("Largest block difference", "Diferencia máxima de bloque"),
+              L("The worst 4 x 4 block's mean difference; above it the texture is kept. Default 32.",
+                "La diferencia media del peor bloque de 4 x 4; por encima la textura se queda. Por defecto 32.")),
+          Arg("sheets", "--sheets", "outdir", L("Comparison sheets", "Hojas de comparación"),
+              L("A folder: one picture per texture (original, new, difference) and an index.html.",
+                "Una carpeta: una imagen por textura (original, nueva, diferencia) y un index.html.")),
+          Arg("fast", "--fast", "bool", L("Faster encoder", "Codificador más rápido"),
+              L("The plain DXT encoder instead of the least-squares one: quicker, a little further from the "
+                "original.",
+                "El codificador DXT simple en vez del de mínimos cuadrados: más rápido, algo más lejos del "
+                "original."))],
+         fixed=["run"], outputs=("out", "sheets"), minutes=5),
+    Tool("reencode_tad", "tools/reencode_textures.py", "textures",
+         L("Measure the stock home-city textures", "Medir las texturas de las metrópolis originales"),
+         L("The mean width and height of the stock game's home-city building textures, the limit the re-encoding "
+           "can follow. Only reads the copy.",
+           "El ancho y alto medios de las texturas de edificios de las metrópolis del juego original, el límite "
+           "que puede seguir la recodificación. Solo lee la copia."),
+         [Arg("game", "--game", "folder", L("Game copy", "Copia del juego"), L("Read only.", "Solo se lee."),
+              required=True, setting="game"),
+          Arg("out", "--out", "save", L("Measure to write", "Medida a escribir"),
+              L("A JSON file. Empty: tad.json in the work folder.",
+                "Un archivo JSON. Vacío: tad.json en la carpeta de trabajo."), filters=JSON, work="tad.json"),
+          cache_dir(),
+          Arg("granny", "--granny", "file", L("Granny bridge", "Puente Granny"),
+              L("Expands compressed models the cache does not hold; needs a work folder.",
+                "Expande los modelos comprimidos que la caché no tiene; necesita una carpeta de trabajo."),
+              setting="granny", filters=(("Program", "*.exe"),)),
+          Arg("work", "--work", "outdir", L("Bridge work folder", "Carpeta de trabajo del puente"),
+              L("Outside the game copy. Empty: the work folder.", "Fuera de la copia del juego. Vacío: la carpeta "
+                "de trabajo."), work="bridge")],
+         fixed=["tad"], needs=("game",), outputs=("out",), minutes=5),
+    Tool("reencode_select", "tools/reencode_textures.py", "textures",
+         L("Choose the textures to re-encode", "Elegir las texturas a recodificar"),
+         L("Lists a copy's own home-city building textures that only home-city buildings use (the ones safe to "
+           "re-encode), and the others with why. Only reads the copy.",
+           "Lista las texturas propias de edificios de metrópoli que solo usan esos edificios (las que se pueden "
+           "recodificar sin riesgo), y las demás con el motivo. Solo lee la copia."),
+         [Arg("game", "--game", "folder", L("Game copy", "Copia del juego"), L("Read only.", "Solo se lee."),
+              required=True, setting="game"),
+          Arg("out", "--out", "save", L("List to write", "Lista a escribir"),
+              L("A text file of paths, for the re-encoding. Empty: select.txt in the work folder.",
+                "Un archivo de texto con rutas, para la recodificación. Vacío: select.txt en la carpeta de "
+                "trabajo."), filters=(("Text", "*.txt"),), work="select.txt"),
+          cache_dir(),
+          Arg("granny", "--granny", "file", L("Granny bridge", "Puente Granny"),
+              L("Expands compressed models the cache does not hold; needs a work folder.",
+                "Expande los modelos comprimidos que la caché no tiene; necesita una carpeta de trabajo."),
+              setting="granny", filters=(("Program", "*.exe"),)),
+          Arg("work", "--work", "outdir", L("Bridge work folder", "Carpeta de trabajo del puente"),
+              L("Outside the game copy. Empty: the work folder.", "Fuera de la copia del juego. Vacío: la carpeta "
+                "de trabajo."), work="bridge")],
+         fixed=["select"], needs=("game",), outputs=("out",), minutes=5),
+    Tool("hc_move_stage", "tools/hc_move.py", "art",
+         L("Move a home city's models: prepare", "Mover los modelos de una metrópoli: preparar"),
+         L("Writes, outside the game copy, a stage folder where one home city's own models (and the textures and "
+           "anim files that go with them) sit in a folder of their own, with every reference edited and the "
+           "originals zipped. Nothing in the copy is written.",
+           "Escribe, fuera de la copia del juego, una carpeta de preparación donde los modelos propios de una "
+           "metrópoli (y sus texturas y archivos de animación) quedan en una carpeta propia, con cada referencia "
+           "editada y los originales en un zip. No se escribe nada en la copia."),
+         [Arg("game", "--game", "folder", L("Game copy", "Copia del juego"), L("Read only.", "Solo se lee."),
+              required=True, setting="game"),
+          Arg("civ", "--civ", "text", L("Civ", "Civilización"),
+              L("The home city to move, by its civ or file stem; _tables moves what only the shared tables name.",
+                "La metrópoli a mover, por su civ o nombre de archivo; _tables mueve lo que solo nombran las "
+                "tablas compartidas."), required=True),
+          Arg("target", "--target", "text", L("Target tree", "Árbol de destino"),
+              L("Below art, as the survey plans it (e.g. WoL\\homecity).",
+                "Bajo art, como lo planifica el estudio (p. ej. WoL\\homecity)."), required=True,
+              placeholder="WoL\\homecity"),
+          out_dir(help=L("The stage: files\\ at their game paths, originals.zip, moved-files.txt, stage.json, "
+                         "report.md.",
+                         "La preparación: files\\ en sus rutas del juego, originals.zip, moved-files.txt, "
+                         "stage.json, report.md.")),
+          Arg("granny", "--granny", "file", L("Granny bridge", "Puente Granny"),
+              L("Rebuilds each moved model so its stored texture names follow the textures.",
+                "Reconstruye cada modelo movido para que sus nombres de textura sigan a las texturas."),
+              required=True, setting="granny", filters=(("Program", "*.exe"),)),
+          Arg("form", "--form", "choice", L("Form", "Forma"),
+              L("A: art\\<target>, named with ..\\ from the home-city files (accepted in game). B: "
+                "art\\homecity\\<Mod>.",
+                "A: art\\<destino>, nombrado con ..\\ desde los archivos de la metrópoli (aceptado en el juego). "
+                "B: art\\homecity\\<Mod>."), choices=("A", "B"), default="A"),
+          Arg("shared", "--shared", "text", L("Shared folder", "Carpeta compartida"),
+              L("Where models several civs' home cities use go. Default _shared.",
+                "Dónde van los modelos que usan las metrópolis de varias civs. Por defecto _shared."),
+              placeholder="_shared"),
+          cache_dir(),
+          Arg("work", "--work", "outdir", L("Bridge work folder", "Carpeta de trabajo del puente"),
+              L("Outside the game copy. Empty: the work folder.", "Fuera de la copia del juego. Vacío: la carpeta "
+                "de trabajo."), work="bridge"),
+          Arg("suffix", "--suffix", "bool", L("Header digits in texture names", "Dígitos de cabecera en los nombres"),
+              L("Renames each moved .ddt that only .tga/.png/.jpg names reach to <name>.(u,a,f,m).ddt, the game's "
+                "way to read a stored name's header (in game 2026-11-17).",
+                "Renombra cada .ddt movido al que solo llegan nombres .tga/.png/.jpg a <nombre>.(u,a,f,m).ddt, la "
+                "forma del juego de leer la cabecera de un nombre guardado (en el juego, 2026-11-17).")),
+          Arg("reencoded", "--reencoded", "file", L("Re-encoded textures (report.json)",
+                                                    "Texturas recodificadas (report.json)"),
+              L("A moved .ddt that is still the file it was made from ships as its re-encoded copy.",
+                "Un .ddt movido que sigue siendo el archivo del que salió se lleva como su copia recodificada."),
+              filters=JSON)],
+         fixed=["stage"], needs=("game", "granny"), outputs=("out",), minutes=10),
+    Tool("hc_move_install", "tools/hc_move.py", "art",
+         L("Move a home city's models: install", "Mover los modelos de una metrópoli: instalar"),
+         L("Copies a stage into the test copy, after checking every file it replaces is the one it was made from; "
+           "keeps a backup.",
+           "Copia una preparación en la copia de prueba, tras comprobar que cada archivo que sustituye es el "
+           "original; guarda una copia de seguridad."),
+         [Arg("bed", "--bed", "folder", L("Test copy", "Copia de prueba"),
+              L("A copy of the game for testing (never the Steam folder: it is refused).",
+                "Una copia del juego para pruebas (nunca la carpeta de Steam: se rechaza)."),
+              required=True, setting="test_copy"),
+          Arg("stage", "--stage", "folder", L("Stage folder", "Carpeta de preparación"),
+              L("What \"prepare\" wrote.", "Lo que escribió \"preparar\"."), required=True)],
+         fixed=["install"], needs=("test_copy",), writes="copy",
+         confirm=L("This changes the test copy of the game: the stage is copied in and the moved originals deleted. "
+                   "A backup is kept and Undo restores it.",
+                   "Esto modifica la copia de prueba del juego: se copia la preparación y se borran los originales "
+                   "movidos. Se guarda una copia de seguridad y Deshacer la restaura.")),
+    Tool("hc_move_undo", "tools/hc_move.py", "art",
+         L("Move a home city's models: undo", "Mover los modelos de una metrópoli: deshacer"),
+         L("Puts the last install back, checking every file by its hash.",
+           "Deshace la última instalación, comprobando cada archivo por su huella."),
+         [Arg("bed", "--bed", "folder", L("Test copy", "Copia de prueba"),
+              L("A copy of the game for testing (never the Steam folder: it is refused).",
+                "Una copia del juego para pruebas (nunca la carpeta de Steam: se rechaza)."),
+              required=True, setting="test_copy")],
+         fixed=["undo"], needs=("test_copy",), writes="copy",
+         confirm=L("This restores the test copy as it was before the last home-city move.",
+                   "Esto restaura la copia de prueba como estaba antes del último movimiento de metrópoli.")),
     Tool("recompress_helper", "tools/recompress_models.py", "art",
          L("Build the recompression helper", "Construir el auxiliar de recompresión"),
          L("Compiles the small 32-bit program that hosts the game's granny2.dll (tools/granny_recompress.c), with "
@@ -1046,6 +1243,8 @@ def build_args(tool, values):
         items = v if isinstance(v, list) else [v]
         if a.kind in ("files", "folders") and isinstance(v, str):
             items = [v]
+        elif a.kind == "text" and a.repeat and isinstance(v, str):
+            items = v.split()                   # several words, each after its own flag
         items = [str(x) for x in items]
         if a.rest:
             words = [w for x in items for w in x.split()]
