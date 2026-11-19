@@ -133,6 +133,35 @@ class Edits(unittest.TestCase):
                           for g in self.doc.gadgets()])
 
 
+class Tables(unittest.TestCase):
+    """aoe3game/uidata: what the engine does that the files do not say, in both languages."""
+
+    def load(self, name):
+        import json
+        with open(os.path.join(ROOT, "aoe3_blender_tools", "aoe3game", "uidata", name + ".json"), encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_every_entry_says_it_in_english_and_spanish(self):
+        import re
+        for fn in self.load("ui_functions")["functions"]:
+            self.assertTrue(fn["en"] and fn["es"] and isinstance(fn["works"], bool), fn["name"])
+        for g in self.load("engine_gadgets")["gadgets"]:
+            re.compile(g["re"])
+            self.assertTrue(g["en"] and g["es"] and g["when"]["en"] and g["when"]["es"], g["re"])
+        scene = self.load("hud_scene")
+        for m in scene["moments"]:
+            self.assertTrue(m["en"] and m["es"] and m["names"] and isinstance(m["on"], bool), m["id"])
+        for o in scene["oneOf"]:
+            self.assertIn(o["show"], o["choices"])
+            self.assertTrue(o["en"] and o["es"])
+
+    def test_the_stubs_are_the_measured_ones(self):
+        stubs = {fn["name"] for fn in self.load("ui_functions")["functions"] if not fn["works"]}
+        self.assertEqual(stubs, {"currentUnitAttackRange", "currentUnitMinAttackRange", "currentUnitBuildRate",
+                                 "currentUnitGatherRate", "currentUnitAttackList", "currentUnitAttackString",
+                                 "currentUnitGatherRateString"})
+
+
 class Fonts(unittest.TestCase):
     def test_fonts3_entries_by_width(self):
         import hud_copy

@@ -348,6 +348,30 @@ class Server(unittest.TestCase):
         self.assertEqual(ttf[:4], b"\x00\x01\x00\x00")
         status, _ = self.call(f"/api/hud/font?s={sid}&face=Arial")                # a system font
         self.assertEqual(status, 404)
+        # where each thing a gadget names leads
+        ids = {g["name"]: g["id"] for g in r["gadgets"]}
+        status, a = self.call("/api/hud/refs", {"session": sid, "id": ids["titleBar-age"], "width": 1920})
+        self.assertEqual(status, 200, a)
+        self.assertEqual(a["strings"][0]["text"], "Colonial Age")
+        self.assertEqual(a["strings"][0]["symbol"], "cStringAge")
+        self.assertEqual((a["font"]["found"], a["font"]["typeface"], a["font"]["cell"]), (True, "Test Face", 16))
+        self.assertTrue(a["font"]["file"].startswith("Fonts.bar:"))
+        self.assertEqual(a["parents"][0]["name"], "titleBar")
+        status, bar_ = self.call("/api/hud/refs", {"session": sid, "id": ids["titleBar"]})
+        self.assertTrue(bar_["textures"][0]["found"][0].endswith("bar.ddt"))
+        self.assertEqual(bar_["textures"][0]["size"], [4, 4])
+        status, pause = self.call("/api/hud/refs", {"session": sid, "id": ids["pausePanel"]})
+        self.assertEqual(pause["textures"][0]["found"], [])                     # not in this copy
+        status, hp = self.call("/api/hud/refs", {"session": sid, "id": ids["unitselectionpanel-unitHitPointsLabel"]})
+        self.assertTrue(hp["engine"] and hp["engine"][0]["es"])                  # what the game writes there
+        self.assertFalse(hp["font"]["found"])                                     # Missing 10: the fallback
+        self.assertEqual(hp["font"]["typeface"], "Arial")
+        self.assertTrue(hp["file"]["where"].startswith("Data3.bar:"))
+        status, train = self.call("/api/hud/refs", {"session": sid, "id": ids["TrainTime"]})
+        self.assertEqual(train["live"][0]["proto"], "TrainPoints")
+        self.assertTrue(train["live"][0]["works"])
+        status, err = self.call("/api/hud/refs", {"session": sid, "id": 999})
+        self.assertEqual(status, 400)
         status, normal = self.call("/api/hud/open", {"game": copy, "variant": "normal"})
         self.assertEqual(status, 200, normal)
         self.assertEqual([f["stem"] for f in normal["files"]], ["uimainnew"])     # no normal panel here

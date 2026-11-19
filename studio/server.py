@@ -495,6 +495,16 @@ def r_hud_font(st, rest, q, b):
     return data, "font/ttf"
 
 
+def r_hud_refs(st, rest, q, b):
+    """Where each thing a gadget names leads (the interface screen's "Points to")."""
+    h = _hud()
+    scene = st.sessions.get(b.get("session"))
+    try:
+        return scene.refs(int(b.get("id", -1)), int(b.get("width") or 1024))
+    except h.HudError as e:
+        raise ApiError(str(e)) from None
+
+
 def r_hud_snapshot(st, rest, q, b):
     """The drawn HUD as a PNG in the work folder."""
     import base64
@@ -980,6 +990,7 @@ ROUTES = [
     ("GET", "/api/hud/texture", r_hud_texture),
     ("GET", "/api/hud/font", r_hud_font),
     ("POST", "/api/hud/snapshot", r_hud_snapshot),
+    ("POST", "/api/hud/refs", r_hud_refs),
     ("POST", "/api/settlement/measured", r_settlement_measured),
     ("POST", "/api/settlement/compose", r_settlement_compose),
     ("POST", "/api/settlement/open", r_settlement_open),

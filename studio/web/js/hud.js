@@ -260,16 +260,80 @@ export async function hudScreen(main, app) {
     momentsBox.append(box);
   }
 
-  // ---- what the chosen gadget says
+  // ---- what the chosen gadget says: its properties, or where each thing it names leads
+  let tab = storeGet('hud.tab', 'refs');
   function drawDetails() {
     clear(details);
     if (!scene) return;
     if (!selected) { details.append(h('p', { class: 'small muted', text: t('h.pick') })); return; }
-    const g = selected, f = scene.files[g.file];
+    const g = selected;
+    const tabs = h('div', { class: 'row' }, [['refs', t('h.refs')], ['props', t('h.props')]].map(([k, l]) =>
+      h('button', { type: 'button', class: 'small' + (tab === k ? ' primary' : ''), text: l,
+        onclick: () => { tab = k; storeSet('hud.tab', k); drawDetails(); } })));
+    details.append(h('h3', { text: g.name || '(' + g.type + ')' }), tabs);
+    if (tab === 'refs') drawRefs(g); else drawProps(g);
+  }
+
+  async function drawRefs(g) {
+    const box = h('div', { class: 'stack hud-refs small' }, h('p', { class: 'muted', text: t('b.working') }));
+    details.append(box);
+    let r;
+    try { r = await api('/api/hud/refs', { session: scene.session, id: g.id, width: dims()[0] }); }
+    catch (e) { clear(box).append(h('p', { class: 'bad', text: e.message })); return; }
+    if (selected !== g) return;
+    const lang = document.documentElement.lang === 'es' ? 'es' : 'en';
+    const short = p => String(p).replace(/^.*[\\/](data|art)[\\/]/i, '$1\\');
+    const sec = (title, ...items) => h('section', {}, h('h4', { text: title }), ...items);
+    clear(box);
+    box.append(sec(t('h.r.file'), h('p', { class: 'mono', text: `${short(r.file.where)} · ${t('h.line')} ${r.file.line}` }),
+      r.file.hidden.length ? h('p', { class: 'muted', text: t('h.r.hides', { list: r.file.hidden.map(short).join(', ') }) }) : null));
+    if (r.engine.length) {
+      box.append(sec(t('h.r.engine'), ...r.engine.map(e => h('div', {}, h('p', { text: e[lang] }),
+        h('p', { class: 'muted', text: t('h.r.when') + ' ' + e.when[lang] })))));
+    }
+    if (r.strings.length) {
+      box.append(sec(t('h.r.strings'), ...r.strings.map(s => h('p', {},
+        h('span', { class: 'mono', text: `$$${s.id}$$ ` }), t('h.r.in.' + s.in) + ': ',
+        s.found ? h('strong', { text: `“${s.text}”` }) : h('span', { class: 'bad', text: t('h.r.nostring', { fallback: s.fallback }) }),
+        s.symbol ? h('span', { class: 'muted mono', text: ` (${s.symbol})` }) : null))));
+    }
+    if (r.textures.length) {
+      box.append(sec(t('h.r.textures'), ...r.textures.map(x => {
+        const img = h('img', { class: 'hud-thumb', alt: x.path });
+        if (x.found.length) fetchBlob(`/api/hud/texture?s=${scene.session}&path=${encodeURIComponent(x.path)}`).then(b => { if (b && b.size) img.src = URL.createObjectURL(b); });
+        return h('div', { class: 'row', style: { alignItems: 'flex-start' } }, img, h('div', { class: 'grow' },
+          h('p', {}, h('strong', { text: t('h.r.role.' + x.role.split(' ')[0], null, x.role) + (x.role.includes(' ') ? ' ' + x.role.split(' ')[1] : '') + ': ' }), h('span', { class: 'mono', text: x.path })),
+          x.found.length ? h('p', { class: 'muted mono', text: '→ ' + short(x.found[0]) + (x.size ? ` · ${x.size[0]} × ${x.size[1]}` : '') + (x.crop ? ` · texturecoords ${x.crop}` : '') })
+            : h('p', { class: 'bad', text: t('h.r.notex') }),
+          x.hidden.length ? h('p', { class: 'muted', text: t('h.r.hides', { list: x.hidden.map(short).join(', ') }) }) : null));
+      })));
+    }
+    if (r.font) {
+      const f = r.font;
+      box.append(sec(t('h.r.font'),
+        h('p', {}, h('span', { class: 'mono', text: f.asked }), ' → ',
+          f.found ? h('span', { text: `${f.entry}` }) : h('span', { class: 'warn', text: t('h.r.nofont', { entry: f.entry }) })),
+        h('p', { class: 'muted', text: t('h.r.face', { face: f.typeface, file: f.file ? short(f.file) : t('h.r.system'), cell: f.cell, resx: f.resx }) + (f.bold ? ' · bold' : '') })));
+    }
+    if (r.live.length) {
+      box.append(sec(t('h.r.live'), ...r.live.map(l => h('div', {},
+        h('p', {}, h('span', { class: 'mono', text: l.text }), ' ', !l.known ? h('span', { class: 'warn', text: t('h.r.unknownfn') })
+          : l.works ? h('span', { text: l[lang] }) : h('span', { class: 'bad', text: t('h.r.stub') + ' ' + l[lang] })),
+        l.proto ? h('p', { class: 'muted', text: t('h.r.reads', { field: l.proto }) }) : null))));
+    }
+    if (r.commands.length) box.append(sec(t('h.r.commands'), ...r.commands.map(c => h('p', { class: 'mono', text: c }))));
+    if (r.parents.length) {
+      box.append(sec(t('h.r.parents'), h('p', { text: r.parents.map(p => p.name + (p.hidden ? ' (' + t('h.r.hiddenp') + ')' : '')).join(' ‹ ') }),
+        r.outside ? h('p', { class: 'warn', text: t('h.r.outside') }) : null));
+    }
+  }
+
+  function drawProps(g) {
+    const f = scene.files[g.file];
     const [w] = dims();
     const font = g.attrs.textfont ? fontAt(scene.fonts, g.attrs.textfont, g.attrs.textfontsize || '12', w, dims()[1]) : null;
     const row = (k, v) => h('tr', {}, h('th', { text: k }), h('td', { class: 'mono', text: v }));
-    details.append(h('h3', { text: g.name || '(' + g.type + ')' }),
+    details.append(
       h('table', { class: 'hud-props small' },
         row(t('h.type'), g.type),
         row(t('h.file'), `${f.stem} (${f.where.split(/[\\/]/).pop()}), ${t('h.line')} ${g.line}`),

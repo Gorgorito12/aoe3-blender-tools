@@ -77,8 +77,14 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   and its string table. The skin of the chosen culture; **moments of the game** the engine shows
   gadgets for (a unit selected, paused, victory, subtitles, a wonder, training, a trade route...)
   and the health bar's colour, from `aoe3game/uidata/hud_scene.json`. The gadgets as a tree; a
-  gadget chosen on the picture or in the tree shows its file and line, rectangle, text and what it
-  shows, font and its size at that screen, states, commands and every attribute. **Save the
+  gadget chosen on the picture or in the tree shows its properties and **what it points to**: its
+  file and line and the copies it hides; each text id with its text and symbol in the string table;
+  each texture (background, foreground, states) with a thumbnail, where it was found, its size and
+  crop, and the copies it hides; its font, the entry fonts3.xml gives (or what a missing one is drawn
+  as), the typeface's file and its cell at that screen; each live text, what it reads in protoy.xml
+  or that the stock game leaves it empty (`uidata/ui_functions.json`); what the game writes into a
+  gadget it fills by name, and when (`uidata/engine_gadgets.json`); its commands; the parents it
+  shows and hides with, and whether it lies outside its parent. **Save the
   picture** writes it to the work folder. The files are read as a tree that keeps every byte
   (`aoe3game/uilayout.py`: the 55 interface files of a Wars of Liberty copy and the 551 compiled
   ones in its archives come back identical). Measured against a capture of the game at 1920 x 1080:

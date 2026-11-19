@@ -42,8 +42,17 @@ SKIN = re.compile(r"(Eur|Nat|Asi)(Min|Max)$")
 SCENE_RULES = os.path.join(os.path.dirname(os.path.abspath(uilayout.__file__)), "uidata", "hud_scene.json")
 
 
+UIDATA = os.path.dirname(SCENE_RULES)
+
+
 def scene_rules():
     with open(SCENE_RULES, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def table(name):
+    """One of aoe3game/uidata's tables."""
+    with open(os.path.join(UIDATA, name + ".json"), encoding="utf-8") as fh:
         return json.load(fh)
 
 
@@ -130,6 +139,31 @@ class Game:
                             if fam:
                                 self._ttf.setdefault(fam.lower(), (archive, (stored, off, size)))
             return self._fonts
+
+    def art_copies(self, path):
+        """Every place an art file of that path is found, in the order the game looks: the loose
+        file, then each archive of the art folder that holds it."""
+        from fix_hitpointbar_tags import norm
+        key = norm(path)
+        out = []
+        art = self.art
+        if key in art.loose:
+            out.append(art.loose[key])
+        with self._lock:
+            if getattr(self, "_art_all", None) is None:
+                self._art_all = {}
+                for name in sorted(os.listdir(art.root)):
+                    if name.lower().endswith(".bar"):
+                        archive = os.path.join(art.root, name)
+                        for stored, _off, _size in bar.read_entries(archive):
+                            self._art_all.setdefault(norm(stored), []).append(f"{name}:{stored}")
+        return out + self._art_all.get(key, [])
+
+    def font_where(self, face):
+        """Where a typeface's file is: Fonts.bar's entry, or None (a system font)."""
+        self.fonts
+        hit = self._ttf.get((face or "").lower())
+        return f"{os.path.basename(hit[0])}:{hit[1][0]}" if hit else None
 
     def font_file(self, face):
         """The bytes of a typeface's TrueType file of Fonts.bar, or None (a system font)."""
@@ -236,6 +270,73 @@ class Scene:
                 "strings": {n: list(st[n]) for n in sorted(strings) if n in st},
                 "fonts": self.game.fonts, "faces": self.game.faces(),
                 "skin": SKIN.pattern, "cultures": list(CULTURES), "rules": scene_rules()}
+
+    def refs(self, n, width=1024):
+        """Where each thing a gadget names leads: its texts in the string table, its textures and
+        the copies they hide, its font and the file of its typeface, its live texts and what they
+        read, what the game writes into it, its file, its parents, its commands."""
+        pairs = self.gadgets()
+        if not 0 <= n < len(pairs):
+            raise HudError("no such gadget")
+        i, e = pairs[n]
+        attrs = e.attributes()
+        f = self.files[i]
+        out = {"file": {"stem": f["stem"], "where": f["where"], "hidden": f["hidden"], "line": e.line}}
+        st = self.game.strings
+        texts = []
+        for where, value in (("text", e.own_text()), ("mouseovertext", attrs.get("mouseovertext", "")),
+                             ("tooltiptext", attrs.get("tooltiptext", ""))):
+            for m in re.finditer(r"\$\$(\d+)\$\$([^\n<{$]*)", value or ""):
+                k = int(m.group(1))
+                hit = st.get(k)
+                texts.append({"in": where, "id": k, "fallback": m.group(2).strip(), "found": hit is not None,
+                              "text": hit[0] if hit else None, "symbol": hit[1] if hit else None})
+        out["strings"] = texts
+        tex = []
+        names = [("background", attrs.get("background")), ("foreground", attrs.get("foreground"))]
+        names += [(f"state {k}", s.get("background") or s.get("foreground"))
+                  for k, s in enumerate(c for c in e.elements() if c.name_lower == "stateentry")]
+        for role, path in names:
+            if not path:
+                continue
+            p = path.strip().replace("/", "\\")
+            candidates = self.game.art_copies(p if p.lower().endswith((".ddt", ".tga", ".png")) else p + ".ddt")
+            hit = self.game.texture(path)
+            tex.append({"role": role, "path": path, "found": candidates[:1], "hidden": candidates[1:],
+                        "size": list(hit[0].shape[1::-1]) if hit else None,
+                        "crop": attrs.get("texturecoords") if role == "background" else None})
+        out["textures"] = tex
+        if attrs.get("textfont"):
+            size = attrs.get("textfontsize", "12")
+            found = uifonts.lookup(self.game.fonts, attrs["textfont"], size, width)
+            used = found or uifonts.lookup(self.game.fonts, *uifonts.FALLBACK.rsplit(" ", 1), width)
+            face = used.get("TypeFace") if used else "Arial"
+            out["font"] = {"asked": f"{attrs['textfont']} {size}", "found": found is not None,
+                           "entry": used.get("Name") if used else None, "typeface": face,
+                           "cell": used.get("AscentHeight") if used else None, "resx": used.get("ResX") if used else None,
+                           "bold": bool(used and used.get("Bold")), "file": self.game.font_where(face)}
+        funcs = {fn["name"].lower(): fn for fn in table("ui_functions")["functions"]}
+        live = []
+        for value in (e.own_text(), attrs.get("mouseovertext", "")):
+            for m in re.finditer(r"\{([A-Za-z_]\w*)(\(([^)]*)\))?\}", value or ""):
+                fn = funcs.get(m.group(1).lower())
+                live.append({"text": m.group(0), "name": m.group(1), "args": m.group(3) or "", "known": fn is not None,
+                             "works": fn["works"] if fn else None, "proto": fn.get("proto") if fn else None,
+                             "en": fn["en"] if fn else None, "es": fn["es"] if fn else None})
+        out["live"] = live
+        name = attrs.get("name", "")
+        out["engine"] = [{"en": g["en"], "es": g["es"], "when": g["when"]} for g in table("engine_gadgets")["gadgets"]
+                         if re.search(g["re"], name, re.I)]
+        chain, p = [], e.parent
+        while p is not None and p.name_lower == "gadget":
+            chain.append({"name": p.get("name") or "", "hidden": p.has("hidden")})
+            p = p.parent
+        out["parents"] = chain
+        r = uilayout.rect(e)
+        pr = uilayout.rect(e.parent) if e.parent is not None and e.parent.name_lower == "gadget" else None
+        out["outside"] = bool(r and pr and (r[0] < pr[0] - 4 or r[1] < pr[1] - 4 or r[2] > pr[2] + 4 or r[3] > pr[3] + 4))
+        out["commands"] = [c.own_text().strip() for c in e.elements() if c.name_lower == "command"]
+        return out
 
     def texture_png(self, path):
         """(png bytes, where) of a texture, kept for the session; None when not found."""
