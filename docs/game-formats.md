@@ -75,8 +75,15 @@ trust that declaration. The writer uses the stock basis, so no conversion is inv
 transform, local = translate(Position) x rotate(Orientation, a quaternion x y z w) x ScaleShear (a
 3 x 3, used only when bit 4 of the transform's flags is set; bit 1 position, bit 2 orientation). The
 stored InverseWorldTransform is the inverse of that frame in row-vector form (translation in the
-last row): their product is the identity to 1e-6 on stock and mod buildings. On skinned units it is
-the bind pose instead and does not match the rest pose.
+last row): their product is the identity to 1e-6 on stock and mod buildings. **Units too**
+(**measured** 2026-11-19, correcting an earlier note that said otherwise, which had not followed
+the parents' rotations): with the rotations followed, a skinned unit's rest pose is its bind pose
+to 1e-3 in 313 of 323 skinned models drawn at random from a Wars of Liberty copy (96.9 %; 125 of
+129 in a second draw). `aoe3game/gr2_skin.py` composes the frames and says per skeleton whether it
+holds (`matches`); a vertex has up to four bones (`BoneIndices`, `BoneWeights` as bytes adding up
+to 255; the packed stream two), and the game's animations find their bones by name. Skinning a
+unit at its rest pose (world x inverse bind, weighted) gives its stored vertices back (2e-7 on the
+Musketeer).
 
 - Stock buildings: the impact bones (`boneimpactNN`) and attach bones have world axes of length 1;
   some helper bones are 0.918, and across all stock models helper bones from 0.24 to 4 are common.
@@ -285,6 +292,28 @@ texture path) that should ship at the size of the original.
   flag and the Forge's smoke and flag where the uncompressed set puts them.
 - Tests: `python -I tests/test_recompress_models.py` (synthetic models, a fake runtime with zlib in
   place of Oodle).
+
+### A whole model written again (`aoe3game/gr2_edit.py`)
+
+The start of a unit transplant: a model's whole tree (skeleton, materials, meshes, everything)
+copied into the writer's terms with every type as the file declares it, then written again.
+**Measured** (2026-11-19) on the 16,294 uncompressed models of a Wars of Liberty copy's cache
+(15,030 of version 6, 1,264 of version 7): every one written again has a valid CRC and the same
+`gr2.dump_tree` as the original. Two things it needed: an object reached from two places stays
+one object; and some `ExtendedData` types name two members alike (a material's
+`ESEffectName`), so the writer takes a value by member index where a name repeats (24 files
+failed or differed before).
+
+**The game's runtime as the judge** (`tools/gr2_check.py`, the helper's `info` verb): the game's
+granny2.dll (2.5.0.10) loads a model as the game does (`GrannyReadEntireFile`,
+`GrannyGetFileInfo`) and lists its meshes (vertices, indices, triangles, bone bindings) and
+skeletons (bones, parents); the helper finds each member by name in the runtime's own type
+tables, so nothing about the structures' layout is assumed (each export such as
+`GrannyFileInfoType` holds a pointer to its table; `GrannyGetTotalTypeSize` measures the table,
+32 bytes a record, not an object). **Measured** on 400 models of the cache: what the runtime reads
+equals what `gr2.load` reads in all 400, and each one written again reads alike in the runtime with
+a valid CRC. Whether the game draws and animates a written unit as the original is **to verify**
+in game (test T0 in `docs/game-test.md`).
 
 ## Textures (.ddt)
 

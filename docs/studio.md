@@ -24,8 +24,8 @@ folder) are kept in `%APPDATA%\aoe3-blender-tools\studio.json`. Nothing leaves t
 |---|---|
 | Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes, a person 1.8 m tall for the scale, the obstruction on the ground, the low-poly model, the damaged texture, the player colour of a team; the texture with its atlas regions; triangles against the style's target or the game's buildings of the same class; the technical sheet; **Check** (the add-on's game-ready checks, `scripts/check.py`); with the PROP style, the prop sets side by side and their export; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo. **Settlements and more forms** leads to the settlement composer (below) and the buildings' forms |
 | Textures and units | **Repaint a unit** and **Make a tileable texture** (below); the UV atlas, the recipe tool, textures re-encoded for older cards (choose them, measure the stock limit, re-encode: never in place), **Recolour textures** (`tools/recolor_textures.py`: hue, saturation and lightness of a terrain's or a plant's textures, with their distance to the player colours before and after), LoRA dataset and training as forms |
-| Survey and inspection | The art, texture, model, grouping, shape, palette and home-city model surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it, `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back; **a survey's results** as a table (below) |
-| Art utilities | **Game interface** and **Design a civ flag** (below); avatar icons, ground rings, health bars, stat icons for the unit panels, a preview of an interface layout (every gadget's box), missing letters in a font, the HITPOINTBAR fix, bone scale fix, uncompressed models, models compressed again through the game's granny2.dll (and the helper it needs, built once), a home city's models moved into a folder of their own (prepare outside the copy, install into the test copy with a confirmation, undo) |
+| Survey and inspection | The art, texture, model, grouping, shape, palette and home-city model surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it; a unit with its skeleton drawn through it, its bones as a tree with the vertices each moves, a bone's weights in colour, and whether its rest pose is its bind pose (`aoe3game/gr2_skin.py`), `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back; **a survey's results** as a table (below) |
+| Art utilities | **Game interface** and **Design a civ flag** (below); avatar icons, ground rings, health bars, stat icons for the unit panels, a preview of an interface layout (every gadget's box), missing letters in a font, the HITPOINTBAR fix, bone scale fix, uncompressed models, models compressed again through the game's granny2.dll (and the helper it needs, built once), models checked by that runtime (what it reads beside what the studio reads; a model written again from its own tree, `tools/gr2_check.py`), a home city's models moved into a folder of their own (prepare outside the copy, install into the test copy with a confirmation, undo) |
 | Settings | The folders, checked as they are chosen; what the studio found; Start and Check ComfyUI (the nodes and models a repaint needs); the log. The **welcome** opens on the first start until the game's folder is set |
 | Tasks | Every task of the session with its live log, progress, cancel and outputs (pictures shown, text files opened, folders shown) |
 | Developer tools | Technical sheets, sweep, galleries, AI sweep, the painter's fit, swatch download, add-on zips |
@@ -257,6 +257,19 @@ repaints its own buildings.
   strings byte for byte; the models with the same vertices, normals and UVs (some flat quads cut
   along the other diagonal: rendered alike, under 0.3 % of the pixels differ). Whether it looks the
   same in game is **to verify** (`docs/game-test.md`); Blender stays the default until then.
+- **Your own model** (Buildings, `studio/meshin.py`, `web/js/meshin.js`; its form and
+  `scripts/mesh_to_game.py`): a static `.obj` (with its `.mtl` and picture), `.glb` or `.gltf` of
+  your own as a game building or prop. It is read without Blender (`core/objio.py`,
+  `core/glbio.py`), turned to Blender's axes, sized (a scale into metres, or the plot's longer side
+  in game units: 4 for the 4x4 class), set on the ground at the middle of its plot, its normals kept
+  or worked out from the smoothing groups (`core/meshprep.py`); then seen in 3D beside a person and
+  its obstruction, checked as a generated building (`core/checks.py`), and written by the same
+  `bundle.write` (model, texture, bump map, anim file, proto, strings, icon and portrait). A JPEG
+  picture is decoded by the page and handed over as PNG. Refused, with the reason: no texture
+  coordinates, two pictures (the game takes one), Draco or meshopt compression, a skin (a unit).
+  Measured: the 16 example GLBs (written by Blender's glTF exporter) read back with the generator's
+  triangles, area and corners. No low-poly or damaged variant, no technical sheet. Whether it
+  looks right in game is **to verify**.
 - GLB, FBX and OBJ, the renders of `scripts/generate.py`, `model_sheets` and the galleries still
   need Blender.
 
