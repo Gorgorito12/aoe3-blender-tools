@@ -162,7 +162,22 @@ while the stock collapse dust rises, then the rubble takes its place.
 
 The first in-game test of the unit transplant (`aoe3game/gr2_edit.py`): the Musketeer's model
 written again from its own tree, nothing changed. If the game draws and animates it as the
-original, the writer can carry a unit; then T1 changes its mesh. **Not yet done.**
+original, the writer can carry a unit; then T1 changes its mesh.
+
+**Done (2026-11-19), passed**, in the WoL test copy, driven with no clicks (a test map of 7
+Musketeers against 3 Hussars that charge them at 22 s, loaded through the editor and filmed from a
+copy running behind the other windows, `multipleInstances background`; WoL's Musketeer draws
+`musketeer_2age` before any age tech). Three runs of the same scene:
+- **A**, the original (from `Art1.bar`): idle, the charge, firing, the bayonet, deaths on both sides.
+- **B**, a control: the same file written again with its vertices 1.5 times larger. The Musketeers
+  stood visibly taller and fought and died as before, so the game reads the loose file and our
+  writer's tree; their hats and muskets were hidden inside the bodies, since only the vertices grew
+  and those attachments ride the bones, which kept their place.
+- **C**, T0: the identical rewrite. Drawn as in A: the plumed hat and the musket on their bones, the
+  player colour, the shadow, the health bar, firing smoke, the bayonet, death; selected, its circle,
+  portrait and panel rows. Not looked at: low model detail (`lp_musketeer_2age`, untouched) and the
+  edges of the screen.
+The test files were then taken out one by one, leaving the copy's other deployment in place.
 
 1. Its uncompressed copy: the model cache of `tools/model_survey.py` (named by the original's
    MD5), or **Uncompressed models** in the studio.
