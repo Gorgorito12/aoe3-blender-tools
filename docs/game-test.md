@@ -31,14 +31,29 @@ python -I -X utf8 tools\game_deploy.py --install C:\AoE3-BT-Test --bundle out\wh
 Or, in Blender: Sidebar > AoE3 > Game Export, then the second command. Deploying again replaces
 the earlier deployment (`--keep` adds to it instead); `--undo` restores the copy.
 
-**To verify: a bundle made without Blender.** `scripts/game_export_noblender.py` (same options;
+**A bundle made without Blender: seen in game (2026-11-19).** `scripts/game_export_noblender.py` (same options;
 the studio's "Without Blender, experimental") writes the same bundle from the generator's own mesh
 (`core/gamemesh.py`) and its own icon renderer (`core/softrender.py`). Measured against Blender's
 bundle of the same building (2026-11-17, four presets): the textures, bump maps, anim file, proto
 and strings byte for byte; the models with the same vertices, normals and UVs, some quads cut
 along the other diagonal (rendered alike, under 0.3 % of the pixels differ); the icons framed the
-same, within 4 / 255 on average. In game: deploy one of each beside its Blender twin and compare
-them placed, lit, selected (icon) and destroyed. Until then Blender stays the default.
+same, within 4 / 255 on average. **In game** (the WoL test copy, a scripted scene, no clicks): the
+medium White House made with Blender and its twin made without stood side by side alike, with the
+flag on its bone, the shadow and the ground mark; at 60 % damage both showed the damaged roof
+alike; killed, both sank into the stock rubble and fire. Not looked at yet: the icon and portrait
+when selected, the low model detail. Whether the export without Blender becomes the default is the
+owner's choice.
+
+**Your own model in game (2026-11-19).** `examples/timberinn/timberinn.glb` (written by Blender's
+glTF exporter) through `scripts/mesh_to_game.py` with its own scale: placed in the same scene it
+stood upright, the right way round, to scale beside the White House, its texture and shadow right;
+killed, it went down as the others. A building made of an OBJ or a glTF of another program is not
+yet seen.
+
+**A copy's fonts in game (2026-11-19).** `tools/game_fonts.py stage` on the WoL copy, deployed with
+`--files`: a building named "Sarja Roșior · Călărași ĂăȘșȚț őł" showed in the selection panel as
+"Sarja Ro?ior · Călăra?i Ăă???? őł" before and with every letter in the game's own typeface after.
+Each test was taken out afterwards: the copy came back identical to a snapshot taken before.
 
 ## 3. Look at it
 
