@@ -552,6 +552,47 @@ HELP = {
             "Stops after measuring this many textures. Default: 80.",
             "Se detiene tras medir esta cantidad de texturas. Por defecto: 80."),
     },
+    'recolor_textures': {
+        'inputs': (
+            "The .ddt textures to recolour, or folders of them (without their subfolders). Bump maps among them are skipped.",
+            "Las texturas .ddt a recolorear, o carpetas con ellas (sin sus subcarpetas). Los mapas de relieve se omiten."),
+        'hue': (
+            "Degrees added to the hue (OKLCH). From red, a positive value goes towards orange and yellow, a negative one towards crimson, magenta and purple. Default 0.",
+            "Grados que se suman al tono (OKLCH). Desde el rojo, un valor positivo va hacia naranja y amarillo, uno negativo hacia carmesí, magenta y morado. Por defecto 0."),
+        'chroma': (
+            "Saturation (OKLCH chroma) multiplied by this: 0.6 is 40 % less saturated. Default 1.",
+            "La saturación (croma OKLCH) se multiplica por esto: 0.6 es un 40 % menos saturado. Por defecto 1."),
+        'lightness': (
+            "Lightness (OKLCH L) multiplied by this: 0.8 is darker. Default 1.",
+            "La luminosidad (L de OKLCH) se multiplica por esto: 0.8 es más oscuro. Por defecto 1."),
+        'hue_window': (
+            "CENTRE,HALF[,FEATHER] in degrees: only the pixels whose hue is within HALF of CENTRE change, fading out over FEATHER more (default 20). Empty: every pixel.",
+            "CENTRO,MITAD[,TRANSICIÓN] en grados: solo cambian los píxeles cuyo tono está a menos de MITAD del CENTRO, con una transición de TRANSICIÓN grados más (por defecto 20). Vacío: todos los píxeles."),
+        'mix': (
+            "A terrain mix file (art\\terrain\\mix\\*.xml): also measures the mean of the textures it paints, weighted as it weights them.",
+            "Un archivo de mezcla de terreno (art\\terrain\\mix\\*.xml): mide además la media de las texturas que pinta, ponderada como las pondera."),
+        'player_colors': (
+            "The game's playercolors.xml or its .xmb (extract it from data\\Data.bar with bar.py): the textures are compared with players 1 to 8.",
+            "El playercolors.xml del juego o su .xmb (extráelo de data\\Data.bar con bar.py): las texturas se comparan con los jugadores 1 a 8."),
+        'against': (
+            "More colours to compare with, as NAME=R,G,B, several separated by semicolons.",
+            "Más colores con los que comparar, como NOMBRE=R,G,B, varios separados por punto y coma."),
+        'mapcolor': (
+            "The terrain's minimap colour (mapcolor in terraintypes.xml) as R,G,B: it gets the same change, and the report gives the new value.",
+            "El color del terreno en el minimapa (mapcolor en terraintypes.xml) como R,G,B: recibe el mismo cambio y el informe da el valor nuevo."),
+        'near': (
+            "A pixel within this CIEDE2000 distance of a colour counts as near it. Default 20.",
+            "Un píxel a menos de esta distancia CIEDE2000 de un color cuenta como cercano. Por defecto 20."),
+        'report': (
+            "The JSON report: each texture's mean colour and distances before and after. Empty: report.json in the work folder.",
+            "El informe JSON: el color medio de cada textura y sus distancias antes y después. Vacío: report.json en la carpeta de trabajo."),
+        'preview': (
+            "A PNG with each texture before (left) and after (right). Empty: preview.png in the work folder.",
+            "Un PNG con cada textura antes (izquierda) y después (derecha). Vacío: preview.png en la carpeta de trabajo."),
+        'dry_run': (
+            "Measures the result without writing any texture.",
+            "Mide el resultado sin escribir ninguna textura."),
+    },
     'retexture': {
         'preview': (
             "Also writes a PNG sheet: the starting texture, the result, and the result with a player colour.",

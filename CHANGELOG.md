@@ -4,6 +4,12 @@ One version for the Blender add-on and AoE3 Mod Studio: `aoe3_blender_tools/blen
 says it, the add-on's `bl_info` repeats it and the studio reads it (`tests/test_studio.py` holds the
 three together).
 
+## Unreleased
+
+- `tools/recolor_textures.py` (and its studio form, Textures and units): recolours textures in OKLCH,
+  only the hues you choose, keeping each file's header, alpha and mip levels, and reports CIEDE2000 to the
+  player colours before and after. Made for a terrain whose red hid player 2.
+
 ## 0.3.0 (2026-11-17)
 
 **AoE3 Mod Studio** (`studio/`, `docs/studio.md`): every tool of the repository in one window, in
