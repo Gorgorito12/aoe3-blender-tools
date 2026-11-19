@@ -6,6 +6,13 @@ three together).
 
 ## Unreleased
 
+- **A copy's fonts** (`tools/game_fonts.py`, two forms in Art utilities): which letters each typeface of
+  `fonts3.xml` lacks, and every font with a file extended at once (`extend_font.py`) under a new family
+  name, with `fonts3.xml` pointed at them, ready to deploy to the test copy and undo. What the Wars of
+  Liberty fonts fix did by hand, for any mod: on a WoL copy it gives the same 108 + 4 + 4 letters and 113
+  changed entries. The game interface screen finds loose fonts of `FONTS\` first, so it draws with
+  them; deploying a folder accepts `FONTS` beside `data` and `art`.
+
 - `aoe3game/gr2_edit.py`: a model's whole tree copied and written again (all 16,294 models of a
   WoL copy's cache come back with the same tree and a valid CRC), the start of a unit transplant.
   `tools/gr2_check.py` (a form in Art utilities): the game's own granny2.dll reads a model and its

@@ -307,12 +307,12 @@ TOOLS = [
          confirm=L("This changes the test copy of the game.", "Esto modifica la copia de prueba del juego.")),
     Tool("deploy_files", "tools/game_deploy.py", "buildings",
          L("Deploy edited files to the test copy", "Desplegar archivos editados en la copia de prueba"),
-         L("Copies a folder laid out as the copy (data, art: the game interface's saved layouts and rows "
-           "file) into the test copy; what it replaces is backed up, a compiled twin of an edited XML taken "
-           "out; Undo puts everything back.",
-           "Copia una carpeta con la estructura de la copia (data, art: las disposiciones y el archivo de filas "
-           "guardados de la interfaz) en la copia de prueba; lo que sustituye se respalda y se quita el gemelo "
-           "compilado de un XML editado; Deshacer lo restaura todo."),
+         L("Copies a folder laid out as the copy (data, art, FONTS: the game interface's saved layouts and rows "
+           "file, the fonts with their missing letters) into the test copy; what it replaces is backed up, a "
+           "compiled twin of an edited XML taken out; Undo puts everything back.",
+           "Copia una carpeta con la estructura de la copia (data, art, FONTS: las disposiciones y el archivo de "
+           "filas guardados de la interfaz, las fuentes con sus letras que faltaban) en la copia de prueba; lo que "
+           "sustituye se respalda y se quita el gemelo compilado de un XML editado; Deshacer lo restaura todo."),
          [Arg("install", "--install", "folder", L("Test copy", "Copia de prueba"),
               L("A copy of the game for testing (never the Steam folder: it is refused).",
                 "Una copia del juego para pruebas (nunca la carpeta de Steam: se rechaza)."),
@@ -804,6 +804,34 @@ TOOLS = [
           Arg("report", "--report", "save", L("Report", "Informe"), filters=JSON, work="report.json"),
           Arg("no_kern", "--no-kern", "bool", L("No kerning copied", "Sin copiar el interletraje"))],
          needs=("fonttools",), outputs=("output", "proof", "report")),
+    Tool("game_fonts_survey", "tools/game_fonts.py", "art",
+         L("A copy's fonts: the letters they lack", "Fuentes de una copia: las letras que les faltan"),
+         L("Every typeface FONTS\\fonts3.xml names, how many entries use it, where its file is (loose in FONTS, in "
+           "Fonts.bar, or a Windows font) and which accented Latin letters it lacks (ă ș ț ő ł ...). Reads only.",
+           "Cada tipografía que nombra FONTS\\fonts3.xml, cuántas entradas la usan, dónde está su archivo (suelto "
+           "en FONTS, en Fonts.bar o una fuente de Windows) y qué letras latinas con acento le faltan (ă ș ț ő ł "
+           "...). Solo lee."),
+         [game_dir(),
+          Arg("only", "--only", "text", L("Only these letters", "Solo estas letras"), placeholder="ăâîșț,U+0218-U+021B"),
+          Arg("json", "--json", "save", L("Report (JSON)", "Informe (JSON)"), filters=JSON)],
+         fixed=["survey"], needs=("game",), outputs=("json",)),
+    Tool("game_fonts_stage", "tools/game_fonts.py", "art",
+         L("A copy's fonts: add the letters they lack", "Fuentes de una copia: añadir las letras que faltan"),
+         L("Every font of the copy that lacks letters, extended from its own letters and accents under a new family "
+           "name (<typeface> <word>), and fonts3.xml pointed at them; written outside the copy, laid out as it, "
+           "ready for \"Deploy edited files to the test copy\" (Undo takes it out). Fonts.bar is never changed.",
+           "Cada fuente de la copia a la que le faltan letras, ampliada con sus propias letras y acentos con un nombre "
+           "de familia nuevo (<tipografía> <palabra>), y fonts3.xml apuntando a ellas; se escribe fuera de la copia, "
+           "con su estructura, lista para \"Desplegar archivos editados en la copia de prueba\" (Deshacer la quita). "
+           "Fonts.bar nunca se cambia."),
+         [game_dir(), out_dir(),
+          Arg("suffix", "--suffix", "text", L("Word after the family names", "Palabra tras los nombres de familia"),
+              required=True, placeholder="WoL"),
+          Arg("families", "--families", "text", L("Only these typefaces", "Solo estas tipografías"),
+              placeholder="Formal436 BT,Monotype Corsiva"),
+          Arg("only", "--only", "text", L("Only these letters", "Solo estas letras"), placeholder="ăâîșț,U+0218-U+021B"),
+          Arg("no_kern", "--no-kern", "bool", L("No kerning copied", "Sin copiar el interletraje"))],
+         fixed=["stage"], needs=("game", "fonttools"), outputs=("out",)),
     Tool("fix_hitpointbar", "tools/fix_hitpointbar_tags.py", "art",
          L("Fix jumping health bars", "Arreglar barras de vida que saltan"),
          L("Adds the HITPOINTBAR tag to the animations of a unit that lack it, so its health bar stops jumping.",

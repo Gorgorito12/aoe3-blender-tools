@@ -336,6 +336,26 @@ HELP = {
             "The 16x8 DXT1 .ddt texture to write. Empty: health_bar.ddt in the work folder.",
             "La textura .ddt de 16x8 en DXT1 que se escribe. Vacío: health_bar.ddt en la carpeta de trabajo."),
     },
+    'game_fonts_survey': {
+        'only': ("Letters or ranges to look for instead of the usual ones (Latin-1, Latin Extended-A, Ș ș Ț ț), e.g. ăș,U+0218-U+021B.",
+                 "Letras o rangos que buscar en lugar de los habituales (Latin-1, Latin Extended-A, Ș ș Ț ț), p. ej. ăș,U+0218-U+021B."),
+        'json': ("Also writes the survey as JSON. Empty: only the log.",
+                 "También escribe el estudio en JSON. Vacío: solo el registro."),
+    },
+    'game_fonts_stage': {
+        'suffix': ("A word added after each extended typeface's name (letters, digits, _): Formal436 BT becomes "
+                   "\"Formal436 BT WoL\", and its file TT1141M_WoL.TTF. The new names never clash with the originals.",
+                   "Una palabra que se añade tras el nombre de cada tipografía ampliada (letras, cifras, _): Formal436 BT "
+                   "pasa a \"Formal436 BT WoL\" y su archivo a TT1141M_WoL.TTF. Los nombres nuevos nunca chocan con los "
+                   "originales."),
+        'families': ("Comma-separated typefaces to extend. Empty: every one with a file in the copy that lacks letters.",
+                     "Tipografías a ampliar, separadas por comas. Vacío: todas las que tienen archivo en la copia y les "
+                     "faltan letras."),
+        'only': ("Letters or ranges to add instead of the usual ones, e.g. ăș,U+0218-U+021B.",
+                 "Letras o rangos que añadir en lugar de los habituales, p. ej. ăș,U+0218-U+021B."),
+        'no_kern': ("Does not copy the base letters' kerning pairs to the new letters.",
+                    "No copia a las letras nuevas los pares de interletraje de su letra base."),
+    },
     'extend_font': {
         'input': (
             "The TrueType font (.ttf) to extend. It is only read; mind its licence before sharing what comes out.",

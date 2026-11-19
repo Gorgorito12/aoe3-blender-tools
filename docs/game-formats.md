@@ -612,6 +612,28 @@ stock files (2026-11-13).
   children, which the XML text drops, and one repeats an attribute, which XML forbids. `check`
   reports such a file; its binary round trip still holds.
 
+## Fonts
+
+`FONTS\fonts3.xml` (UTF-16 with its byte order mark) names each interface font and its typeface
+(`aoe3game/uifonts.py`); the typefaces are TrueType files of `FONTS\Fonts.bar` or Windows fonts
+(Arial, Courier New).
+
+**Measured** by the Wars of Liberty fonts fix (WoL 1.2.0e, at 1920 x 1080 and 1024 x 768, 2026-11-18):
+- for each font of fonts3.xml the engine also makes a fallback in Arial Unicode MS: a letter the
+  font lacks is drawn from the fallback (in Arial's style), and one the fallback lacks too as "?"
+  (Ș ș Ț ț, which Arial Unicode MS lacks);
+- a loose `.ttf` in `FONTS\` is loaded as those of `Fonts.bar` are (the menus, tooltips and titles
+  were drawn with fonts that were in no archive and not installed in Windows);
+- a font extended under a new family name (`tools/extend_font.py`, every existing glyph and its
+  hinting kept) leaves every text without a new letter pixel for pixel as it was.
+
+What that copy's fonts lack (`tools/game_fonts.py survey`): Formal436 BT 112 letters of Latin
+Extended-A and Ș ș Ț ț (108 can be built from its parts; ĸ Ŋ ŋ ſ have shapes of their own), Franklin
+Gothic Medium and Monotype Corsiva only Ș ș Ț ț. **To verify**: which file wins when one family is
+both loose and in `Fonts.bar` (new family names avoid the question). Text with accents inside an XS
+string literal fails for another reason: the script tokenizer cuts a string at any byte above 0x7F
+(use the string table).
+
 ## Protos and strings
 
 - `data\protoy.xml`: `<Unit id=... name=...>` blocks (both quote styles occur), CRLF line ends.

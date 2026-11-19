@@ -23,6 +23,7 @@ import sys
 from . import proto
 
 MANIFEST = "aoe3bt-manifest.json"
+DEPLOYABLE = ("data", "art", "fonts")     # the folders add_files writes into (FONTS: tools/game_fonts.py's fonts)
 BACKUP = ".aoe3bt-orig"
 VALIDATORS = ("validate_proto.py", "validate_techtree.py", "validate_stringtable.py")
 
@@ -186,7 +187,7 @@ class Deployment:
         return written
 
     def add_files(self, folder, log=print, skip=("hud-edits.json",)):
-        r"""Copies a folder laid out as the copy (data\..., art\...) into it, noted in the
+        r"""Copies a folder laid out as the copy (data\..., art\..., FONTS\...) into it, noted in the
         manifest: a file it replaces is backed up and put back by `undo`, a new one is taken out.
         A compiled twin of an edited XML (data\x.xml beside data\x.xml.xmb) is backed up and
         taken out too, or the game would read that one. Returns the paths written, relative."""
@@ -205,8 +206,8 @@ class Deployment:
                     src = os.path.join(base, name)
                     rel = os.path.relpath(src, folder)
                     top = rel.split(os.sep, 1)[0].lower()
-                    if top not in ("data", "art"):
-                        raise RefusedPath(f"{rel}: only the data and art folders of a copy are deployed")
+                    if top not in DEPLOYABLE:
+                        raise RefusedPath(f"{rel}: only the data, art and FONTS folders of a copy are deployed")
                     dst = os.path.join(self.install, rel)
                     refuse_steam(dst)
                     os.makedirs(os.path.dirname(dst), exist_ok=True)
