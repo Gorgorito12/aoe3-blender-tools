@@ -88,6 +88,38 @@ export async function inspectScreen(main, app) {
     viewer.show.attach = true;
     viewer.setModel({ mesh: r.mesh, attach: r.attach, boxes: [] }, r.texture || null, true);
     if (!r.texture) viewer.setMode('clay');
+    // a unit: its skeleton through the mesh, and the weights of the bone chosen
+    const sk = r.skeleton || [];
+    const skin = r.skin || { bones: [], weights: [] };
+    const counts = sk.map(() => 0);
+    for (let i = 0; i < skin.bones.length; i++) if (skin.bones[i] >= 0 && skin.weights[i] > 0) counts[skin.bones[i]]++;
+    if (sk.length > 1 && counts.some(n => n)) {
+      viewer.show.attach = false; viewer.apply();
+      viewer.setSkeleton(sk);
+      const over = h('div', { class: 'over' });
+      view.append(over);
+      over.append(h('button', { type: 'button', 'aria-pressed': 'true', text: t('i.skeleton'), onclick: e => {
+        const on = e.target.getAttribute('aria-pressed') !== 'true'; e.target.setAttribute('aria-pressed', String(on)); viewer.toggle('skeleton', on);
+      } }));
+      const weightsOf = bone => {
+        const n = r.vertices, out = new Float32Array(n);
+        for (let v = 0; v < n; v++) for (let k = 0; k < 4; k++) if (skin.bones[4 * v + k] === bone) out[v] += skin.weights[4 * v + k];
+        return out;
+      };
+      // the bones as a tree, each with the vertices it moves
+      const depth = i => { let d = 0; for (let p = sk[i][1]; p >= 0 && d < 64; p = sk[p][1]) d++; return d; };
+      let chosen = -1;
+      const list = h('div', { class: 'stack small i-bones' });
+      const draw = () => clear(list).append(...sk.map((b, i) => h('button', { type: 'button', class: 'ghost small i-bone' + (i === chosen ? ' on' : ''),
+        style: { paddingLeft: (4 + 10 * depth(i)) + 'px' }, title: t('i.bone.help'),
+        text: `${b[0]}${counts[i] ? '  · ' + fmt(counts[i]) : ''}`,
+        onclick: () => { chosen = chosen === i ? -1 : i; viewer.setSkeleton(sk, chosen); viewer.setWeights(chosen >= 0 ? weightsOf(chosen) : null); draw(); } })));
+      draw();
+      const most = Math.max(...Array.from({ length: r.vertices }, (_, v) => [0, 1, 2, 3].filter(k => skin.weights[4 * v + k] > 0).length));
+      side.append(h('h3', { text: t('i.skin') }),
+        h('p', { class: 'small ' + (r.bind_matches ? 'ok' : 'warn'), text: r.bind_matches ? t('i.bind.ok') : t('i.bind.no') }),
+        h('p', { class: 'small muted', text: t('i.skin.help', { n: fmt(counts.filter(Boolean).length), most }) }), list);
+    }
   }
 
   if (path.value) open();

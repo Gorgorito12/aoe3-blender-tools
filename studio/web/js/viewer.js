@@ -125,8 +125,54 @@ export class Viewer {
 
   setMode(mode) {
     this.mode = mode;
-    if (this.mesh) this.mesh.material = mode === 'clay' ? this.clayMat : this.textureMat;
+    if (this.mesh) this.mesh.material = this.weighted ? this.weightMat : mode === 'clay' ? this.clayMat : this.textureMat;
     this.draw();
+  }
+
+  // a unit's bones, [name, parent, x, y, z] in Blender metres: a line from each to its parent,
+  // drawn through the mesh; `chosen` (a bone index) in another colour
+  setSkeleton(bones, chosen = -1) {
+    if (this.skeleton) { this.root.remove(this.skeleton); this.skeleton.traverse(o => o.geometry?.dispose()); }
+    this.skeleton = new THREE.Group();
+    const pts = [], hot = [];
+    bones.forEach((b, i) => {
+      const p = bones[b[1]];
+      if (!p) return;
+      (i === chosen || b[1] === chosen ? hot : pts).push(new THREE.Vector3(p[2], p[3], p[4]), new THREE.Vector3(b[2], b[3], b[4]));
+    });
+    const line = (list, color) => {
+      const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(list),
+        new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true }));
+      l.renderOrder = 10;
+      return l;
+    };
+    if (pts.length) this.skeleton.add(line(pts, 0x2fd06f));
+    if (hot.length) this.skeleton.add(line(hot, 0xffde59));
+    const dots = new THREE.Points(new THREE.BufferGeometry().setFromPoints(bones.map(b => new THREE.Vector3(b[2], b[3], b[4]))),
+      new THREE.PointsMaterial({ color: 0x2fd06f, size: 5, sizeAttenuation: false, depthTest: false, transparent: true }));
+    dots.renderOrder = 10;
+    this.skeleton.add(dots);
+    this.skeleton.visible = this.show.skeleton !== false;
+    this.root.add(this.skeleton);
+    this.draw();
+  }
+
+  // a weight from 0 to 1 for each vertex, drawn from blue (none) to red (all); null: the texture again
+  setWeights(weights) {
+    if (!this.mesh) return;
+    const g = this.mesh.geometry;
+    if (!weights) { this.weighted = false; this.setMode(this.mode); return; }
+    const c = new Float32Array(weights.length * 3);
+    weights.forEach((w, i) => {
+      const k = Math.max(0, Math.min(1, w));
+      c[3 * i] = k < 0.5 ? 0.15 : (k - 0.5) * 2 * 0.85 + 0.15;
+      c[3 * i + 1] = k < 0.5 ? k * 2 * 0.8 + 0.1 : (1 - k) * 2 * 0.8 + 0.1;
+      c[3 * i + 2] = k < 0.5 ? (0.5 - k) * 2 * 0.8 + 0.2 : 0.2;
+    });
+    g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
+    this.weightMat = this.weightMat || new THREE.MeshLambertMaterial({ vertexColors: true });
+    this.weighted = true;
+    this.setMode(this.mode);
   }
 
   toggle(what, on) {
@@ -139,6 +185,7 @@ export class Viewer {
     if (this.wires) this.wires.visible = this.show.wire;
     if (this.attach) this.attach.visible = this.show.attach;
     if (this.boxes) this.boxes.visible = this.show.boxes;
+    if (this.skeleton) this.skeleton.visible = this.show.skeleton !== false;
     this.grid.visible = this.show.grid;
   }
 

@@ -56,24 +56,104 @@ def _np():
     return numpy
 
 
-def mip_chain(rgba, smallest=4):
-    """The image and its halvings (2 x 2 box filter) down to `smallest` pixels on a side."""
+def mip_chain(rgba, smallest=4, bump=False):
+    """The image and its halvings (2 x 2 box filter) down to `smallest` pixels on the short side.
+    bump: the image is a packed normal map (`write_normal_map`): each level's normal is made unit
+    length again after the filter, so a small level does not flatten the relief."""
     np = _np()
     levels = [rgba]
     cur = rgba.astype(np.float32)
     while min(cur.shape[0], cur.shape[1]) // 2 >= smallest:
         h, w = cur.shape[0] // 2 * 2, cur.shape[1] // 2 * 2
         cur = cur[:h, :w].reshape(h // 2, 2, w // 2, 2, cur.shape[2]).mean(axis=(1, 3))
+        if bump:
+            cur = renormalise(cur)
         levels.append(np.clip(cur + 0.5, 0, 255).astype(np.uint8))
     return levels
 
 
+def chain_length(width, height, smallest=4):
+    """The number of levels of a full chain: halvings until the short side would drop below
+    `smallest` (the game's own textures stop at 4 px, some at 8: 512 x 512 -> 8 or 7 levels)."""
+    n, short = 1, min(width, height)
+    while short // 2 >= smallest:
+        short //= 2
+        n += 1
+    return n
+
+
 def fitted(rgba, size):
-    """The image halved until its side is at most `size`: the mip level the game would show, so a
-    smaller texture is the larger one's own level and not another painting."""
-    if rgba.shape[0] <= size:
+    """The image halved until its longer side is at most `size`: the mip level the game would
+    show, so a smaller texture is the larger one's own level and not another painting."""
+    if max(rgba.shape[0], rgba.shape[1]) <= size:
         return rgba
-    return mip_chain(rgba, smallest=size)[-1]
+    np = _np()
+    cur = rgba.astype(np.float32)
+    while max(cur.shape[0], cur.shape[1]) > size:
+        cur = halve(cur)
+    return np.clip(cur + 0.5, 0, 255).astype(np.uint8)
+
+
+def _area_weights(n_in, n_out):
+    """n_out x n_in matrix of an area-average resampling (n_out <= n_in): each output pixel is the
+    mean of the input pixels it covers, partial pixels weighted by their share."""
+    np = _np()
+    m = np.zeros((n_out, n_in), np.float64)
+    scale = n_in / n_out
+    for i in range(n_out):
+        a, b = i * scale, (i + 1) * scale
+        j = int(np.floor(a))
+        while j < b and j < n_in:
+            m[i, j] += min(b, j + 1) - max(a, j)
+            j += 1
+        m[i] /= m[i].sum()
+    return m
+
+
+def area_resize(img, h, w):
+    """An H x W x C image reduced to h x w by area averaging (float32), the filter of
+    core/airepaint.resize for a reduction; at exactly half it is the 2 x 2 box of mip_chain."""
+    np = _np()
+    a = np.asarray(img, np.float64)
+    if (h, w) == a.shape[:2]:
+        return a.astype(np.float32)
+    if h > a.shape[0] or w > a.shape[1]:
+        raise DdtError("area_resize only reduces")
+    a = np.einsum("ij,jkc->ikc", _area_weights(a.shape[0], h), a)
+    a = np.einsum("ij,kjc->kic", _area_weights(a.shape[1], w), a)
+    return a.astype(np.float32)
+
+
+def halve(img):
+    """One level down: each side halved (at least 1 px), by area averaging."""
+    return area_resize(img, max(1, img.shape[0] // 2), max(1, img.shape[1] // 2))
+
+
+def renormalise(img):
+    """A packed normal map (A = X, G = Y, B = Z, 128 for 0; R is specular and kept) with each
+    normal scaled back to unit length (float32, 0-255)."""
+    np = _np()
+    a = np.asarray(img, np.float32).copy()
+    n = (a[..., [3, 1, 2]] - 127.5) / 127.5
+    length = np.sqrt((n * n).sum(axis=-1, keepdims=True))
+    n = np.where(length > 1e-3, n / np.maximum(length, 1e-3), n)
+    a[..., [3, 1, 2]] = n * 127.5 + 127.5
+    return a
+
+
+def is_packed_normal_map(rgba, tolerance=0.2):
+    """Do the A, G, B channels hold unit normals as `write_normal_map` packs them? (The mean of
+    | |n| - 1 | below `tolerance`.) A bump texture packed otherwise is filtered as colour."""
+    np = _np()
+    a = np.asarray(rgba, np.float32)
+    if a.ndim != 3 or a.shape[2] != 4:
+        return False
+    if float((a[..., 3] >= 254).mean()) > 0.9:      # X saturated nearly everywhere: an alpha mask
+        return False
+    n = (a[..., [3, 1, 2]] - 127.5) / 127.5
+    if float(n[..., 2].mean()) < 0.3:                # normals face out of the surface (Z > 0)
+        return False
+    return float(np.abs(np.sqrt((n * n).sum(axis=-1)) - 1).mean()) < tolerance
 
 
 def write_bgra(rgba, *, alpha=1, usage=0, mips=True):
@@ -190,22 +270,106 @@ def _to565(c):
     return (q[:, 0] << 11) | (q[:, 1] << 5) | q[:, 2]
 
 
-def _colour_encode(px):
-    """8-byte colour blocks (always the 4-colour mode) for N x 16 x 3 float pixels."""
+def _fit(px, c0, c1):
+    """(c0, c1, indices, squared error) of N blocks for 565 endpoints in the 4-colour mode:
+    c0 >= c1 after the call (c0 > c1 selects that mode; equal endpoints use index 0 only)."""
     np = _np()
-    lo, hi = px.min(axis=1), px.max(axis=1)
-    inset = (hi - lo) / 16.0
-    lo, hi = np.clip(lo + inset, 0, 255), np.clip(hi - inset, 0, 255)
-    c0, c1 = _to565(hi), _to565(lo)
     swap = c0 < c1
     c0, c1 = np.where(swap, c1, c0), np.where(swap, c0, c1)
     p0, p1 = _rgb565(c0.astype(np.uint16)), _rgb565(c1.astype(np.uint16))
     pal = np.stack([p0, p1, (2 * p0 + p1) / 3, (p0 + 2 * p1) / 3], axis=1)        # N x 4 x 3
     d = ((px[:, :, None, :] - pal[:, None, :, :]) ** 2).sum(-1)                     # N x 16 x 4
     idx = d.argmin(-1).astype(np.uint32)
-    idx[c0 == c1] = 0                       # one colour: index 0 everywhere (no 3-colour mode)
-    bits = (idx << (2 * np.arange(16, dtype=np.uint32))).sum(axis=1).astype(np.uint32)
-    out = np.zeros((len(px), 8), np.uint8)
+    same = c0 == c1
+    idx[same] = 0                           # one colour: index 0 everywhere (no 3-colour mode)
+    err = np.take_along_axis(d, idx[:, :, None].astype(np.int64), axis=2)[:, :, 0].sum(axis=1)
+    return c0, c1, idx, err
+
+
+def _least_squares(px, idx):
+    """The real-valued endpoints (e0, e1) that best fit the blocks for fixed indices, or None
+    where every pixel uses the same weight (no unique solution)."""
+    np = _np()
+    w0 = np.array([1.0, 0.0, 2 / 3, 1 / 3])[idx]                                   # N x 16
+    w1 = 1.0 - w0
+    a, b, c = (w0 * w0).sum(1), (w0 * w1).sum(1), (w1 * w1).sum(1)
+    x0 = (w0[:, :, None] * px).sum(1)
+    x1 = (w1[:, :, None] * px).sum(1)
+    det = a * c - b * b
+    ok = np.abs(det) > 1e-6
+    det = np.where(ok, det, 1.0)
+    e0 = (c[:, None] * x0 - b[:, None] * x1) / det[:, None]
+    e1 = (a[:, None] * x1 - b[:, None] * x0) / det[:, None]
+    return np.clip(e0, 0, 255), np.clip(e1, 0, 255), ok
+
+
+def _principal_ends(px):
+    """Endpoints at the extremes of each block's projection on its principal colour axis."""
+    np = _np()
+    mean = px.mean(axis=1, keepdims=True)
+    d = px - mean
+    cov = np.einsum("nki,nkj->nij", d, d)
+    v = px.max(axis=1) - px.min(axis=1) + 1e-3                                      # start axis
+    for _ in range(8):
+        v = np.einsum("nij,nj->ni", cov, v)
+        v /= np.maximum(np.linalg.norm(v, axis=1, keepdims=True), 1e-9)
+    t = np.einsum("nki,ni->nk", d, v)
+    m = mean[:, 0, :]
+    return (np.clip(m + v * t.max(1)[:, None], 0, 255), np.clip(m + v * t.min(1)[:, None], 0, 255))
+
+
+def _colour_encode(px, refine=False):
+    """8-byte colour blocks (always the 4-colour mode) for N x 16 x 3 float pixels.
+
+    refine=False is the fast encoder: the block's bounding box, inset by 1/16. refine=True also
+    tries the ends of the block's principal colour axis, refines each start by least squares
+    (endpoints solved for the chosen indices, twice), tries the 565 neighbours of the result and
+    keeps, per block, whichever gives the smallest error."""
+    np = _np()
+    lo, hi = px.min(axis=1), px.max(axis=1)
+    inset = (hi - lo) / 16.0
+    lo, hi = np.clip(lo + inset, 0, 255), np.clip(hi - inset, 0, 255)
+    c0, c1, idx, err = _fit(px, _to565(hi), _to565(lo))
+    if refine:
+        starts = [(c0, c1), tuple(_to565(e) for e in _principal_ends(px))]
+        for s0, s1 in starts:
+            b0, b1, bidx, berr = _fit(px, s0, s1)
+            for _ in range(2):
+                e0, e1, ok = _least_squares(px, bidx)
+                n0, n1, nidx, nerr = _fit(px, _to565(e0), _to565(e1))
+                better = ok & (nerr < berr)
+                b0, b1 = np.where(better, n0, b0), np.where(better, n1, b1)
+                bidx = np.where(better[:, None], nidx, bidx)
+                berr = np.where(better, nerr, berr)
+            for d0, d1 in ((1, 0), (-1, 0), (0, 1), (0, -1)):       # one 565 step each way
+                for ch, mask in ((11, 31), (5, 63), (0, 31)):
+                    t0 = _step565(b0, ch, mask, d0)
+                    t1 = _step565(b1, ch, mask, d1)
+                    n0, n1, nidx, nerr = _fit(px, t0, t1)
+                    better = nerr < berr
+                    b0, b1 = np.where(better, n0, b0), np.where(better, n1, b1)
+                    bidx = np.where(better[:, None], nidx, bidx)
+                    berr = np.where(better, nerr, berr)
+            better = berr < err
+            c0, c1 = np.where(better, b0, c0), np.where(better, b1, c1)
+            idx = np.where(better[:, None], bidx, idx)
+            err = np.where(better, berr, err)
+    return _pack_colour(c0, c1, idx)
+
+
+def _step565(c, shift, mask, d):
+    """c with one 565 channel moved by d steps (clamped)."""
+    np = _np()
+    c = c.astype(np.int64)
+    v = np.clip(((c >> shift) & mask) + d, 0, mask)
+    return ((c & ~(mask << shift)) | (v << shift)).astype(np.uint32)
+
+
+def _pack_colour(c0, c1, idx):
+    np = _np()
+    c0, c1 = c0.astype(np.uint32), c1.astype(np.uint32)
+    bits = (idx.astype(np.uint32) << (2 * np.arange(16, dtype=np.uint32))).sum(axis=1).astype(np.uint32)
+    out = np.zeros((len(idx), 8), np.uint8)
     out[:, 0], out[:, 1] = c0 & 255, c0 >> 8
     out[:, 2], out[:, 3] = c1 & 255, c1 >> 8
     for k in range(4):
@@ -213,25 +377,74 @@ def _colour_encode(px):
     return out
 
 
-def compress(rgba, fmt):
+def colour_blocks_as_dxt1(col):
+    """DXT1 blocks that decode exactly as the given colour blocks of a DXT3/DXT5 texture (N x 8
+    uint8), which always use the 4-colour mode: endpoints in the wrong order are swapped with
+    their indices, and a block of one colour gets index 0 throughout (DXT1 would read c0 == c1 as
+    the 3-colour mode, whose index 3 is transparent black)."""
+    np = _np()
+    col = np.ascontiguousarray(col, np.uint8)
+    c0 = col[:, 0].astype(np.uint32) | (col[:, 1].astype(np.uint32) << 8)
+    c1 = col[:, 2].astype(np.uint32) | (col[:, 3].astype(np.uint32) << 8)
+    bits = (col[:, 4].astype(np.uint32) | (col[:, 5].astype(np.uint32) << 8)
+            | (col[:, 6].astype(np.uint32) << 16) | (col[:, 7].astype(np.uint32) << 24))
+    idx = (bits[:, None] >> (2 * np.arange(16, dtype=np.uint32))) & 3
+    swap = c0 < c1
+    idx = np.where(swap[:, None], np.array([1, 0, 3, 2], np.uint32)[idx], idx)
+    a, b = np.where(swap, c1, c0), np.where(swap, c0, c1)
+    idx[a == b] = 0
+    return _pack_colour(a, b, idx)
+
+
+def level_blocks(data, level=0):
+    """(format, N x block-size uint8 array) of one level of a DXT1/DXT3/DXT5 texture."""
+    np = _np()
+    hd = read_header(data)
+    if hd.format not in (DXT1, DXT3, DXT5):
+        raise DdtError(f"format {hd.format} has no blocks")
+    w, h = max(1, hd.width >> level), max(1, hd.height >> level)
+    bsize = 8 if hd.format == DXT1 else 16
+    n = max(1, (w + 3) // 4) * max(1, (h + 3) // 4)
+    off, size = hd.levels[level]
+    if size < n * bsize:
+        raise DdtError(f"level {level} is short: {size} bytes for {n} blocks")
+    return hd.format, np.frombuffer(data, np.uint8, n * bsize, off).reshape(n, bsize)
+
+
+def compress(rgba, fmt, refine=False):
     """The block-compressed bytes of one level: DXT1 (8 bytes a block, alpha dropped) or DXT3
-    (16 bytes: explicit 4-bit alpha, then the colour block)."""
+    (16 bytes: explicit 4-bit alpha, then the colour block). refine: see _colour_encode."""
     np = _np()
     b = _blocks(rgba)
-    colour = _colour_encode(b[:, :, :3])
+    colour = _colour_encode(b[:, :, :3], refine)
     if fmt == DXT1:
         return colour.tobytes()
     if fmt != DXT3:
         raise DdtError(f"format {fmt} is not encoded")
-    a4 = np.clip(np.rint(b[:, :, 3] / 17.0), 0, 15).astype(np.uint8)              # N x 16
-    alpha = (a4[:, 0::2] | (a4[:, 1::2] << 4)).astype(np.uint8)                   # N x 8
-    return np.concatenate([alpha, colour], axis=1).tobytes()
+    return np.concatenate([_dxt3_alpha(b[:, :, 3]), colour], axis=1).tobytes()
 
 
-def write_dxt(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True):
+def _dxt3_alpha(a):
+    """8-byte DXT3 alpha blocks (explicit 4 bits a pixel) for N x 16 alpha values."""
+    np = _np()
+    a4 = np.clip(np.rint(a / 17.0), 0, 15).astype(np.uint8)                       # N x 16
+    return (a4[:, 0::2] | (a4[:, 1::2] << 4)).astype(np.uint8)                    # N x 8
+
+
+def alpha_blocks(rgba, fmt):
+    """The 8-byte alpha half of each DXT3 or DXT5 block of an H x W x 4 image."""
+    b = _blocks(rgba)[:, :, 3]
+    if fmt == DXT3:
+        return _dxt3_alpha(b)
+    if fmt == DXT5:
+        return _alpha_encode(b)
+    raise DdtError(f"format {fmt} has no alpha blocks")
+
+
+def write_dxt(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True, refine=False):
     """Bytes of a DXT1, DXT3 or DXT5 texture (with its mip levels down to 4 x 4) from an H x W x 3
     or 4 uint8 array, top row first. DXT3 (4-bit steps) and DXT5 (interpolated) keep the alpha
-    (player-colour mask); DXT1 drops it."""
+    (player-colour mask); DXT1 drops it. refine: the slower, closer encoder (_colour_encode)."""
     np = _np()
     a = np.asarray(rgba)
     if a.ndim != 3 or a.shape[2] not in (3, 4):
@@ -241,9 +454,23 @@ def write_dxt(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True):
     a = a.astype(np.uint8)
     h, w = a.shape[:2]
     levels = mip_chain(a) if mips else [a]
-    blobs = [compress_dxt5(lv) if fmt == DXT5 else compress(lv, fmt) for lv in levels]
-    out = bytearray(MAGIC + bytes([usage, alpha if fmt in (DXT3, DXT5) else 0, fmt, len(blobs)])
-                    + struct.pack("<II", w, h))
+    blobs = [encode_level(lv, fmt, refine) for lv in levels]
+    return pack(usage, alpha if fmt in (DXT3, DXT5) else 0, fmt, w, h, blobs)
+
+
+def encode_level(rgba, fmt, refine=False):
+    """The bytes of one level in BGRA, DXT1, DXT3 or DXT5 from an H x W x 4 uint8 array."""
+    np = _np()
+    if fmt == BGRA:
+        return np.ascontiguousarray(np.asarray(rgba, np.uint8)[:, :, [2, 1, 0, 3]]).tobytes()
+    if fmt == DXT5:
+        return compress_dxt5(rgba, refine)
+    return compress(rgba, fmt, refine)
+
+
+def pack(usage, alpha, fmt, width, height, blobs):
+    """A .ddt from its header values and its levels' bytes, largest first."""
+    out = bytearray(MAGIC + bytes([usage, alpha, fmt, len(blobs)]) + struct.pack("<II", width, height))
     off = 16 + 8 * len(blobs)
     for b in blobs:
         out += struct.pack("<II", off, len(b))
@@ -279,31 +506,23 @@ def _alpha_encode(a):
     return out
 
 
-def compress_dxt5(rgba):
+def compress_dxt5(rgba, refine=False):
     """DXT5 bytes of one level: interpolated alpha, then the colour block."""
     np = _np()
     b = _blocks(rgba)
-    return np.concatenate([_alpha_encode(b[:, :, 3]), _colour_encode(b[:, :, :3])],
+    return np.concatenate([_alpha_encode(b[:, :, 3]), _colour_encode(b[:, :, :3], refine)],
                           axis=1).tobytes()
 
 
 def write_normal_map(rgba, *, mips=False):
     """Bytes of a bump texture as the game's own (DXT5, usage 6 = low detail + bump, alpha 0)
     from an H x W x 4 array packed like them: R specular (0 = none), G the normal's Y, B its Z,
-    A its X, each 128 for 0."""
+    A its X, each 128 for 0. With mips, each level's normals are unit length again."""
     np = _np()
     a = np.asarray(rgba).astype(np.uint8)
     h, w = a.shape[:2]
-    levels = mip_chain(a) if mips else [a]
-    blobs = [compress_dxt5(lv) for lv in levels]
-    out = bytearray(MAGIC + bytes([6, 0, DXT5, len(blobs)]) + struct.pack("<II", w, h))
-    off = 16 + 8 * len(blobs)
-    for b in blobs:
-        out += struct.pack("<II", off, len(b))
-        off += len(b)
-    for b in blobs:
-        out += b
-    return bytes(out)
+    levels = mip_chain(a, bump=True) if mips else [a]
+    return pack(6, 0, DXT5, w, h, [compress_dxt5(lv) for lv in levels])
 
 
 def normal_from_texture(rgba, strength=6.0, blur=1):

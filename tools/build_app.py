@@ -115,6 +115,9 @@ def main(argv):
     app = os.path.join(out, NAME)
     internal = os.path.join(app, "_internal")
     copy_data(os.path.join(internal if os.path.isdir(internal) else app, "app"))
+    # the testers' guides beside the executable, where they are seen first
+    for src, name in (("studio-guia.md", "LEEME - guia de prueba.md"), ("studio-guide.md", "README - testers guide.md")):
+        shutil.copy2(os.path.join(ROOT, "docs", src), os.path.join(app, name))
     exe = os.path.join(app, NAME + (".exe" if os.name == "nt" else ""))
     # the build checks itself: the executable runs a tool as the studio would
     r = subprocess.run([exe, "--run-tool", os.path.join(internal if os.path.isdir(internal) else app, "app", "tools",

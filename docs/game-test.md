@@ -29,7 +29,16 @@ python -I -X utf8 tools\game_deploy.py --install C:\AoE3-BT-Test --bundle out\wh
 ```
 
 Or, in Blender: Sidebar > AoE3 > Game Export, then the second command. Deploying again replaces
-the earlier deployment; `--undo` restores the copy.
+the earlier deployment (`--keep` adds to it instead); `--undo` restores the copy.
+
+**To verify: a bundle made without Blender.** `scripts/game_export_noblender.py` (same options;
+the studio's "Without Blender, experimental") writes the same bundle from the generator's own mesh
+(`core/gamemesh.py`) and its own icon renderer (`core/softrender.py`). Measured against Blender's
+bundle of the same building (2026-11-17, four presets): the textures, bump maps, anim file, proto
+and strings byte for byte; the models with the same vertices, normals and UVs, some quads cut
+along the other diagonal (rendered alike, under 0.3 % of the pixels differ); the icons framed the
+same, within 4 / 255 on average. In game: deploy one of each beside its Blender twin and compare
+them placed, lit, selected (icon) and destroyed. Until then Blender stays the default.
 
 ## 3. Look at it
 
@@ -148,6 +157,32 @@ damage skeleton that provides it even without a damaged model. The console comma
 
 Death animation (2026-11-03): when the building is killed it sinks and fades in about 2 seconds
 while the stock collapse dust rises, then the rubble takes its place.
+
+## Units: T0, a unit written again unchanged
+
+The first in-game test of the unit transplant (`aoe3game/gr2_edit.py`): the Musketeer's model
+written again from its own tree, nothing changed. If the game draws and animates it as the
+original, the writer can carry a unit; then T1 changes its mesh. **Not yet done.**
+
+1. Its uncompressed copy: the model cache of `tools/model_survey.py` (named by the original's
+   MD5), or **Uncompressed models** in the studio.
+2. Written again and checked by the game's runtime, kept in a folder laid out as the copy:
+   `python -I tools/gr2_check.py <musketeer_2age, uncompressed>.gr2 --granny-install <copy>
+   --rewrite --save <folder>\art\units\infantry_ranged\musketeer\musketeer_2age.gr2`
+   (the studio: Art utilities, **Check models with the game's runtime**, *Keep the rewritten copy*).
+3. Into the test copy: `python -I tools/game_deploy.py --install <copy> --files <folder>`
+   (the studio: **Deploy edited files to the test copy**). A loose file is read before the one in
+   `Art1.bar` (as for the buildings).
+4. In game, a Musketeer of any civ that uses the stock model, beside one of a civ whose own model
+   is not this file, if the mod has one: standing, walking, the ranged and the melee attack, dying;
+   the hat and the musket on their bones; the player colour; the health bar; its shadow; selection;
+   at the edges of the screen (cut off too early means a wrong bounding box); at low model detail
+   (that is `lp_musketeer_2age.gr2`, untouched: it should look the same as before).
+5. Undo: `python -I tools/game_deploy.py --install <copy> --undo`.
+
+What a failure would mean: drawn but not animated, the skeleton is read otherwise than written;
+not drawn at all, the game refuses the file (compare it with `tools/gr2_check.py` again, then
+with the file recompressed by **Compress models again**, the form the original ships in).
 
 ## Driving a test without clicks
 

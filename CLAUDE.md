@@ -42,12 +42,25 @@ python tools/build_zip.py                          # dist/ zips (extension and l
 python -I tests/test_game_formats.py               # game formats, plain Python (venv for numpy parts)
 python -I tests/test_xmbedit.py                    # compiled XML (.xmb) and its text round trip
 venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, make_bar (about 70 s)
+venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, hard edges, outline
+venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout file's gadgets as boxes
+python -I tests/test_uilayout.py                  # interface layouts byte for byte, fonts, string table
+python -I tests/test_unitpanel.py                 # the unit panels filled for a unit, the DLL's rows, why an item is absent
 venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
 venv/bin/python -I tests/test_specs.py             # every building has its sheet and it is current
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
+venv/bin/python -I scripts/game_export_noblender.py --out out/wh_nb --preset WHITE_HOUSE --compare out/wh   # experimental
+venv/bin/python -I scripts/mesh_to_game.py --in <model.obj|.glb> --out <dir> --name <Name> --fit-units 4   # your own model
+venv/bin/python -I tests/test_meshfile.py          # OBJ / glTF reading, preparation, the bundle
 python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
+python -I tools/game_deploy.py --install <test copy> --files <folder laid out as the copy>   # the interface's edits
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
+python -I tools/recompress_models.py <folder> -o <out> --granny-install <game> [--like <originals>]   # --build-helper once
+python -I tests/test_recompress_models.py         # recompression with a fake runtime, plain Python
+python -I tools/gr2_check.py <model.gr2|folder> --granny-install <game> --rewrite   # the game's runtime as the judge
+python -I tests/test_gr2_edit.py                  # a model's whole tree written again; the runtime check (fake)
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
+venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
 python -I tests/test_named_models.py              # model_sheets --models lists: protos to models, plain Python
 venv/bin/python -I tests/test_retexture.py        # uv_atlas, retexture, skin and attachments, synthetic data
 python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
@@ -56,6 +69,11 @@ venv/bin/python -I tests/test_studio.py                # the studio: API, safety
 venv/bin/python -I tests/test_studio_ui.py             # every screen in a headless browser, both languages (Node 22+)
 venv/bin/python scripts/check.py --preset WHITE_HOUSE  # the add-on's game-ready checks, headless (--params, --json)
 python -I tools/build_app.py --zip                     # the studio as a program (a Python with pyinstaller and numpy)
+python -I tests/test_hc_survey.py                 # home-city inventory and move plan, plain Python
+python -I tests/test_hc_move.py                   # the move itself: stage, edits, install and undo
+python -I tools/hc_survey.py --game <copy> --out <dir outside repo> --target "<Mod>\homecity" [--plan <civ>]
+venv/bin/python -I tests/test_reencode_textures.py   # texture re-encoding: rules, chain, carried blocks
+venv/bin/python -I tools/reencode_textures.py run --in <list or folder> --out <dir> --tad <tad.json> [--sheets <dir>]
 ```
 
 On Windows the venv interpreter is `venv/Scripts/python`. `-X utf8` matters: the mod's
@@ -85,10 +103,17 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   (the `Painter`: canvas, mask, seeded generator, drawing in region metres; `base()` is the
   material hook), `pngio.py` (PNG reader) and `paint.py` (dispatch, damaged texture) are pure
   Python; `blender_io.py` (object creation, export)
-  and `validate.py` (checks) need Blender.
+  and `validate.py` (the checks' Blender side) need Blender. `checks.py` holds the checks' rules
+  on plain mesh data (`mesh_of(model)`: the generator's mesh as Blender's modifier cuts it) and
+  `softrender.py` draws an icon in numpy: with `gamemesh.py` they make the Blender-free export
+  (`scripts/game_export_noblender.py`, experimental until seen in game). `objio.py`, `glbio.py`
+  (an .obj or glTF read without Blender) and `meshprep.py` (axes, size, ground, normals, vertex
+  split) bring a modder's own static model to the same bundle (`scripts/mesh_to_game.py`).
 - `aoe3_blender_tools/aoe3game/`: the game formats, pure Python, never importing `core` or bpy
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
-  (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_types.py`
+  (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_skin.py` (a
+  unit's skeleton with rotations followed, four weights a vertex, skinning to a pose), `gr2_edit.py`
+  (a model's whole tree copied and written again: the start of a transplant), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
   portrait framing; numpy), `animxml.py`, `precomp.py` (an animation's tag file,
@@ -139,6 +164,12 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   `web/` (the page: ES modules, no build step; three.js vendored; `i18n/en.json`, `es.json`).
   `aoe3_blender_tools/core/schema.py` describes every `BuildingParams` field for the forms;
   `core/gamemesh.py` is the game mesh without Blender (measured against Blender's).
+- The game interface: `aoe3game/uilayout.py` (a layout file as a tree that keeps every byte; edits
+  change only what they are about), `aoe3game/uifonts.py` (fonts3.xml, a TTF's family name),
+  `aoe3game/uidata/` (what the engine shows that the files do not say), `aoe3game/unitpanel.py` (the
+  panels filled for one unit, the UHC DLL's rows, what it does not show and why), `studio/hud.py` and
+  `studio/web/js/hud*.js` (the screen). `tests/test_uilayout.py`, `tests/hud_copy.py` (a synthetic
+  copy). Engine facts there are measured on captures or marked to verify, as everywhere.
 - `aoe3_blender_tools/aoe3game/collision.py`: a building's own collision shape (`.shp`, Havok XML),
   written into `data/physics/` of the bundle; `Model.boxes` holds the boxes, `building.obstruction`
   a style's own obstruction. See "Collision" in `docs/game-formats.md`.
@@ -245,6 +276,7 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   quartile of the mod's grain and saturation). Refit after changing an African painting, and keep
   the flat roofs smoother than the walls (`tests/test_african_skin.py`).
 - `aoe3game/gr2_mesh.py` and `core/gr2_import.py` (Import a Game Model) read an uncompressed
-  model back; `core/resolution.py` is the one place a round body's segments are decided;
+  model back (a unit with its Armature and vertex groups, `aoe3game/gr2_skin.py`); `AOE3_ONLY=<part of a
+  test's name>` runs only those tests of `tests/run_tests.py`; `core/resolution.py` is the one place a round body's segments are decided;
   `core/texmaker.py`, `core/texlib.py`, `core/meshtex.py` are the texture maker, its library and
   the repaint of a mesh the generator did not make.

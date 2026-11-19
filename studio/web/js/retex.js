@@ -347,12 +347,14 @@ export async function retexScreen(main, app) {
       status.className = 'small muted';
       status.textContent = t('r.painted', { s: fmt(r.seconds, 2) })
         + (r.ai_skipped.length ? ' ' + t('r.ai.skipped', { n: r.ai_skipped.length }) : '')
-        + (r.empty.length ? ' ' + t('r.empty', { steps: r.empty.map(i => i + 1).join(', ') }) : '');
+        + (r.empty.length ? ' ' + t('r.empty', { steps: r.empty.map(i => i + 1).join(', ') }) : '')
+        + r.missing.map(([i, why]) => ' ' + t('r.missing', { step: i + 1, why })).join('');
       await show();
       viewer?.setTexture(result);
     } catch (e) {
       status.className = 'small bad';
       status.textContent = e.message;
+      await show();                         // the picture is shown even when a step fails
     } finally {
       busy = false;
       if (again) { again = false; paintNow(); }

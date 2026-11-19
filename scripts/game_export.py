@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 from aoe3_blender_tools.core import blender_io, building, paint  # noqa: E402
 from aoe3_blender_tools.core import profile as calibration  # noqa: E402
-from aoe3_blender_tools.core import render, specs  # noqa: E402
+from aoe3_blender_tools.core import render  # noqa: E402
 from aoe3_blender_tools.core.styles import african  # noqa: E402
 from aoe3game import bundle  # noqa: E402
 
@@ -52,22 +52,7 @@ def opt(name, default=None):
 def write_sheet(out, p, desc, vertices, triangles):
     """SPECS.md beside the bundle: the building's technical sheet and what this export wrote."""
     import spec_sheets
-    prof = calibration.load()
-    size = desc["size"]
-    model = building.build(dataclasses.replace(p, detail="MEDIUM"))
-    key = next((k for k, v in building.PRESETS.items() if v.name == p.name), None)
-    band, scale = spec_sheets.style_side(p)
-    facts = specs.facts(p, size, desc["template"], bundle.UNITS_PER_METER, key=key, collision=bundle.COLLISION_SHAPE,
-                        shape=None if p.style == "PROP" else spec_sheets.shape_of(model, size, prof), band=band, scale=scale,
-                        budget=building.texture_budget(p))
-    files = [(os.path.basename(f), os.path.getsize(os.path.join(out, f))) for f in desc["files"]]
-    export = {"vertices": vertices, "triangles": triangles, "format": desc["texture"]["format"], "files": files}
-    proto = None
-    if opt("--proto"):
-        with open(opt("--proto"), encoding="utf-8", errors="ignore") as fh:
-            proto = specs.proto_of(fh.read(), p.name, desc["template"])
-    with open(os.path.join(out, "SPECS.md"), "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(specs.render(facts, export, proto))
+    spec_sheets.write_bundle_sheet(out, p, desc, vertices, triangles, opt("--proto"))
 
 
 def export_set(out, name):

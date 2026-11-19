@@ -37,6 +37,8 @@ NEEDS = {
     "test_copy": L("A test copy of the game (Settings)", "Una copia de prueba del juego (Ajustes)"),
     "profile": L("A texture profile (texture survey)", "Un perfil de texturas (estudio de texturas)"),
     "network": L("Internet access", "Acceso a Internet"),
+    "fonttools": L("fontTools and Pillow (pip install -r requirements-fonts.txt)",
+                   "fontTools y Pillow (pip install -r requirements-fonts.txt)"),
 }
 
 # what a tool writes: shown on its form
@@ -110,6 +112,7 @@ IMAGES = (("Images", "*.png *.jpg *.jpeg *.ddt"),)
 JSON = (("JSON", "*.json"),)
 XML = (("XML", "*.xml *.xmb"),)
 GR2 = (("Granny model", "*.gr2"),)
+TTF = (("TrueType font", "*.ttf"),)
 
 
 def out_dir(required=True, key="out", flag="--out", label=None, help=None):
@@ -166,6 +169,35 @@ STYLES = ("NEOCLASSICAL", "COLONIAL", "TIMBER", "AFRICAN", "PROP")
 
 TOOLS = [
     # -- buildings --------------------------------------------------------------------------
+    Tool("mesh_to_game", "scripts/mesh_to_game.py", "buildings",
+         L("Your own model for the game", "Tu propio modelo para el juego"),
+         L("A static model of your own (.obj with its .mtl, .glb, .gltf) as a game bundle, without Blender: "
+           "model, texture, anim file, proto and strings, icons. The screen \"Your own model\" shows it first.",
+           "Un modelo estático tuyo (.obj con su .mtl, .glb, .gltf) como paquete del juego, sin Blender: modelo, "
+           "textura, archivo de animación, proto y textos, iconos. La pantalla \"Tu propio modelo\" lo muestra antes."),
+         [Arg("in", "--in", "file", L("Model", "Modelo"), required=True,
+              filters=(("Model", "*.obj *.glb *.gltf"),)),
+          out_dir(),
+          Arg("name", "--name", "text", L("Name", "Nombre"), L("Letters, digits and _", "Letras, cifras y _"), required=True),
+          Arg("up", "--up", "choice", L("Vertical axis of the file", "Eje vertical del archivo"), choices=("y", "z"), default="y"),
+          Arg("scale", "--scale", "float", L("Scale into metres", "Escala a metros"),
+              L("A model in centimetres: 0.01", "Un modelo en centímetros: 0,01"), default=1.0),
+          Arg("fit_units", "--fit-units", "float", L("Size in game units", "Tamaño en unidades del juego"),
+              L("The plot's longer side: 4 for a building of the 4x4 class (instead of the scale)",
+                "El lado mayor de la parcela: 4 para un edificio de la clase 4x4 (en lugar de la escala)")),
+          Arg("turn", "--turn", "choice", L("Turn (degrees)", "Girar (grados)"), choices=("0", "90", "180", "270"), default="0"),
+          Arg("flat", "--flat", "bool", L("Flat faces", "Caras planas")),
+          Arg("texture_png", "--texture-png", "file", L("Another texture (PNG)", "Otra textura (PNG)"), filters=PNG),
+          Arg("kind", "--kind", "choice", L("Kind", "Tipo"), choices=("BUILDING", "PROP"), default="BUILDING"),
+          Arg("template", "--template", "text", L("Proto template", "Plantilla de proto"),
+              L("The unit whose proto entry it copies", "La unidad cuya entrada de proto copia"), default="House"),
+          Arg("prefix", "--prefix", "text", L("Mod folder", "Carpeta del mod"), default="mod"),
+          Arg("display", "--display", "text", L("Name in game", "Nombre en el juego")),
+          Arg("folder", "--folder", "text", L("Art folder", "Carpeta de arte")),
+          Arg("texture", "--texture", "choice", L("Texture format", "Formato de textura"),
+              choices=("DXT3", "DXT1", "BGRA"), default="DXT3"),
+          Arg("no_icons", "--no-icons", "bool", L("No icon or portrait", "Sin icono ni retrato")),
+          Arg("check_only", "--check-only", "bool", L("Only check, write nothing", "Solo comprobar, sin escribir"))]),
     Tool("game_export", "scripts/game_export.py", "buildings",
          L("Export a preset for the game", "Exportar un preset al juego"),
          L("Writes a preset as a game bundle: model, texture, anim file, proto fields and strings, icons, "
@@ -273,6 +305,25 @@ TOOLS = [
           Arg("grouping", "--grouping", "files", L("Groupings", "Groupings"), required=True, repeat=True, filters=XML)],
          needs=("test_copy",), writes="copy",
          confirm=L("This changes the test copy of the game.", "Esto modifica la copia de prueba del juego.")),
+    Tool("deploy_files", "tools/game_deploy.py", "buildings",
+         L("Deploy edited files to the test copy", "Desplegar archivos editados en la copia de prueba"),
+         L("Copies a folder laid out as the copy (data, art: the game interface's saved layouts and rows "
+           "file) into the test copy; what it replaces is backed up, a compiled twin of an edited XML taken "
+           "out; Undo puts everything back.",
+           "Copia una carpeta con la estructura de la copia (data, art: las disposiciones y el archivo de filas "
+           "guardados de la interfaz) en la copia de prueba; lo que sustituye se respalda y se quita el gemelo "
+           "compilado de un XML editado; Deshacer lo restaura todo."),
+         [Arg("install", "--install", "folder", L("Test copy", "Copia de prueba"),
+              L("A copy of the game for testing (never the Steam folder: it is refused).",
+                "Una copia del juego para pruebas (nunca la carpeta de Steam: se rechaza)."),
+              required=True, setting="test_copy"),
+          Arg("files", "--files", "folder", L("Folder to deploy", "Carpeta a desplegar"),
+              L("Laid out as the copy: data\\..., art\\... (what the game interface screen saves).",
+                "Con la estructura de la copia: data\\..., art\\... (lo que guarda la pantalla de la interfaz)."),
+              required=True)],
+         needs=("test_copy",), writes="copy",
+         confirm=L("This changes the test copy of the game. Backups are kept and Undo restores it.",
+                   "Esto modifica la copia de prueba del juego. Se guardan copias de seguridad y Deshacer la restaura.")),
     Tool("deploy_undo", "tools/game_deploy.py", "buildings",
          L("Undo the deployment", "Deshacer el despliegue"),
          L("Takes out what was deployed and restores the backed-up files.",
@@ -343,6 +394,29 @@ TOOLS = [
           Arg("overlay", "--overlay", "folder", L("Overlay folder", "Carpeta superpuesta")),
           cache_dir()] + granny_args(),
          needs=("game",), outputs=("out",)),
+    Tool("recolor_textures", "tools/recolor_textures.py", "textures",
+         L("Recolour textures", "Recolorear texturas"),
+         L("Shifts the hue, saturation and lightness of textures (a terrain, a plant) and measures how far they are "
+           "from the player colours before and after. Bump maps are left as they are.",
+           "Cambia el tono, la saturación y la luminosidad de texturas (un terreno, una planta) y mide cuánto se "
+           "alejan de los colores de los jugadores antes y después. Los mapas de relieve no se tocan."),
+         [Arg("inputs", None, "folders", L("Textures or folders", "Texturas o carpetas"), required=True),
+          out_dir(required=False),
+          Arg("hue", "--hue", "float", L("Hue shift (degrees)", "Cambio de tono (grados)"), default=0.0),
+          Arg("chroma", "--chroma", "float", L("Saturation factor", "Factor de saturación"), default=1.0),
+          Arg("lightness", "--lightness", "float", L("Lightness factor", "Factor de luminosidad"), default=1.0),
+          Arg("hue_window", "--hue-window", "text", L("Only these hues", "Solo estos tonos"), placeholder="25,20,25"),
+          Arg("mix", "--mix", "file", L("Terrain mix", "Mezcla de terreno"), filters=XML),
+          Arg("player_colors", "--player-colors", "file", L("Player colours file", "Archivo de colores de jugador"),
+              filters=XML),
+          Arg("against", "--against", "text", L("Other colours", "Otros colores"), placeholder="p2=210,40,40"),
+          Arg("mapcolor", "--mapcolor", "text", L("Minimap colour", "Color del minimapa"), placeholder="160,15,30"),
+          Arg("near", "--near", "float", L("Near threshold (dE)", "Umbral de cercanía (dE)"), default=20.0),
+          Arg("report", "--report", "save", L("Report", "Informe"), filters=JSON, work="report.json"),
+          Arg("preview", "--preview", "save", L("Before and after picture", "Imagen de antes y después"),
+              filters=PNG, work="preview.png"),
+          Arg("dry_run", "--dry-run", "bool", L("Measure only, write no texture", "Solo medir, sin escribir texturas"))],
+         outputs=("out", "report", "preview")),
     Tool("retexture", "tools/retexture.py", "textures",
          L("Repaint a unit by parts", "Repintar una unidad por partes"),
          L("Repaints a unit's texture part by part from a recipe, and writes the .ddt and its bump map.",
@@ -639,6 +713,97 @@ TOOLS = [
          [Arg("colour", "--colour", "color", L("Colour", "Color"), default="FF8C00"),
           Arg("out", "--out", "save", L("Texture to write", "Textura a escribir"), filters=DDT, work="health_bar.ddt")],
          outputs=("out",)),
+    Tool("ui_preview", "tools/ui_preview.py", "art",
+         L("Preview an interface layout", "Vista previa de una disposición de la interfaz"),
+         L("Draws a game UI layout file (ui*.xml or its .xmb) as a picture: every gadget's box numbered and "
+           "coloured by nesting, the ones outside their parent in red, with a legend.",
+           "Dibuja un archivo de disposición de la interfaz del juego (ui*.xml o su .xmb) como imagen: la caja de "
+           "cada gadget numerada y coloreada según su anidamiento, en rojo las que salen de su padre, con una leyenda."),
+         [Arg("layout", None, "file", L("Layout file", "Archivo de disposición"),
+              L("A ui*.xml file of the game's data folder, or its compiled .xmb. It is only read.",
+                "Un archivo ui*.xml de la carpeta data del juego, o su .xmb compilado. Solo se lee."),
+              required=True, filters=XML),
+          Arg("out", "--out", "save", L("Picture to write", "Imagen a escribir"),
+              L("The PNG preview. Empty: ui_preview.png in the work folder.",
+                "La vista previa en PNG. Vacío: ui_preview.png en la carpeta de trabajo."),
+              filters=PNG, work="ui_preview.png"),
+          Arg("scale", "--scale", "float", L("Scale", "Escala"),
+              L("Pixels per unit of the game's 1024 x 768 layout space. Default 2.",
+                "Píxeles por unidad del espacio de 1024 x 768 del juego. Por defecto 2."), default="2"),
+          Arg("region", "--region", "text", L("Region", "Región"),
+              L("auto (every box), or x1,y1,x2,y2 in the 1024 x 768 space.",
+                "auto (todas las cajas), o x1,y1,x2,y2 en el espacio de 1024 x 768."), placeholder="auto"),
+          Arg("hide", "--hide", "text", L("Leave out", "Dejar fuera"),
+              L("A regular expression: gadgets whose name matches are not drawn, nor their children.",
+                "Una expresión regular: los gadgets cuyo nombre coincide no se dibujan, ni sus hijos.")),
+          Arg("mark", "--mark", "text", L("Highlight", "Resaltar"),
+              L("A regular expression: gadgets whose name matches are filled in yellow (new rows of a proposal).",
+                "Una expresión regular: los gadgets cuyo nombre coincide se rellenan de amarillo (filas nuevas de "
+                "una propuesta).")),
+          Arg("title", "--title", "text", L("Title", "Título"),
+              L("A title written on the picture.", "Un título escrito en la imagen.")),
+          Arg("strip", "--strip", "text", L("Name prefix to drop", "Prefijo de nombre a quitar"),
+              L("Dropped from the names in the legend. Empty: the root's name followed by -.",
+                "Se quita de los nombres en la leyenda. Vacío: el nombre de la raíz seguido de -.")),
+          Arg("text", "--text", "bool", L("List each gadget's text", "Listar el texto de cada gadget"),
+              L("The legend also shows what each gadget holds, such as its {...} placeholders.",
+                "La leyenda muestra también lo que contiene cada gadget, como sus marcadores {...}.")),
+          Arg("vline", "--vline", "text", L("Vertical guides", "Guías verticales"),
+              L("x positions in the 1024 x 768 space, comma-separated: dashed lines to check symmetry.",
+                "Posiciones x en el espacio de 1024 x 768, separadas por comas: líneas discontinuas para "
+                "comprobar la simetría."), placeholder="512")],
+         outputs=("out",)),
+    Tool("make_stat_icon", "tools/make_stat_icon.py", "art",
+         L("Stat icons for the unit panels", "Iconos de estadística para los paneles de unidad"),
+         L("Draws the small icons the panels' rows put after a value (rate of fire, training time, line of "
+           "sight, speed, armor, projectiles) as .ddt textures. No pixel comes from the game.",
+           "Dibuja los iconos pequeños que las filas de los paneles ponen tras un valor (cadencia, tiempo de "
+           "entrenamiento, línea de visión, velocidad, armadura, proyectiles) como texturas .ddt. Ningún píxel "
+           "sale del juego."),
+         [Arg("style", "--style", "choice", L("Style", "Estilo"),
+              L("bold: 32x32 BGRA, hard edges and a black outline (the one to ship); soft: 16x16 DXT3, soft edges.",
+                "bold: 32x32 BGRA, bordes duros y contorno negro (el que se usa); soft: 16x16 DXT3, bordes suaves."),
+              choices=("bold", "soft"), default="bold"),
+          Arg("glyph", "--glyph", "choice", L("Glyph", "Dibujo"),
+              L("The icon to draw. The soft style also has heart, house and two speed variants; the bold one has "
+                "the cylinder.",
+                "El icono a dibujar. El estilo soft tiene además corazón, casa y dos variantes de velocidad; el "
+                "bold tiene el tambor."),
+              choices=("stopwatch", "hourglass", "eye", "boot_wings", "shield", "cylinder", "heart", "house",
+                       "boot_arrows", "boot_lines"), default="stopwatch"),
+          Arg("out", "--out", "save", L("Texture to write", "Textura a escribir"),
+              L("The .ddt of one glyph. Empty: stat_icon.ddt in the work folder.",
+                "El .ddt de un dibujo. Vacío: stat_icon.ddt en la carpeta de trabajo."),
+              filters=DDT, work="stat_icon.ddt"),
+          Arg("all", "--all", "outdir", L("Every glyph into", "Todos los dibujos en"),
+              L("A folder: every glyph of the style is written there under its game file name "
+                "(stat_icon_rof.ddt, ...), in place of the single texture.",
+                "Una carpeta: cada dibujo del estilo se escribe allí con su nombre de archivo del juego "
+                "(stat_icon_rof.ddt, ...), en lugar de la textura sola.")),
+          Arg("png", "--png", "save", L("Preview picture", "Imagen de vista previa"),
+              L("Also a PNG, enlarged 8 times, on the panel's brown and on grey.",
+                "También un PNG, ampliado 8 veces, sobre el marrón del panel y sobre gris."), filters=PNG),
+          Arg("check", "--check", "bool", L("Only compare", "Solo comparar"),
+              L("Writes nothing: says whether the files on disk are what would be written.",
+                "No escribe nada: dice si los archivos en disco son lo que se escribiría."))],
+         outputs=("out", "all", "png")),
+    Tool("extend_font", "tools/extend_font.py", "art",
+         L("Missing letters in a font", "Letras que faltan en una fuente"),
+         L("Adds the accented Latin letters a TrueType font lacks (ă ș ț ő ł ...), built from its own letters and "
+           "accents, under a new family name. Writes a new font, a proof sheet and a report.",
+           "Añade a una fuente TrueType las letras latinas con acento que le faltan (ă ș ț ő ł ...), hechas con sus "
+           "propias letras y acentos, con un nombre de familia nuevo. Escribe una fuente nueva, una hoja de prueba y "
+           "un informe."),
+         [Arg("input", None, "file", L("Font", "Fuente"), required=True, filters=TTF),
+          Arg("output", None, "save", L("Font to write", "Fuente a escribir"), filters=TTF, work="extended.ttf"),
+          Arg("family", "--family", "text", L("New family name", "Nuevo nombre de familia"),
+              placeholder="Formal436 BT WoL"),
+          Arg("suffix", "--suffix", "text", L("Suffix of the name", "Sufijo del nombre"), default="Ext"),
+          Arg("only", "--only", "text", L("Only these letters", "Solo estas letras"), placeholder="ăâîșț,U+0218-U+021B"),
+          Arg("proof", "--proof", "save", L("Proof sheet", "Hoja de prueba"), filters=PNG, work="proof.png"),
+          Arg("report", "--report", "save", L("Report", "Informe"), filters=JSON, work="report.json"),
+          Arg("no_kern", "--no-kern", "bool", L("No kerning copied", "Sin copiar el interletraje"))],
+         needs=("fonttools",), outputs=("output", "proof", "report")),
     Tool("fix_hitpointbar", "tools/fix_hitpointbar_tags.py", "art",
          L("Fix jumping health bars", "Arreglar barras de vida que saltan"),
          L("Adds the HITPOINTBAR tag to the animations of a unit that lack it, so its health bar stops jumping.",
@@ -677,6 +842,290 @@ TOOLS = [
           Arg("workers", "--workers", "int", L("Workers", "Procesos")),
           Arg("work", "--work", "folder", L("Work folder", "Carpeta de trabajo"))],
          needs=("granny", "test_copy"), writes="copy", trial=[], commit=["--install"], minutes=5),
+    Tool("recompress_models", "tools/recompress_models.py", "art",
+         L("Compress models again", "Volver a comprimir modelos"),
+         L("Compresses Granny models a tool wrote uncompressed (a bone scale fix, an own texture, a rebake) through "
+           "the game's own granny2.dll, so they ship at the originals' size. Every result is checked; nothing is "
+           "written over an input.",
+           "Comprime de nuevo, con el granny2.dll del propio juego, los modelos Granny que una herramienta escribió "
+           "sin comprimir (escala de huesos, textura propia, un rebake), para que ocupen lo que los originales. Cada "
+           "resultado se comprueba; nunca se escribe sobre una entrada."),
+         [Arg("input", None, "folder", L("Models", "Modelos"),
+              L("A folder: every .gr2 below it is compressed, at the same relative path below the output.",
+                "Una carpeta: se comprime cada .gr2 que contenga, en la misma ruta relativa bajo la salida."),
+              required=True),
+          out_dir(flag="-o", help=L("Where the compressed models go. Empty: a folder in the work folder. Never an "
+                                    "input folder or a Steam library.",
+                                    "Dónde van los modelos comprimidos. Vacío: una carpeta en la de trabajo. Nunca "
+                                    "una carpeta de entrada ni una biblioteca de Steam.")),
+          Arg("granny_install", "--granny-install", "folder", L("Game folder (for granny2.dll)",
+                                                                "Carpeta del juego (para granny2.dll)"),
+              L("Its granny2.dll is used, never copied or changed.",
+                "Se usa su granny2.dll, que nunca se copia ni se modifica."), required=True, setting="game"),
+          Arg("like", "--like", "folder", L("Originals (same relative paths)", "Originales (mismas rutas relativas)"),
+              L("Each section is stored as the original stores it (a section it keeps uncompressed stays so). "
+                "Empty: every section in the chosen format.",
+                "Cada sección se guarda como la guarda el original (la que deja sin comprimir, sigue así). Vacío: "
+                "todas las secciones en el formato elegido.")),
+          Arg("format", "--format", "choice", L("Format", "Formato"),
+              L("oodle1 is the format of almost every model of the game; none writes them uncompressed.",
+                "oodle1 es el formato de casi todos los modelos del juego; none los escribe sin comprimir."),
+              choices=("oodle1", "oodle0", "none"), default="oodle1"),
+          Arg("helper", "--helper", "file", L("Helper program", "Programa auxiliar"),
+              L("granny_recompress.exe, built by \"Build the recompression helper\". Empty: the one built there.",
+                "granny_recompress.exe, hecho con \"Construir el auxiliar de recompresión\". Vacío: el que se "
+                "construyó ahí."),
+              filters=(("Program", "*.exe"),), work=os.path.join("..", "recompress_helper", "granny_recompress.exe")),
+          Arg("workers", "--workers", "int", L("Workers", "Procesos"),
+              L("Models compressed at once. Default: half the processors.",
+                "Modelos que se comprimen a la vez. Por defecto: la mitad de los procesadores.")),
+          Arg("verbose", "-v", "bool", L("One line per model", "Una línea por modelo"),
+              L("Lists every model with its sizes, not only the totals.",
+                "Lista cada modelo con sus tamaños, no solo los totales."))],
+         needs=("game",), outputs=("out",), minutes=3),
+    Tool("gr2_check", "tools/gr2_check.py", "art",
+         L("Check models with the game's runtime", "Comprobar modelos con el motor del juego"),
+         L("What the game's own granny2.dll reads in a model (meshes, vertices, bone bindings, skeletons), beside "
+           "what the studio reads; optionally the model written again from its own tree, which must read the same. "
+           "Writes nothing.",
+           "Lo que el granny2.dll del propio juego lee en un modelo (mallas, vértices, enlaces de huesos, esqueletos), "
+           "junto a lo que lee el estudio; si se pide, el modelo escrito de nuevo desde su propio árbol, que debe "
+           "leerse igual. No escribe nada."),
+         [Arg("model", None, "file", L("Model, or a folder of them", "Modelo, o una carpeta de ellos"),
+              L("A .gr2, or a folder: every .gr2 below it.", "Un .gr2, o una carpeta: cada .gr2 que contenga."),
+              required=True, filters=(("Granny model", "*.gr2"),)),
+          Arg("granny_install", "--granny-install", "folder", L("Game folder (for granny2.dll)",
+                                                                "Carpeta del juego (para granny2.dll)"),
+              L("Its granny2.dll is used, never copied or changed.",
+                "Se usa su granny2.dll, que nunca se copia ni se modifica."), required=True, setting="game"),
+          Arg("helper", "--helper", "file", L("Helper program", "Programa auxiliar"),
+              L("granny_recompress.exe, built by \"Build the recompression helper\". Empty: the one built there.",
+                "granny_recompress.exe, hecho con \"Construir el auxiliar de recompresión\". Vacío: el que se "
+                "construyó ahí."),
+              filters=(("Program", "*.exe"),), work=os.path.join("..", "recompress_helper", "granny_recompress.exe")),
+          Arg("rewrite", "--rewrite", "bool", L("Also write it again from its own tree", "También escribirlo de nuevo desde su árbol"),
+              L("The copy a unit transplant starts from: the runtime must read it as the original, its CRC valid.",
+                "La copia de la que parte un trasplante de unidad: el motor debe leerla como el original, con su CRC válido.")),
+          Arg("save", "--save", "save", L("Keep the rewritten copy", "Guardar la copia reescrita"),
+              L("One model only: its rewritten copy, kept when the runtime reads it alike. Save it under a folder laid "
+                "out as the copy (art/units/...) and deploy that folder for the in-game test.",
+                "Un solo modelo: su copia reescrita, guardada si el motor la lee igual. Guárdala en una carpeta con la "
+                "estructura de la copia (art/units/...) y despliega esa carpeta para la prueba en el juego."),
+              filters=(("Granny model", "*.gr2"),)),
+          Arg("limit", "--limit", "int", L("At most this many models", "Como mucho tantos modelos"),
+              L("Of a folder, the first ones by name. Empty: all.", "De una carpeta, los primeros por nombre. Vacío: todos.")),
+          Arg("verbose", "-v", "bool", L("One line per model", "Una línea por modelo"),
+              L("Every model with what the runtime read, not only those that differ.",
+                "Cada modelo con lo que leyó el motor, no solo los que difieren."))],
+         needs=("game",), minutes=2),
+    Tool("hc_survey", "tools/hc_survey.py", "survey",
+         L("Home-city models survey", "Estudio de los modelos de las metrópolis"),
+         L("Inventories the home-city models of a game copy or a mod (basis, bone scale, stored texture names and "
+           "what uses each) and plans moving one home city's models into a folder of their own. Only reads the "
+           "copy; the reports name the mod's files: keep them private.",
+           "Inventaría los modelos de las metrópolis de una copia del juego o de un mod (base, escala de huesos, "
+           "nombres de textura guardados y qué usa cada uno) y planifica mover los de una metrópoli a una carpeta "
+           "propia. Solo lee la copia; los informes nombran archivos del mod: guárdalos en privado."),
+         [Arg("game", "--game", "folder", L("Game copy", "Copia del juego"),
+              L("Read only.", "Solo se lee."), required=True, setting="game"),
+          out_dir(help=L("The reports: models.csv, textures.csv, refs.csv, summary.md, report.json, and a plan per "
+                         "home city asked. Must be outside the game copy.",
+                         "Los informes: models.csv, textures.csv, refs.csv, summary.md, report.json, y un plan por "
+                         "cada metrópoli pedida. Debe estar fuera de la copia del juego.")),
+          Arg("target", "--target", "text", L("Target tree", "Árbol de destino"),
+              L("Where each home city's files should end, below art: <target>\\<civ>\\ (e.g. WoL\\homecity).",
+                "Dónde deben acabar los archivos de cada metrópoli, bajo art: <destino>\\<civ>\\ (p. ej. "
+                "WoL\\homecity)."), required=True, placeholder="WoL\\homecity"),
+          Arg("plan", "--plan", "text", L("Plan for these home cities", "Plan para estas metrópolis"),
+              L("A civ or file stem per plan, separated by spaces: plan_<name>.md lists its moves, texture renames "
+                "and line changes.",
+                "Una civ o nombre de archivo por plan, separados por espacios: plan_<nombre>.md lista sus "
+                "movimientos, renombres de texturas y cambios de líneas."), repeat=True),
+          cache_dir(),
+          Arg("granny", "--granny", "file", L("Granny bridge", "Puente Granny"),
+              L("The external .exe that expands compressed models the cache does not hold; needs a work folder.",
+                "El .exe externo que expande los modelos comprimidos que la caché no tiene; necesita una carpeta "
+                "de trabajo."), setting="granny", filters=(("Program", "*.exe"),)),
+          Arg("work", "--work", "outdir", L("Bridge work folder", "Carpeta de trabajo del puente"),
+              L("Where the bridge writes the expanded models, outside the game copy. Empty: the work folder.",
+                "Dónde el puente escribe los modelos expandidos, fuera de la copia del juego. Vacío: la carpeta "
+                "de trabajo."), work="bridge")],
+         needs=("game",), outputs=("out",), minutes=5),
+    Tool("reencode_textures", "tools/reencode_textures.py", "textures",
+         L("Re-encode textures for older cards", "Recodificar texturas para tarjetas antiguas"),
+         L("Each .ddt in a folder or list re-encoded by the rules (the format its header and pixels call for, "
+           "halved above a size limit, a full mip chain) and compared with its original: one that strays too far "
+           "is kept as it was. Writes the results and a report, never in place.",
+           "Cada .ddt de una carpeta o lista recodificado según las reglas (el formato que piden su cabecera y sus "
+           "píxeles, reducido a la mitad por encima de un límite, una cadena de mips completa) y comparado con su "
+           "original: el que se aleja demasiado se queda como estaba. Escribe los resultados y un informe, nunca "
+           "encima."),
+         [Arg("input", "--in", "folder", L("Textures", "Texturas"),
+              L("A folder of .ddt, or a list file of paths (the select step writes one).",
+                "Una carpeta de .ddt, o un archivo con una lista de rutas (el paso de selección escribe una)."),
+              required=True),
+          out_dir(help=L("The re-encoded textures at their relative paths, report.json and report.csv.",
+                         "Las texturas recodificadas en sus rutas relativas, report.json y report.csv.")),
+          Arg("root", "--root", "folder", L("Folder the list is relative to", "Carpeta a la que se refiere la lista"),
+              L("Only for a list file: its paths are relative to this folder.",
+                "Solo para una lista: sus rutas son relativas a esta carpeta.")),
+          Arg("limit", "--limit", "text", L("Size limit", "Límite de tamaño"),
+              L("WxH: a texture with a side above it is halved until both fit. Give this or a measured limit.",
+                "AxA: una textura con un lado mayor se reduce a la mitad hasta que ambos quepan. Indica esto o un "
+                "límite medido."), placeholder="512x512"),
+          Arg("tad", "--tad", "file", L("Measured limit (tad.json)", "Límite medido (tad.json)"),
+              L("The stock home-city building textures' mean, from \"Measure the stock home-city textures\": the "
+                "limit is twice it.",
+                "La media de las texturas de edificios de las metrópolis originales, de \"Medir las texturas de "
+                "las metrópolis originales\": el límite es el doble."), filters=JSON),
+          Arg("smallest", "--smallest", "int", L("Smallest mip", "Mip más pequeño"),
+              L("The chain goes down to this many pixels on the short side. Default 4, as the stock game.",
+                "La cadena baja hasta estos píxeles en el lado corto. Por defecto 4, como el juego original.")),
+          Arg("max_mean", "--max-mean", "float", L("Largest mean difference", "Diferencia media máxima"),
+              L("Per channel, 0 to 255; above it the texture is kept as it was. Default 6.",
+                "Por canal, de 0 a 255; por encima la textura se queda como estaba. Por defecto 6.")),
+          Arg("max_block", "--max-block", "float", L("Largest block difference", "Diferencia máxima de bloque"),
+              L("The worst 4 x 4 block's mean difference; above it the texture is kept. Default 32.",
+                "La diferencia media del peor bloque de 4 x 4; por encima la textura se queda. Por defecto 32.")),
+          Arg("sheets", "--sheets", "outdir", L("Comparison sheets", "Hojas de comparación"),
+              L("A folder: one picture per texture (original, new, difference) and an index.html.",
+                "Una carpeta: una imagen por textura (original, nueva, diferencia) y un index.html.")),
+          Arg("fast", "--fast", "bool", L("Faster encoder", "Codificador más rápido"),
+              L("The plain DXT encoder instead of the least-squares one: quicker, a little further from the "
+                "original.",
+                "El codificador DXT simple en vez del de mínimos cuadrados: más rápido, algo más lejos del "
+                "original."))],
+         fixed=["run"], outputs=("out", "sheets"), minutes=5),
+    Tool("reencode_tad", "tools/reencode_textures.py", "textures",
+         L("Measure the stock home-city textures", "Medir las texturas de las metrópolis originales"),
+         L("The mean width and height of the stock game's home-city building textures, the limit the re-encoding "
+           "can follow. Only reads the copy.",
+           "El ancho y alto medios de las texturas de edificios de las metrópolis del juego original, el límite "
+           "que puede seguir la recodificación. Solo lee la copia."),
+         [Arg("game", "--game", "folder", L("Game copy", "Copia del juego"), L("Read only.", "Solo se lee."),
+              required=True, setting="game"),
+          Arg("out", "--out", "save", L("Measure to write", "Medida a escribir"),
+              L("A JSON file. Empty: tad.json in the work folder.",
+                "Un archivo JSON. Vacío: tad.json en la carpeta de trabajo."), filters=JSON, work="tad.json"),
+          cache_dir(),
+          Arg("granny", "--granny", "file", L("Granny bridge", "Puente Granny"),
+              L("Expands compressed models the cache does not hold; needs a work folder.",
+                "Expande los modelos comprimidos que la caché no tiene; necesita una carpeta de trabajo."),
+              setting="granny", filters=(("Program", "*.exe"),)),
+          Arg("work", "--work", "outdir", L("Bridge work folder", "Carpeta de trabajo del puente"),
+              L("Outside the game copy. Empty: the work folder.", "Fuera de la copia del juego. Vacío: la carpeta "
+                "de trabajo."), work="bridge")],
+         fixed=["tad"], needs=("game",), outputs=("out",), minutes=5),
+    Tool("reencode_select", "tools/reencode_textures.py", "textures",
+         L("Choose the textures to re-encode", "Elegir las texturas a recodificar"),
+         L("Lists a copy's own home-city building textures that only home-city buildings use (the ones safe to "
+           "re-encode), and the others with why. Only reads the copy.",
+           "Lista las texturas propias de edificios de metrópoli que solo usan esos edificios (las que se pueden "
+           "recodificar sin riesgo), y las demás con el motivo. Solo lee la copia."),
+         [Arg("game", "--game", "folder", L("Game copy", "Copia del juego"), L("Read only.", "Solo se lee."),
+              required=True, setting="game"),
+          Arg("out", "--out", "save", L("List to write", "Lista a escribir"),
+              L("A text file of paths, for the re-encoding. Empty: select.txt in the work folder.",
+                "Un archivo de texto con rutas, para la recodificación. Vacío: select.txt en la carpeta de "
+                "trabajo."), filters=(("Text", "*.txt"),), work="select.txt"),
+          cache_dir(),
+          Arg("granny", "--granny", "file", L("Granny bridge", "Puente Granny"),
+              L("Expands compressed models the cache does not hold; needs a work folder.",
+                "Expande los modelos comprimidos que la caché no tiene; necesita una carpeta de trabajo."),
+              setting="granny", filters=(("Program", "*.exe"),)),
+          Arg("work", "--work", "outdir", L("Bridge work folder", "Carpeta de trabajo del puente"),
+              L("Outside the game copy. Empty: the work folder.", "Fuera de la copia del juego. Vacío: la carpeta "
+                "de trabajo."), work="bridge")],
+         fixed=["select"], needs=("game",), outputs=("out",), minutes=5),
+    Tool("hc_move_stage", "tools/hc_move.py", "art",
+         L("Move a home city's models: prepare", "Mover los modelos de una metrópoli: preparar"),
+         L("Writes, outside the game copy, a stage folder where one home city's own models (and the textures and "
+           "anim files that go with them) sit in a folder of their own, with every reference edited and the "
+           "originals zipped. Nothing in the copy is written.",
+           "Escribe, fuera de la copia del juego, una carpeta de preparación donde los modelos propios de una "
+           "metrópoli (y sus texturas y archivos de animación) quedan en una carpeta propia, con cada referencia "
+           "editada y los originales en un zip. No se escribe nada en la copia."),
+         [Arg("game", "--game", "folder", L("Game copy", "Copia del juego"), L("Read only.", "Solo se lee."),
+              required=True, setting="game"),
+          Arg("civ", "--civ", "text", L("Civ", "Civilización"),
+              L("The home city to move, by its civ or file stem; _tables moves what only the shared tables name.",
+                "La metrópoli a mover, por su civ o nombre de archivo; _tables mueve lo que solo nombran las "
+                "tablas compartidas."), required=True),
+          Arg("target", "--target", "text", L("Target tree", "Árbol de destino"),
+              L("Below art, as the survey plans it (e.g. WoL\\homecity).",
+                "Bajo art, como lo planifica el estudio (p. ej. WoL\\homecity)."), required=True,
+              placeholder="WoL\\homecity"),
+          out_dir(help=L("The stage: files\\ at their game paths, originals.zip, moved-files.txt, stage.json, "
+                         "report.md.",
+                         "La preparación: files\\ en sus rutas del juego, originals.zip, moved-files.txt, "
+                         "stage.json, report.md.")),
+          Arg("granny", "--granny", "file", L("Granny bridge", "Puente Granny"),
+              L("Rebuilds each moved model so its stored texture names follow the textures.",
+                "Reconstruye cada modelo movido para que sus nombres de textura sigan a las texturas."),
+              required=True, setting="granny", filters=(("Program", "*.exe"),)),
+          Arg("form", "--form", "choice", L("Form", "Forma"),
+              L("A: art\\<target>, named with ..\\ from the home-city files (accepted in game). B: "
+                "art\\homecity\\<Mod>.",
+                "A: art\\<destino>, nombrado con ..\\ desde los archivos de la metrópoli (aceptado en el juego). "
+                "B: art\\homecity\\<Mod>."), choices=("A", "B"), default="A"),
+          Arg("shared", "--shared", "text", L("Shared folder", "Carpeta compartida"),
+              L("Where models several civs' home cities use go. Default _shared.",
+                "Dónde van los modelos que usan las metrópolis de varias civs. Por defecto _shared."),
+              placeholder="_shared"),
+          cache_dir(),
+          Arg("work", "--work", "outdir", L("Bridge work folder", "Carpeta de trabajo del puente"),
+              L("Outside the game copy. Empty: the work folder.", "Fuera de la copia del juego. Vacío: la carpeta "
+                "de trabajo."), work="bridge"),
+          Arg("suffix", "--suffix", "bool", L("Header digits in texture names", "Dígitos de cabecera en los nombres"),
+              L("Renames each moved .ddt that only .tga/.png/.jpg names reach to <name>.(u,a,f,m).ddt, the game's "
+                "way to read a stored name's header (in game 2026-11-17).",
+                "Renombra cada .ddt movido al que solo llegan nombres .tga/.png/.jpg a <nombre>.(u,a,f,m).ddt, la "
+                "forma del juego de leer la cabecera de un nombre guardado (en el juego, 2026-11-17).")),
+          Arg("reencoded", "--reencoded", "file", L("Re-encoded textures (report.json)",
+                                                    "Texturas recodificadas (report.json)"),
+              L("A moved .ddt that is still the file it was made from ships as its re-encoded copy.",
+                "Un .ddt movido que sigue siendo el archivo del que salió se lleva como su copia recodificada."),
+              filters=JSON)],
+         fixed=["stage"], needs=("game", "granny"), outputs=("out",), minutes=10),
+    Tool("hc_move_install", "tools/hc_move.py", "art",
+         L("Move a home city's models: install", "Mover los modelos de una metrópoli: instalar"),
+         L("Copies a stage into the test copy, after checking every file it replaces is the one it was made from; "
+           "keeps a backup.",
+           "Copia una preparación en la copia de prueba, tras comprobar que cada archivo que sustituye es el "
+           "original; guarda una copia de seguridad."),
+         [Arg("bed", "--bed", "folder", L("Test copy", "Copia de prueba"),
+              L("A copy of the game for testing (never the Steam folder: it is refused).",
+                "Una copia del juego para pruebas (nunca la carpeta de Steam: se rechaza)."),
+              required=True, setting="test_copy"),
+          Arg("stage", "--stage", "folder", L("Stage folder", "Carpeta de preparación"),
+              L("What \"prepare\" wrote.", "Lo que escribió \"preparar\"."), required=True)],
+         fixed=["install"], needs=("test_copy",), writes="copy",
+         confirm=L("This changes the test copy of the game: the stage is copied in and the moved originals deleted. "
+                   "A backup is kept and Undo restores it.",
+                   "Esto modifica la copia de prueba del juego: se copia la preparación y se borran los originales "
+                   "movidos. Se guarda una copia de seguridad y Deshacer la restaura.")),
+    Tool("hc_move_undo", "tools/hc_move.py", "art",
+         L("Move a home city's models: undo", "Mover los modelos de una metrópoli: deshacer"),
+         L("Puts the last install back, checking every file by its hash.",
+           "Deshace la última instalación, comprobando cada archivo por su huella."),
+         [Arg("bed", "--bed", "folder", L("Test copy", "Copia de prueba"),
+              L("A copy of the game for testing (never the Steam folder: it is refused).",
+                "Una copia del juego para pruebas (nunca la carpeta de Steam: se rechaza)."),
+              required=True, setting="test_copy")],
+         fixed=["undo"], needs=("test_copy",), writes="copy",
+         confirm=L("This restores the test copy as it was before the last home-city move.",
+                   "Esto restaura la copia de prueba como estaba antes del último movimiento de metrópoli.")),
+    Tool("recompress_helper", "tools/recompress_models.py", "art",
+         L("Build the recompression helper", "Construir el auxiliar de recompresión"),
+         L("Compiles the small 32-bit program that hosts the game's granny2.dll (tools/granny_recompress.c), with "
+           "Visual Studio's C++ tools or zig. Needed once, before compressing models again.",
+           "Compila el pequeño programa de 32 bits que carga el granny2.dll del juego (tools/granny_recompress.c), "
+           "con las herramientas C++ de Visual Studio o con zig. Hace falta una vez, antes de volver a comprimir."),
+         [Arg("out", None, "save", L("Program to write", "Programa a escribir"),
+              L("Empty: granny_recompress.exe in the work folder, where the compression form looks for it.",
+                "Vacío: granny_recompress.exe en la carpeta de trabajo, donde lo busca el formulario de compresión."),
+              filters=(("Program", "*.exe"),), work="granny_recompress.exe")],
+         fixed=["--build-helper"], outputs=("out",)),
     Tool("uncompress_check", "tools/uncompress_models.py", "art",
          L("Check the uncompressed models", "Comprobar los modelos sin comprimir"),
          L("Reads the manifest back: every copy present and unchanged.",
@@ -752,7 +1201,7 @@ TOOLS = [
          L("Download the material swatches", "Descargar las muestras de material"),
          L("Downloads the CC0 swatches, checks each licence and prepares them in the add-on's folder.",
            "Descarga las muestras CC0, comprueba cada licencia y las prepara en la carpeta del complemento."),
-         [Arg("names", None, "text", L("Only these", "Solo estas")),
+         [Arg("names", None, "text", L("Only these", "Solo estas"), rest=True),
           Arg("cache", "--cache", "folder", L("Download cache", "Caché de descargas"))],
          needs=("network",), writes="repo", dev=True),
     Tool("build_zip", "tools/build_zip.py", "dev",
@@ -761,7 +1210,33 @@ TOOLS = [
                                                                "dist/."),
          [], writes="repo", dev=True),
 ]
+TOOLS.insert(next(i for i, t in enumerate(TOOLS) if t.id == "game_export") + 1, Tool(
+    "game_export_noblender", "scripts/game_export_noblender.py", "buildings",
+    L("Export a preset for the game, without Blender (experimental)",
+      "Exportar un preset al juego, sin Blender (experimental)"),
+    L("The same bundle without Blender: the mesh, icons and checks made by this program. Whether it looks the "
+      "same in game is still to verify.",
+      "El mismo paquete sin Blender: la malla, los iconos y las comprobaciones los hace este programa. Falta "
+      "verificar en el juego que se vea igual."),
+    [*next(t for t in TOOLS if t.id == "game_export").args,
+     Arg("compare", "--compare", "folder", L("Compare with (a Blender bundle)", "Comparar con (un paquete de Blender)"),
+         L("A bundle of the same building made with Blender: each file is compared and the differences listed.",
+           "Un paquete del mismo edificio hecho con Blender: se compara cada archivo y se listan las diferencias."))],
+    outputs=("out",)))
+
 BY_ID = {t.id: t for t in TOOLS}
+
+
+def _fill_help():
+    """An option declared without help takes its text from studio/catalog_help.py."""
+    from .catalog_help import HELP
+    for t in TOOLS:
+        for a in t.args:
+            if not a.help["en"] and a.key in HELP.get(t.id, {}):
+                a.help = L(*HELP[t.id][a.key])
+
+
+_fill_help()
 
 
 # -- requirements ---------------------------------------------------------------------------
@@ -773,6 +1248,8 @@ def requirements(st):
            "game": bool(s.get("game")) and os.path.isdir(s.get("game")),
            "test_copy": bool(s.get("test_copy")) and os.path.isdir(s.get("test_copy")),
            "network": True}
+    import importlib.util
+    out["fonttools"] = importlib.util.find_spec("fontTools") is not None
     out["comfy"] = comfy_alive(s.get("comfy_url"))
     try:
         from . import use_core
@@ -849,6 +1326,8 @@ def build_args(tool, values):
         items = v if isinstance(v, list) else [v]
         if a.kind in ("files", "folders") and isinstance(v, str):
             items = [v]
+        elif a.kind == "text" and a.repeat and isinstance(v, str):
+            items = v.split()                   # several words, each after its own flag
         items = [str(x) for x in items]
         if a.rest:
             words = [w for x in items for w in x.split()]
@@ -877,7 +1356,7 @@ def command(st, tool_id, values, apply=False):
     values = dict(values)
     for a in tool.args:                     # an output the form left empty: in the work folder
         if a.work is not None and not values.get(a.key):
-            values[a.key] = os.path.join(st.work_dir(tool.id), a.work) if a.work else st.work_dir(tool.id)
+            values[a.key] = os.path.normpath(os.path.join(st.work_dir(tool.id), a.work)) if a.work else st.work_dir(tool.id)
     pos, flags, rest = build_args(tool, values)
     args = tool.fixed + pos + flags
     trial = None

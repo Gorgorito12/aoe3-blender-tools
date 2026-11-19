@@ -219,6 +219,8 @@ def params_from_dict(d):
     for k, v in d.items():
         if k == "colors":
             colors = dict(building.DEFAULT_COLORS)
+            if not isinstance(v or {}, dict):
+                raise ValueError("colors: a mapping of colour names to three numbers")
             for ck, cv in (v or {}).items():
                 if ck not in colors:
                     raise ValueError(f"unknown colour: {ck}")

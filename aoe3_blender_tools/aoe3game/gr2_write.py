@@ -28,7 +28,9 @@ EXPORTER = "AoE3 Blender Tools"
 
 
 class W:
-    """An object to write: its spec and member values (missing members are zero / null)."""
+    """An object to write: its spec and member values (missing members are zero / null). A value
+    may also be keyed by the member's index, which wins over its name: a type that names two
+    members alike (some ExtendedData do) needs it."""
 
     def __init__(self, spec, **values):
         self.spec, self.values = spec, values
@@ -161,9 +163,9 @@ class _Writer:
 
     def fill(self, spec, loc, values):
         off = 0
-        for kind, name, ref, width in spec.members:
+        for i, (kind, name, ref, width) in enumerate(spec.members):
             at = (loc[0], loc[1] + off)
-            v = values.get(name)
+            v = values[i] if i in values else values.get(name)
             if kind == gr2.INLINE:
                 subs = v if isinstance(v, list) else [v]
                 size = spec_size(ref)
