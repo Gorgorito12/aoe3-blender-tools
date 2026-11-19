@@ -44,6 +44,7 @@ python -I tests/test_xmbedit.py                    # compiled XML (.xmb) and its
 venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, make_bar (about 70 s)
 venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, hard edges, outline
 venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout file's gadgets as boxes
+python -I tests/test_uilayout.py                  # interface layouts byte for byte, fonts, string table
 venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
 venv/bin/python -I tests/test_specs.py             # every building has its sheet and it is current
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
@@ -153,6 +154,11 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   `web/` (the page: ES modules, no build step; three.js vendored; `i18n/en.json`, `es.json`).
   `aoe3_blender_tools/core/schema.py` describes every `BuildingParams` field for the forms;
   `core/gamemesh.py` is the game mesh without Blender (measured against Blender's).
+- The game interface: `aoe3game/uilayout.py` (a layout file as a tree that keeps every byte; edits
+  change only what they are about), `aoe3game/uifonts.py` (fonts3.xml, a TTF's family name),
+  `aoe3game/uidata/` (what the engine shows that the files do not say), `studio/hud.py` and
+  `studio/web/js/hud*.js` (the screen). `tests/test_uilayout.py`, `tests/hud_copy.py` (a synthetic
+  copy). Engine facts there are measured on captures or marked to verify, as everywhere.
 - `aoe3_blender_tools/aoe3game/collision.py`: a building's own collision shape (`.shp`, Havok XML),
   written into `data/physics/` of the bundle; `Model.boxes` holds the boxes, `building.obstruction`
   a style's own obstruction. See "Collision" in `docs/game-formats.md`.

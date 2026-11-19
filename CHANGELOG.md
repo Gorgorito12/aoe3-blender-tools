@@ -23,6 +23,8 @@ English and Spanish, for modders who use neither Blender nor a terminal.
   results as a sortable table, look inside `.ddt`, `.gr2`, `.xmb` and `.bar` files.
 - Every command-line tool as a form with its live log, every option with its help in both
   languages; a trial before any change in place.
+- **Game interface**: the in-game HUD of a game copy drawn as the game draws it (normal or
+  minimised, any screen size, culture and moment), each gadget with everything it says.
 - Without Blender: the checks (the same findings as Blender's on every preset), and an
   experimental game export (`scripts/game_export_noblender.py`) to be seen in game before it
   replaces Blender's.

@@ -461,6 +461,56 @@ def r_results(st, rest, q, b):
         raise ApiError(str(e)) from None
 
 
+def _hud():
+    from . import hud
+    return hud
+
+
+def r_hud_open(st, rest, q, b):
+    """A game copy's in-game HUD, normal or minimised, for the interface screen (read only)."""
+    h = _hud()
+    folder = b.get("game") or st.settings.get("game")
+    try:
+        scene = h.Scene(h.game(folder), b.get("variant") or "min")
+    except (h.HudError, OSError) as e:
+        raise ApiError(str(e)) from None
+    return dict(scene.public(), session=st.sessions.add(scene), game=folder)
+
+
+def r_hud_texture(st, rest, q, b):
+    """A texture of the scene's copy as PNG (the bytes; `where` in a header)."""
+    scene = st.sessions.get(q.get("s"))
+    hit = scene.texture_png(q.get("path") or "")
+    if hit is None:                     # not in this copy (the stock layouts name some): nothing to draw
+        return b"", "image/png"
+    return hit[0], "image/png"
+
+
+def r_hud_font(st, rest, q, b):
+    """A typeface's TrueType file from the copy's Fonts.bar, for the page to draw with."""
+    scene = st.sessions.get(q.get("s"))
+    data = scene.game.font_file(q.get("face") or "")
+    if data is None:
+        raise ApiError("not a font of this copy (a system font)", 404)
+    return data, "font/ttf"
+
+
+def r_hud_snapshot(st, rest, q, b):
+    """The drawn HUD as a PNG in the work folder."""
+    import base64
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", b.get("name") or "hud").strip("._") or "hud"
+    head, _, body = (b.get("picture") or "").partition(",")
+    if head != "data:image/png;base64":
+        raise ApiError("a PNG picture is expected")
+    data = base64.b64decode(body)
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ApiError("a PNG picture is expected")
+    path = os.path.join(st.work_dir("hud"), name + ".png")
+    with open(path, "wb") as fh:
+        fh.write(data)
+    return {"path": path}
+
+
 def _settle():
     from . import settlement_ui
     return settlement_ui
@@ -926,6 +976,10 @@ ROUTES = [
     ("POST", "/api/retex/picture", r_retex_picture),
     ("POST", "/api/retex/save", r_retex_save),
     ("POST", "/api/results", r_results),
+    ("POST", "/api/hud/open", r_hud_open),
+    ("GET", "/api/hud/texture", r_hud_texture),
+    ("GET", "/api/hud/font", r_hud_font),
+    ("POST", "/api/hud/snapshot", r_hud_snapshot),
     ("POST", "/api/settlement/measured", r_settlement_measured),
     ("POST", "/api/settlement/compose", r_settlement_compose),
     ("POST", "/api/settlement/open", r_settlement_open),
@@ -957,12 +1011,18 @@ ROUTES = [
 ]
 
 
+class Server(ThreadingHTTPServer):
+    # a page asks for many textures at once: the default queue of 5 refuses the rest on Windows
+    request_queue_size = 128
+    daemon_threads = True
+
+
 def serve(port=0, config=None):
     """Starts the server in a thread; returns (studio, httpd)."""
     studio = Studio(config)
     studio_log.setup(os.path.dirname(studio.settings.path))
     handler = type("BoundHandler", (Handler,), {"studio": studio})
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    httpd = Server(("127.0.0.1", port), handler)
     httpd.daemon_threads = True
     studio.port = httpd.server_address[1]
     studio_log.log.info("studio %s on port %s (%s, Python %s)", VERSION, studio.port,

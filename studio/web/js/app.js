@@ -11,6 +11,7 @@ import { flagsScreen } from './flags.js';
 import { texmakerScreen } from './texmaker.js';
 import { settlementScreen } from './settlement.js';
 import { resultsScreen } from './results.js';
+import { hudScreen } from './hud.js';
 import { welcomeScreen } from './welcome.js';
 
 const SCREENS = [
@@ -28,7 +29,7 @@ const SCREENS_OF = {
   buildings: [['settlement', 'se.title', 'se.intro']],
   survey: [['inspect', 'i.title', 'i.intro'], ['results', 'rs.title', 'rs.intro']],
   textures: [['retex', 'r.title', 'r.intro'], ['texmaker', 'x.title', 'x.intro']],
-  art: [['flags', 'f.title', 'f.intro']],
+  art: [['hud', 'h.title', 'h.intro'], ['flags', 'f.title', 'f.intro']],
 };
 // the area each of those screens belongs to, for the navigation
 const AREA_OF = { welcome: 'settings', buildtools: 'buildings',
@@ -70,6 +71,7 @@ async function show() {
     else if (head === 'welcome') await welcomeScreen(main, app);
     else if (head === 'settlement') await settlementScreen(main, app);
     else if (head === 'results') await resultsScreen(main, app);
+    else if (head === 'hud') await hudScreen(main, app);
     else if (head === 'buildtools') await areaScreen(main, app, 'buildings');   // the area's own forms
     else await areaScreen(main, app, head);
   } catch (e) {

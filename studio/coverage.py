@@ -39,7 +39,7 @@ OPERATORS = {
 
 # the routes of the page (studio/web/js/app.js): areas and screens made for their task
 SCREENS = ("buildings", "textures", "survey", "art", "jobs", "settings", "dev", "inspect", "retex", "flags",
-           "texmaker", "settlement", "buildtools", "results")
+           "texmaker", "settlement", "buildtools", "results", "hud")
 
 
 def place(operator):

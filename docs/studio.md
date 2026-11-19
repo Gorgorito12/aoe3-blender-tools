@@ -25,7 +25,7 @@ folder) are kept in `%APPDATA%\aoe3-blender-tools\studio.json`. Nothing leaves t
 | Buildings | Every preset; a form drawn from `core/schema.py` that shows only what the chosen style uses; the model in 3D with its texture, in clay, with its wires, attach points and collision boxes, a person 1.8 m tall for the scale, the obstruction on the ground, the low-poly model, the damaged texture, the player colour of a team; the texture with its atlas regions; triangles against the style's target or the game's buildings of the same class; the technical sheet; **Check** (the add-on's game-ready checks, `scripts/check.py`); with the PROP style, the prop sets side by side and their export; the AI repaint region by region (below); export for the game, GLB/FBX/OBJ with renders; deploy to the test copy and undo. **Settlements and more forms** leads to the settlement composer (below) and the buildings' forms |
 | Textures and units | **Repaint a unit** and **Make a tileable texture** (below); the UV atlas, the recipe tool, textures re-encoded for older cards (choose them, measure the stock limit, re-encode: never in place), **Recolour textures** (`tools/recolor_textures.py`: hue, saturation and lightness of a terrain's or a plant's textures, with their distance to the player colours before and after), LoRA dataset and training as forms |
 | Survey and inspection | The art, texture, model, grouping, shape, palette and home-city model surveys; style check; contact sheets; a file inspector (`.ddt` as a picture with its header and alpha, `.gr2` in 3D with its bones and the texture beside it, `.xmb` as XML, `.bar` as a searchable list whose files open the same way); `.xmb` to XML and back; **a survey's results** as a table (below) |
-| Art utilities | **Design a civ flag** (below); avatar icons, ground rings, health bars, stat icons for the unit panels, a preview of an interface layout (every gadget's box), missing letters in a font, the HITPOINTBAR fix, bone scale fix, uncompressed models, models compressed again through the game's granny2.dll (and the helper it needs, built once), a home city's models moved into a folder of their own (prepare outside the copy, install into the test copy with a confirmation, undo) |
+| Art utilities | **Game interface** and **Design a civ flag** (below); avatar icons, ground rings, health bars, stat icons for the unit panels, a preview of an interface layout (every gadget's box), missing letters in a font, the HITPOINTBAR fix, bone scale fix, uncompressed models, models compressed again through the game's granny2.dll (and the helper it needs, built once), a home city's models moved into a folder of their own (prepare outside the copy, install into the test copy with a confirmation, undo) |
 | Settings | The folders, checked as they are chosen; what the studio found; Start and Check ComfyUI (the nodes and models a repaint needs); the log. The **welcome** opens on the first start until the game's folder is set |
 | Tasks | Every task of the session with its live log, progress, cancel and outputs (pictures shown, text files opened, folders shown) |
 | Developer tools | Technical sheets, sweep, galleries, AI sweep, the painter's fit, swatch download, add-on zips |
@@ -37,7 +37,7 @@ catalog declares without help; a test fails on an option left without it).
 
 ## The screens made for their task
 
-A form is enough to run a survey; it is not enough to paint. Six screens work in the studio's
+A form is enough to run a survey; it is not enough to paint. Seven screens work in the studio's
 own process and answer as you move a control (a ComfyUI step runs in a thread, a write as a task):
 
 - **Repaint a unit** (`studio/retex.py`, `web/js/retex.js`). A unit of the game copy (as
@@ -68,6 +68,23 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   region as it is done; **Stop** ends it between two regions (and interrupts ComfyUI). **Use it
   for the export** keeps the texture as a PNG that `scripts/game_export.py --texture-png` puts in
   place of the painted one; a change to the building drops it.
+- **Game interface** (`studio/hud.py`, `web/js/hud.js`, `web/js/hud_render.js`). The in-game HUD
+  of the game copy in Settings, read only: the main screen (`uimainnew.xml`) and the panels the game
+  loads beside it, normal or minimised, each found as the game finds it (loose first, then
+  Data3, Data2, Data.bar: the order of the archives is an assumption; the copies a file hides
+  are listed). Drawn at the screen's own pixels at any size, with the copy's textures (cropped,
+  tiled, by state), its own TrueType fonts from `FONTS\Fonts.bar` (sent to the page, never copied)
+  and its string table. The skin of the chosen culture; **moments of the game** the engine shows
+  gadgets for (a unit selected, paused, victory, subtitles, a wonder, training, a trade route...)
+  and the health bar's colour, from `aoe3game/uidata/hud_scene.json`. The gadgets as a tree; a
+  gadget chosen on the picture or in the tree shows its file and line, rectangle, text and what it
+  shows, font and its size at that screen, states, commands and every attribute. **Save the
+  picture** writes it to the work folder. The files are read as a tree that keeps every byte
+  (`aoe3game/uilayout.py`: the 55 interface files of a Wars of Liberty copy and the 551 compiled
+  ones in its archives come back identical). Measured against a capture of the game at 1920 x 1080:
+  each axis scaled on its own from 1024 x 768; a font's `AscentHeight` is its text cell (ascent +
+  descent) in pixels; a font `fonts3.xml` lacks is drawn as `Arial nobold nodrop 12`. What is still
+  assumed is listed under the picture.
 - **A survey's results** (`studio/results.py`, `web/js/results.js`). A texture or model survey's
   report (`textures.json`, `models.json`: the profile is computed with the survey's own
   `profile()`) or a profile (`--profile-out`, or this program's own in

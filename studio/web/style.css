@@ -231,3 +231,19 @@ table.results th.sortable:hover { color: var(--accent); }
 .swatches { display: flex; min-width: 90px; height: 16px; border-radius: 3px; overflow: hidden; border: 1px solid var(--line); }
 .swatches span { flex-basis: 0; }
 .nowrap { white-space: nowrap; }
+.hud-bar { flex-wrap: wrap; gap: 10px; align-items: center; }
+.hud-body { display: grid; grid-template-columns: 240px minmax(0, 1fr) 320px; gap: 12px; align-items: start; margin-top: 12px; }
+.hud-left, .hud-right { max-height: calc(100vh - 230px); overflow: auto; }
+.hud-stage { height: calc(100vh - 290px); min-height: 360px; flex: none; }
+.hud-stage canvas { display: block; cursor: crosshair; }
+.hud-tree { display: flex; flex-direction: column; }
+.hud-file { font-weight: 600; margin: 8px 0 2px; color: var(--muted); overflow-wrap: anywhere; }
+.hud-node { text-align: left; background: none; border: 0; border-radius: 3px; padding: 1px 6px; font-size: 12px; color: var(--text); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-node:hover { background: var(--panel-2); }
+.hud-node.on { background: var(--accent); color: #fff; }
+.hud-node.off { opacity: .5; }
+.hud-props { border-collapse: collapse; width: 100%; }
+.hud-props th { text-align: left; color: var(--muted); font-weight: normal; padding: 2px 6px 2px 0; vertical-align: top; white-space: nowrap; }
+.hud-props td { padding: 2px 0; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .hud-body { grid-template-columns: 1fr; } .hud-left, .hud-right { max-height: 320px; } }
+.hud-moments { position: relative; } .hud-moments[open] > div { position: absolute; z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; min-width: 280px; box-shadow: 0 6px 24px rgba(0,0,0,.35); }

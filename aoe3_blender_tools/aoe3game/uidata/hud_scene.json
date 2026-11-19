@@ -1,0 +1,21 @@
+{
+  "about": "What the engine shows and hides that the layout files do not say: gadgets it keeps hidden until a moment of the game (patterns of gadget names, any case, * for any text), and gadgets of which it shows one. Read from the copy's own files and the stock exe's behaviour as seen in game; each is to verify, and the screen lets every moment be switched on.",
+  "moments": [
+    {"id": "selected", "on": true, "names": ["unitselectionpanel"], "en": "A unit selected", "es": "Una unidad seleccionada"},
+    {"id": "stats", "on": false, "names": ["unitstatpanel3"], "en": "The unit information tab", "es": "La pestaña de información de la unidad"},
+    {"id": "paused", "on": false, "names": ["nonMainGameMenuPausePanel"], "en": "Game paused", "es": "Partida en pausa"},
+    {"id": "victory", "on": false, "names": ["victoryDisplay", "victoryTimerDisplay*"], "en": "Victory display and timers", "es": "Aviso y contadores de victoria"},
+    {"id": "subtitles", "on": false, "names": ["SubtitleName", "SubtitleText", "SubtitlePortrait"], "en": "Subtitles", "es": "Subtítulos"},
+    {"id": "widesubtitles", "on": false, "names": ["WideSubtitle*"], "en": "Wide subtitles", "es": "Subtítulos anchos"},
+    {"id": "notify", "on": false, "names": ["NotifyTextDisplay"], "en": "A notification", "es": "Una notificación"},
+    {"id": "version", "on": false, "names": ["buildVersionDisplay", "RegistrationDisplay"], "en": "Version and registration texts", "es": "Textos de versión y registro"},
+    {"id": "wonder", "on": false, "names": ["uiwonderpowerpanel"], "en": "A wonder's power", "es": "El poder de una maravilla"},
+    {"id": "training", "on": false, "names": ["unitTrainingPanel"], "en": "Units in training", "es": "Unidades entrenándose"},
+    {"id": "trains", "on": false, "names": ["trainsandcontains"], "en": "What a building trains and holds", "es": "Lo que entrena y contiene un edificio"},
+    {"id": "traderoute", "on": false, "names": ["traderoutepanel2"], "en": "A trade route selected", "es": "Una ruta comercial seleccionada"},
+    {"id": "natives", "on": false, "names": ["nativecommandpanel2"], "en": "A native settlement selected", "es": "Un asentamiento nativo seleccionado"}
+  ],
+  "oneOf": [
+    {"re": "unitHealthBar(Red|Yellow|Green)$", "show": "Green", "en": "Health bar colour", "es": "Color de la barra de vida", "choices": ["Green", "Yellow", "Red"]}
+  ]
+}

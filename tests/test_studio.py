@@ -304,6 +304,70 @@ class Server(unittest.TestCase):
                                                              "options": {"ai": True, "ai_strength": 2}})
             self.assertEqual(status, 400)
 
+    def test_the_game_interface_of_a_copy(self):
+        """The HUD of a (synthetic) copy: each layout found as the game finds it (loose first, then
+        Data3.bar before Data.bar, the hidden copies listed), its texts, textures and fonts; the
+        copy never written."""
+        import hashlib
+        sys.path.insert(0, os.path.join(ROOT, "tests"))
+        import hud_copy
+        copy = hud_copy.make(os.path.join(self.tmp.name, "hudcopy"))
+
+        def digest():
+            out = {}
+            for base, _d, files in os.walk(copy):
+                for f in files:
+                    with open(os.path.join(base, f), "rb") as fh:
+                        out[os.path.relpath(os.path.join(base, f), copy)] = hashlib.sha256(fh.read()).hexdigest()
+            return out
+        before = digest()
+        status, r = self.call("/api/hud/open", {"game": copy, "variant": "min"})
+        self.assertEqual(status, 200, r)
+        files = {f["stem"]: f for f in r["files"]}
+        self.assertEqual(set(files), {"uimainnew", "uiunitselectionmin"})
+        self.assertTrue(files["uimainnew"]["where"].endswith("uimainnew.xml"))
+        self.assertTrue(files["uiunitselectionmin"]["where"].startswith("Data3.bar:"))
+        self.assertEqual(len(files["uiunitselectionmin"]["hidden"]), 1)          # Data.bar's older one
+        names = [g["name"] for g in r["gadgets"]]
+        self.assertIn("TrainTime", names)                                       # Data3's, not Data's
+        self.assertNotIn("Old", names)
+        age = next(g for g in r["gadgets"] if g["name"] == "titleBar-age")
+        self.assertEqual(age["parent"], names.index("titleBar"))
+        self.assertEqual(r["strings"]["101"], ["Colonial Age", "cStringAge"])
+        self.assertIn("test 12", r["fonts"])
+        self.assertEqual(r["faces"], ["test face"])
+        self.assertTrue(r["rules"]["moments"] and r["rules"]["oneOf"])
+        sid = r["session"]
+        status, png = self.call(f"/api/hud/texture?s={sid}&path=ui%5Cingame%5Cbar")
+        self.assertEqual(status, 200)
+        self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+        status, nothing = self.call(f"/api/hud/texture?s={sid}&path=ui%5Cingame%5Cnothere")
+        self.assertEqual((status, nothing), (200, b""))                          # nothing to draw
+        status, ttf = self.call(f"/api/hud/font?s={sid}&face=Test%20Face")
+        self.assertEqual(status, 200)
+        self.assertEqual(ttf[:4], b"\x00\x01\x00\x00")
+        status, _ = self.call(f"/api/hud/font?s={sid}&face=Arial")                # a system font
+        self.assertEqual(status, 404)
+        status, normal = self.call("/api/hud/open", {"game": copy, "variant": "normal"})
+        self.assertEqual(status, 200, normal)
+        self.assertEqual([f["stem"] for f in normal["files"]], ["uimainnew"])     # no normal panel here
+        status, err = self.call("/api/hud/open", {"game": os.path.join(self.tmp.name, "nothing"), "variant": "min"})
+        self.assertEqual(status, 400)
+        status, err = self.call("/api/hud/open", {"game": copy, "variant": "huge"})
+        self.assertEqual(status, 400)
+        import base64
+        sys.path.insert(0, os.path.join(ROOT, "aoe3_blender_tools"))
+        from core import paint
+        import numpy as np
+        pic = "data:image/png;base64," + base64.b64encode(paint.png_bytes(np.zeros((2, 2, 4), np.uint8))).decode()
+        status, w = self.call("/api/hud/snapshot", {"picture": pic, "name": "../min test"})
+        self.assertEqual(status, 200, w)
+        self.assertTrue(w["path"].startswith(self.studio.settings.get("work")))
+        self.assertTrue(os.path.basename(w["path"]).endswith(".png") and ".." not in os.path.basename(w["path"]))
+        status, _ = self.call("/api/hud/snapshot", {"picture": "data:text/plain;base64,aGk=", "name": "x"})
+        self.assertEqual(status, 400)
+        self.assertEqual(digest(), before)                                        # the copy untouched
+
     def test_without_blender_the_check_and_the_export_still_run(self):
         """With no Blender at all, Check runs core/checks.py and the game export runs the
         experimental scripts/game_export_noblender.py: a whole bundle, icons included."""
@@ -927,7 +991,7 @@ class Forms(unittest.TestCase):
             self.assertEqual(cmd[cmd.index("--style") + 1], "bold")
             self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_stat_icon", "stat_icon.ddt"))
             # the home-city tools: a plan per civ, each after its own flag; install asks first
-            cmd, *_ = catalog.command(st, "hc_survey", {"game": "copy", "target": "WoL\homecity",
+            cmd, *_ = catalog.command(st, "hc_survey", {"game": "copy", "target": r"WoL\homecity",
                                                         "plan": "Spanish British"})
             plans = [cmd[i + 1] for i, x in enumerate(cmd) if x == "--plan"]
             self.assertEqual(plans, ["Spanish", "British"])
@@ -940,7 +1004,7 @@ class Forms(unittest.TestCase):
             for tid in ("hc_move_install", "hc_move_undo"):
                 self.assertEqual(catalog.BY_ID[tid].writes, "copy")
                 self.assertTrue(catalog.BY_ID[tid].confirm["es"])
-            cmd, *_ = catalog.command(st, "hc_move_stage", {"game": "copy", "civ": "Spanish", "target": "W\h",
+            cmd, *_ = catalog.command(st, "hc_move_stage", {"game": "copy", "civ": "Spanish", "target": r"W\h",
                                                            "granny": "b.exe", "form": "A"})
             script = next(i for i, x in enumerate(cmd) if x.endswith("hc_move.py"))
             self.assertEqual(cmd[script + 1], "stage")
