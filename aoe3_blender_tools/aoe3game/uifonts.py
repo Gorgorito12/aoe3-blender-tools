@@ -17,6 +17,9 @@ Measured on a Wars of Liberty copy: 131 fonts, 5 typefaces; overrides at ResX 64
   (regular Arial, a 14-pixel cell: 9-pixel capitals, "Train Points: 30" 87 pixels wide, "LOS: 16"
   as tall); whether it takes that entry or a default of the same values is **to verify**.
   `lookup` returns None for it; `FALLBACK` names that entry.
+- `faces` counts the typefaces fonts3.xml names; `retarget` points every entry of some typefaces at
+  others (an extended copy of a font under its own family name, tools/game_fonts.py) changing only
+  those `TypeFace` values: the encoding, its byte order mark and the line ends stay byte for byte.
 Standard library only.
 """
 import re
@@ -70,6 +73,38 @@ def parse(data):
                     continue
         out[f.get("Name").lower()] = {"name": f.get("Name"), "params": _params(f), "overrides": overrides}
     return out
+
+
+def _typefaces(doc):
+    """Every element of a parsed fonts3.xml that sets a TypeFace, entries and overrides alike."""
+    return [el for el in doc.root.walk() if hasattr(el, "attrs") and el.get("TypeFace") is not None]
+
+
+def faces(data):
+    """{typeface as written: how many entries and overrides name it} of fonts3.xml's bytes."""
+    from . import uilayout
+    out = {}
+    for el in _typefaces(uilayout.parse(data)):
+        name = el.get("TypeFace")
+        out[name] = out.get(name, 0) + 1
+    return out
+
+
+def retarget(data, mapping):
+    """(new bytes, values changed): every TypeFace naming a key of `mapping` (compared without
+    case, as Windows does) set to its value; nothing else in the file changes. Run again, it
+    changes nothing more; with the mapping turned round it gives the original back."""
+    from . import uilayout
+    doc = uilayout.parse(data)
+    lower = {k.strip().lower(): v for k, v in mapping.items()}
+    count = 0
+    for el in _typefaces(doc):
+        value = el.get("TypeFace")
+        new = lower.get(value.strip().lower())
+        if new is not None and new != value:
+            uilayout.set_attr(el, "TypeFace", new)
+            count += 1
+    return (doc.data() if count else bytes(data)), count
 
 
 def lookup(fonts, font, size, width=1024):

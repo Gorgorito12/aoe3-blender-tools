@@ -4,7 +4,7 @@
     python -I tools/game_deploy.py --install <copy> --bundle <folder> [--bundle <folder> ...]
                                    [--keep] [--validate] [--show-as <Unit>] [--builder <Unit>]
     python -I tools/game_deploy.py --install <copy> --grouping <file.xml> [--grouping ...]
-    python -I tools/game_deploy.py --install <copy> --files <folder laid out as the copy: data, art>
+    python -I tools/game_deploy.py --install <copy> --files <folder laid out as the copy: data, art, FONTS>
     python -I tools/game_deploy.py --install <copy> --undo
     python -I tools/game_deploy.py --install <copy> --validate
 
@@ -15,7 +15,7 @@ Refuses any folder inside a Steam library. Backups are kept as <file>.aoe3bt-ori
 changes are listed in <copy>/aoe3bt-manifest.json, which --undo reads. --show-as TownCenter also
 points that unit's model, icon and portrait at the new building, so it stands at the start of
 any skirmish (to look at it without placing it in the editor; the copy only). --builder Settler
-adds the building to that unit's build list. --files copies a folder laid out as the copy (the
+adds the building to that unit's build list. --files copies a folder laid out as the copy (FONTS too, tools/game_fonts.py's fonts; the
 game interface screen's saved layouts and rows file, say): what it replaces is backed up, a
 compiled twin of an edited XML is taken out (and put back by --undo).
 """
