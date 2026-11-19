@@ -6,6 +6,11 @@ three together).
 
 ## Unreleased
 
+- `tools/make_command_icon.py`: command button icons in the style of Wars of Liberty's own on / off buttons
+  (64x64 BGRA, a mottled blue frame, a green tick for "on", a red tint and cross for "off"), drawn from
+  code; the first glyph, `autoscout`, a map half explored with a dotted route and a spyglass, for the
+  auto scout buttons. Test: `tests/test_command_icons.py`.
+
 - **A copy's fonts** (`tools/game_fonts.py`, two forms in Art utilities): which letters each typeface of
   `fonts3.xml` lacks, and every font with a file extended at once (`extend_font.py`) under a new family
   name, with `fonts3.xml` pointed at them, ready to deploy to the test copy and undo. What the Wars of
