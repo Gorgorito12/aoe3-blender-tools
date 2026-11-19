@@ -466,6 +466,17 @@ class Server(unittest.TestCase):
             self.assertEqual(fh.read(), hud_copy.ROWS)                             # the copy's rows file untouched
         status, err = self.call("/api/hud/op", {"session": sid, "ops": [{"op": "row", "gadget": "bad name!", "item": "los"}]})
         self.assertEqual(status, 400)
+        # deployed into a test copy through the form, then undone: the copy as it was, byte for byte
+        status, r1 = self.call("/api/tools/deploy_files", {"values": {"install": copy, "files": sv["folder"]}})
+        self.assertEqual(status, 200, r1)
+        j = self.wait(r1["job"])
+        self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"])
+        with open(os.path.join(copy, "data", "uhc", "minuirows.xml"), encoding="utf-8") as fh:
+            self.assertIn("uhcRow5", fh.read())
+        status, r2 = self.call("/api/tools/deploy_undo", {"values": {"install": copy}})
+        j = self.wait(r2["job"])
+        self.assertEqual((j["status"], j["code"]), ("done", 0), j["lines"])
+        self.assertEqual(digest(), before)
         status, normal = self.call("/api/hud/open", {"game": copy, "variant": "normal"})
         self.assertEqual(status, 200, normal)
         self.assertEqual([f["stem"] for f in normal["files"]], ["uimainnew"])     # no normal panel here

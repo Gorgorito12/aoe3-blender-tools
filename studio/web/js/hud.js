@@ -260,8 +260,21 @@ export async function hudScreen(main, app) {
         if (go) save(true);
         return;
       }
+      const copy = app.state.settings.paths.test_copy;
+      const deployBtn = r.written.length && copy ? h('button', { type: 'button', class: 'primary', text: t('h.deploy', { copy }),
+        onclick: async () => {
+          if (!await confirmDialog(t('h.deploy', { copy }), t('h.deploysure', { copy }), t('h.deploy.go'))) return;
+          try {
+            const j = await api('/api/tools/deploy_files', { values: { install: copy, files: r.folder } });
+            toast(t('h.deploying'), 'ok');
+            app.go('jobs');
+            void j;
+          } catch (e) { toast(e.message, 'bad'); }
+        } }) : null;
       const body = h('div', { class: 'stack small' },
         r.written.length ? h('p', { text: t('h.saved', { path: r.folder }) }) : h('p', { text: t('h.nochanges') }),
+        deployBtn, r.written.length && !copy ? h('p', { class: 'muted', text: t('h.nocopy') }) : null,
+        r.written.length && copy ? h('p', { class: 'muted', text: t('h.undohint') }) : null,
         h('ul', {}, r.written.map(w => h('li', { class: 'mono', text: `${w.path}  ← ${w.from}` }))),
         r.findings.length ? h('h4', { text: t('h.check') }) : null, r.findings.length ? findingsList(r.findings) : null);
       dialog(t('h.save'), body, [{ value: 'open', label: t('open.folder') }, { value: 'ok', label: t('close') }])

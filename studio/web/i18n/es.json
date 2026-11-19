@@ -882,5 +882,11 @@
   "h.pickcolour": "Elegir un color",
   "h.pickfont": "Una fuente de fonts3.xml",
   "h.picktex": "Elegir una textura de esta copia",
-  "h.texsearch": "Una palabra de su ruta"
+  "h.texsearch": "Una palabra de su ruta",
+  "h.deploy": "Desplegar en la copia de prueba ({copy})",
+  "h.deploy.go": "Desplegar",
+  "h.deploysure": "Los archivos guardados van a {copy}: lo que sustituyen se respalda, se quita el gemelo compilado, y Deshacer el despliegue lo restaura todo. La carpeta del juego nunca se toca.",
+  "h.deploying": "Desplegando: el registro de la tarea muestra cada archivo.",
+  "h.nocopy": "Indica una copia de prueba en Ajustes para desplegarlo allí.",
+  "h.undohint": "Para quitarlo otra vez: Edificios › Asentamientos y más formularios › Deshacer el despliegue."
 }

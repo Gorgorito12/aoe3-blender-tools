@@ -276,6 +276,25 @@ TOOLS = [
           Arg("grouping", "--grouping", "files", L("Groupings", "Groupings"), required=True, repeat=True, filters=XML)],
          needs=("test_copy",), writes="copy",
          confirm=L("This changes the test copy of the game.", "Esto modifica la copia de prueba del juego.")),
+    Tool("deploy_files", "tools/game_deploy.py", "buildings",
+         L("Deploy edited files to the test copy", "Desplegar archivos editados en la copia de prueba"),
+         L("Copies a folder laid out as the copy (data, art: the game interface's saved layouts and rows "
+           "file) into the test copy; what it replaces is backed up, a compiled twin of an edited XML taken "
+           "out; Undo puts everything back.",
+           "Copia una carpeta con la estructura de la copia (data, art: las disposiciones y el archivo de filas "
+           "guardados de la interfaz) en la copia de prueba; lo que sustituye se respalda y se quita el gemelo "
+           "compilado de un XML editado; Deshacer lo restaura todo."),
+         [Arg("install", "--install", "folder", L("Test copy", "Copia de prueba"),
+              L("A copy of the game for testing (never the Steam folder: it is refused).",
+                "Una copia del juego para pruebas (nunca la carpeta de Steam: se rechaza)."),
+              required=True, setting="test_copy"),
+          Arg("files", "--files", "folder", L("Folder to deploy", "Carpeta a desplegar"),
+              L("Laid out as the copy: data\\..., art\\... (what the game interface screen saves).",
+                "Con la estructura de la copia: data\\..., art\\... (lo que guarda la pantalla de la interfaz)."),
+              required=True)],
+         needs=("test_copy",), writes="copy",
+         confirm=L("This changes the test copy of the game. Backups are kept and Undo restores it.",
+                   "Esto modifica la copia de prueba del juego. Se guardan copias de seguridad y Deshacer la restaura.")),
     Tool("deploy_undo", "tools/game_deploy.py", "buildings",
          L("Undo the deployment", "Deshacer el despliegue"),
          L("Takes out what was deployed and restores the backed-up files.",

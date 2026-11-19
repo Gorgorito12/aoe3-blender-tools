@@ -28,7 +28,8 @@ English and Spanish, for modders who use neither Blender nor a terminal.
   a unit of the copy to fill the panels with: what it shows, and what exists but it does not show,
   with why (the game's rows and the UHC DLL's 30 items); edited by dragging and in its properties,
   with undo, the changes, a check and saving into the work folder; design tools (arrange, snap,
-  grid, colour, font and texture pickers) and a DLL row added with one click.
+  grid, colour, font and texture pickers) and a DLL row added with one click; deployed to the test
+  copy and undone (`tools/game_deploy.py --files`).
 - Without Blender: the checks (the same findings as Blender's on every preset), and an
   experimental game export (`scripts/game_export_noblender.py`) to be seen in game before it
   replaces Blender's.

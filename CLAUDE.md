@@ -51,6 +51,7 @@ venv/bin/python -I tests/test_specs.py             # every building has its shee
 venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
 venv/bin/python -I scripts/game_export_noblender.py --out out/wh_nb --preset WHITE_HOUSE --compare out/wh   # experimental
 python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
+python -I tools/game_deploy.py --install <test copy> --files <folder laid out as the copy>   # the interface's edits
 python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
 python -I tools/recompress_models.py <folder> -o <out> --granny-install <game> [--like <originals>]   # --build-helper once
 python -I tests/test_recompress_models.py         # recompression with a fake runtime, plain Python

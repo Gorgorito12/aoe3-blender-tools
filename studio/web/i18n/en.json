@@ -726,5 +726,11 @@
   "h.pickcolour": "Choose a colour",
   "h.pickfont": "A font of fonts3.xml",
   "h.picktex": "Choose a texture of this copy",
-  "h.texsearch": "A word of its path"
+  "h.texsearch": "A word of its path",
+  "h.deploy": "Deploy to the test copy ({copy})",
+  "h.deploy.go": "Deploy",
+  "h.deploysure": "The saved files go into {copy}: what they replace is backed up, a compiled twin is taken out, and Undo the deployment puts everything back. The game's own folder is never touched.",
+  "h.deploying": "Deploying: the task's log shows each file.",
+  "h.nocopy": "Set a test copy in Settings to deploy it there.",
+  "h.undohint": "To take it out again: Buildings › Settlements and more forms › Undo the deployment."
 }

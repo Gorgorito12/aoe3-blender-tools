@@ -122,7 +122,12 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   form that draws new ones. **Add its row**, on an item of the DLL the unit does not show because no
   row places it or its gadget is missing, adds the gadget at the top level of the selection panel
   and its line in the rows file, as one step: the simulation shows it at once. The rows file is
-  edited, undone and saved like a layout (into `data\uhc\minuirows.xml` of the work folder). **Save the
+  edited, undone and saved like a layout (into `data\uhc\minuirows.xml` of the work folder).
+  **Deploy to the test copy**, once saved: the files go into the test copy of Settings after a
+  confirmation (`tools/game_deploy.py --files`, `aoe3game/deploy.Deployment.add_files`): what they
+  replace is backed up, a compiled twin of an edited XML is taken out (or the game would read
+  it), and **Undo the deployment** puts the copy back as it was. The UHC keys are not written: the
+  screen says which line a `.cfg` needs. **Save the
   picture** writes it to the work folder. The files are read as a tree that keeps every byte
   (`aoe3game/uilayout.py`: the 55 interface files of a Wars of Liberty copy and the 551 compiled
   ones in its archives come back identical). Measured against a capture of the game at 1920 x 1080:
