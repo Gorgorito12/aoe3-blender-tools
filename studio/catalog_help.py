@@ -147,6 +147,20 @@ HELP = {
             "Also lists the bones kept and the files left unchanged.",
             "También lista los huesos conservados y los archivos que no cambian."),
     },
+    'fit_borrowed': {
+        'dmg': (
+            "The damage template (.dmg or .dmg.xmb) the models' anim file names. Debris meshes whose name is a part's name plus .001 (and bound to its bone) get the part's name. Empty: no mesh is renamed.",
+            "La plantilla de daños (.dmg o .dmg.xmb) que nombra el archivo de animación de los modelos. Las mallas de escombros cuyo nombre es el de una pieza más .001 (y unidas a su hueso) reciben el nombre de la pieza. Vacío: no se renombra ninguna malla."),
+        'inputs': (
+            "Granny models (.gr2), or folders searched for every .gr2 below them.",
+            "Modelos Granny (.gr2), o carpetas en las que se busca cada .gr2 que contengan."),
+        'rest_from': (
+            "The model the borrowed animation was made on (its death model for a death animation). Bones with the same name, parent and place take its rest frames; the meshes do not move. Empty: no bone changes.",
+            "El modelo sobre el que se hizo la animación prestada (su modelo de muerte para una animación de muerte). Los huesos con el mismo nombre, padre y lugar toman sus marcos de reposo; las mallas no se mueven. Vacío: ningún hueso cambia."),
+        'verbose': (
+            "Also lists every bone changed.",
+            "También lista cada hueso que cambia."),
+    },
     'fix_hitpointbar': {
         'art': (
             "The game's or mod's art folder, where the tag files are found (loose first, then its .bar archives). Empty: the folder named art above the first input.",
