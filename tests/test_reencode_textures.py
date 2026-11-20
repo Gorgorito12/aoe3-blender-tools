@@ -199,6 +199,84 @@ class Reencode(unittest.TestCase):
             self.assertEqual(len([f for f in os.listdir(os.path.join(out, "sheets")) if f.endswith(".png")]), 1)
 
 
+class Targets(unittest.TestCase):
+    """--rules: exact (usage, alpha, format, mips) tuples per path, with a size cap."""
+
+    def test_unit_colour_from_uncompressed(self):
+        src = ddt.write_bgra(picture(256, 256), alpha=1, mips=False)            # (0,1,1,1)
+        new, rec = rt.reencode(src, (1024, 1024), target=(0, 1, ddt.DXT3, 6))
+        self.assertEqual(rec["action"], "re-encoded", rec.get("reason"))
+        self.assertEqual(rt.digits(new), "0,1,8,6")
+        self.assertEqual((ddt.read_header(new).width, len(ddt.read_header(new).levels)), (256, 6))
+
+    def test_cap_and_mips_cut(self):
+        src = ddt.write_bgra(picture(128, 128), alpha=1, mips=False)
+        new, rec = rt.reencode(src, (64, 64), target=(0, 1, ddt.DXT3, 9))       # 64 px holds 7 levels
+        self.assertEqual(rt.digits(new), "0,1,8,7")
+        self.assertEqual(ddt.read_header(new).width, 64)
+        self.assertIn("9 asked, 7", rec["mips_cut"])
+
+    def test_icon_dxt1_and_its_exception(self):
+        new, rec = rt.reencode(ddt.write_bgra(picture(64, 64), alpha=1, mips=False), (64, 64),
+                               target=(0, 0, ddt.DXT1, 1))
+        self.assertEqual(rt.digits(new), "0,0,4,1")
+        clear = picture(64, 64)
+        clear[:8, :8, 3] = 0                                                   # a transparent corner
+        new, rec = rt.reencode(ddt.write_bgra(clear, alpha=4, mips=False), (64, 64), target=(0, 0, ddt.DXT1, 1))
+        self.assertEqual(rt.digits(new), "0,4,8,1")
+        self.assertTrue(rec["exception"])
+        # an alpha 1 channel is the player-colour mask, not a cut-out: the icon drops it
+        new, rec = rt.reencode(ddt.write_bgra(clear, alpha=1, mips=False), (64, 64), target=(0, 0, ddt.DXT1, 1))
+        self.assertEqual(rt.digits(new), "0,0,4,1")
+        self.assertNotIn("exception", rec)
+
+    def test_bump_target_and_unchanged(self):
+        nm = ddt.write_normal_map(normal_map(64, 64))                          # (6,0,9,1)
+        new, rec = rt.reencode(nm, (1024, 1024), target=(6, 0, ddt.DXT5, 1))
+        self.assertIsNone(new)
+        self.assertEqual(rec["action"], "unchanged")
+        new, rec = rt.reencode(nm, (1024, 1024), target=(6, 0, ddt.DXT5, 7))
+        self.assertEqual(rt.digits(new), "6,0,9,7")
+        self.assertTrue(rec["normals_renormalised"])
+
+    def test_rules_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rules = os.path.join(tmp, "r.json")
+            with open(rules, "w", encoding="utf-8") as fh:
+                json.dump({"rules": [{"name": "icon", "match": r"_icon\.ddt$", "tuple": [0, 0, 4, 1], "max": 64},
+                                     {"name": "colour", "match": r"^units\\", "tuple": [0, 1, 8, 6], "max": 512}]}, fh)
+            src = os.path.join(tmp, "in", "units", "a")
+            os.makedirs(src)
+            for name in ("a_icon.ddt", "a.ddt"):
+                with open(os.path.join(src, name), "wb") as fh:
+                    fh.write(ddt.write_bgra(picture(128, 128), alpha=1, mips=False))
+            os.makedirs(os.path.join(tmp, "in", "other"))
+            with open(os.path.join(tmp, "in", "other", "b.ddt"), "wb") as fh:
+                fh.write(ddt.write_bgra(picture(16, 16), alpha=1, mips=False))
+            out = os.path.join(tmp, "out")
+            recs = {r["path"].replace("/", "\\"): r for r in
+                    rt.run(rt.inputs(os.path.join(tmp, "in"), os.path.join(tmp, "in")), out, (0, 0),
+                           log=lambda *_: None, rules=rt.load_rules(rules))}
+            self.assertEqual(recs[r"units\a\a_icon.ddt"]["after"], "0,0,4,1")
+            self.assertEqual(recs[r"units\a\a_icon.ddt"]["new_width"], 64)
+            self.assertEqual(recs[r"units\a\a.ddt"]["after"], "0,1,8,6")
+            self.assertEqual(recs[r"other\b.ddt"]["reason"], "no rule matches its path")
+
+    def test_odd_size_with_a_target_becomes_a_power_of_two(self):
+        new, rec = rt.reencode(ddt.write_bgra(picture(158, 158), alpha=1, mips=False), (128, 128),
+                               target=(0, 1, ddt.DXT3, 6))
+        self.assertEqual(rt.digits(new), "0,1,8,6")
+        self.assertEqual(ddt.read_header(new).width, 128)
+        self.assertEqual(rec["pow2"], "158x158 -> 128x128")
+
+    def test_keep_alpha_test_and_transparency(self):
+        hd = ddt.read_header(ddt.write_bgra(picture(16, 16), alpha=8, usage=1, mips=False))
+        t, kept = rt.kept_bits((0, 1, ddt.DXT3, 7), {"alpha_test", "transparency"}, hd)
+        self.assertEqual(t, (1, 8, ddt.DXT3, 7))
+        self.assertEqual(kept, ["alpha test", "alpha 8"])
+        self.assertEqual(rt.kept_bits((0, 1, ddt.DXT3, 7), set(), hd)[0], (0, 1, ddt.DXT3, 7))
+
+
 class Select(unittest.TestCase):
     def test_only_building_only_textures(self):
         class Art:

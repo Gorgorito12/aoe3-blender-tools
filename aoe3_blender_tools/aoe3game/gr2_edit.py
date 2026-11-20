@@ -88,6 +88,59 @@ def rewrite(data):
     return gr2_write.serialize(copy_tree(doc), type_tag=doc.c.type_tag)
 
 
+def texture_key(name):
+    r"""A stored texture name as the game resolves it: the part below `art\`, lower case, without
+    its last extension (C:\src\Art\units\x\x.tga -> units\x\x). docs/game-formats.md, "A model's
+    own texture path" and "Moving a home city's models"."""
+    p = str(name).replace("/", "\\").lower()
+    i = p.rfind("\\art\\")
+    p = p[i + 5:] if i >= 0 else (p[4:] if p.startswith("art\\") else p)
+    p = p.split(":")[-1].lstrip("\\")
+    base = p.rsplit("\\", 1)
+    stem = base[-1].rsplit(".", 1)[0] if "." in base[-1] else base[-1]
+    return (base[0] + "\\" + stem) if len(base) == 2 else stem
+
+
+def stored_name(art_path, prefix="C:\\art\\"):
+    r"""The name a model stores for a texture at `art_path` (below art, no extension):
+    C:\art\<path>.ddt by default."""
+    return prefix + art_path.replace("/", "\\").strip("\\") + ".ddt"
+
+
+def rename_textures(root, renames):
+    """Points the textures of a copied tree (copy_tree) at other files: `renames` maps a
+    texture_key to the new stored name. Every texture whose key is listed is renamed, and so is
+    any string of a material's ExtendedData that held its old name. Returns [(old, new)]."""
+    done, olds = [], {}
+    for t in root.values.get("Textures") or []:
+        if t is None:
+            continue
+        old = t.values.get("FromFileName")
+        new = renames.get(texture_key(old)) if old else None
+        if new is not None and new != old:
+            t.values["FromFileName"] = new
+            olds[old] = new
+            done.append((old, new))
+    seen = set()
+
+    def walk(w, depth=0):
+        if w is None or id(w) in seen or depth > 8 or not isinstance(w, gr2_write.W):
+            return
+        seen.add(id(w))
+        for k, v in list(w.values.items()):
+            if isinstance(v, str) and v in olds:
+                w.values[k] = olds[v]
+            elif isinstance(v, gr2_write.W):
+                walk(v, depth + 1)
+            elif isinstance(v, list):
+                for x in v:
+                    walk(x, depth + 1)
+
+    for m in root.values.get("Materials") or []:
+        walk(m)
+    return done
+
+
 def find(root, path):
     """A W under `root` by a path of member names and list indices, e.g. ("Meshes", 0)."""
     cur = root

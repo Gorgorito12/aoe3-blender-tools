@@ -31,10 +31,12 @@ the Visual Studio C compiler for x86 (found by vswhere) or zig, by default to
 tools/granny_recompress.exe (ignored by git), which is also where --helper looks by default.
 
 Per file:
-- a file whose type tag (header + 0x24) is 0x80000010 or older is refused: such a file
-  passes every check below once recompressed, yet the game's runtime cannot open it and the game
-  exits at its main menu, so it stays uncompressed (0x80000013 and 0x80000015 load recompressed;
-  0x80000011 and 0x80000012 are untested in game);
+- any type tag is taken. Until 2026-11-20 a tag of 0x80000010 or older was refused, because such
+  a file recompressed could not be opened by the runtime (an access violation in GrannyGetFileInfo)
+  and the game exited at its main menu; the cause was the root object's reference the runtime
+  writes as 0:0 (below), which an older tag makes the runtime read: with it put back, 400 such
+  models were opened by the runtime and read exactly as uncompressed. The last check asks the
+  runtime to read the result (`info`) and refuses one it reads otherwise than the input;
 - the runtime writes the file once in each target format (with the mapping "every format to F");
   for one target format that file is the result, for several the sections are put together from
   them in the runtime's own layout (per section: pointer fixups, marshalling fixups, data, packed);
@@ -42,6 +44,12 @@ Per file:
   the game then reads a model whose type tag is older than the runtime's with the wrong type (it
   exits at its main menu): the input's two words are put back (or the original's, with --like,
   when the input lost them) and the CRC is recomputed, as uncompress_models.py does;
+- it also writes the root object's reference (words 7 and 8, at 0x3C) as 0:0. A stock model keeps
+  its root object at the start of its section, so that is harmless there; a model written by
+  `aoe3game/gr2_write.py` keeps its type definitions first and the root object after them, and the
+  game exits as soon as it meets one recompressed that way (in game, 2026-11-20). The input's
+  reference is put back, once the runtime's rewrite is checked to hold the input's sections byte
+  for byte;
 - checked before it is written: the header is the input's but for the total size and the CRC;
   every section has its target format and the input's record (expanded size, alignment, Oodle
   stops, fixup counts) and fixup tables byte for byte, an uncompressed section its bytes; the CRC
@@ -73,9 +81,7 @@ HELPER_SOURCE = os.path.join(HERE, "granny_recompress.c")
 DEFAULT_HELPER = os.path.join(HERE, "granny_recompress.exe")
 TEMP_SUFFIX = ".recompressing"
 TYPE_TAG = 0x44            # the file's type tag (header + 0x24)
-MIN_TYPE_TAG = 0x80000011  # 0x80000010 passes every check below, yet the game cannot load
-#                            it recompressed: it exits at its main menu (WoL home cities, 2026-11-17);
-#                            0x80000011 and 0x80000012 are untested in game, 0x80000013 and 0x80000015 load
+ROOT_OBJECT = 0x3C         # header words 7 and 8: the root object reference (section, offset)
 MB = 1024 * 1024
 
 
@@ -194,6 +200,40 @@ def put_root_type(data, root):
     return bytes(out)
 
 
+def put_ref(data, at, ref):
+    """`data` with the 8-byte reference at `at` set to `ref` and its CRC recomputed."""
+    out = bytearray(data)
+    out[at:at + 8] = ref
+    struct.pack_into("<I", out, 0x28, gr2.file_crc(out))
+    return bytes(out)
+
+
+def same_data(data, raw, obj):
+    """Raises Refused unless the runtime's uncompressed rewrite `raw` holds the input's sections as
+    they were, so that the input's root object reference `obj` still names the same place. Two
+    forms are accepted: byte for byte, or with one section's 8-bit run (its strings) moved to start
+    on 4 bytes, as the runtime lays it (a file of gr2_write keeps it on 2): everything before that
+    run is then where it was, and so must the root object be (measured 2026-11-20: the runtime
+    inserted 2 bytes before the strings of 241 models and changed nothing else). Only an input
+    stored uncompressed can be compared."""
+    _, s0, _r0, m0 = layout(data)
+    _, s1, _r1, m1 = layout(raw)
+    sec, off = struct.unpack("<2I", obj)
+    if len(s0) != len(s1) or m0 != m1:
+        raise Refused("the runtime laid the file out otherwise: its root object cannot be named")
+    for i, (a, b) in enumerate(zip(s0, s1)):
+        da = data[a.data_offset:a.data_offset + a.data_size]
+        db = raw[b.data_offset:b.data_offset + b.data_size]
+        if a.compression:
+            raise Refused("a section is compressed: its root object cannot be checked")
+        if da == db:
+            continue
+        moved = (a.first8 % 4 != 0 and b.first8 == a.first8 + (-a.first8 % 4) and a.first16 == b.first16
+                 and da[:a.first8] == db[:a.first8] and da[a.first8:] == db[b.first8:b.first8 + len(da) - a.first8])
+        if not moved or (i == sec and off >= a.first8):
+            raise Refused("the runtime laid the file out otherwise: its root object cannot be named")
+
+
 def targets_for(expanded, compressed, fmt, like):
     """The format of each section: the original's with --like (`like`, its section records), else
     `fmt` where the compressed bytes are fewer than the expanded ones (none elsewhere).
@@ -244,14 +284,16 @@ def verify(raw, out, targets, root):
 def recompress(data, runtime, fmt, like, tag):
     """(the recompressed file, its section formats). Raises Refused."""
     words, sections, _, _ = layout(data)
-    type_tag = struct.unpack_from("<I", data, TYPE_TAG)[0]
-    if type_tag < MIN_TYPE_TAG:
-        raise Refused(f"type tag 0x{type_tag:08X} is older than 0x{MIN_TYPE_TAG:08X}: once "
-                      "recompressed the game's runtime cannot open it (keep it uncompressed)")
     root = data[ROOT_TYPE:ROOT_TYPE + 8]
     if root == bytes(8) and like is not None:
         root = like[0][ROOT_TYPE:ROOT_TYPE + 8]        # the input lost it: the original's
-    raw = runtime.recompress(data, 0, tag)
+    obj = data[ROOT_OBJECT:ROOT_OBJECT + 8]
+    expanded = runtime.recompress(data, 0, tag)       # the runtime's own rewrite, as it writes it
+    raw = expanded
+    lost_object = raw[ROOT_OBJECT:ROOT_OBJECT + 8] != obj
+    if lost_object:                                    # it wrote the root object's reference as 0:0
+        same_data(data, raw, obj)
+        raw = put_ref(raw, ROOT_OBJECT, obj)
     sources = {0: raw}
     for f in sorted({fmt} | ({s.compression for s in like[1]} if like is not None else set())):
         if f not in sources:
@@ -260,11 +302,23 @@ def recompress(data, runtime, fmt, like, tag):
                           like[1] if like is not None else None)
     out = sources[targets[0]] if len(set(targets)) == 1 else assemble(sources, targets)
     out = put_root_type(out, root)
+    if lost_object:
+        out = put_ref(out, ROOT_OBJECT, obj)
     verify(raw, out, targets, root)
+    if out[ROOT_OBJECT:ROOT_OBJECT + 8] != obj:
+        raise Refused("the root object reference was not put back")
     if not runtime.crc_ok(out, tag):
         raise Refused("the runtime says the CRC is not valid")
-    if runtime.recompress(out, 0, tag) != raw:
+    if runtime.recompress(out, 0, tag) != expanded:
         raise Refused("the runtime does not expand the result back to the input")
+    if hasattr(runtime, "info"):
+        # what the game's runtime reads (GrannyGetFileInfo: meshes, bindings, skeletons) must be
+        # what it reads in the input: the check an old type tag failed before the root object's
+        # reference was put back
+        code_in, seen_in = runtime.info(data, tag)
+        code_out, seen_out = runtime.info(out, tag)
+        if code_out != 0 or (code_in, seen_in) != (code_out, seen_out):
+            raise Refused("the runtime does not read the result as it reads the input")
     return out, targets
 
 

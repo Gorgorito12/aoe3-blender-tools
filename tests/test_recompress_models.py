@@ -67,8 +67,9 @@ def build(data, parts, fmt_of, root):
 class FakeRuntime:
     """Stands in for rm.Runtime (granny2.dll through the helper)."""
 
-    def __init__(self, *args, break_expand=False, bad_crc=False):
+    def __init__(self, *args, break_expand=False, bad_crc=False, zero_object=False):
         self.calls, self.break_expand, self.bad_crc = [], break_expand, bad_crc
+        self.zero_object = zero_object      # the real runtime writes the root object as 0:0 too
 
     def recompress(self, data, fmt, tag):
         self.calls.append(fmt)
@@ -76,7 +77,10 @@ class FakeRuntime:
         if self.break_expand and fmt == 0 and self.calls.count(0) > 1:
             values, relocs, marshal, body = parts[0]
             parts[0] = (values, relocs, marshal, body[:-1] + bytes([body[-1] ^ 1]))
-        return build(data, parts, lambda i, b: fmt, bytes(8))
+        out = build(data, parts, lambda i, b: fmt, bytes(8))
+        if self.zero_object:
+            out = rm.put_ref(out, rm.ROOT_OBJECT, bytes(8))
+        return out
 
     def crc_ok(self, data, tag):
         return gr2.crc_ok(data) and not self.bad_crc
@@ -129,6 +133,79 @@ class RecompressTests(unittest.TestCase):
         self.assertTrue(gr2.crc_ok(out))
         self.assertEqual([p[3] for p in expanded(out)], [p[3] for p in expanded(raw)])
 
+    def test_the_root_object_is_put_back(self):
+        # a model gr2_write laid out keeps its root object after its types; the runtime writes
+        # that reference as 0:0, and the game exits on such a file (in game, 2026-11-20)
+        raw = model()
+        obj = raw[rm.ROOT_OBJECT:rm.ROOT_OBJECT + 8]
+        self.assertNotEqual(obj, bytes(8))
+        out, _ = rm.recompress(raw, FakeRuntime(zero_object=True), 2, None, 0)
+        self.assertEqual(out[rm.ROOT_OBJECT:rm.ROOT_OBJECT + 8], obj)
+        self.assertEqual(out[rm.ROOT_TYPE:rm.ROOT_TYPE + 8], ROOT_TYPE_WORDS)
+        self.assertTrue(gr2.crc_ok(out))
+        # a written gr2_write file goes through the same way
+        real = gr2_write.static_model("box", [(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 0, 1)] * 3,
+                                      [(0, 0), (1, 0), (0, 1)], [(0, 1, 2)], texture="a.ddt", bump="b.ddt")
+        real = bytearray(real)
+        struct.pack_into("<I", real, rm.TYPE_TAG, 0x80000013)
+        struct.pack_into("<I", real, 0x28, gr2.file_crc(real))
+        out, _ = rm.recompress(bytes(real), FakeRuntime(zero_object=True), 2, None, 0)
+        self.assertEqual(out[rm.ROOT_OBJECT:rm.ROOT_OBJECT + 8], real[rm.ROOT_OBJECT:rm.ROOT_OBJECT + 8])
+
+    def test_strings_moved_to_four_bytes_keep_the_root_object(self):
+        # what the runtime does to a gr2_write file whose strings start on 2: two bytes before them
+        def shifted(data):
+            sec_off = struct.unpack_from("<I", data, 0x2C)[0]
+            rec = list(struct.unpack_from("<11I", data, 0x20 + sec_off))
+            body = bytearray(data[rec[1]:rec[1] + rec[2]])
+            f8 = rec[6]
+            body[f8:f8] = b"\0\0"
+            body += b"\0\0"
+            out = bytearray(data[:rec[1]]) + body
+            n = rec[8]
+            for k in range(n):                                  # fixups into the strings move with them
+                at = rec[7] + 12 * k
+                src, s, tgt = struct.unpack_from("<3I", out, at)
+                struct.pack_into("<3I", out, at, src + (2 if src >= f8 else 0), s, tgt + (2 if tgt >= f8 else 0))
+            rec[2] = rec[3] = len(body)
+            rec[6] = f8 + 2
+            struct.pack_into("<11I", out, 0x20 + sec_off, *rec)
+            struct.pack_into("<I", out, 0x24, len(out))
+            out[rm.ROOT_OBJECT:rm.ROOT_OBJECT + 8] = bytes(8)
+            struct.pack_into("<I", out, 0x28, gr2.file_crc(out))
+            return bytes(out)
+
+        real = bytearray(gr2_write.static_model("box", [(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 0, 1)] * 3,
+                                                [(0, 0), (1, 0), (0, 1)], [(0, 1, 2)], texture="a.ddt", bump="b.ddt"))
+        sec_off = struct.unpack_from("<I", real, 0x2C)[0]
+        f8 = struct.unpack_from("<11I", real, 0x20 + sec_off)[6]
+        if f8 % 4 == 0:
+            self.skipTest("this writer's strings start on 4 already")
+        obj = bytes(real[rm.ROOT_OBJECT:rm.ROOT_OBJECT + 8])
+        rm.same_data(bytes(real), shifted(bytes(real)), obj)                       # accepted
+        with self.assertRaises(rm.Refused):                                          # an object past the strings
+            rm.same_data(bytes(real), shifted(bytes(real)), struct.pack("<2I", 0, f8 + 4))
+        bad = bytearray(shifted(bytes(real)))
+        bad[struct.unpack_from("<11I", bad, 0x20 + sec_off)[1] + 8] ^= 1          # anything else changed
+        with self.assertRaises(rm.Refused):
+            rm.same_data(bytes(real), bytes(bad), obj)
+
+    def test_the_root_object_is_not_guessed_when_the_runtime_moved_the_data(self):
+        raw = model()
+
+        class Moving(FakeRuntime):
+            def recompress(self, data, fmt, tag):
+                out = super().recompress(data, fmt, tag)
+                if fmt == 0:                                   # its own layout: the bytes differ
+                    parts = expanded(out)
+                    values, relocs, marshal, body = parts[0]
+                    parts[0] = (values, relocs, marshal, body[4:] + body[:4])
+                    out = rm.put_ref(build(out, parts, lambda i, b: 0, bytes(8)), rm.ROOT_OBJECT, bytes(8))
+                return out
+
+        with self.assertRaises(rm.Refused):
+            rm.recompress(raw, Moving(zero_object=True), 2, None, 0)
+
     def test_incompressible_section_stays_raw_and_empty_takes_the_format(self):
         raw = model(sections=4, noise=1)
         out, targets = rm.recompress(raw, FakeRuntime(), 2, None, 0)
@@ -172,14 +249,25 @@ class RecompressTests(unittest.TestCase):
         with self.assertRaisesRegex(rm.Refused, "CRC"):
             rm.recompress(model(), FakeRuntime(bad_crc=True), 2, None, 0)
 
-    def test_refuses_an_old_type_tag(self):
+    def test_an_old_type_tag_is_taken_and_read_back(self):
         old = bytearray(model())
         struct.pack_into("<I", old, rm.TYPE_TAG, 0x80000010)
         struct.pack_into("<I", old, 0x28, gr2.file_crc(old))
-        rt = FakeRuntime()
-        with self.assertRaisesRegex(rm.Refused, "type tag 0x80000010"):
-            rm.recompress(bytes(old), rt, 2, None, 0)
-        self.assertEqual(rt.calls, [])      # refused before the runtime is asked
+
+        class Reading(FakeRuntime):
+            def __init__(self, differ=False, **kw):
+                super().__init__(**kw)
+                self.differ = differ
+
+            def info(self, data, tag):
+                reads = data[rm.ROOT_OBJECT:rm.ROOT_OBJECT + 8] != bytes(8)
+                compressed = any(s.compression for s in rm.layout(data)[1])
+                return (0, ["mesh box"] if reads and not (self.differ and compressed) else ["?"])
+
+        out, _ = rm.recompress(bytes(old), Reading(zero_object=True), 2, None, 0)
+        self.assertEqual(out[rm.ROOT_OBJECT:rm.ROOT_OBJECT + 8], old[rm.ROOT_OBJECT:rm.ROOT_OBJECT + 8])
+        with self.assertRaisesRegex(rm.Refused, "does not read the result"):
+            rm.recompress(bytes(old), Reading(differ=True, zero_object=True), 2, None, 0)
 
     def test_verify_refuses_changed_fixups(self):
         raw = FakeRuntime().recompress(model(), 0, 0)

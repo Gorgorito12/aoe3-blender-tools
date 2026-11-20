@@ -133,6 +133,79 @@ HELP = {
             "The swatches to download, separated by spaces: plaster, ashlar, stone_rough, clay, timber, thatch, mud. Empty, or no name of that list: every swatch.",
             "Las muestras que se descargan, separadas por espacios: plaster, ashlar, stone_rough, clay, timber, thatch, mud. Vacío, o ningún nombre de esa lista: todas las muestras."),
     },
+    'bake_textures': {
+        'manifest': (
+            "A text file, one line per anim file: its path below art, a tab, and the folder below art where its model copies go. Lines starting with # are comments.",
+            "Un archivo de texto, una línea por archivo de animación: su ruta bajo art, un tabulador y la carpeta bajo art donde van sus copias de modelos. Las líneas que empiezan por # son comentarios."),
+        'art': (
+            "Where the anim files, models and textures are looked up, in this order (loose files, then that folder's .bar archives): the work tree, the mod's art, the game's art.",
+            "Dónde se buscan los archivos de animación, modelos y texturas, en este orden (archivos sueltos y luego los .bar de esa carpeta): el árbol de trabajo, el art del mod, el art del juego."),
+        'building_names': (
+            "A regular expression on the copies' folder (below art, lower case): there a copy is named as a mod's own buildings are, <building>_<level> with _dmg, _con, _death or _lp (_v2, _v3 for another copy of that name). Empty: <new texture>_<stock model> everywhere.",
+            "Una expresión regular sobre la carpeta de las copias (bajo art, en minúsculas): ahí una copia se nombra como los edificios propios de un mod, <edificio>_<nivel> con _dmg, _con, _death o _lp (_v2, _v3 para otra copia con ese nombre). Vacío: <textura nueva>_<modelo original> en todas partes."),
+        'prefix': (
+            "Put before each new texture path in the copies. The game reads the part after art\\, so any drive and folder will do.",
+            "Se pone delante de cada ruta de textura nueva en las copias. El juego lee lo que va después de art\\, así que sirve cualquier unidad y carpeta."),
+        'cache': (
+            "Uncompressed copies of models already made (raw\\<md5>.gr2), and where the bridge leaves new ones.",
+            "Copias sin comprimir de modelos ya hechas (raw\\<md5>.gr2), y donde el puente deja las nuevas."),
+    },
+    'add_normal_maps': {
+        'manifest': (
+            "A text file, one model per line, its path below art. Lines starting with # are comments.",
+            "Un archivo de texto, un modelo por línea, con su ruta bajo art. Las líneas que empiezan por # son comentarios."),
+        'art': (
+            "Where the models and their textures are looked up, in this order: the work tree first (a normal map made for one of its textures goes beside it), then the mod's art, then the game's.",
+            "Dónde se buscan los modelos y sus texturas, en este orden: primero el árbol de trabajo (el mapa de normales de una de sus texturas va a su lado), luego el art del mod, luego el del juego."),
+        'strength': (
+            "How deep the relief a made normal map gives: the colour texture's brightness times this. Default 6.",
+            "Cuánta profundidad da un mapa de normales hecho: el brillo de la textura de color por este valor. Por defecto 6."),
+        'cache': (
+            "Uncompressed copies of models already made (raw\\<md5>.gr2), and where the bridge leaves new ones.",
+            "Copias sin comprimir de modelos ya hechas (raw\\<md5>.gr2), y donde el puente deja las nuevas."),
+    },
+    'art_lint': {
+        'package': (
+            "A folder holding art\\ with only the new files, as it will be added to the game.",
+            "Una carpeta con art\\ que solo tiene los archivos nuevos, como se añadirá al juego."),
+        'lint': (
+            "JSON: the allowed and forbidden path patterns, the folders whose models must be converted and those holding buildings.",
+            "JSON: los patrones de ruta permitidos y prohibidos, las carpetas cuyos modelos deben estar convertidos y las de edificios."),
+        'textures': (
+            "The texture rules of Re-encode textures (rules.json): each texture's header tuple and size are checked against its rule.",
+            "Las reglas de texturas de Recodificar texturas (rules.json): se comprueba la tupla de cabecera y el tamaño de cada textura con su regla."),
+        'art': (
+            "The art folder of the game the package goes into: what the package names may be found there.",
+            "La carpeta art del juego al que va el paquete: lo que el paquete nombra puede estar ahí."),
+        'source': (
+            "The art the package was made from: a path that is missing there too is counted apart, as inherited.",
+            "El art del que se hizo el paquete: una ruta que falta también ahí se cuenta aparte, como heredada."),
+        'out': (
+            "The report: each count and up to 20 examples of each.",
+            "El informe: cada conteo y hasta 20 ejemplos de cada uno."),
+        'cache': (
+            "Uncompressed copies of models already made (raw\\<md5>.gr2), and where the bridge leaves new ones.",
+            "Copias sin comprimir de modelos ya hechas (raw\\<md5>.gr2), y donde el puente deja las nuevas."),
+    },
+    'merge_attachments': {
+        'manifest': (
+            "A text file, one anim file per line, its path below art. Lines starting with # are comments.",
+            "Un archivo de texto, un archivo de animación por línea, con su ruta bajo art. Las líneas que empiezan por # son comentarios."),
+        'art': (
+            "Where the anim files and models are looked up, in this order (loose files, then that folder's .bar archives): the work tree, the mod's art, the game's art.",
+            "Dónde se buscan los archivos de animación y los modelos, en este orden (archivos sueltos y luego los .bar de esa carpeta): el árbol de trabajo, el art del mod, el art del juego."),
+        'cache': (
+            "Uncompressed copies of models already made (raw\\<md5>.gr2), and where the bridge leaves new ones.",
+            "Copias sin comprimir de modelos ya hechas (raw\\<md5>.gr2), y donde el puente deja las nuevas."),
+    },
+    'convert_basis': {
+        'all': (
+            "Also rewrites models already named ESPostExport in the stock units. Off: only raw exports are changed.",
+            "También reescribe los modelos que ya se llaman ESPostExport en las unidades del juego. Desactivado: solo cambian las exportaciones en bruto."),
+        'inputs': (
+            "Granny models (.gr2) of hats, weapons and other one-bone accessories, or folders searched for every .gr2 below them.",
+            "Modelos Granny (.gr2) de sombreros, armas y otros accesorios de un hueso, o carpetas en las que se busca cada .gr2 que contengan."),
+    },
     'fix_bone_scale': {
         'bones': (
             "A regular expression that narrows the bones fixed by name (not case-sensitive). Empty: every bone no mesh is bound to that is off scale.",

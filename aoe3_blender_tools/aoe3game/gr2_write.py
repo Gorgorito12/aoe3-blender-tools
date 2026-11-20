@@ -4,7 +4,8 @@
 The output is a version 6 file with one uncompressed section, laid out as the game's own
 1-section models: the file header and section record, the relocation table, then the section
 data in three runs (32-bit data, then 16-bit arrays, then 8-bit data such as strings) whose
-starts are the section's first16 and first8 fields. Pointers are written as 0; each one is a
+starts are the section's first16 and first8 fields. The section is aligned to 16, and so are each
+run, each array of plain elements and the data's start in the file (see `FLAT_ALIGN`). Pointers are written as 0; each one is a
 relocation (slot offset, section 0, target offset). The CRC covers every byte after 0x58.
 
 Coordinates: the model comes in metres in Blender's basis (X right, Z up, front toward -Y) and is
@@ -25,6 +26,12 @@ TYPE_TAG = 0x80000011          # the tag of the game's single-section building f
 IDENTITY_TRANSFORM = (0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                       1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
 EXPORTER = "AoE3 Blender Tools"
+# Every array of plain elements starts on 16 bytes of a section aligned to 16. The game reads a
+# skinned body's packed vertex stream (`gr2_mesh.packed`, a byte array) in 16-byte blocks: the
+# exporter gives it its own section aligned to 16, and the game drew nothing of a body whose stream
+# started on 2 mod 16 (measured in game, 2026-11-20; its weapons, hung on its bones, still drew).
+FLAT_ALIGN = 16
+SECTION_ALIGN = 16
 
 
 class W:
@@ -144,7 +151,7 @@ class _Writer:
             if not value.count:
                 return None, 0
             run = element_bits(value.spec)
-            loc = self.alloc(run, len(value.raw), max(1, run // 8))
+            loc = self.alloc(run, len(value.raw), FLAT_ALIGN)
             self.runs[run][loc[1]:loc[1] + len(value.raw)] = value.raw
             return loc, value.count
         items = list(value or [])
@@ -220,13 +227,13 @@ def serialize(root, *, type_tag=TYPE_TAG):
     root_type = w.typedef(root.spec)
     root_obj = w.obj(root)
     r32, r16, r8 = w.runs[32], w.runs[16], w.runs[8]
-    while len(r32) % 4:
+    while len(r32) % SECTION_ALIGN:      # each run starts on 16, so its arrays keep their 16
         r32.append(0)
-    while len(r16) % 2:
+    while len(r16) % SECTION_ALIGN:
         r16.append(0)
     base = {32: 0, 16: len(r32), 8: len(r32) + len(r16)}
     data = bytearray(r32 + r16 + r8)
-    while len(data) % 4:
+    while len(data) % SECTION_ALIGN:     # the runtime pads a section so when it rewrites one
         data.append(0)
 
     def flat(loc):
@@ -236,8 +243,9 @@ def serialize(root, *, type_tag=TYPE_TAG):
     header_end = 0x20 + gr2.HEADER_SIZE[6] + gr2.SECTION_RECORD     # 132
     reloc_off = header_end
     data_off = reloc_off + gr2.RELOCATION * len(relocs)
+    data_off += -data_off % SECTION_ALIGN       # the data also starts on 16 in the file
     total = data_off + len(data)
-    sec = gr2.Section(0, data_off, len(data), len(data), 4, base[16], base[8],
+    sec = gr2.Section(0, data_off, len(data), len(data), SECTION_ALIGN, base[16], base[8],
                       reloc_off, len(relocs), data_off, 0)
     out = bytearray()
     out += gr2.MAGIC
@@ -248,6 +256,7 @@ def serialize(root, *, type_tag=TYPE_TAG):
     out += sec.pack()
     for s, t in relocs:
         out += struct.pack("<3I", s, 0, t)
+    out += bytes(data_off - len(out))
     out += data
     assert len(out) == total
     struct.pack_into("<I", out, 0x28, gr2.file_crc(out))

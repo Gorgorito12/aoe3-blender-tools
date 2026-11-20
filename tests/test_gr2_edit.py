@@ -59,6 +59,26 @@ class Rewrite(unittest.TestCase):
         self.assertEqual(gr2.dump_tree(gr2.load(out)), gr2.dump_tree(doc))
 
 
+class Textures(unittest.TestCase):
+    def test_texture_key_is_the_path_below_art(self):
+        self.assertEqual(gr2_edit.texture_key(r"E:\AGE3\Source\Age3w\Art\buildings\x\Jesuit_Asian.ddt"),
+                         r"buildings\x\jesuit_asian")
+        self.assertEqual(gr2_edit.texture_key(r"D:\age3w\art\units\a\b.tga"), r"units\a\b")
+        self.assertEqual(gr2_edit.texture_key("art/units/a/b.(0,4,8,8).tga"), r"units\a\b.(0,4,8,8)")
+        self.assertEqual(gr2_edit.stored_name(r"buildings\mod\post\post"), r"C:\art\buildings\mod\post\post.ddt")
+
+    def test_renamed_textures_are_written_and_the_rest_kept(self):
+        root = gr2_edit.copy_tree(gr2.load(model()))
+        new = gr2_edit.stored_name(r"buildings\mod\a_much_longer_folder_name\box_colour")
+        done = gr2_edit.rename_textures(root, {r"mod\box": new})
+        self.assertEqual(done, [(r"C:\x\art\mod\box.ddt", new)])
+        out = gr2_write.serialize(root)
+        names = [t.get("FromFileName") for t in gr2.load(out).root().get("Textures")]
+        self.assertIn(new, names)                                          # any length
+        self.assertIn(r"C:\x\art\mod\box_b.ddt", names)                    # not listed: kept
+        self.assertEqual(gr2_edit.rename_textures(root, {r"mod\other": "x"}), [])
+
+
 class FakeRuntime:
     """Stands in for recompress_models.Runtime: reads a file as the helper's `info` prints it,
     with this repository's reader; `drop` leaves the last bone out, `refuse` refuses."""

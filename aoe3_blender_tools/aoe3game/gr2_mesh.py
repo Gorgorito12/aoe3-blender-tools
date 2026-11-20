@@ -290,6 +290,24 @@ def _rigid(m):
     return out
 
 
+def attach_matrix(body, part, frombone, tobone):
+    """(4 x 4 row-vector matrix taking a point of the part's file to the body's file, the
+    body's bone used or None) for the placement `attach` makes: the part's bone `frombone` laid on
+    the body's bone `tobone` without its scale. A body without that bone takes the part at its
+    origin (inferred: the stock buildings have no ATTACHPOINT bone and their attachments stand at
+    the origin), and the bone is None."""
+    from .animxml import find_bone
+    fb = find_bone(list(part.get("bind", {})), frombone)
+    tb = find_bone(list(body.get("bind", {})), tobone)
+    if fb is None and len(part.get("bind", {})) == 1:
+        fb = next(iter(part["bind"]))
+    cp, cb = _to_blender_matrix(part["basis"]), _to_blender_matrix(body["basis"])
+    w_from = np.linalg.inv(cp) @ part["bind"][fb] @ cp if fb is not None else np.eye(4)
+    w_to = np.linalg.inv(cb) @ body["bind"][tb] @ cb if tb is not None else np.eye(4)
+    place = np.linalg.inv(_rigid(w_from)) @ w_to
+    return cp @ place @ np.linalg.inv(cb), tb
+
+
 def attach(body, part, frombone, tobone):
     """The meshes of `part` (a model read here) placed on `body` as the game hangs an attachment:
     the part's bone `frombone` laid on the body's bone `tobone`, both at rest (the pose the meshes

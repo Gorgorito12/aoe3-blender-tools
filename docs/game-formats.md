@@ -151,6 +151,14 @@ lance on four WoL units, seen in game in a test copy):
 - most accessories have a single bone and no `frombone` (`bone_hat` is not in them): that bone
   is laid on the body's, **without its scale** (a hat whose only bone is scaled by 0.095 shows at
   its own size in game: inferred from where WoL's marine hats sit, not measured in the engine);
+- **the bone's scale is dropped, in game** (2026-11-20, a test copy of Wars of Liberty, three groups
+  of the same unit side by side): a raw 3ds Max hat whose only bone carries a scale of 16.6 (and an
+  inverse world transform that is not the inverse of the bone's own transform) drew the same, at
+  the same size and place, as its copy rewritten by `gr2_basis.normalise_rigid` (vertices taken into
+  the bone's rest frame without its scale, stock basis, bone and placement at the identity, its
+  animation removed); the copy that kept the scale in the vertices drew no visible hat (a
+  sixteenth of the size). A cannon barrel and three head wraps rewritten the same way drew as the
+  originals on their bones;
 - **to verify:** a file whose units per metre disagree with its numbers (one hat says 1000 with
   numbers like the inch-written ones) would come out a hundredth of its size; how the engine
   treats it is not known, so such accessories were avoided.
@@ -165,6 +173,35 @@ the model (uncompressed) whose stored texture paths (`Textures[].FromFileName`) 
 texture, at the same length so nothing else in the file moves, with the CRC recomputed
 (`retexture.py --own-texture`). The game resolves the stored path below `art\` (the artist's
 drive and folders before it are ignored).
+
+**A building's `<replacetexture>` baked into a copy of its model** (in game, 2026-11-20, a test
+copy of Wars of Liberty, three buildings side by side): a mod building that drew a stock model with
+two `<replacetexture>` swaps (colour and bump, in its standing and its death component), against
+the same anim file pointing at copies of the two stock models whose stored names were rewritten
+by `gr2_edit.rename_textures` (any length, `C:\art\<path>.ddt`, written by `gr2_write.serialize`),
+once uncompressed and once compressed again by `recompress_models.py`. All three stood alike, with
+the mod's texture, and collapsed alike. A `<replacetexture>` whose `<from>` the model does not
+store (pointed at a magenta texture) changed nothing: such a block can be dropped.
+
+### Attachments merged into a building (`tools/merge_attachments.py`)
+
+A mod's building often hangs still models on itself through its anim file (a plantation's trees on
+the bones of an invisible field, a canopy over a town centre); each one is an attachment the game
+draws apart, which an art lead asked to avoid ("como attachment laggean mucho"). `gr2_merge.merge`
+copies the part's meshes into the building's model, placed as `gr2_mesh.attach_matrix` places them
+(the bone the anim file names, the part's bone without its scale), bound to that bone, with their
+own materials and vertex layout; every copied object is rebuilt in the body's own types.
+**Measured offline** (2026-11-20, a mod's 38 merged building models): the Granny runtime reads each
+one as this repository's reader does (`gr2_check.py`) and its CRC is valid. **In game**
+(2026-11-20, a test copy of Wars of Liberty, three merged buildings beside the same three with their
+attachments, a plantation with 14 trees, a field with 10 and an orchard with 29): standing, at 30 %
+of their hit points and killed, each merged building looked as its twin did and collapsed into the
+same rubble; the game ran on. A Variation of attached models is fixed to its first pick by the merge,
+so every building of that kind shows the same one.
+
+A model with no mesh, one bone and an animation is not an accessory: a mod hangs a creature on that
+bone (`syncanims="1"`) so that the bone's scale sizes it. `gr2_basis.normalise_rigid` refuses such a
+file; rewritten, it would have drawn the creature at the wrong size.
 
 ### Moving a home city's models (`tools/hc_move.py`)
 
@@ -200,13 +237,42 @@ on average where the move works, by 50 to 190 where it does not):
   units: a file declaring 1,000 per metre is drawn as if in inches), and something else in a
   converted file (the bones' inverse world transforms or the meshes' bindings: **to verify**) is
   not read the way the conversion writes it. Until that is known, keep raw exports as they are:
-  the game draws them right.
+  the game draws them right. **Rigid accessories are another matter** (one bone, no skin): put
+  into the stock form by `tools/convert_basis.py` (`aoe3game/gr2_basis.py`, which also names the
+  file `ESPostExport` and drops its animation), they draw as the originals in game (see
+  "Attachments at rest"). **Skinned unit bodies drew right too** (in game, 2026-11-20): a mod's
+  23-bone bodies converted by `rebake --convert` and named `ESPostExport` (`convert_basis.py`, which
+  takes that route for a file of several bones) stood, walked, fought and died as the originals,
+  with the stock animations; offline every vertex and bone was where it had been and the rest pose
+  was the bind pose. A two-bone hat with its own animation, converted the same way, sat on its
+  rider's head as the original. What broke the home-city scenes above stays unknown (their own
+  animation files were not converted with them).
+- **A skinned body's packed vertex stream must start on 16 bytes** (**measured** in game,
+  2026-11-20). The exporter gives the stream (`0xFDABCD01`, a byte array) a section of its own
+  aligned to 16. A mod's 25-bone body rewritten by `gr2_write.serialize` with its stream on 2 mod 16
+  of a section aligned to 4 drew nothing (its pikes, hung on its bones, stood alone), compressed or
+  not; the same tree rebuilt by the bridge, or written with every plain array, run, section and
+  section start in the file on 16, stood, walked and fought as the original. Rigid models and
+  buildings had drawn with the old layout. The writer now aligns them all
+  (`gr2_write.FLAT_ALIGN`, `SECTION_ALIGN`).
 - Rebuilt models compressed again with `recompress_models.py` (each section in the original's
   format where the rebuild kept the sections' sizes, else Oodle1) drew as before, at the
-  originals' total size, **except** models of type tag `0x80000010`: their recompressed copies
-  pass the CRC check but the Granny runtime cannot open them (an access violation in
-  `GrannyGetFileInfo`), and the game exits (code 0) as soon as it meets one. `hc_move.py` opens
-  every recompressed model through the runtime and ships it uncompressed when it fails.
+  originals' total size. Models of type tag `0x80000010` were once refused (their recompressed
+  copies passed the CRC check but the runtime could not open them: an access violation in
+  `GrannyGetFileInfo`, and the game exited as soon as it met one); the cause was the reference
+  below, which an older tag makes the runtime read. With it put back, 400 such models were opened
+  by the runtime and read exactly as uncompressed, and in game (2026-11-20) they drew, animated and
+  died as before. `recompress_models.py` now takes every tag and asks the runtime to read each
+  result (`info`) as it reads the input.
+- **The runtime's recompression also writes the root object's reference** (header words 7 and 8)
+  as 0:0. A stock model has its root object at the start of its section, so nothing changes there;
+  a model `gr2_write.serialize` wrote keeps its type definitions first and its root object after
+  them, and the game exited (code 0, no message) as soon as it met such a model recompressed, though
+  the runtime itself opened it and its CRC was valid (2026-11-20). `recompress_models.py` puts the
+  input's reference back once the runtime's rewrite is checked to hold the input's sections: byte
+  for byte, or with the strings moved to start on 4 bytes (the runtime does that to a
+  `gr2_write` file whose strings start on 2, and changes nothing else: measured on 241 models).
+  Recompressed that way the models drew in game.
 
 ### Uncompressed copies
 

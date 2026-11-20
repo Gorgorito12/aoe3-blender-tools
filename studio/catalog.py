@@ -857,6 +857,97 @@ TOOLS = [
           Arg("factor", "--factor", "float", L("Factor", "Factor"), default=10.0),
           Arg("verbose", "-v", "bool", L("Verbose", "Detallado"))] + granny_args(),
          writes="in_place", trial=["--dry-run"], outputs=("out",)),
+    Tool("convert_basis", "tools/convert_basis.py", "art",
+         L("Convert accessories exported raw (object world too large)",
+           "Convertir accesorios exportados en bruto (mundo del objeto demasiado grande)"),
+         L("Puts hats, weapons and other one-bone accessories exported raw from 3ds Max into the form of a "
+           "converted model: stock basis, object at the origin, a bone with no scale, no animation of its own. "
+           "Each part stays on the unit where it stood (checked in game).",
+           "Pasa sombreros, armas y otros accesorios de un hueso exportados en bruto desde 3ds Max a la forma de "
+           "un modelo convertido: base del juego, objeto en el origen, un hueso sin escala y sin animación propia. "
+           "Cada pieza queda sobre la unidad donde estaba (comprobado en el juego)."),
+         [Arg("inputs", None, "folders", L("Models or folders", "Modelos o carpetas"), required=True),
+          Arg("out", "-o", "outdir", L("Output", "Salida"),
+              L("Empty: in place (a .bak copy is kept). A folder keeps each model's relative path.",
+                "Vacío: en el sitio (se guarda una copia .bak). Una carpeta conserva la ruta relativa de cada "
+                "modelo.")),
+          Arg("frombone", "--frombone", "text", L("Attach bone", "Hueso de enganche"),
+              L("The frombone of the anim file's <attach>. Empty: the model's only bone.",
+                "El frombone del <attach> del archivo de animación. Vacío: el único hueso del modelo."),
+              placeholder="bone_hat"),
+          Arg("all", "--all", "bool", L("Also models already converted", "También los modelos ya convertidos"))]
+         + granny_args(),
+         writes="in_place", trial=["--dry-run"], outputs=("out",)),
+    Tool("bake_textures", "tools/bake_textures.py", "art",
+         L("Bake texture replacements into model copies", "Hornear los reemplazos de textura en copias de modelos"),
+         L("Removes every <replacetexture> of the anim files listed: each swap becomes a copy of the model that "
+           "stores the new texture itself (one copy per model and set of swaps), and the anim file names the copy. "
+           "Swaps that change nothing are removed and listed.",
+           "Quita cada <replacetexture> de los archivos de animación listados: cada cambio pasa a una copia del "
+           "modelo que guarda la textura nueva (una copia por modelo y conjunto de cambios), y el archivo de "
+           "animación nombra la copia. Los cambios que no hacen nada se quitan y se listan."),
+         [Arg("manifest", "--manifest", "file", L("Anim files (list)", "Archivos de animación (lista)"),
+              required=True, filters=(("List", "*.tsv *.txt"),)),
+          Arg("art", "--art", "folders", L("Art folders, in lookup order", "Carpetas art, en orden de búsqueda"),
+              required=True, repeat=True),
+          out_dir(),
+          Arg("prefix", "--prefix", "text", L("Stored name prefix", "Prefijo de los nombres guardados"),
+              default="C:\\art\\"),
+          Arg("building_names", "--building-names", "text", L("Building folders (regex)", "Carpetas de edificios (regex)"),
+              placeholder="^wol\\\\buildings\\\\"),
+          cache_dir()] + granny_args(),
+         writes="out", outputs=("out",)),
+    Tool("add_normal_maps", "tools/add_normal_maps.py", "textures",
+         L("Give normal maps to materials that lack them", "Dar mapas de normales a los materiales que no los tienen"),
+         L("Every material whose shader reads a bump map and has none gets one: the colour texture's own normal map "
+           "when there is one, else one made from the colour texture (its brightness as height). Without it the "
+           "highlights come out wrong.",
+           "Cada material cuyo shader lee un mapa de relieve y no lo tiene recibe uno: el mapa de normales propio de "
+           "la textura de color si existe, si no uno hecho a partir de ella (su brillo como altura). Sin él los "
+           "reflejos salen mal."),
+         [Arg("manifest", "--manifest", "file", L("Models (list)", "Modelos (lista)"),
+              required=True, filters=(("List", "*.txt *.tsv"),)),
+          Arg("art", "--art", "folders", L("Art folders, in lookup order", "Carpetas art, en orden de búsqueda"),
+              required=True, repeat=True),
+          out_dir(),
+          Arg("strength", "--strength", "float", L("Relief strength", "Fuerza del relieve"), default=6.0),
+          cache_dir()] + granny_args(),
+         writes="out", trial=["--dry-run"], outputs=("out",)),
+    Tool("merge_attachments", "tools/merge_attachments.py", "art",
+         L("Merge static attachments into buildings", "Fusionar los attachments estáticos en los edificios"),
+         L("Trees, canopies and other still models a building hangs on itself become part of the building's own "
+           "models (normal, damaged, low detail, death), and their <attach> lines leave the anim file: one model "
+           "drawn instead of many. Flags, smoke, fire, units and construction frames stay attachments.",
+           "Los árboles, copas y otros modelos quietos que un edificio se cuelga pasan a formar parte de sus "
+           "propios modelos (normal, dañado, bajo detalle, muerte), y sus líneas <attach> salen del archivo de "
+           "animación: se dibuja un modelo en vez de muchos. Banderas, humo, fuego, unidades y andamios siguen "
+           "como attachments."),
+         [Arg("manifest", "--manifest", "file", L("Anim files (list)", "Archivos de animación (lista)"),
+              required=True, filters=(("List", "*.txt *.tsv"),)),
+          Arg("art", "--art", "folders", L("Art folders, in lookup order", "Carpetas art, en orden de búsqueda"),
+              required=True, repeat=True),
+          out_dir(),
+          cache_dir()] + granny_args(),
+         writes="out", trial=["--dry-run"], outputs=("out",)),
+    Tool("art_lint", "tools/art_lint.py", "survey",
+         L("Check an art package against an art lead's rules", "Revisar un paquete de arte con las reglas de un responsable de arte"),
+         L("Counts every breach in a package of new art: texture replacements left, paths found nowhere, banned "
+           "files, folders outside the layout, duplicates, files over the game's own, texture formats and sizes, "
+           "accessories not converted, static attachments left on buildings. Ready when every count is zero.",
+           "Cuenta cada incumplimiento en un paquete de arte nuevo: reemplazos de textura que quedan, rutas que no "
+           "están en ningún sitio, archivos prohibidos, carpetas fuera de la estructura, duplicados, archivos "
+           "encima de los del juego, formatos y tamaños de textura, accesorios sin convertir y attachments "
+           "estáticos que quedan en edificios. Listo cuando todos los conteos son cero."),
+         [Arg("package", "--package", "folder", L("Package", "Paquete"), required=True),
+          Arg("lint", "--lint", "file", L("Layout rules (lint.json)", "Reglas de estructura (lint.json)"),
+              required=True, filters=JSON),
+          Arg("textures", "--textures", "file", L("Texture rules (rules.json)", "Reglas de texturas (rules.json)"),
+              filters=JSON),
+          Arg("art", "--art", "folders", L("The game's art", "El art del juego"), repeat=True),
+          Arg("source", "--source", "folders", L("The source mod's art", "El art del mod de origen"), repeat=True),
+          Arg("out", "--out", "save", L("Report", "Informe"), filters=(("Text", "*.txt"),)),
+          cache_dir()] + granny_args(),
+         writes="out", outputs=("out",)),
     Tool("uncompress_models", "tools/uncompress_models.py", "art",
          L("Uncompressed models (fewer stutters)", "Modelos sin comprimir (menos tirones)"),
          L("Uncompressed copies of the archived models as loose files of a game copy: fewer stutters when a new "
@@ -1006,6 +1097,12 @@ TOOLS = [
                 "limit is twice it.",
                 "La media de las texturas de edificios de las metrópolis originales, de \"Medir las texturas de "
                 "las metrópolis originales\": el límite es el doble."), filters=JSON),
+          Arg("rules", "--rules", "file", L("Exact formats per path (rules.json)", "Formatos exactos por ruta (rules.json)"),
+              L("Instead of a limit: per path pattern, the header's (usage, alpha, format, mips) to write and the "
+                "largest side, as a mod's art lead specifies them. The first rule that matches wins.",
+                "En vez de un límite: por patrón de ruta, el (uso, alfa, formato, mips) de cabecera que se escribe y "
+                "el lado máximo, como los fija el responsable de arte de un mod. Gana la primera regla que coincide."),
+              filters=JSON),
           Arg("smallest", "--smallest", "int", L("Smallest mip", "Mip más pequeño"),
               L("The chain goes down to this many pixels on the short side. Default 4, as the stock game.",
                 "La cadena baja hasta estos píxeles en el lado corto. Por defecto 4, como el juego original.")),

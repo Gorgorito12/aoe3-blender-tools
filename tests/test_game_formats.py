@@ -888,6 +888,26 @@ class ReadBack(unittest.TestCase):
         self.assertEqual(tuple(round(v, 3) for v in bones["bone_smoke"]), (0.5, -1.0, 2.0))
         self.assertIn("bone_main", bones)
 
+    def test_every_plain_array_starts_on_16_bytes(self):
+        # the game reads a body's packed vertex stream (a byte array) in 16-byte blocks: a stream
+        # on 2 mod 16 drew nothing in game; so each array, its runs, its section and the section's
+        # data in the file start on 16
+        d = self.data
+        sec_off = struct.unpack_from("<I", d, 0x2C)[0]
+        sec = struct.unpack_from("<11I", d, 0x20 + sec_off)
+        data_off, align, first16, first8 = sec[1], sec[4], sec[5], sec[6]
+        self.assertEqual((align, data_off % 16, first16 % 16, first8 % 16), (16, 0, 0, 0))
+        S = gr2_write.schema()
+        odd = gr2_write.W(S["FileInfo"], FromFileName="x",
+                          Textures=[gr2_write.W(S["Texture"], FromFileName="abc")],
+                          VertexDatas=[gr2_write.W(S["VertexData"], Vertices=gr2_write.Flat(
+                              S["Int16"], struct.pack("<3H", 1, 2, 3), 3))])
+        out = gr2_write.serialize(odd)
+        at = out.find(struct.pack("<3H", 1, 2, 3))
+        base = struct.unpack_from("<11I", out, 0x20 + struct.unpack_from("<I", out, 0x2C)[0])[1]
+        self.assertEqual((at - base) % 16, 0)
+        self.assertTrue(gr2.crc_ok(out))
+
     def test_an_animation_has_no_mesh(self):
         anim = gr2_write.sink_animation("Crate", [], 2.0)
         self.assertEqual(self.gr2_mesh.read(anim)["meshes"], [])

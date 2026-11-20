@@ -1,0 +1,254 @@
+# AGENTS.md
+
+Guidance for Codex in this repository.
+
+## Purpose
+
+A toolkit for making every kind of building and unit for Age of Empires III mods, in the style of
+a mod's existing art: an art survey (`tools/art_survey.py`) that learns the conventions of the game
+and of a mod, and a Blender add-on (`aoe3_blender_tools/`) whose generators are calibrated on it,
+check the result and export it. Done: the survey (run on the game and the target mod, profile
+in `aoe3_blender_tools/profiles/`), a first generator (neoclassical buildings), and the game
+formats (`aoe3game/`: Granny model, .ddt, anim file, proto and strings, deployment to a test
+copy). The game loads a generated building (scenario editor preview). AoE3 Mod Studio
+(`studio/`, `docs/studio.md`) puts every tool behind one window for modders without Blender or a
+terminal. Next: see it placed, built
+and destroyed in game (`docs/game-test.md`), then more styles and units (README, "Roadmap").
+
+## Public repository rules
+
+- The repository is **public**. Naming mods, their teams or the projects this tool serves is fine
+  (the owner's decision, 2026-11-13); still do not link private documents.
+- Never commit survey reports (`report.json`, `summary.md`) of a mod: they name its files. They
+  belong to the user's private repository.
+- Reference images of a style guide may come from other games: they guide the composition only.
+  Never copy a model, texture or layout from them, and never name them in the repository.
+- License: GPL-3.0-or-later (Blender's requirement for add-ons). New source files start with
+  `# SPDX-License-Identifier: GPL-3.0-or-later`.
+
+## Commands
+
+The `bpy` module is Blender as a Python package (`pip install bpy==5.2.3`, Python 3.13). Use a venv
+outside the repository or in an ignored folder (`venv/`).
+
+```
+venv/bin/python tests/run_tests.py                 # must print "all tests passed"
+python -I tests/test_art_survey.py                 # survey tests, plain Python
+venv/bin/python -I tests/test_golden.py            # neoclassical output byte for byte (numpy)
+venv/bin/python -I tests/test_pngio.py             # PNG reader
+venv/bin/python scripts/generate.py --preset ALL   # regenerates examples/ (about 40 s per view)
+venv/bin/python scripts/sweep.py --count 200       # random option sets through the checks: 0 failures
+python tools/build_zip.py                          # dist/ zips (extension and legacy)
+python -I tests/test_game_formats.py               # game formats, plain Python (venv for numpy parts)
+python -I tests/test_xmbedit.py                    # compiled XML (.xmb) and its text round trip
+venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, make_bar (about 70 s)
+venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
+venv/bin/python -I tests/test_specs.py             # every building has its sheet and it is current
+venv/bin/python scripts/game_export.py --out out/wh --preset WHITE_HOUSE --detail MEDIUM
+venv/bin/python -I scripts/game_export_noblender.py --out out/wh_nb --preset WHITE_HOUSE --compare out/wh   # experimental
+python -I -X utf8 tools/game_deploy.py --install <test copy> --bundle out/wh --validate   # --undo
+python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
+python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
+python -I tests/test_named_models.py              # model_sheets --models lists: protos to models, plain Python
+venv/bin/python -I tests/test_retexture.py        # uv_atlas, retexture, skin and attachments, synthetic data
+python -I tools/fix_hitpointbar_tags.py <anim file or folder> [--proto <protoy.xml>] [--out <dir>] --dry-run
+venv/bin/python -m studio [--no-window] [--port N]      # AoE3 Mod Studio: every tool in one window
+venv/bin/python -I tests/test_studio.py                # the studio: API, safety, forms, languages (about 50 s)
+venv/bin/python -I tests/test_studio_ui.py             # every screen in a headless browser, both languages (Node 22+)
+venv/bin/python scripts/check.py --preset WHITE_HOUSE  # the add-on's game-ready checks, headless (--params, --json)
+python -I tools/build_app.py --zip                     # the studio as a program (a Python with pyinstaller and numpy)
+```
+
+On Windows the venv interpreter is `venv/Scripts/python`. `-X utf8` matters: the mod's
+validators print emoji, and `-I` ignores PYTHONIOENCODING.
+
+- `import bpy` must come before `bmesh` or `mathutils`.
+- Never keep a file named like a standard module (`inspect.py`, …) next to a script that imports
+  `bpy`: Blender initialises twice and aborts.
+- Blender bundles numpy but not Pillow: code inside `aoe3_blender_tools/` uses numpy and the
+  standard library only (`core/canvas.py` draws, `paint.save_png` writes PNG).
+
+## Layout
+
+- `aoe3_blender_tools/__init__.py`: properties, operators (`aoe3.load_preset`,
+  `aoe3.generate_building`, `aoe3.check_building`, `aoe3.export_building`) and the two sidebar
+  panels. `blender_manifest.toml` is the extension manifest (Blender 4.2+); `bl_info` serves older
+  versions.
+- `aoe3_blender_tools/core/`: `atlas.py`, `canvas.py`, `building.py` (parameters, presets,
+  dispatch to the style), `kit.py` (the `Builder`: regions, then `pack()`, then faces from the
+  pieces: boxes, rings, walls with recessed openings, hipped roofs, arcs, chimneys; `Face`,
+  `Model`, the wall triangulation), `styles/` (one module per style: `NAME`, `clamp`, `build`,
+  `opening_tops`, `paint(pr, model)`, `random_params` for the new ones; `neoclassical.py` is the
+  original generator, `colonial.py` and `timber.py` the others; `african/` is a package:
+  `sizes.py` (type -> reference radius and template), `layouts.py` (the composition of each type
+  and architecture, declarative pieces), `parts.py` (declares the regions and emits the pieces),
+  `__init__.py` (clamp, build, paint)), `painter.py`
+  (the `Painter`: canvas, mask, seeded generator, drawing in region metres; `base()` is the
+  material hook), `pngio.py` (PNG reader) and `paint.py` (dispatch, damaged texture) are pure
+  Python; `blender_io.py` (object creation, export)
+  and `validate.py` (the checks' Blender side) need Blender. `checks.py` holds the checks' rules
+  on plain mesh data (`mesh_of(model)`: the generator's mesh as Blender's modifier cuts it) and
+  `softrender.py` draws an icon in numpy: with `gamemesh.py` they make the Blender-free export
+  (`scripts/game_export_noblender.py`, experimental until seen in game).
+- `aoe3_blender_tools/aoe3game/`: the game formats, pure Python, never importing `core` or bpy
+  (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
+  (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_types.py`
+  (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
+  `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
+  portrait framing; numpy), `animxml.py`, `precomp.py` (an animation's tag file,
+  `.gr2.precomp`: the sampled tag bones such as `HITPOINTBAR`), `proto.py` (unit list
+  and string table at the text level), `bundle.py` (the files for one building), `deploy.py`
+  (test copy: Steam refused, backups, manifest, undo, validators).
+- `aoe3_blender_tools/core/render.py`: Workbench render of a building for its icon and portrait
+  (restores the scene's settings).
+- `aoe3_blender_tools/core/profile.py`: loads the calibration profile; `validate.check(...,
+  profile)` and `bundle.game_size(..., profile)` use it.
+- `scripts/generate.py`: headless generation with renders. `scripts/game_export.py`: headless game
+  bundle. `tests/run_tests.py`: headless tests. `tests/test_game_formats.py`: format tests.
+  `tests/test_golden.py` with `tests/golden/neoclassical.json`: the recorded output of every
+  neoclassical preset (faces, atlas, texture, attach points, sizes, facade layout) and their
+  triangle counts.
+- `tools/`: `art_survey.py` (uses `bar.py` and `xmbedit.py`; standard library only, it runs on the
+  user's Windows machine with any Python 3), `bar.py`, `xmbedit.py`, `build_zip.py`; `make_rings.py`,
+  `make_icons.py`, `make_bar.py` (ground rings and marks, test avatar icons, a health-bar texture;
+  standard library only, nothing taken from the game);
+  `fetch_materials.py` (CC0 swatches into `aoe3_blender_tools/materials/` with `MATERIALS.md`)
+  and `palette_survey.py` (stock texture colour and grain), both with numpy.
+- `aoe3_blender_tools/core/comfy.py` (ComfyUI client, standard library only, and the repaint
+  workflow of core nodes) and `core/airepaint.py` (repaint by regions: tiles, margins, feathering,
+  colour kept, player colour kept, edge guard; prompts per style and region);
+  `aoe3_blender_tools/ai_panel.py` (the AI Texture panel, `scene.aoe3_ai`; the button runs in a
+  thread). `tests/fake_comfy.py` stands in for ComfyUI in the tests. `docs/ai-textures.md`.
+- `aoe3_blender_tools/core/materials.py`: swatches under the painting (`MATERIALS[style][role]`,
+  `normalise`, `resample`, `tile`); the Painter's `base(region, colour, role)` lays them when
+  `params.materials` is on. `aoe3_blender_tools/materials/`: the prepared PNGs and their credits.
+- `examples/`: generated presets. `whitehouse/`, `whitehouse_medium/` and `whitehouse1914/` keep
+  every export and the .blend (`whitehouse1914/preview_sheet.jpg` is a 2 x 2 sheet of its views);
+  the others keep the GLB, a preview and the stats. `whitehouse_medium/ingame_*.jpg` are
+  captures from the game (README gallery). `generate.py` writes every export: delete the
+  extra files when regenerating the trimmed presets.
+- `docs/building-guidelines.md`: requirements, pitfalls, what is still to verify in game.
+- `docs/texture-plan.md`: the options to improve the textures without losing their alignment, their
+  cost and licences (to verify), and the order to try them.
+- `docs/game-formats.md`: the formats as measured, and how the writer was proven.
+- `docs/game-test.md`: the test copy, deployment, what to check in game, and the status.
+- `docs/specs/`: the technical sheet of every building, generated, with an index.
+- `studio/`: AoE3 Mod Studio (`docs/studio.md`), a local web application: `server.py` (API on
+  127.0.0.1 with a token, the page), `engine.py` (previews and sheets in process, no Blender),
+  `jobs.py` (each tool in its own process), `blender_bridge.py` (the `bpy` module or an installed
+  Blender), `catalog.py` (every command-line tool as a form, strings in English and Spanish),
+  `inspector.py` (.ddt, .gr2, .xmb, .bar read only), `settings.py`, `picker.py` (file dialogs),
+  the screens made for their task (`retex.py` unit repaint, `flags.py` flag designer, `texmaker_ui.py`
+  texture maker, `airepaint_ui.py` AI repaint by regions; `sessions.py` keeps what they loaded),
+  `web/` (the page: ES modules, no build step; three.js vendored; `i18n/en.json`, `es.json`).
+  `aoe3_blender_tools/core/schema.py` describes every `BuildingParams` field for the forms;
+  `core/gamemesh.py` is the game mesh without Blender (measured against Blender's).
+- `aoe3_blender_tools/aoe3game/collision.py`: a building's own collision shape (`.shp`, Havok XML),
+  written into `data/physics/` of the bundle; `Model.boxes` holds the boxes, `building.obstruction`
+  a style's own obstruction. See "Collision" in `docs/game-formats.md`.
+
+## Working rules
+
+- **Check the budgets.** A new building is compared with "Budgets for a new building" in
+  `docs/building-guidelines.md` and with the real models of its function: triangles, megabytes of
+  texture, collision, rubble. The owner cares about optimisation: ask before anything that raises a
+  building's cost, even in a variant that only shows sometimes.
+- **Every building has its technical sheet.** `docs/specs/<Name>.md`, computed from the model by
+  `tools/spec_sheets.py` (`core/specs.py`); a game export also writes `SPECS.md` beside its bundle.
+  A new or changed building is not done until its sheet is regenerated: `tests/test_specs.py` fails
+  on a missing or old sheet. The numbers of a game's data (`--proto`) never go into the repository.
+- **Learn from the real models first.** Before designing or changing a building type, open the
+  game's and the target mod's models of that function, render them and measure them
+  (`tools/shape_survey.py`; the numbers per class are the `shape` of
+  `aoe3_blender_tools/profiles/buildings.json`, `tests/test_shape.py` holds the presets to them). What
+  322 models show, for any style: a building is **one mass** (one connected part holding over 95 % of
+  what stands; nothing scattered on the plot, units come out of it and its door stays clear); it
+  covers 60 to 80 % of its obstruction and barely leaves it; it is about as tall as it is wide (8x8:
+  6 to 11 units); it has about 3 levels, and its roofs carry things too; about 48 % of its triangles
+  are in the lower third of its height, 35 % in the middle, 16 % at the top. Parts stand on one
+  common base. Doors, props and walls are out of proportion to a person together: draw at human size
+  and scale the whole model (`sizes.SCALE`). A closed yard is rare (20 of 322): keep it for forts,
+  palaces and the like. What a building holds follows from what it is for (`program.py`).
+  Never judge a design from our own renders alone. These models guide shape and proportion only:
+  never copy one, and nothing of them goes into the repository.
+- AI repaint: the tests never need a GPU (they use `tests/fake_comfy.py`); never commit a model
+  or an AI-generated image other than the examples; never use a community checkpoint or LoRA
+  without reading its licence. ComfyUI is at `C:\ComfyUI\ComfyUI_windows_portable` on the
+  user's PC.
+- Material swatches come only through `tools/fetch_materials.py`, from a source whose licence page
+  states CC0 (it checks before writing); never a texture from the game or a mod. Keep each
+  swatch small (256 px; the zip stays under 6 MB, `build_zip.py` checks).
+- A new `BuildingParams` field needs a default that changes nothing, a panel property (or an
+  entry in `PROP_NAMES`), its style's panel draw, `random_params`, and a preset or a test that
+  uses it; `ui_has_a_property_for_every_param_field` fails otherwise. It also needs its entry in
+  `core/schema.py` (the studio's form: the panel's range and choices, when it shows) and its
+  Spanish label in `studio/web/i18n/es.json`; `the_schema_matches_the_panel` and
+  `tests/test_studio.py` fail otherwise.
+- **Every function reaches the studio** (the owner's rule, 2026-11-17). A new function (operator,
+  tool, option, style, generator, format) is not done until a modder can use it from `studio/`,
+  with its texts in English and Spanish (`studio/web/i18n/`), its test in `tests/test_studio.py`
+  and its line in `docs/studio.md`. Where it goes: a building option is a field of `core/schema.py`
+  (the form draws itself); a command-line tool a form of `studio/catalog.py` (a trial or a
+  confirmation when it changes files in place or in a test copy); an add-on operator an entry of
+  `studio/coverage.py` naming its screen or form; work that needs to be seen while it changes, a
+  screen of its own. `tests/run_tests.py` fails on an operator with no entry, `tests/test_studio.py`
+  on a script without its form, an option its script does not read, or a place that does not
+  exist. A function that cannot reach the studio yet is entered as `pending` with the reason, and
+  docs/studio.md lists it.
+- Test the add-on in the user's installed Blender too
+  (`"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe" -b --factory-startup -P
+  tests/run_tests.py`), and reinstall the zip there after a change
+  (`blender.exe --command extension install-file -r user_default -e dist/<zip>`).
+- The neoclassical presets are golden: a refactor must keep `tests/test_golden.py` green as
+  is. Run `--update-golden` only for a deliberate change to that style's output, and say so in
+  the commit (then regenerate `examples/`).
+- Every geometry change must keep the test suite green; the parameter sweep (both detail levels)
+  catches overlapping coplanar faces, faces with repeated corners and UVs outside their regions.
+- Count triangles per region after a detail change (`building.build(...)`, then sum per
+  `Face.region`); the medium White House must stay near 1,200 (the test allows 1,000 to 1,400).
+  Compare every preset's count before and after a change: an unexpected drop is a lost part
+  (it caught the side balustrades disappearing).
+- Run `scripts/sweep.py` after any geometry change; a new option goes into its `random_params`.
+- Volumes of a composed building never cross carelessly (`core/joints.py`): two volumes are either
+  at least 0.25 m apart, or one ends entirely inside a taller one, also on the low-detail polygon
+  (a round wall of few sides cuts well inside its radius). A side that ends inside its neighbour
+  is declared (`joined=("back",)`) and loses its wall, parapet, merlons, buttresses and beams. A
+  passing `validate.check` proves nothing here: it only sees coplanar faces.
+  `tests/test_african_joints.py` covers every preset and random parameters; a new composed style
+  gets the same test.
+- Look at the renders after a visual change (`scripts/generate.py`, then read the JPEGs).
+- Mark game facts as measured, engine limit, or to verify, as `docs/building-guidelines.md` does.
+- Regenerate `examples/` when the output of a preset changes, and keep the README gallery in step.
+- Never write into the game's Steam folder; deploy only to a test copy with `tools/game_deploy.py`.
+  Never leave a compiled `.xmb` next to an edited data XML. Caches of game files (extracted or
+  rewritten models) live outside the repository and outside the game copy.
+- A change to the `.gr2` writer must keep `tests/test_game_formats.py` green and, when the Granny
+  runtime is at hand, its dump of a written file must equal `gr2.dump_tree` and its CRC check
+  must pass.
+- The profile keeps measurements and stock names only (rubble `BuildingRubbleNxN`, placement
+  `buildingsmall/large.xml`); regenerate it with the survey command in the README.
+- **The art of the target mod is measured, not guessed** (`docs/art-findings.md`):
+  `tools/texture_survey.py` and `tools/model_survey.py` open every texture and every Granny file,
+  tell the mod's own from the original game's, and write `profiles/textures.json` and
+  `profiles/models.json` (`core/profile.art(...)`). Before choosing a grain, a palette, a texture
+  size or a triangle budget, read the group it belongs to; `tools/style_check.py` says how far
+  the presets' textures are from the mod's. A profile names no file and no folder of the mod
+  (`tests/test_profile.py`); reports, contact sheets, LoRA datasets and LoRAs name or contain its
+  art and live outside the repository (`survey/` is ignored, the rest in the cache).
+- Props, sets and settlements: `core/styles/props/` (the PROP style: `recipes.py` declares map
+  objects and treasures, `__init__.py` places their cargo with the African composer and holds
+  them to the game's own prop budgets, `sets.py` builds prop sets on one atlas) reuses
+  `african/parts.py` (its pieces take a pose: `turn`, `tilt`, `lean`); `core/group.py` packs
+  several meshes into one texture; `aoe3game/grouping.py` reads and writes groupings exactly
+  (every real one round-trips); `core/settlement.py` composes one round a socket from
+  `profiles/groupings.json` (`tools/grouping_survey.py`). A settlement is **measured**, not
+  imagined: only a third of the buildings face the socket and a fifth of the units are invisible
+  obstructions. Grouping axes and set variations are still **to verify** in game.
+- The African painter is calibrated to the mod (`materials.MATERIALS["AFRICAN"]`'s fifth value,
+  `tools/style_check.py --fit`; `tests/test_materials.py` holds every African preset within half a
+  quartile of the mod's grain and saturation). Refit after changing an African painting, and keep
+  the flat roofs smoother than the walls (`tests/test_african_skin.py`).
+- `aoe3game/gr2_mesh.py` and `core/gr2_import.py` (Import a Game Model) read an uncompressed
+  model back; `core/resolution.py` is the one place a round body's segments are decided;
+  `core/texmaker.py`, `core/texlib.py`, `core/meshtex.py` are the texture maker, its library and
+  the repaint of a mesh the generator did not make.

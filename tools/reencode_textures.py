@@ -4,7 +4,7 @@ header and pixels, a texture larger than a limit is halved, the mip chain is mad
 each result is compared with its original; a result that strays too far is not used.
 
     python -I tools\\reencode_textures.py run --in <list file or folder> --out <folder>
-        [--root <folder the list is relative to>] (--limit WxH | --tad <tad.json>)
+        [--root <folder the list is relative to>] (--limit WxH | --tad <tad.json> | --rules <rules.json>)
         [--smallest 4] [--max-mean 3.0] [--max-block 24] [--sheets <folder>] [--fast]
     python -I tools\\reencode_textures.py tad --game <copy> --out <tad.json>
         [--cache <survey cache> ...] [--granny <bridge.exe> --work <folder>]
@@ -40,6 +40,18 @@ each result is compared with its original; a result that strays too far is not u
   keeps it), and the worst 4 x 4 block's mean. Above --max-mean or --max-block the texture is
   kept as it was.
 
+**--rules** replaces the rules above with exact targets per path: a JSON file
+`{"rules": [{"name": "unit colour", "match": "<regex on the relative path, lower case>",
+"tuple": [0, 1, 8, 6], "max": 1024, "keep": ["alpha_test", "transparency"]}, ...]}`, the first
+match winning; `keep` carries the source's alpha-test bit (usage 1) and a transparent or blended
+alpha (4, 8) over the tuple, so a fence or a leaf stays cut out (reported as an exception). The tuple is the header's
+(usage, alpha, format, mips) as a mod's art lead writes it; the mips are cut to what the size
+allows (to 1 px; the report says so), the sides are halved until both fit `max`, and a DXT1
+target for a texture declared transparent or blended (alpha 4 or 8) whose alpha is not opaque is
+written DXT3 keeping that alpha and reported as an exception (an alpha 1 channel is the
+player-colour mask: an icon drops it). `max_mean` and `max_block` in a rule replace the check's
+limits for it (small detailed icons in DXT1 differ by 6 to 8 on average). A path no rule matches is kept and reported. The check still applies.
+
 Writes into --out: the .ddt files, report.json, report.csv; with --sheets, one PNG per texture
 (original | new | difference x4, each at 100 %) and index.html.
 
@@ -58,6 +70,7 @@ import csv
 import hashlib
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -156,20 +169,44 @@ def _err(new_px, ref_px, channels):
     return float(d.mean()), float(blocks.max())
 
 
-def reencode(data, limit, smallest=4, refine=True, max_mean=MAX_MEAN, max_block=MAX_BLOCK):
+def reencode(data, limit, smallest=4, refine=True, max_mean=MAX_MEAN, max_block=MAX_BLOCK, target=None):
     """(new bytes or None, record) for one texture's bytes. record: action (re-encoded,
-    unchanged, kept), reason, before/after header digits, sizes and bytes, the errors."""
+    unchanged, kept), reason, before/after header digits, sizes and bytes, the errors.
+    target: (usage, alpha, format, mips) to write exactly, instead of the rules (a rules file's
+    tuple); its mip count is cut to what the size allows (down to 1 px), and a DXT1 target for a
+    texture declared transparent or blended (alpha 4, 8) whose alpha is not opaque stays DXT3 with
+    that alpha, so nothing it shows is lost (the record says so: an exception to list)."""
     np = ddt._np()
     hd = ddt.read_header(data)
     rec = {"before": digits(data), "width": hd.width, "height": hd.height, "bytes": len(data),
            "texels": texel_bytes(data)}
     rgba0 = ddt.decode(data, 0) if hd.format in (ddt.BGRA, ddt.DXT1, ddt.DXT3, ddt.DXT5, ddt.GREY) \
         else None
-    fmt, why = choose_format(hd, rgba0) if rgba0 is not None else (None, "not decoded")
-    rec["rule"] = why
     rec["alpha_opaque"] = bool(rgba0 is not None and (rgba0[..., 3] == 255).all())
+    usage, alpha = hd.usage, hd.alpha
+    if target is not None and rgba0 is not None:
+        usage, alpha, fmt, want = target
+        why = "target ({},{},{},{})".format(*target)
+        if fmt == ddt.DXT1 and not rec["alpha_opaque"] and hd.alpha in (4, 8):
+            # a transparent or blended picture (an alpha 1 channel is the player-colour mask,
+            # which an icon drops without loss of shape)
+            fmt, alpha = ddt.DXT3, hd.alpha
+            why += f"; its alpha {hd.alpha} is not opaque, so DXT3 keeping it (exception)"
+            rec["exception"] = True
+    else:
+        fmt, why = choose_format(hd, rgba0) if rgba0 is not None else (None, "not decoded")
+        want = None
+    rec["rule"] = why
     if fmt is None:
         return None, dict(rec, action="kept", reason=why)
+    if want is not None and not (power_of_two(hd.width) and power_of_two(hd.height)):
+        # an exact target: the sides become the powers of two below them (DXT and mips need
+        # them), area averaged, before the size cap; the record says so
+        pw, ph = 1 << (hd.width.bit_length() - 1), 1 << (hd.height.bit_length() - 1)
+        small = np.clip(ddt.area_resize(rgba0, ph, pw) + 0.5, 0, 255).astype(np.uint8)
+        rec["pow2"] = f"{hd.width}x{hd.height} -> {pw}x{ph}"
+        data = ddt.write_bgra(small, alpha=hd.alpha, usage=hd.usage, mips=False)
+        hd, rgba0 = ddt.read_header(data), small
     if not (power_of_two(hd.width) and power_of_two(hd.height)):
         # a precaution: the stock game has none, and two such textures were among those whose
         # re-encoding broke other scenes in game (docs/game-formats.md, "Re-encoding")
@@ -177,14 +214,19 @@ def reencode(data, limit, smallest=4, refine=True, max_mean=MAX_MEAN, max_block=
                           "powers of two are left as they are (DXT and mips need them)")
     w, h = target_size(hd.width, hd.height, *limit)
     resized = (w, h) != (hd.width, hd.height)
-    full = ddt.chain_length(w, h, smallest)
     have = len(hd.levels)
-    n = have if (not resized and have >= full) else full
-    if fmt == hd.format and not resized and n == have:
+    if want is not None:
+        n = min(want, ddt.chain_length(w, h, 1))
+    else:
+        full = ddt.chain_length(w, h, smallest)
+        n = have if (not resized and have >= full) else full
+    if fmt == hd.format and not resized and n == have and (usage, alpha) == (hd.usage, hd.alpha):
         return None, dict(rec, action="unchanged", reason="already " + FORMAT_NAMES[fmt]
                           + f", {have} levels", after=rec["before"], new_width=w, new_height=h,
                           new_bytes=len(data), new_texels=rec["texels"], mean=0.0, block=0.0)
-    bump = bool(hd.usage & 4)
+    if want is not None and n < want:
+        rec["mips_cut"] = f"{want} asked, {n} at {w}x{h}"
+    bump = bool(usage & 4)
     renorm = bump and ddt.is_packed_normal_map(rgba0)
     top = ddt.area_resize(rgba0, h, w) if resized else rgba0.astype(np.float32)
     if resized and renorm:
@@ -216,15 +258,15 @@ def reencode(data, limit, smallest=4, refine=True, max_mean=MAX_MEAN, max_block=
                 own = transcode(data, k + shift, fmt)
                 if own is not None:
                     lw, lh = max(1, w >> k), max(1, h >> k)
-                    a = ddt.decode(ddt.pack(hd.usage, hd.alpha, fmt, lw, lh, [blob]))
-                    b = ddt.decode(ddt.pack(hd.usage, hd.alpha, fmt, lw, lh, [own]))
+                    a = ddt.decode(ddt.pack(usage, alpha, fmt, lw, lh, [blob]))
+                    b = ddt.decode(ddt.pack(usage, alpha, fmt, lw, lh, [own]))
                     if _err(b, as_u8[k], channels)[0] < _err(a, as_u8[k], channels)[0]:
                         blob = own
                         carried += 1
         if len(blob) != level_bytes(fmt, max(1, w >> k), max(1, h >> k)):
             raise ddt.DdtError(f"level {k}: {len(blob)} bytes")
         blobs.append(blob)
-    new = ddt.pack(hd.usage, hd.alpha, fmt, w, h, blobs)
+    new = ddt.pack(usage, alpha, fmt, w, h, blobs)
     back = ddt.decode(new, 0)
     mean, block = _err(back, as_u8[0], channels)
     rec.update(after=digits(new), new_width=w, new_height=h, new_bytes=len(new),
@@ -236,7 +278,8 @@ def reencode(data, limit, smallest=4, refine=True, max_mean=MAX_MEAN, max_block=
         return None, dict(rec, action="kept", reason=reason, _new=new, _ref=as_u8[0])
     parts = [FORMAT_NAMES[hd.format] + " -> " + FORMAT_NAMES[fmt] if fmt != hd.format else None,
              f"{hd.width}x{hd.height} -> {w}x{h}" if resized else None,
-             f"{have} -> {n} levels" if n != have else None]
+             f"{have} -> {n} levels" if n != have else None,
+             f"usage/alpha {hd.usage},{hd.alpha} -> {usage},{alpha}" if (usage, alpha) != (hd.usage, hd.alpha) else None]
     return new, dict(rec, action="re-encoded", reason="; ".join(p for p in parts if p),
                      _ref=as_u8[0])
 
@@ -465,13 +508,56 @@ def inputs(spec, root):
     return out
 
 
-REPORT_COLS = ("path", "action", "reason", "rule", "alpha_opaque", "before", "after", "width", "height",
+REPORT_COLS = ("path", "action", "reason", "rule", "rule_name", "alpha_opaque", "exception", "mips_cut", "pow2",
+               "before", "after", "width", "height",
                "new_width", "new_height", "bytes", "new_bytes", "texels", "new_texels", "mean",
                "block", "levels_carried", "normals_renormalised", "sha256")
 
 
+def load_rules(path):
+    """[(compiled regex, (usage, alpha, format, mips), max side, name)] of a rules file:
+    {"rules": [{"name": ..., "match": "<regex on the path, backslashes, lower case>",
+    "tuple": [u, a, f, m], "max": 1024}, ...]}. The first rule that matches a path wins."""
+    with open(path, encoding="utf-8") as fh:
+        spec = json.load(fh)
+    out = []
+    for r in spec["rules"]:
+        t = tuple(int(x) for x in r["tuple"])
+        if len(t) != 4 or t[2] not in (ddt.DXT1, ddt.DXT3, ddt.DXT5, ddt.BGRA) or t[3] < 1:
+            raise SystemExit(f"{path}: rule {r.get('name')}: a tuple is (usage, alpha, format 1/4/8/9, mips >= 1)")
+        keep = set(r.get("keep", ()))
+        if keep - KEEPS:
+            raise SystemExit(f"{path}: rule {r.get('name')}: keep takes {sorted(KEEPS)}")
+        check = (float(r.get("max_mean", 0)) or None, float(r.get("max_block", 0)) or None)
+        out.append((re.compile(r["match"], re.I), t, int(r["max"]), r.get("name", r["match"]), keep, check))
+    return out
+
+
+KEEPS = {"alpha_test", "transparency"}
+
+
+def rule_for(rules, rel):
+    key = rel.replace("/", "\\").lower()
+    return next(((t, m, name, keep, check) for rx, t, m, name, keep, check in rules if rx.search(key)), None)
+
+
+def kept_bits(target, keep, hd):
+    """The target with what `keep` asks to carry over from the source header: its alpha-test bit
+    (usage 1: fences, leaves) and a transparent or blended alpha (4, 8), which a player-colour
+    alpha would turn solid. (target, what was kept)."""
+    usage, alpha, fmt, mips = target
+    kept = []
+    if "alpha_test" in keep and hd.usage & 1 and not usage & 1:
+        usage |= 1
+        kept.append("alpha test")
+    if "transparency" in keep and hd.alpha in (4, 8) and alpha != hd.alpha:
+        alpha = hd.alpha
+        kept.append(f"alpha {hd.alpha}")
+    return (usage, alpha, fmt, mips), kept
+
+
 def run(items, out, limit, smallest=4, refine=True, max_mean=MAX_MEAN, max_block=MAX_BLOCK,
-        sheets=None, log=print):
+        sheets=None, log=print, rules=None):
     os.makedirs(out, exist_ok=True)
     if sheets:
         os.makedirs(sheets, exist_ok=True)
@@ -479,10 +565,32 @@ def run(items, out, limit, smallest=4, refine=True, max_mean=MAX_MEAN, max_block
     for src, rel in items:
         with open(src, "rb") as fh:
             data = fh.read()
+        target, lim, rname = None, limit, None
+        if rules is not None:
+            hit = rule_for(rules, rel)
+            if hit is None:
+                rec = {"path": rel, "source": src, "action": "kept", "reason": "no rule matches its path",
+                       "sha256": hashlib.sha256(data).hexdigest()}
+                records.append(rec)
+                log(f"{'kept':10} {rel}: no rule matches its path")
+                continue
+            target, side, rname, keep, check = hit
+            lim = (side, side)
+        mm, mb = max_mean, max_block
+        if rules is not None:
+            mm, mb = check[0] or max_mean, check[1] or max_block
+        kept = []
         try:
-            new, rec = reencode(data, limit, smallest, refine, max_mean, max_block)
+            if target is not None:
+                target, kept = kept_bits(target, keep, ddt.read_header(data))
+            new, rec = reencode(data, lim, smallest, refine, mm, mb, target=target)
         except ddt.DdtError as exc:
             new, rec = None, {"action": "kept", "reason": f"not readable: {exc}"}
+        if rname:
+            rec["rule_name"] = rname
+        if kept:
+            rec["exception"] = True
+            rec["reason"] = (rec.get("reason") or "") + f"; kept from the source: {', '.join(kept)}"
         rec["path"] = rel
         rec["source"] = src
         rec["sha256"] = hashlib.sha256(data).hexdigest()
@@ -549,17 +657,21 @@ def main(argv):
             raise SystemExit("--granny needs --work")
         bridge = (opt("--granny"), os.path.abspath(opt("--game")), os.path.abspath(opt("--work")))
     if cmd == "run" and opt("--in") and opt("--out"):
-        if opt("--limit"):
+        rules = None
+        if opt("--rules"):
+            rules = load_rules(opt("--rules"))
+            lw = lh = 0
+        elif opt("--limit"):
             lw, lh = (int(x) for x in opt("--limit").lower().split("x"))
         elif opt("--tad"):
             with open(opt("--tad"), encoding="utf-8") as fh:
                 lw, lh = json.load(fh)["limit"]
         else:
-            raise SystemExit("run needs --limit WxH or --tad <tad.json>")
+            raise SystemExit("run needs --rules <rules.json>, --limit WxH or --tad <tad.json>")
         recs = run(inputs(opt("--in"), opt("--root")), opt("--out"), (lw, lh),
                    smallest=int(opt("--smallest", 4)), refine="--fast" not in argv,
                    max_mean=float(opt("--max-mean", MAX_MEAN)),
-                   max_block=float(opt("--max-block", MAX_BLOCK)), sheets=opt("--sheets"))
+                   max_block=float(opt("--max-block", MAX_BLOCK)), sheets=opt("--sheets"), rules=rules)
         counts = {}
         for r in recs:
             counts[r["action"]] = counts.get(r["action"], 0) + 1

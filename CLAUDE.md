@@ -59,6 +59,16 @@ python -I tools/recompress_models.py <folder> -o <out> --granny-install <game> [
 python -I tests/test_recompress_models.py         # recompression with a fake runtime, plain Python
 python -I tools/gr2_check.py <model.gr2|folder> --granny-install <game> --rewrite   # the game's runtime as the judge
 python -I tests/test_gr2_edit.py                  # a model's whole tree written again; the runtime check (fake)
+venv/bin/python -I tools/convert_basis.py <model|folder> -o <out> [--granny <bridge> --granny-install <game>]   # raw 3ds Max accessories
+venv/bin/python -I tests/test_convert_basis.py     # gr2_basis on a synthetic raw export
+python -I tools/bake_textures.py --manifest <anim files.tsv> --art <work> --art <mod art> --art <game art> --out <out>   # <replacetexture> into model copies
+python -I tests/test_bake_textures.py              # the bake on a synthetic art folder
+venv/bin/python -I tools/merge_attachments.py --manifest <anim files.txt> --art <work> --art <game art> --out <out>   # static attachments into buildings
+venv/bin/python -I tests/test_merge_attachments.py # the merge on a synthetic building
+venv/bin/python -I tools/art_lint.py --package <folder> --lint <lint.json> --textures <rules.json> --art <game art>   # every count must be 0
+venv/bin/python -I tests/test_art_lint.py          # the lint on a synthetic package
+venv/bin/python -I tools/add_normal_maps.py --manifest <models.txt> --art <work> --art <game art> --out <out>   # bump maps a shader lacks
+venv/bin/python -I tests/test_add_normal_maps.py   # a bump map added to a synthetic model
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
 venv/bin/python -I -X utf8 tools/game_fonts.py stage --game <copy> --out <dir outside it> --suffix WoL   # a copy's fonts, extended

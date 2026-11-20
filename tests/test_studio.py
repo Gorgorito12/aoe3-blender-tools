@@ -1219,6 +1219,38 @@ class Forms(unittest.TestCase):
             for bad in ({"inputs": []}, {"inputs": ["a"], "factor": "x"}, {"inputs": ["a"], "nonsense": 1}):
                 with self.assertRaises(catalog.ToolError):
                     catalog.command(st, "fix_bone_scale", bad)
+            # raw accessories: a trial first (nothing written), in place unless an output is given
+            cmd, _, _, _, trial = catalog.command(st, "convert_basis", {"inputs": ["hats"], "frombone": "bone_hat",
+                                                                         "granny": "b.exe", "granny_install": "game"})
+            self.assertTrue(trial)
+            self.assertIn("--dry-run", cmd)
+            self.assertEqual(cmd[cmd.index("--frombone") + 1], "bone_hat")
+            self.assertEqual(cmd[cmd.index("--granny-install") + 1], "game")
+            self.assertNotIn("--all", cmd)
+            self.assertEqual(catalog.BY_ID["convert_basis"].writes, "in_place")
+            with self.assertRaises(catalog.ToolError):
+                catalog.command(st, "convert_basis", {"inputs": []})
+            # texture swaps baked into model copies: every art folder is passed, in order
+            cmd, *_ = catalog.command(st, "bake_textures", {"manifest": "m.tsv", "art": ["work", "mod", "game"]})
+            arts = [cmd[i + 1] for i, x in enumerate(cmd) if x == "--art"]
+            self.assertEqual(arts, ["work", "mod", "game"])
+            self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "bake_textures"))
+            with self.assertRaises(catalog.ToolError):
+                catalog.command(st, "bake_textures", {"art": ["mod"]})                    # no list
+            # static attachments merged into buildings: a trial (nothing written) first
+            cmd, _, _, _, trial = catalog.command(st, "merge_attachments", {"manifest": "m.txt", "art": ["work", "game"]})
+            self.assertTrue(trial)
+            self.assertIn("--dry-run", cmd)
+            self.assertEqual([cmd[i + 1] for i, x in enumerate(cmd) if x == "--art"], ["work", "game"])
+            # normal maps for materials without one: a trial first
+            cmd, _, _, _, trial = catalog.command(st, "add_normal_maps", {"manifest": "m.txt", "art": ["work"]})
+            self.assertTrue(trial)
+            self.assertIn("--dry-run", cmd)
+            # a package against an art lead's rules: reads only, writes its report
+            cmd, *_ = catalog.command(st, "art_lint", {"package": "pkg", "lint": "lint.json", "art": ["game"],
+                                                       "source": ["mod"]})
+            self.assertEqual(cmd[cmd.index("--source") + 1], "mod")
+            self.assertEqual(catalog.BY_ID["art_lint"].writes, "out")
             with self.assertRaises(catalog.ToolError):
                 catalog.command(st, "make_rings", {"out": os.path.join(tmp, "steamapps", "x")})
 
