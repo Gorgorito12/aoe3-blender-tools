@@ -24,6 +24,15 @@ Bold glyphs (the file name `--all` gives each one):
 - `cylinder` (`stat_icon_projectiles.ddt`): projectiles per reload: a revolver's cylinder seen from the
   chambers' side, six chambers around the centre pin.
 
+Unit type icons (bold style; the pictures after a bonus multiplier, "1.5x against <icon>"), written by
+`--types <art folder>` at the mod's own paths so that no data changes (TYPE_FILES), with `--png <sheet> --compare
+<game copy>` a before / after sheet enlarged 4 times:
+- `standing` (ui/ingame/stat_icon_infantry, WoL/.../stat_icon_standing_unit) and `line`
+  (ui/ingame/stat_icon_heavy_infantry): the game's infantryman, in a shako, red coat and blue coat;
+- `winged_bullet` (WoL/.../stat_icon_ranged, the maneuver unit), `helmet` (hand cavalry), `bolt_wings` (shock
+  unit), `cannon` (siege), `cannons` (artillery), `sabre` (mercenary), `star` (hero), `dove` (light infantry),
+  `dog` (pet), `bow` (light cavalry), `arrowhead` (native warrior; a new file name, stat_icon_native_warrior).
+
 Soft glyphs: `stopwatch`, `hourglass`, `heart` (`stat_icon_hitpoints.ddt`), `shield`, `eye`, `boot_wings`,
 `boot_arrows`, `boot_lines` (speed variants) and `house` (`stat_icon_pop.ddt`).
 
@@ -439,6 +448,435 @@ def bold_cylinder():
     return k
 
 
+# ---- The unit type icons (the multipliers' "against <icon>" of the attack rows) in the bold style ----
+#
+# The same recipe as the six above, for the icons a mod's attack rows show after a bonus multiplier, which came at
+# 16x16 or smaller. Each glyph is drawn in "screen" coordinates (u, y): u = 16 + (x - 16) * AX, so a shape drawn
+# round in (u, y) is wider than tall in the texture and looks round once the panel squeezes it; the drawable u runs
+# from about 6.3 to 25.7, y from 2 to 29.5.
+
+def _screen(k):
+    return 16.0 + (k.x - 16.0) * AX, k.y
+
+
+def _poly(u, y, points):
+    """Inside the polygon (even-odd rule), in (u, y)."""
+    inside = np.zeros(u.shape, bool)
+    n = len(points)
+    for i in range(n):
+        (u0, y0), (u1, y1) = points[i], points[(i + 1) % n]
+        crosses = (y0 > y) != (y1 > y)
+        at = u0 + (y - y0) * (u1 - u0) / np.where(y1 == y0, 1e-9, y1 - y0)
+        inside ^= crosses & (u < at)
+    return inside
+
+
+def _ell(u, y, cu, cy, ru, ry):
+    return ((u - cu) / ru) ** 2 + ((y - cy) / ry) ** 2 <= 1.0
+
+
+def _bar(u, y, u0, y0, u1, y1, r):
+    return _seg_dist(u, y, u0, y0, u1, y1) <= r
+
+
+SKIN = (236, 188, 142)
+SKIN_SHADE = (190, 136, 96)
+SHAKO = (34, 32, 38)
+SHAKO_BAND = (110, 108, 118)
+BELT = (244, 242, 232)
+MUSKET_WOOD = (140, 82, 36)
+COATS = {"standing": ((206, 34, 30), (140, 18, 20), (40, 70, 170)),  # red coat, blue collar and cuffs
+         "line": ((44, 92, 196), (26, 56, 132), (214, 40, 36))}     # blue coat, red collar and cuffs
+
+
+def _soldier(coat):
+    """An infantryman as the game's infantry icon has him, from the waist up, his musket upright at his right side,
+    in a shako (a tall peaked cap with a plate and a pompom) instead of the tricorne, and a coat of `coat`."""
+    k = Bold()
+    u, y = _screen(k)
+    main, shade, facing = COATS[coat]
+    k.part(_bar(u, y, 9.0, 6.0, 9.0, 21.0, 0.9) | _bar(u, y, 9.0, 3.0, 9.0, 6.5, 0.45), STEEL)  # barrel, bayonet
+    k.part(_poly(u, y, [(8.0, 20.0), (10.0, 20.0), (10.6, 29.5), (7.4, 29.5)]), MUSKET_WOOD)  # the stock
+    torso = _poly(u, y, [(11.0, 18.5), (21.0, 18.5), (23.4, 29.5), (8.6, 29.5)])
+    k.paint(torso, main)
+    k.paint(torso & (u > 18.0), shade)
+    for a, b in (((11.6, 19.5), (19.8, 29.5)), ((20.4, 19.5), (12.2, 29.5))):  # the white crossbelts
+        k.paint(torso & _bar(u, y, *a, *b, 0.75), BELT)
+    k.paint(_ell(u, y, 16.0, 24.4, 1.0, 1.0), BRASS)  # the belt plate
+    k.contour(torso)
+    for cu in (10.6, 21.4):  # epaulettes
+        k.part(_ell(u, y, cu, 19.6, 1.9, 1.4), facing)
+    k.part(_poly(u, y, [(13.6, 16.2), (18.4, 16.2), (18.8, 19.4), (13.2, 19.4)]), facing)  # the collar
+    k.part(_ell(u, y, 16.0, 13.4, 2.7, 3.0), SKIN)  # the face
+    k.paint(_ell(u, y, 17.6, 13.8, 1.1, 2.4) & _ell(u, y, 16.0, 13.4, 2.7, 3.0), SKIN_SHADE)
+    k.paint(_ell(u, y, 15.0, 13.0, 0.45, 0.6) | _ell(u, y, 17.0, 13.0, 0.45, 0.6), BLACK)  # the eyes
+    k.part(_ell(u, y, 9.6, 21.6, 1.7, 1.6), SKIN)  # the hand on the musket
+    shako = _poly(u, y, [(12.6, 10.6), (12.0, 3.6), (20.0, 3.6), (19.4, 10.6)])
+    k.paint(shako, SHAKO)
+    k.paint(shako & (y <= 5.0), SHAKO_BAND)
+    k.contour(shako)
+    k.part(_poly(u, y, [(16.0, 6.0), (17.6, 7.7), (16.0, 9.4), (14.4, 7.7)]), BRASS)  # the plate
+    k.part(_poly(u, y, [(11.6, 10.2), (20.4, 10.2), (21.4, 11.6), (10.6, 11.6)]), BLACK)  # the peak
+    k.part(_ell(u, y, 16.0, 2.9, 1.5, 1.0), main)  # the pompom
+    return k
+
+
+def bold_standing():
+    """Standing unit (AbstractInfantry): the infantryman in a red coat."""
+    return _soldier("standing")
+
+
+def bold_line():
+    """Line unit (AbstractHeavyInfantry): the infantryman in a blue coat."""
+    return _soldier("line")
+
+
+COPPER = (206, 118, 52)
+LEAD = (150, 156, 170)
+
+
+def bold_winged_bullet():
+    """Maneuver unit (AbstractRangedCavalry): a bullet in flight, a white wing on its back and two motion lines."""
+    k = Bold()
+    u, y = _screen(k)
+    root = (13.0, 18.6)
+    for i, (tu, ty) in enumerate(((8.6, 14.0), (9.6, 8.0), (13.2, 4.2))):  # three feathers, the lowest first
+        r = np.clip(((u - root[0]) * (tu - root[0]) + (y - root[1]) * (ty - root[1])) /
+                    ((tu - root[0]) ** 2 + (ty - root[1]) ** 2), 0.0, 1.0)
+        feather = np.hypot(u - (root[0] + r * (tu - root[0])), y - (root[1] + r * (ty - root[1]))) <= 3.3 - 1.4 * r
+        k.part(feather, WING_SHADE if i == 1 else WING)
+    # the bullet, flying to the right: a along its flight from the base, b across it
+    a, b = u - 8.4, y - 22.2
+    case = (a >= 0.0) & (a <= 8.6) & (np.abs(b) <= 3.6)
+    nose = (a > 8.6) & (np.abs(b) <= 3.6 * np.sqrt(np.clip(1 - ((a - 8.6) / 8.4) ** 2, 0, None)))
+    k.paint(case, COPPER)
+    k.paint(case & (b < -1.6), (240, 168, 96))
+    k.contour(case)
+    k.paint(nose, LEAD)
+    k.paint(nose & (b < -1.4), (206, 212, 224))
+    k.contour(nose)
+    return k
+
+
+HELM = (150, 166, 196)
+HELM_DARK = (84, 98, 128)
+HELM_LIGHT = (222, 230, 244)
+
+
+def bold_helmet():
+    """Hand cavalry: a closed steel helmet seen from the front-left, a comb on top, the visor with its eye slit."""
+    k = Bold()
+    u, y = _screen(k)
+    k.part(_poly(u, y, [(14.6, 2.6), (17.4, 2.6), (17.0, 9.0), (15.0, 9.0)]), HELM_DARK)  # the comb
+    dome = _ell(u, y, 16.0, 14.0, 9.4, 10.6) & (y <= 21.0)
+    chin = _poly(u, y, [(7.0, 19.0), (25.0, 19.0), (22.6, 28.6), (9.4, 28.6)])
+    helmet = dome | chin
+    k.paint(helmet, HELM)
+    k.paint(helmet & (u > 19.0), HELM_DARK)
+    k.paint(_ell(u, y, 12.0, 9.6, 2.2, 3.4) & dome, HELM_LIGHT)
+    k.contour(helmet)
+    k.paint(helmet & (np.abs(y - 15.8) <= 1.0) & (np.abs(u - 16.0) <= 8.0), BLACK)  # the eye slit
+    for vu in (13.0, 16.0, 19.0):  # breathing holes
+        k.paint(_ell(u, y, vu, 23.6, 0.7, 0.8), BLACK)
+    k.paint(helmet & (np.abs(y - 19.6) <= 0.5), BLACK)  # the visor's edge
+    return k
+
+
+BOLT = (250, 200, 36)
+BOLT_DARK = (196, 128, 16)
+
+
+def bold_bolt_wings():
+    """Shock unit (cavalry): a golden lightning bolt between two white wings, as the game's icon has it."""
+    k = Bold()
+    u, y = _screen(k)
+    for side in (-1, 1):  # each wing: three feathers fanning out and up from the bolt
+        for i, (tu, ty) in enumerate(((10.8, 22.0), (8.0, 13.8), (8.6, 5.0))):
+            ru, ry = 13.6, 20.0
+            tu2 = 16.0 + side * (tu - 16.0)
+            ru2 = 16.0 + side * (ru - 16.0)
+            r = np.clip(((u - ru2) * (tu2 - ru2) + (y - ry) * (ty - ry)) / ((tu2 - ru2) ** 2 + (ty - ry) ** 2), 0, 1)
+            feather = np.hypot(u - (ru2 + r * (tu2 - ru2)), y - (ry + r * (ty - ry))) <= 2.6 - 1.0 * r
+            k.part(feather, WING_SHADE if i == 1 else WING)
+    bolt = _poly(u, y, [(18.4, 2.6), (12.2, 16.4), (16.0, 16.4), (13.4, 29.4), (20.4, 13.2), (16.6, 13.2),
+                        (20.6, 2.6)])
+    k.paint(bolt, BOLT)
+    k.paint(bolt & (u > 17.0) & (y > 12.0), BOLT_DARK)
+    k.contour(bolt)
+    return k
+
+
+BRONZE = (196, 140, 60)
+BRONZE_DARK = (130, 86, 30)
+CARRIAGE = (130, 80, 38)
+CARRIAGE_DARK = (86, 50, 22)
+
+
+def bold_cannon():
+    """Siege: a field gun from the side, its bronze barrel raised to the right on a wooden carriage with a wheel."""
+    k = Bold()
+    u, y = _screen(k)
+    k.part(_poly(u, y, [(7.0, 26.0), (17.0, 15.6), (20.0, 18.0), (11.0, 28.4), (7.0, 28.4)]), CARRIAGE)  # trail
+    ang = math.radians(32)
+    a = (u - 9.0) * math.cos(ang) - (y - 18.6) * math.sin(ang)
+    b = (u - 9.0) * math.sin(ang) + (y - 18.6) * math.cos(ang)
+    barrel = (a >= 0.0) & (a <= 17.0) & (np.abs(b) <= 3.5 - 0.06 * a)
+    k.paint(barrel, BRONZE)
+    k.paint(barrel & (b > 0.6), BRONZE_DARK)
+    k.contour(barrel)
+    k.part((a >= 15.8) & (a <= 17.6) & (np.abs(b) <= 2.6), BRONZE)  # the muzzle ring
+    k.part(_ell(u, y, 7.8, 19.6, 1.6, 1.6), BRONZE)  # the cascabel
+    d = np.hypot(u - 17.0, y - 22.6)
+    wheel = d <= 6.2
+    k.paint(wheel, CARRIAGE)
+    k.paint(wheel & (d >= 4.4), CARRIAGE_DARK)
+    for q in range(4):  # spokes
+        t = math.radians(45 * q)
+        k.paint(_bar(u, y, 17.0 - 4.6 * math.cos(t), 22.6 - 4.6 * math.sin(t), 17.0 + 4.6 * math.cos(t),
+                     22.6 + 4.6 * math.sin(t), 0.6) & wheel, CARRIAGE_DARK)
+    k.contour(wheel)
+    k.paint(_ell(u, y, 17.0, 22.6, 1.3, 1.3), BLACK)
+    return k
+
+
+def bold_cannons():
+    """Artillery: two cannon barrels crossed, muzzles up, the breech knobs below."""
+    k = Bold()
+    u, y = _screen(k)
+    for side in (1, -1):  # the one from bottom right drawn last, over the other
+        base = (16.0 - side * 7.6, 26.4)
+        top = (16.0 + side * 7.4, 4.6)
+        length = math.dist(base, top)
+        du, dy = (top[0] - base[0]) / length, (top[1] - base[1]) / length
+        a = (u - base[0]) * du + (y - base[1]) * dy
+        b = -(u - base[0]) * dy + (y - base[1]) * du
+        barrel = (a >= 0) & (a <= length) & (np.abs(b) <= 2.6 - 0.05 * a)
+        k.paint(barrel, STEEL)
+        k.paint(barrel & (b * side > 0.5), STEEL_DARK)
+        k.contour(barrel)
+        k.part((a >= length - 1.6) & (a <= length + 0.4) & (np.abs(b) <= 2.4), STEEL)  # the muzzle
+        k.part(_ell(u, y, base[0] - du * 1.2, base[1] - dy * 1.2, 1.5, 1.5), STEEL_DARK)  # the knob
+    return k
+
+
+BLADE = (232, 236, 242)
+BLADE_DARK = (150, 158, 172)
+
+
+def bold_sabre():
+    """Mercenary: a curved sabre, its blade rising to the right, a gold guard and a dark grip."""
+    k = Bold()
+    u, y = _screen(k)
+    # the blade: between two arcs of a circle centred lower right, from the guard up to the point
+    d = np.hypot(u - 26.0, y - 24.0)
+    ang = np.degrees(np.arctan2(y - 24.0, u - 26.0))  # -180..180; the blade runs from about 196 (left) to 268 (up)
+    ang = np.where(ang < 0, ang + 360, ang)
+    t = (ang - 200.0) / (268.0 - 200.0)
+    width = 6.0 * (1 - 0.6 * np.clip(t, 0, 1))
+    blade = (t >= 0) & (t <= 1) & (d >= 15.4 - width) & (d <= 15.4 + 0.4)
+    k.paint(blade, BLADE)
+    k.paint(blade & (d < 17.0 - width), BLADE_DARK)
+    k.contour(blade)
+    k.part(_bar(u, y, 8.6, 20.4, 15.4, 25.6, 1.3), BRASS)  # the guard, across the blade
+    k.part(_bar(u, y, 11.0, 24.4, 8.2, 28.0, 1.4), (70, 40, 20))  # the grip
+    k.part(_ell(u, y, 7.6, 28.6, 1.4, 1.1), BRASS)  # the pommel
+    return k
+
+
+STAR = (255, 222, 30)
+STAR_DARK = (214, 160, 10)
+
+
+def bold_star():
+    """Hero: a five-pointed golden star."""
+    k = Bold()
+    u, y = _screen(k)
+    pts = []
+    for i in range(10):
+        r = 14.2 if i % 2 == 0 else 5.8
+        t = math.radians(-90 + 36 * i)
+        pts.append((16.0 + r * math.cos(t) * 0.70, 16.9 + r * math.sin(t)))
+    star = _poly(u, y, pts)
+    k.paint(star, STAR)
+    k.paint(star & (u > 16.0) & (y > 14.0), STAR_DARK)
+    k.contour(star)
+    return k
+
+
+DOVE = (248, 248, 244)
+DOVE_SHADE = (176, 184, 196)
+
+
+def bold_dove():
+    """Scout unit (light infantry): a white dove in flight, its wings raised."""
+    k = Bold()
+    u, y = _screen(k)
+    body = _ell(u, y, 14.6, 21.0, 7.4, 3.8)
+    tail = _poly(u, y, [(9.0, 20.0), (6.4, 16.4), (6.6, 25.6), (9.6, 23.0)])
+    head = _ell(u, y, 21.4, 17.8, 2.8, 2.6)
+    k.paint(body | tail | head, DOVE)
+    k.paint(body & (y > 22.6), DOVE_SHADE)
+    k.contour(body | tail | head)
+    k.part(_poly(u, y, [(23.8, 16.8), (25.8, 18.2), (23.8, 19.2)]), (230, 150, 40))  # the beak
+    k.paint(_ell(u, y, 21.8, 17.2, 0.5, 0.6), BLACK)  # the eye
+    root = (15.2, 19.4)
+    for i, (tu, ty) in enumerate(((8.4, 7.6), (11.6, 4.4), (16.2, 4.0))):  # the raised wing: three feathers
+        r = np.clip(((u - root[0]) * (tu - root[0]) + (y - root[1]) * (ty - root[1])) /
+                    ((tu - root[0]) ** 2 + (ty - root[1]) ** 2), 0.0, 1.0)
+        feather = np.hypot(u - (root[0] + r * (tu - root[0])), y - (root[1] + r * (ty - root[1]))) <= 3.2 - 1.6 * r
+        k.part(feather, DOVE_SHADE if i == 1 else DOVE)
+    return k
+
+
+FUR = (198, 150, 92)
+FUR_DARK = (92, 62, 36)
+
+
+def bold_dog():
+    """Pet: a dog's head, pointed ears, a dark muzzle and saddle, looking left."""
+    k = Bold()
+    u, y = _screen(k)
+    head = _ell(u, y, 17.6, 16.4, 6.6, 7.4) | _poly(u, y, [(13.0, 16.0), (7.0, 21.4), (8.6, 25.6), (16.0, 24.4)])
+    neck = _poly(u, y, [(16.0, 20.0), (24.6, 16.0), (25.4, 29.4), (14.6, 29.4)])
+    for eu in (13.6, 20.6):  # the ears
+        k.part(_poly(u, y, [(eu - 2.8, 12.0), (eu - 0.6, 2.6), (eu + 2.6, 11.0)]), FUR_DARK)
+    k.paint(neck, FUR)
+    k.paint(neck & (u > 21.0), FUR_DARK)
+    k.contour(neck)
+    k.paint(head, FUR)
+    k.paint(head & (u < 12.0), FUR_DARK)  # the muzzle
+    k.contour(head)
+    k.paint(_ell(u, y, 7.8, 22.0, 1.4, 1.3), BLACK)  # the nose
+    k.paint(_ell(u, y, 15.0, 15.0, 0.9, 1.0), BLACK)  # the eye
+    k.paint(_bar(u, y, 8.6, 25.0, 14.0, 24.0, 0.5), BLACK)  # the mouth
+    return k
+
+
+BOW = (176, 182, 192)
+SHAFT = (150, 92, 44)
+
+
+def bold_bow():
+    """Light cavalry: a recurved bow, its string drawn, with an arrow nocked, the gold head to the lower right."""
+    k = Bold()
+    u, y = _screen(k)
+    d = np.hypot(u - 22.0, y - 16.0)
+    ang = np.degrees(np.arctan2(y - 16.0, u - 22.0))
+    ang = np.where(ang < 0, ang + 360, ang)
+    bow = (ang >= 102) & (ang <= 258) & (np.abs(d - 11.4) <= 2.4)  # the arc, from below round the left to the top
+    k.paint(bow, BOW)
+    k.paint(bow & (d > 13.0), STEEL_DARK)
+    k.contour(bow)
+    k.paint(_bar(u, y, 22.0 + 11.4 * math.cos(math.radians(102)), 16.0 + 11.4 * math.sin(math.radians(102)),
+                 22.0 + 11.4 * math.cos(math.radians(258)), 16.0 + 11.4 * math.sin(math.radians(258)), 0.5),
+            (236, 232, 216))  # the string
+    k.part(_bar(u, y, 11.0, 4.6, 21.4, 23.6, 1.1), SHAFT)  # the arrow
+    k.part(_poly(u, y, [(25.0, 29.4), (19.0, 25.0), (22.8, 22.2)]), BOLT)  # its head
+    k.part(_poly(u, y, [(9.4, 2.6), (13.6, 3.0), (12.0, 7.6)]), (220, 40, 30))  # the fletching
+    return k
+
+
+FLINT = (214, 220, 228)
+FLINT_DARK = (132, 140, 156)
+
+
+def bold_arrowhead():
+    """Native warrior: a chipped stone arrowhead, point up, notched at its base."""
+    k = Bold()
+    u, y = _screen(k)
+    head = _poly(u, y, [(16.0, 2.6), (24.6, 22.0), (21.0, 27.0), (18.0, 23.6), (16.0, 29.4), (14.0, 23.6),
+                        (11.0, 27.0), (7.4, 22.0)])
+    k.paint(head, FLINT)
+    k.paint(head & (u > 16.0), FLINT_DARK)
+    for cu, cy in ((14.0, 12.0), (18.6, 15.6), (12.4, 19.4), (19.6, 21.6)):  # chips
+        k.paint(head & _ell(u, y, cu, cy, 1.0, 1.0), (100, 108, 124) if cu > 16 else (176, 184, 196))
+    k.contour(head)
+    return k
+
+
+# The unit type icons: the glyph and every file it is written to, relative to the art folder of the mod. The file
+# names are the mod's own (the stock chain's and its attackTypeIcons line's), so no data changes; the arrowhead
+# alone goes to a new name, since ui\minimap\native_settlement_16x16 is also the minimap's native village.
+TYPE_GLYPHS = {"standing": bold_standing, "line": bold_line, "winged_bullet": bold_winged_bullet,
+               "helmet": bold_helmet, "bolt_wings": bold_bolt_wings, "cannon": bold_cannon, "cannons": bold_cannons,
+               "sabre": bold_sabre, "star": bold_star, "dove": bold_dove, "dog": bold_dog, "bow": bold_bow,
+               "arrowhead": bold_arrowhead}
+TYPE_FILES = {
+    "standing": ("ui/ingame/stat_icon_infantry.ddt", "WoL/ui/ingame/staticons/stat_icon_standing_unit.ddt"),
+    "line": ("ui/ingame/stat_icon_heavy_infantry.ddt",),
+    "winged_bullet": ("WoL/ui/ingame/staticons/stat_icon_ranged.ddt",),
+    "helmet": ("WoL/ui/ingame/staticons/stat_icon_hand_cavalry.ddt",),
+    "bolt_wings": ("ui/ingame/stat_icon_cavalry.ddt",),
+    "cannon": ("ui/ingame/stat_icon_siege.ddt",),
+    "cannons": ("ui/ingame/stat_icon_artillery.ddt",),
+    "sabre": ("ui/ingame/stat_mercenary.ddt",),
+    "star": ("ui/ingame/stat_hero.ddt",),
+    "dove": ("ui/ingame/stat_light_infantry.ddt",),
+    "dog": ("ui/ingame/stat_icon_pet.ddt",),
+    "bow": ("ui/ingame/stat_light_cav.ddt",),
+    "arrowhead": ("WoL/ui/ingame/staticons/stat_icon_native_warrior.ddt",),
+}
+# The icon a new file name replaces, for the before / after sheet.
+TYPE_BEFORE = {"WoL/ui/ingame/staticons/stat_icon_native_warrior.ddt": "ui/minimap/native_settlement_16x16.ddt"}
+
+
+def render_type(glyph):
+    """32 x 32 x 4 uint8 RGBA of a unit type glyph, as render_bold."""
+    return _outlined(TYPE_GLYPHS[glyph]())
+
+
+def encode_type(glyph):
+    return ddt.write_bgra(render_type(glyph), alpha=4, usage=0, mips=False)
+
+
+def compare_sheet(game, zoom=4):
+    """RGB of the mod's icon (left, as found in `game`'s art: loose file, else its .bar archives) and the new one
+    (right) for each unit type file, enlarged `zoom` times on the panel's brown, a 32-texel cell each; a file the
+    game lacks or cannot decode shows as a grey cell."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import bar
+    art = pathlib.Path(game) / "art"
+    archives = {}
+    for path in sorted(art.glob("*.bar")):
+        for stored, offset, size in bar.read_entries(str(path)):
+            archives.setdefault(stored.lower().replace("/", "\\"), (path, offset, size))
+    cell = 32 * zoom
+    rows = []
+    for glyph, files in TYPE_FILES.items():
+        for rel in files:
+            rel = TYPE_BEFORE.get(rel, rel)
+            loose = art / rel
+            data = loose.read_bytes() if loose.exists() else None
+            if data is None:
+                key = next((k for k in archives if k.endswith(rel.lower().replace("/", "\\"))), None)
+                if key:
+                    path, offset, size = archives[key]
+                    with open(path, "rb") as f:
+                        f.seek(offset)
+                        data = f.read(size)
+            row = np.zeros((cell, cell * 2 + 8, 3), np.float32) + np.array((60, 35, 25), np.float32)
+            row[:, cell:cell + 8] = 40
+            for i, d in enumerate((data, encode_type(glyph))):
+                try:
+                    px = np.asarray(ddt.decode(d)).astype(np.float32)
+                except Exception:  # noqa: BLE001  (missing, or a header with no pixels)
+                    row[:, i * (cell + 8):i * (cell + 8) + cell] = 90
+                    continue
+                h, w = px.shape[:2]
+                scale = cell // max(h, w)
+                big = px.repeat(scale, 0).repeat(scale, 1)
+                top, left = (cell - big.shape[0]) // 2, i * (cell + 8) + (cell - big.shape[1]) // 2
+                a = big[..., 3:4] / 255.0
+                area = row[top:top + big.shape[0], left:left + big.shape[1]]
+                row[top:top + big.shape[0], left:left + big.shape[1]] = big[..., :3] * a + area * (1 - a)
+            rows.append(np.pad(row, ((6, 6), (6, 6), (0, 0)), constant_values=30))
+    cols = 4  # pairs per line of the sheet
+    while len(rows) % cols:
+        rows.append(np.full_like(rows[0], 30))
+    lines = [np.concatenate(rows[i:i + cols], axis=1) for i in range(0, len(rows), cols)]
+    return np.concatenate(lines, axis=0).astype(np.uint8)
+
+
 BOLD_GLYPHS = {"stopwatch": bold_stopwatch, "hourglass": bold_hourglass, "eye": bold_eye,
                "boot_wings": bold_boot_wings, "shield": bold_shield, "cylinder": bold_cylinder}
 BOLD_FILES = {"stopwatch": "stat_icon_rof.ddt", "hourglass": "stat_icon_traintime.ddt", "eye": "stat_icon_los.ddt",
@@ -448,7 +886,10 @@ BOLD_FILES = {"stopwatch": "stat_icon_rof.ddt", "hourglass": "stat_icon_traintim
 
 def render_bold(glyph):
     """32 x 32 x 4 uint8 RGBA of a bold glyph: alpha 0 or 255, a black outline 2 texels wide around it."""
-    k = BOLD_GLYPHS[glyph]()
+    return _outlined(BOLD_GLYPHS[glyph]())
+
+
+def _outlined(k):
     solid = k.cover
     padded = np.pad(solid, 2)
     near = np.zeros_like(padded)
@@ -531,8 +972,31 @@ def main(argv):
     ap.add_argument("--out", default=str(OUT))
     ap.add_argument("--all", metavar="FOLDER", help="write every glyph of the style into this folder, under its file name")
     ap.add_argument("--png", help="also write an 8x enlarged preview on the panel's brown and on grey")
+    ap.add_argument("--types", metavar="ART", help="write the unit type icons (bold style) into this art folder, at "
+                    "their paths under it (ui/ingame/..., WoL/ui/ingame/staticons/...)")
+    ap.add_argument("--compare", metavar="GAME", help="with --types and --png: the preview is a sheet of each "
+                    "file as this game copy has it (left) and the new one (right), enlarged 4 times")
     ap.add_argument("--check", action="store_true")
     a = ap.parse_args(argv)
+    if a.types:
+        status = 0
+        for glyph, rels in TYPE_FILES.items():
+            data = encode_type(glyph)
+            for rel in rels:
+                out = pathlib.Path(a.types) / rel
+                if a.check:
+                    same = out.exists() and out.read_bytes() == data
+                    print(f"{out}: {'same' if same else 'differs'}")
+                    status |= 0 if same else 1
+                    continue
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(data)
+                print(f"{out}: {len(data)} bytes, {ddt.read_header(data).describe()}")
+        if a.png and not a.check:
+            from core.pngio import encode_png
+            sheet = compare_sheet(a.compare) if a.compare else preview([encode_type(g) for g in TYPE_GLYPHS])
+            pathlib.Path(a.png).write_bytes(encode_png(sheet))
+        return status
     glyphs, files, enc = ((BOLD_GLYPHS, BOLD_FILES, encode_bold) if a.style == "bold" else (GLYPHS, FILES, encode))
     if not a.all and a.glyph not in glyphs:
         ap.error(f"no {a.style} glyph {a.glyph} (choices: {', '.join(sorted(glyphs))})")

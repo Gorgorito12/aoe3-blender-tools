@@ -78,6 +78,53 @@ class Rings(unittest.TestCase):
         self.assertGreater(rim[3], 100)
         self.assertGreater(int(rim[0]), int(rim[2]) + 60)   # food is red
 
+    def test_rank_knots_are_symmetric_and_keep_their_place(self):
+        """Every knot is symmetric left to right, stays in the sprite, and ends at the same lowest height (the tails),
+        which keeps the HP bar clear; ranks 4 and 5 are rank 3's knot in a larger sprite."""
+        lows = []
+        for rank in range(1, 4):
+            glyph, stars, scale = make_rings.rank_mark(rank)
+            self.assertEqual((stars, scale), ((), 1.0))
+            for x, y, r, _ in glyph:  # each circle has its mirror image
+                self.assertTrue(any(abs(x + x2) < 1e-6 and abs(y - y2) < 1e-6 and abs(r - r2) < 1e-9
+                                    for x2, y2, r2, _ in glyph), (rank, x, y))
+            reach = max(max(abs(x), abs(y)) + r for x, y, r, _ in glyph) + make_rings.KNOT_OUTLINE
+            self.assertLessEqual(reach, 1.0, rank)
+            lows.append(max(y + r for x, y, r, _ in glyph))
+        self.assertAlmostEqual(min(lows), max(lows), places=2)
+        self.assertLessEqual(max(lows), 0.71)  # no lower than rank 3's lowest chevron was
+        three = make_rings.rank_mark(3)[0]
+        for rank in (4, 5):
+            glyph, stars, scale = make_rings.rank_mark(rank)
+            self.assertGreater(scale, 1.0)
+            self.assertEqual(len(glyph), len(three))
+            for (x, y, _, _), (x3, y3, _, _) in zip(glyph, three):
+                self.assertAlmostEqual(x * scale, x3, places=6)
+                self.assertAlmostEqual(y * scale, y3, places=6)
+            self.assertTrue(all(y < min(gy - gr for _, gy, gr, _ in glyph) for _, y, _, _ in stars))  # over the knot
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_rank_marks_differ_and_have_loops(self):
+        """The loops show: each knot has texels that are not the cord's colour and are closed in by it on all four
+        sides (a loop's hole), ranks 1 to 3 differ in shape, and the colours are bronze, silver and gold."""
+        masks = []
+        for rank, colour in ((1, (205, 127, 50)), (2, (200, 205, 215)), (3, (255, 205, 40))):
+            px = ddt.decode(self.files[f"icon_rank_{rank}.ddt"]).astype(int)
+            cord = (px[..., 3] == 255) & (px[..., :3].sum(axis=2) > 200)
+            masks.append(cord)
+            body = px[cord][:, :3]
+            self.assertTrue((abs(body.mean(axis=0) - colour) < 20).all(), rank)
+            holes = 0
+            for y in range(1, 63):
+                for x in range(1, 63):
+                    if not cord[y, x] and cord[y, :x].any() and cord[y, x:].any() and cord[:y, x].any() \
+                            and cord[y:, x].any():
+                        holes += 1
+            self.assertGreater(holes, 20, rank)
+            self.assertGreater((cord == cord[:, ::-1]).mean(), 0.97, rank)  # symmetric
+        self.assertGreater((masks[0] != masks[1]).sum(), 200)
+        self.assertGreater((masks[1] != masks[2]).sum(), 100)
+
     def test_bad_folder_is_refused(self):
         self.assertNotEqual(run_tool("make_rings.py", "--folder", "a\\b", "--check").returncode, 0)
 

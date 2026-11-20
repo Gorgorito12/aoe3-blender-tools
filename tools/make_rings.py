@@ -4,6 +4,8 @@
     python -I tools/make_rings.py [--out <folder>] [--folder <name>]          writes every file
     python -I tools/make_rings.py [--out <folder>] [--folder <name>] --check  exit code 1 if a file in <folder>
                                                                               differs from what it would write
+    python -I tools/make_rings.py ... --sheet <marks.png>     also a picture of the five rank marks, enlarged 4 times,
+                                                              on grass and on dark (needs numpy)
 
 --out is where the files are written (default out/rings in the repository). --folder is the folder under
 art/effects/ of the game (or of a mod) the files are meant for, and goes into the paths the files name (default
@@ -17,7 +19,8 @@ effects\\Chiefpower\\chiefpower model, which the particles hang on.
 - range_<metres>.xml, its particle and its texture: one thin line of that radius, to show a range on the ground;
 - for wood, food, gold and work, aura_<name>.xml, a marker: the ring and, floating over the unit,
   icon_<name>_<height>.particle with the glyph of icon_<name>.ddt, drawn here;
-- rank_<1-5>.xml, a rank mark floating over the unit: one to three chevrons, then stars.
+- rank_<1-5>.xml, a rank mark floating over the unit: a soutache knot (one loop, a trefoil, a pointed trefoil),
+  then stars.
 
 A unit or an aura shows one with <modelattachment>effects\\<folder>\\ring_<name>.xml</modelattachment>.
 """
@@ -87,15 +90,21 @@ GLYPH_ACCENTS = {
              (0.72, 0.54, 0.15, 0.0), (0.54, 0.72, 0.15, 0.0)),  # its bone
 }
 ICON_ACCENT = (245, 235, 210)
-# Rank marks: one, two and three chevrons in bronze, silver and gold, floating over the
-# unit with no ring. In the texture a smaller y is higher on screen: every rank starts from the same top chevron
-# and grows down, and RANK_LIFT metres over the aura icons keeps the lowest one clear of the HP bar: bar and mark
-# scale alike with the camera's zoom. Ranks 4 and 5 are rank 3's gold chevrons, in the same place, with one or
-# two white stars over them: their sprite is RANK_SIDE times the scale that fits the stars, around the same centre,
-# so the chevrons do not move and the lowest one keeps its gap to the bar.
+# Rank marks: soutache knots, the braid of a hussar's uniform, floating over the unit with no ring: rank 1 a
+# single loop in bronze, rank 2 a trefoil (three round loops) in silver, rank 3 the trefoil with pointed loops in
+# gold. Each is one symmetric cord: the loops meet at a knot, and under it the two ends cross and run out left and
+# right. In the texture a smaller y is higher on screen: every knot fills the same box, its tails at the same
+# lowest height (KNOT_TAIL_Y), and RANK_LIFT metres over the aura icons keeps them clear of the HP bar: bar and mark
+# scale alike with the camera's zoom. Ranks 4 and 5 are rank 3's gold knot, in the same place, with one or two
+# white stars over it: their sprite is RANK_SIDE times the scale that fits the stars, around the same centre, so
+# the knot does not move and its tails keep their gap to the bar.
 RANKS = {1: (205, 127, 50), 2: (200, 205, 215), 3: (255, 205, 40), 4: (255, 205, 40), 5: (255, 205, 40)}
-RANK_ARMS = {1: (-0.38,), 2: (-0.38, 0.10), 3: (-0.38, 0.10, 0.58), 4: (-0.38, 0.10, 0.58), 5: (-0.38, 0.10, 0.58)}
-RANK_STARS = {4: ((0.0, -1.15),), 5: ((-0.40, -1.15), (0.40, -1.15))}
+RANK_KNOTS = {1: "loop", 2: "trefoil", 3: "pointed", 4: "pointed", 5: "pointed"}
+RANK_STARS = {4: ((0.0, -1.22),), 5: ((-0.40, -1.20), (0.40, -1.20))}
+KNOT_WIDTH = 0.085  # the cord's half width, in fractions of the sprite's half width
+KNOT_OUTLINE = 0.09  # its black border
+KNOT_CROSS_Y = 0.40  # where the two ends cross under the knot
+KNOT_TAIL_Y = 0.56  # the tails' ends: the lowest part of every knot (rank 3's lowest chevron reached 0.71)
 RANK_STAR_RADIUS = 0.30  # from a star's centre to its points
 RANK_STAR_COLOUR = (250, 250, 240)
 RANK_SIDE = 0.75
@@ -116,20 +125,97 @@ def star(x, y):
 
 def rank_mark(rank):
     """The glyph, the star accent and the scale of rank's sprite against RANK_SIDE (1 for ranks 1 to 3)."""
-    glyph = tuple(circle for y in RANK_ARMS[rank] for circle in chevron(y))
+    glyph = knot(RANK_KNOTS[rank])
     stars = tuple(circle for x, y in RANK_STARS.get(rank, ()) for circle in star(x, y))
     if not stars:
         return glyph, (), 1.0
-    reach = max(max(abs(x), abs(y)) + outer for x, y, outer, _ in glyph + stars) + ICON_OUTLINE
+    reach = max(max(abs(x), abs(y)) + outer for x, y, outer, _ in glyph + stars) + KNOT_OUTLINE
     scale = reach / 0.98
     shrink = lambda circles: tuple((x / scale, y / scale, outer / scale, inner / scale) for x, y, outer, inner in circles)
     return shrink(glyph), shrink(stars), scale
 
 
-def chevron(y):
-    """Circles along an upward chevron whose arms end at height y."""
-    steps = range(-6, 7)
-    return tuple((0.72 * t / 6, y - 0.30 * (1 - abs(t) / 6), 0.13, 0.0) for t in steps)
+def bezier(p0, p1, p2, p3, step=0.045):
+    """Points along a cubic Bezier curve, about `step` apart (the last point is left to the next piece)."""
+    length = sum(math.dist(a, b) for a, b in ((p0, p1), (p1, p2), (p2, p3)))
+    n = max(4, math.ceil(length / step))
+    out = []
+    for i in range(n):
+        t = i / n
+        s = 1 - t
+        out.append(tuple(s ** 3 * a + 3 * s * s * t * b + 3 * s * t * t * c + t ** 3 * d
+                         for a, b, c, d in zip(p0, p1, p2, p3)))
+    return out
+
+
+def mirrored(points):
+    """The same points, mirrored left to right: every knot is symmetric."""
+    return [(-x, y) for x, y in points]
+
+
+def knot_loop(root, angle, length, width, pointed):
+    """A loop of the cord that leaves `root` and comes back to it, its far end `length` away at `angle` (radians,
+    0 to the right, -pi/2 up); `width` is half its breadth. A round loop is a teardrop; a pointed one closes in a
+    point, with a short spike that thins past it."""
+    d = (math.cos(angle), math.sin(angle))
+    n = (-d[1], d[0])
+    at = lambda a, b: (root[0] + a * d[0] + b * n[0], root[1] + a * d[1] + b * n[1])
+    tip = at(length, 0.0)
+    if pointed:
+        half = [at(0.32 * length, 1.30 * width), at(0.70 * length, 0.80 * width)]
+    else:
+        half = [at(0.30 * length, 1.25 * width), at(length, 0.95 * width)]
+    points = bezier(root, half[0], half[1], tip)
+    points += bezier(tip, at(*_back(half[1], root, d, n)), at(*_back(half[0], root, d, n)), root)
+    circles = [(x, y, KNOT_WIDTH, 0.0) for x, y in points]
+    if pointed:  # the spike: on along the axis past the point, thinning
+        for i in range(1, 9):
+            t = i / 8
+            x, y = at(length + 0.16 * t, 0.0)
+            circles.append((x, y, KNOT_WIDTH * (1 - 0.75 * t), 0.0))
+    return circles
+
+
+def _back(point, root, d, n):
+    """The (along, across) of a control point mirrored across the loop's axis: the loop's other half."""
+    vx, vy = point[0] - root[0], point[1] - root[1]
+    return vx * d[0] + vy * d[1], -(vx * n[0] + vy * n[1])
+
+
+def knot_tails(start, leave):
+    """The two ends under the knot: from `start` (the knot, or the bottom of rank 1's loop) each end leaves along
+    `leave` (a unit vector, the left end's; the right end mirrors it), crosses the middle at KNOT_CROSS_Y and runs
+    out to the other side, ending at KNOT_TAIL_Y."""
+    cross = (0.0, KNOT_CROSS_Y)
+    if start == cross:  # rank 1: the loop's sides cross right there
+        piece = []
+    else:
+        piece = bezier(start, (start[0] + 0.22 * leave[0], start[1] + 0.22 * leave[1]), (-0.20, KNOT_CROSS_Y - 0.12),
+                       cross)
+    piece += bezier(cross, (0.24, KNOT_CROSS_Y + 0.10), (0.52, KNOT_TAIL_Y + 0.04), (0.78, KNOT_TAIL_Y - 0.06))
+    piece.append((0.78, KNOT_TAIL_Y - 0.06))
+    return piece + mirrored(piece)
+
+
+@functools.lru_cache(maxsize=None)
+def knot(kind):
+    """The circles of a rank's soutache knot: "loop" (rank 1), "trefoil" (rank 2) or "pointed" (rank 3)."""
+    if kind == "loop":
+        cross = (0.0, KNOT_CROSS_Y)
+        circles = knot_loop(cross, -math.pi / 2, 1.17, 0.40, False)
+        tails = knot_tails(cross, (0.0, 0.0))
+    else:
+        pointed = kind == "pointed"
+        centre = (0.0, -0.04)
+        top = 0.74 if not pointed else 0.60  # the spike reaches as high as the round loop
+        side = 0.72 if not pointed else 0.60
+        breadth = 0.38 if not pointed else 0.33
+        circles = knot_loop(centre, -math.pi / 2, top, breadth, pointed)
+        for angle in (math.radians(-4), math.radians(180 + 4)):
+            circles += knot_loop(centre, angle, side, breadth - 0.05, pointed)
+        tails = knot_tails(centre, (-0.6, 0.8))
+    circles += [(x, y, KNOT_WIDTH, 0.0) for x, y in tails]
+    return tuple(circles)
 
 
 # Range rings, by radius in metres, a thin line of RANGE_LINE metres in a neutral colour.
@@ -470,10 +556,10 @@ def wanted_files(folder="rings"):
         wanted[f"{name}.xml"] = text(xml("", logic=icon_logic(name)))
         if stars:
             # A larger sprite: twice the texels, so they stay as dense as the others', and an edge as thick.
-            wanted[f"icon_{name}.ddt"] = icon_ddt((colour, colour), glyph, stars, SIZE * 2, ICON_OUTLINE / scale,
+            wanted[f"icon_{name}.ddt"] = icon_ddt((colour, colour), glyph, stars, SIZE * 2, KNOT_OUTLINE / scale,
                                                   RANK_STAR_COLOUR)
         else:
-            wanted[f"icon_{name}.ddt"] = icon_ddt((colour, colour), glyph)
+            wanted[f"icon_{name}.ddt"] = icon_ddt((colour, colour), glyph, outline=KNOT_OUTLINE)
         for _, size, height in ICON_HEIGHTS:
             wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", RANK_SIDE * scale, height + RANK_LIFT, 0))
     for radius in RANGES:
@@ -482,6 +568,36 @@ def wanted_files(folder="rings"):
         wanted[f"range_{radius}.xml"] = text(xml("", logic=range_logic(radius)))
         wanted[f"range_{radius}.particle"] = text(particle(f"range_{radius}", radius / BANDS[0][1]))
     return wanted
+
+
+SHEET_GROUNDS = ((96, 112, 58), (40, 32, 24))  # grass, and the dark of the panel
+
+
+def rank_sheet(wanted, zoom=4):
+    """RGB rows (numpy) of the five rank marks, each texture enlarged `zoom` times (ranks 4 and 5, drawn at twice the
+    texels, at half that, so every mark keeps its size in the game), on grass and on a dark ground."""
+    import numpy as np
+    sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+    from aoe3game import ddt as ddtfile
+
+    cell = SIZE * zoom * 2
+    rows = []
+    for ground in SHEET_GROUNDS:
+        row = np.zeros((cell, cell * len(RANKS), 3), np.float32) + np.array(ground, np.float32)
+        for i, rank in enumerate(RANKS):
+            px = np.asarray(ddtfile.decode(wanted[f"icon_rank_{rank}.ddt"])).astype(np.float32)
+            _, _, scale = rank_mark(rank)
+            side = round(SIZE * zoom * scale)
+            step = px.shape[0] / side
+            pick = (np.arange(side) * step).astype(int)
+            big = px[pick][:, pick]
+            top = (cell - side) // 2
+            left = i * cell + top
+            a = big[..., 3:4] / 255.0
+            area = row[top:top + side, left:left + side]
+            row[top:top + side, left:left + side] = big[..., :3] * a + area * (1 - a)
+        rows.append(row)
+    return np.concatenate(rows, axis=0).astype(np.uint8)
 
 
 def option(args, name, default):
@@ -511,6 +627,12 @@ def main(argv):
         else:
             path.write_bytes(data)
     print(f"make_rings: {len(wanted)} files, {bad} differ" if check else f"make_rings: wrote {len(wanted)} files to {out}")
+    sheet = option(argv, "--sheet", None)
+    if sheet:
+        sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+        from core.pngio import encode_png
+        pathlib.Path(sheet).write_bytes(encode_png(rank_sheet(wanted)))
+        print(f"make_rings: rank marks x4 in {sheet}")
     return 1 if bad else 0
 
 
