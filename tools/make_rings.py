@@ -120,8 +120,8 @@ RANK_METALS = {1: "bronze", 2: "silver", 3: "gold", 4: "gold", 5: "gold"}
 RANKS = {rank: RANK_TONES[metal][1] for rank, metal in RANK_METALS.items()}  # each rank's base colour
 RANK_KNOTS = {1: "loop", 2: "trefoil", 3: "eyes", 4: "five", 5: "fiveeyes"}
 RANK_OUTLINE_COLOUR = (27, 13, 0)
-KNOT_WIDTH = 0.09  # the cord's half width, in glyph units (the reference's cord, 27 of its pixels)
-KNOT_OUTLINE = 0.07  # its dark border (the reference's, 10 pixels)
+KNOT_WIDTH = 0.089  # the cord's half width, in glyph units (the reference's thick cord)
+KNOT_OUTLINE = 0.055  # its dark border
 KNOT_REACH = 0.98  # how far from the sprite's centre a mark may reach, its border included
 SHINE = (1.0, 0.25)  # how much the place across a strand (top left light) and on the whole mark pick the tone
 RANK_SIDE = 0.75  # metres of a glyph unit
@@ -185,52 +185,62 @@ def _back(point, root, d, n):
     return vx * d[0] + vy * d[1], -(vx * n[0] + vy * n[1])
 
 
-BAR_Y = 0.0  # where the stem meets the tail bar: the knots' coordinates are measured from it
+# Every knot's shape, in glyph units (y down, from the tail bar's centre line). "loop": the crossing's height, the
+# loop's length and width, the tail's end (x, y) and its two control points. The others: the top loop (its root's
+# height, length, width, eye-shaped or round), the tiers of side loops (height, length, width, rise in degrees), and
+# the tail bar (half length, how far its ends curve up, the height of its two control points). Fitted to the reference
+# sheet the Wars of Liberty team approved, by the overlap of the silhouettes.
+KNOT_SHAPES = {
+    "loop": {"cross": -0.2, "length": 1.132, "width": 0.398, "end": (0.719, -0.119), "c1": (0.034, -0.128),
+             "c2": (0.513, 0.072)},
+    "trefoil": {"top": (-0.799, 0.615, 0.294, False), "tiers": ((-0.449, 0.855, 0.256, -2.031),),
+                "bar": (0.763, 0.064, 0.003)},
+    "eyes": {"top": (-0.757, 0.625, 0.265, True), "tiers": ((-0.436, 0.799, 0.239, -1.431),),
+             "bar": (0.726, 0.051, 0.018)},
+    "five": {"top": (-1.349, 0.54, 0.297, False), "tiers": ((-1.11, 0.802, 0.21, -8.831), (-0.451, 0.799, 0.226, -7.213)),
+             "bar": (0.726, 0.062, 0.001)},
+    "fiveeyes": {"top": (-1.32, 0.555, 0.271, True), "tiers": ((-1.051, 0.818, 0.204, -1.6), (-0.441, 0.821, 0.21, -5.75)),
+                 "bar": (0.734, 0.061, 0.004)},
+}
 
 
-def tail_bar():
+def tail_bar(half, rise, sag):
     """The tail bar under the stem: flat, its ends curving up."""
-    half = bezier((0.0, BAR_Y), (0.35, BAR_Y + 0.01), (0.56, BAR_Y + 0.02), (0.66, BAR_Y - 0.15))
-    half.append((0.66, BAR_Y - 0.15))
-    return half + mirrored(half)
+    piece = bezier((0.0, 0.0), (0.53 * half, sag), (0.85 * half, sag + 0.01), (half, -rise))
+    piece.append((half, -rise))
+    return piece + mirrored(piece)
 
 
 def stem(top):
-    return bezier((0.0, top), (0.0, top), (0.0, BAR_Y), (0.0, BAR_Y), 0.03)
+    return bezier((0.0, top), (0.0, top), (0.0, 0.0), (0.0, 0.0), 0.03)
 
 
-def eye_pair(y, length, width, droop=12):
-    """Two eye-shaped loops on the stem at height y, pointing out left and right, `droop` degrees below the
-    horizontal, as the reference's lean a little down toward their tips."""
-    right = knot_loop((0.0, y), math.radians(droop), length, width, True, 0.08)
+def eye_pair(y, length, width, rise):
+    """Two eye-shaped loops on the stem at height y, pointing out left and right, tilted `rise` degrees up."""
+    right = knot_loop((0.0, y), math.radians(-rise), length, width, True)
     return right + mirrored(right)
+
+
+def knot_points(kind, shape):
+    """The cord's centre line of a knot of `kind` drawn from `shape` (an entry of KNOT_SHAPES)."""
+    if kind == "loop":
+        cross = (0.0, shape["cross"])
+        points = knot_loop(cross, -math.pi / 2, shape["length"], shape["width"], False)
+        (ex, ey), (ax, ay), (bx, by) = shape["end"], shape["c1"], shape["c2"]
+        tail = bezier(cross, (-ax, ay), (-bx, by), (-ex, ey))  # down to the left, then out
+        tail.append((-ex, ey))
+        return points + tail + mirrored(tail)
+    root, length, width, eye = shape["top"]
+    points = knot_loop((0.0, root), -math.pi / 2, length, width, eye) + stem(root)
+    for tier in shape["tiers"]:
+        points += eye_pair(*tier)
+    return points + tail_bar(*shape["bar"])
 
 
 @functools.lru_cache(maxsize=None)
 def knot(kind):
-    """The circles of a rank's soutache knot: "loop" (rank 1), "trefoil" (2), "eyes" (3), "five" (4), "fiveeyes" (5),
-    measured on the reference sheet (150 of its pixels a glyph unit, y from the tail bar's centre line)."""
-    if kind == "loop":
-        cross = (0.0, -0.12)
-        points = knot_loop(cross, -math.pi / 2, 1.11, 0.42, False)
-        tail = bezier(cross, (-0.12, -0.05), (-0.42, 0.02), (-0.68, -0.04))  # down to the left, then out
-        tail.append((-0.68, -0.04))
-        points += tail + mirrored(tail)
-    elif kind in ("trefoil", "eyes"):
-        top = -0.70
-        if kind == "eyes":
-            points = knot_loop((0.0, top), -math.pi / 2, 0.74, 0.30, True)
-        else:
-            points = knot_loop((0.0, top), -math.pi / 2, 0.71, 0.36, False)
-        points += stem(top) + eye_pair(-0.62, 0.80, 0.23, 15) + tail_bar()
-    else:
-        top = -1.34
-        if kind == "fiveeyes":
-            points = knot_loop((0.0, top), -math.pi / 2, 0.66, 0.28, True)
-        else:
-            points = knot_loop((0.0, top), -math.pi / 2, 0.62, 0.32, False)
-        points += stem(top) + eye_pair(-1.20, 0.78, 0.20, 12) + eye_pair(-0.60, 0.78, 0.20, 12) + tail_bar()
-    return tuple((x, y, KNOT_WIDTH, 0.0) for x, y in points)
+    """The circles of a rank's soutache knot: "loop" (rank 1), "trefoil" (2), "eyes" (3), "five" (4), "fiveeyes" (5)."""
+    return tuple((x, y, KNOT_WIDTH, 0.0) for x, y in knot_points(kind, KNOT_SHAPES[kind]))
 
 
 def _grid(glyph, grow, cell=0.25):
@@ -255,21 +265,27 @@ def rank_texels(size, tones, glyph, outline):
         row = []
         for x in range(size):
             total = core = 0
+            pool = set()
             for sy in range(samples):
                 for sx in range(samples):
                     u = (x + (sx + 0.5) / samples) / size * 2 - 1
                     v = (y + (sy + 0.5) / samples) / size * 2 - 1
                     cand = near(u, v)
                     total += glyph_cover(u, v, cand, outline) > 0
-                    core += glyph_cover(u, v, cand, 0.0) > 0
+                    hit = glyph_cover(u, v, cand, 0.0) > 0
+                    core += hit
+                    if hit:
+                        pool.update(cand)
             alpha = round(total / samples ** 2 * 15)
-            if core * 2 < samples ** 2:
+            if core == 0:
                 row.append((RANK_OUTLINE_COLOUR, alpha))
                 continue
+            share = core / samples ** 2  # how much of the texel is cord: the rest is its dark border
             u, v = (x + 0.5) / size * 2 - 1, (y + 0.5) / size * 2 - 1
             # across the strand: from the line through the two nearest centres (the strand's direction there), so
             # that the shading follows the cord, not each circle
-            first, second = sorted(near(u, v), key=lambda c: math.hypot(u - c[0], v - c[1]))[:2]
+            ranked = sorted(pool, key=lambda c: math.hypot(u - c[0], v - c[1]))
+            first, second = ranked[0], ranked[min(1, len(ranked) - 1)]
             tx, ty = second[0] - first[0], second[1] - first[1]
             length = math.hypot(tx, ty) or 1.0
             tx, ty = tx / length, ty / length
@@ -284,6 +300,7 @@ def rank_texels(size, tones, glyph, outline):
                 rgb = [b + (l - b) * s ** 1.4 for b, l in zip(base, light)]
             else:
                 rgb = [b + (d - b) * -s for b, d in zip(base, dark)]
+            rgb = [c * share + o * (1 - share) for c, o in zip(rgb, RANK_OUTLINE_COLOUR)]
             row.append((tuple(round(c) for c in rgb), alpha))
         out.append(row)
     return out
@@ -317,6 +334,24 @@ def rank_block(texels):
     return bytes(out) + struct.pack("<HHI", c0, c1, indices)
 
 
+def _rank_level(texels):
+    """The DXT3 bytes of one level: with numpy, the toolkit's encoder, which fits each block's two colours to all its
+    texels (smooth shading, no stray light texels); without it, rank_block's lightest-and-darkest fit."""
+    try:
+        import numpy as np
+        sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+        from aoe3game import ddt as ddtfile
+    except ImportError:
+        out = bytearray()
+        side = len(texels)
+        for by in range(0, side, 4):
+            for bx in range(0, side, 4):
+                out += rank_block([texels[by + y][bx + x] for y in range(4) for x in range(4)])
+        return bytes(out)
+    rgba = np.array([[(*rgb, round(a * 255 / 15)) for rgb, a in row] for row in texels], np.uint8)
+    return ddtfile.compress(rgba, ddtfile.DXT3, refine=True)
+
+
 @functools.lru_cache(maxsize=None)  # the textures do not depend on --folder
 def rank_ddt(rank):
     """The DXT3 texture of a rank's mark, with its mips down to 4x4 (ranks 4 and 5 at twice the texels, so their
@@ -328,11 +363,7 @@ def rank_ddt(rank):
     for i in range(mips):
         side = size >> i
         texels = rank_texels(side, RANK_TONES[RANK_METALS[rank]], glyph, KNOT_OUTLINE / scale)
-        level = bytearray()
-        for by in range(0, side, 4):
-            for bx in range(0, side, 4):
-                level += rank_block([texels[by + y][bx + x] for y in range(4) for x in range(4)])
-        levels.append(bytes(level))
+        levels.append(_rank_level(texels))
     out = b"RTS3" + bytes((0, 1, 8, mips)) + struct.pack("<II", size, size)
     offset = len(out) + 8 * mips
     for level in levels:
@@ -706,8 +737,13 @@ def rank_sheet(wanted, zoom=4):
         px = np.asarray(ddtfile.decode(wanted[f"icon_rank_{rank}.ddt"])).astype(np.float32)
         _, scale = rank_mark(rank)
         side = round(unit * 2 * scale)
-        pick = (np.arange(side) * px.shape[0] / side).astype(int)
-        big = px[pick][:, pick]
+        pos = np.clip((np.arange(side) + 0.5) * px.shape[0] / side - 0.5, 0, px.shape[0] - 1)
+        lo = np.floor(pos).astype(int)
+        hi = np.minimum(lo + 1, px.shape[0] - 1)
+        f = (pos - lo)[:, None, None]
+        rows = px[lo] * (1 - f) + px[hi] * f
+        g = (pos - lo)[None, :, None]
+        big = rows[:, lo] * (1 - g) + rows[:, hi] * g
         shown = np.nonzero(big[..., 3].max(axis=1) > 0)[0]
         cols = np.nonzero(big[..., 3].max(axis=0) > 0)[0]
         cut = big[shown.min():shown.max() + 1, cols.min():cols.max() + 1]
