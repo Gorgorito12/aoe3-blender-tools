@@ -45,7 +45,7 @@ class Rings(unittest.TestCase):
         for rank in range(1, 6):
             self.assertIn(f"rank_{rank}.xml", names)
         self.assertIn("aura_gold.xml", names)
-        self.assertEqual(len(names), 181)
+        self.assertEqual(len(names), 190)
 
     def test_paths_name_the_folder(self):
         for name, data in self.files.items():
@@ -84,7 +84,8 @@ class Rings(unittest.TestCase):
         lows = []
         for rank in range(1, 6):
             glyph, scale = make_rings.rank_mark(rank)
-            self.assertEqual(scale == 1.0, rank <= 3, rank)
+            self.assertGreaterEqual(scale, 1.0, rank)  # rank 1 fits the sprite; a larger knot gets a larger sprite
+            self.assertGreater(scale, 1.0, rank)  # the sprite holds the knot over its centre (the bar)
             for x, y, r, _ in glyph:  # each circle has its mirror image
                 self.assertTrue(any(abs(x + x2) < 1e-6 and abs(y - y2) < 1e-6 and abs(r - r2) < 1e-9
                                     for x2, y2, r2, _ in glyph), (rank, x, y))
@@ -92,7 +93,7 @@ class Rings(unittest.TestCase):
             self.assertLessEqual(reach, 1.0, rank)
             lows.append(max(y + r for x, y, r, _ in glyph) * scale)  # in ranks 1 to 3's sprite units
         self.assertAlmostEqual(min(lows), max(lows), places=2)
-        self.assertLessEqual(max(lows), 0.71)  # no lower than rank 3's lowest chevron was
+        self.assertAlmostEqual(max(lows), -make_rings.RANK_TAIL_LIFT, places=6)  # the tails over the bar's height
         self.assertFalse(hasattr(make_rings, "RANK_STARS"))  # no stars any more
 
     @unittest.skipIf(np is None, "numpy not available")
@@ -103,20 +104,17 @@ class Rings(unittest.TestCase):
         for rank, colour in ((1, (176, 141, 87)), (2, (172, 178, 190)), (3, (236, 186, 40)), (4, (236, 186, 40)),
                              (5, (236, 186, 40))):
             px = ddt.decode(self.files[f"icon_rank_{rank}.ddt"]).astype(int)
-            if px.shape[0] == 128:
-                px = px[::2, ::2]
             cord = (px[..., 3] == 255) & (px[..., :3].sum(axis=2) > 200)
             masks.append(cord)
             body = px[cord][:, :3]
             self.assertTrue((abs(np.median(body, axis=0) - colour) < 40).all(), (rank, np.median(body, axis=0)))
             luma = body.sum(axis=1)
             self.assertGreater(np.percentile(luma, 90) - np.percentile(luma, 10), 60, rank)  # the shine
-            holes = 0
-            for y in range(1, 63):
-                for x in range(1, 63):
-                    if not cord[y, x] and cord[y, :x].any() and cord[y, x:].any() and cord[:y, x].any() \
-                            and cord[y:, x].any():
-                        holes += 1
+            left = np.maximum.accumulate(cord, axis=1)
+            right = np.maximum.accumulate(cord[:, ::-1], axis=1)[:, ::-1]
+            up = np.maximum.accumulate(cord, axis=0)
+            down = np.maximum.accumulate(cord[::-1], axis=0)[::-1]
+            holes = int((~cord & left & right & up & down).sum())
             self.assertGreater(holes, 20, rank)
             self.assertGreater((cord == cord[:, ::-1]).mean(), 0.95, rank)  # symmetric
         for a in range(5):
@@ -125,6 +123,27 @@ class Rings(unittest.TestCase):
         bronze = ddt.decode(self.files["icon_rank_1.ddt"]).astype(int)
         shown = bronze[(bronze[..., 3] == 255) & (bronze[..., :3].sum(axis=2) > 200)][:, :3]
         self.assertGreater(np.median(shown[:, 1]) / np.median(shown[:, 0]), 0.72)  # bronze, not copper
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_rank_marks_are_centred_on_the_bar(self):
+        """Rule: a mark over a unit is horizontally centred on the unit's HP bar. The sprite hangs centred on the unit,
+        so the knot must sit on the texture's vertical centre line: its bounding box and its alpha-weighted centre."""
+        for rank in range(1, 6):
+            px = ddt.decode(self.files[f"icon_rank_{rank}.ddt"]).astype(float)
+            alpha = px[..., 3]
+            n = alpha.shape[1]
+            cols = np.nonzero(alpha.max(axis=0) > 0)[0]
+            self.assertEqual(cols.min(), n - 1 - cols.max(), rank)  # as much room on the left as on the right
+            centre = (alpha.sum(axis=0) * (np.arange(n) + 0.5)).sum() / alpha.sum()
+            self.assertAlmostEqual(centre, n / 2, delta=0.05, msg=rank)
+            rows = np.nonzero(alpha.max(axis=1) > 0)[0]
+            self.assertLess(rows.max(), n / 2, rank)  # the knot over the sprite's centre, which is at the bar
+        for name, data in self.files.items():
+            if name.startswith("icon_rank_") and name.endswith(".particle"):
+                height = float(data.decode().split("<centerheight>")[1].split("<")[0])
+                kind = name[:-len(".particle")].split("_")[-1]
+                if kind in make_rings.RANK_BAR_HEIGHTS:
+                    self.assertAlmostEqual(height, make_rings.RANK_BAR_HEIGHTS[kind], places=3, msg=name)
 
     def test_bad_folder_is_refused(self):
         self.assertNotEqual(run_tool("make_rings.py", "--folder", "a\\b", "--check").returncode, 0)
@@ -137,7 +156,7 @@ class Rings(unittest.TestCase):
                     f.write(data)
             result = run_tool("make_rings.py", "--out", tmp, "--folder", "myrings", "--check")
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertIn("181 files, 0 differ", result.stdout)
+            self.assertIn("190 files, 0 differ", result.stdout)
 
 
 class Icons(unittest.TestCase):

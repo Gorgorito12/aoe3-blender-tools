@@ -64,6 +64,7 @@ SHAPES = (
 # is in metres above the unit's feet, as the ring lies at them. The side is the half width of the sprite.
 ICON_HEIGHTS = (
     ("none", "unit", 3.2),
+    ("abstractelephant", "elephant", 7.0),  # a mod's type (Wars of Liberty): elephants carry their bar far higher
     ("abstractcavalry", "cavalry", 4.0),
     ("abstractartillery", "cavalry", 4.0),
     ("tree", "tree", 8.0),
@@ -96,11 +97,17 @@ ICON_ACCENT = (245, 235, 210)
 # Each is one symmetric cord: the loops meet at a knot (two knots, crossing between them, at ranks 4 and 5), and
 # under it the two ends cross and run out left and right. The cord is shaded as polished metal: lighter on the side
 # of each strand toward the top left, darker toward the bottom right, with a thin bright streak, and the whole mark
-# a little lighter toward its top left. In the texture a smaller y is higher on screen: every knot ends at the same
-# lowest height (its tails, KNOT_TAIL_Y), and RANK_LIFT metres over the aura icons keeps them clear of the HP bar: bar
-# and mark scale alike with the camera's zoom. Ranks 4 and 5 reach higher and wider than the sprite: their sprite is
-# RANK_SIDE times the scale that fits them, around the same centre, with the glyph scaled down by as much, so their
-# tails land where the other ranks' do and keep the same gap to the bar.
+# a little lighter toward its top left. In the texture a smaller y is higher on screen.
+#
+# Rule: a mark over a unit is horizontally CENTRED on the unit's HP bar, symmetric over it, never nearer one end. The
+# glyph is symmetric and centred on the texture's vertical centre line (tested). The game draws the bar at the unit's
+# HITPOINTBAR tag, and a particle hangs at the unit's position, at a height over the ground; seen in perspective, a
+# point higher than the bar drifts sideways from it, away from the middle of the screen (measured: about 1 % of the
+# unit's distance from the screen's centre per 2 m, so 5 to 7 px at the screen's sides). So the sprite's centre is put
+# at the bar's own height (RANK_BAR_HEIGHTS, by kind of unit), where nothing drifts, and the knot is drawn high in the
+# sprite: a sprite faces the camera, so a shift inside it moves the knot straight up on screen. Every knot's tails sit
+# RANK_TAIL_LIFT above the sprite's centre, so all ranks keep the same gap to the bar; bar and mark scale alike with the
+# camera's zoom. A rank whose knot is larger gets a larger sprite.
 RANKS = {1: (176, 141, 87), 2: (172, 178, 190), 3: (236, 186, 40), 4: (236, 186, 40), 5: (236, 186, 40)}
 RANK_KNOTS = {1: "loop", 2: "trefoil", 3: "eyes", 4: "five", 5: "fiveeyes"}
 KNOT_WIDTH = 0.085  # the cord's half width, in fractions of the sprite's half width
@@ -110,19 +117,22 @@ KNOT_TAIL_Y = 0.56  # the tails' ends: the lowest part of every knot (rank 3's l
 KNOT_REACH = 0.98  # how far from the sprite's centre a mark may reach, its border included
 SHINE = (0.30, 0.12)  # brightness across a strand (top left lighter) and across the whole mark
 STREAK = (0.30, 0.62, 0.55)  # the bright streak: where across the strand, and how much of white
-RANK_SIDE = 0.75
-RANK_LIFT = 1.15
+RANK_SIDE = 0.75  # metres of a glyph unit: the half side of rank 1's knot box
+RANK_TAIL_LIFT = 1.2  # glyph units from the sprite's centre (the bar) up to the tails: about 0.9 m
+RANK_TEXTURE = 256
+# The HP bar's height over the ground, by ICON_HEIGHTS' kinds (the game's HITPOINTBAR tags: a Hussar's idle tag is at
+# 4.07..4.15 m; infantry measured at about 2.9 m); the kinds a unit with a rank never is keep the aura icons' heights.
+RANK_BAR_HEIGHTS = {"unit": 2.9, "cavalry": 4.1, "elephant": 5.1}
 
 
 def rank_mark(rank):
-    """The glyph and the scale of rank's sprite against RANK_SIDE: 1 when the knot fits the sprite (ranks 1 to 3);
-    for a larger knot the glyph scaled down by as much as the sprite is enlarged."""
+    """The glyph in its texture's coordinates and the sprite's size in glyph units (RANK_SIDE m each): the knot moved
+    up so that its tails sit RANK_TAIL_LIFT over the sprite's centre, the sprite just large enough to hold it."""
     glyph = knot(RANK_KNOTS[rank])
-    reach = max(max(abs(x), abs(y)) + outer for x, y, outer, _ in glyph) + KNOT_OUTLINE
-    if reach <= KNOT_REACH:
-        return glyph, 1.0
+    shift = max(y + outer for _, y, outer, _ in glyph) + RANK_TAIL_LIFT  # the tails' lowest point to -RANK_TAIL_LIFT
+    reach = max(max(abs(x), abs(y - shift)) + outer for x, y, outer, _ in glyph) + KNOT_OUTLINE
     scale = reach / KNOT_REACH
-    return tuple((x / scale, y / scale, outer / scale, inner / scale) for x, y, outer, inner in glyph), scale
+    return tuple((x / scale, (y - shift) / scale, outer / scale, inner / scale) for x, y, outer, inner in glyph), scale
 
 
 def bezier(p0, p1, p2, p3, step=0.045):
@@ -153,8 +163,8 @@ def knot_loop(root, angle, length, width, eye):
     tip = at(length, 0.0)
     if eye:
         half = [at(0.28 * length, 1.15 * width), at(0.72 * length, 1.05 * width)]
-    else:
-        half = [at(0.40 * length, 0.50 * width), at(length, 1.40 * width)]
+    else:  # full and round, as JTMaston preferred them
+        half = [at(0.30 * length, 1.25 * width), at(length, 0.95 * width)]
     points = bezier(root, half[0], half[1], tip)
     points += bezier(tip, at(*_back(half[1], root, d, n)), at(*_back(half[0], root, d, n)), root)
     return points
@@ -185,6 +195,25 @@ def knot_tails(start):
     return piece + tail + mirrored(tail)
 
 
+def knot_petal(centre, angle, stem, length, width, eye):
+    """A loop on a short stem: the cord runs `stem` from the knot's centre along `angle`, then makes the loop. The
+    stems keep neighbouring loops apart, so a clear gap shows between them (JTMaston: as between rank 5's tiers)."""
+    root = (centre[0] + stem * math.cos(angle), centre[1] + stem * math.sin(angle))
+    return bezier(centre, centre, root, root, 0.03) + knot_loop(root, angle, length, width, eye)
+
+
+def knot_tier(centre, sides, eye, top=True):
+    """One tier of loops around a knot: the top loop (when `top`) and a pair on each side at `sides` = (angle in
+    degrees below the horizontal, stem, length, width)."""
+    points = []
+    if top:
+        points += knot_petal(centre, -math.pi / 2, 0.20, 0.60, 0.30, eye)
+    below, stem, length, width = sides
+    for angle in (math.radians(below), math.radians(180 - below)):
+        points += knot_petal(centre, angle, stem, length, width, eye)
+    return points
+
+
 @functools.lru_cache(maxsize=None)
 def knot(kind):
     """The circles of a rank's soutache knot: "loop" (rank 1), "trefoil" (2), "eyes" (3), "five" (4), "fiveeyes"
@@ -193,20 +222,13 @@ def knot(kind):
         cross = (0.0, KNOT_CROSS_Y)
         points = knot_loop(cross, -math.pi / 2, 1.17, 0.40, False) + knot_tails(cross)
     elif kind in ("trefoil", "eyes"):
-        eye = kind == "eyes"
-        centre = (0.0, -0.08)
-        points = knot_loop(centre, -math.pi / 2, 0.72, 0.34 if eye else 0.30, eye)
-        for angle in (math.radians(-8), math.radians(180 + 8)):
-            points += knot_loop(centre, angle, 0.78, 0.30 if eye else 0.27, eye)
-        points += knot_tails(centre)
+        centre = (0.0, -0.10)
+        points = knot_tier(centre, (20, 0.24, 0.62, 0.27), kind == "eyes") + knot_tails(centre)
     else:
         eye = kind == "fiveeyes"
-        upper, lower = (0.0, -0.64), (0.0, -0.02)
-        points = knot_loop(upper, -math.pi / 2, 0.80, 0.34 if eye else 0.30, eye)
-        for angle in (math.radians(-14), math.radians(180 + 14)):
-            points += knot_loop(upper, angle, 0.86, 0.32 if eye else 0.29, eye)
-        for angle in (math.radians(8), math.radians(180 - 8)):
-            points += knot_loop(lower, angle, 0.80, 0.30 if eye else 0.27, eye)
+        upper, lower = (0.0, -0.98), (0.0, -0.04)
+        points = knot_tier(upper, (16, 0.24, 0.64, 0.27), eye)
+        points += knot_tier(lower, (20, 0.24, 0.62, 0.26), eye, top=False)
         points += knot_link(upper, lower) + knot_tails(lower)
     return tuple((x, y, KNOT_WIDTH, 0.0) for x, y in points)
 
@@ -298,7 +320,7 @@ def rank_ddt(rank):
     """The DXT3 texture of a rank's mark, with its mips down to 4x4 (ranks 4 and 5 at twice the texels, so their
     cord keeps as many texels as the others')."""
     glyph, scale = rank_mark(rank)
-    size = SIZE * 2 if scale > 1 else SIZE
+    size = RANK_TEXTURE
     mips = int(math.log2(size)) - 1
     levels = []
     for i in range(mips):
@@ -655,7 +677,8 @@ def wanted_files(folder="rings"):
         wanted[f"{name}.xml"] = text(xml("", logic=icon_logic(name)))
         wanted[f"icon_{name}.ddt"] = rank_ddt(rank)
         for _, size, height in ICON_HEIGHTS:
-            wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", RANK_SIDE * scale, height + RANK_LIFT, 0))
+            wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", RANK_SIDE * scale,
+                                                                   RANK_BAR_HEIGHTS.get(size, height), 0))
     for radius in RANGES:
         side = 256 if radius <= 16 else 512
         wanted[f"range_{radius}.ddt"] = ddt(RANGE_COLOURS, side, *range_shape(radius))
@@ -668,28 +691,36 @@ SHEET_GROUNDS = ((96, 112, 58), (40, 32, 24))  # grass, and the dark of the pane
 
 
 def rank_sheet(wanted, zoom=4):
-    """RGB rows (numpy) of the five rank marks, each texture enlarged `zoom` times (ranks 4 and 5, drawn at twice the
-    texels, at half that, so every mark keeps its size in the game), on grass and on a dark ground."""
+    """RGB rows (numpy) of the five rank marks at `zoom` times the size of rank 1's first 64-texel knot (SIZE / 2
+    texels a glyph unit), each cut to its knot and standing on the same baseline (their tails), as their sizes are in
+    the game, on grass and on a dark ground."""
     import numpy as np
     sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
     from aoe3game import ddt as ddtfile
 
-    cell = SIZE * zoom * 2
+    unit = SIZE // 2 * zoom  # pixels a glyph unit
+    cells, height = [], 0
+    for rank in RANKS:
+        px = np.asarray(ddtfile.decode(wanted[f"icon_rank_{rank}.ddt"])).astype(np.float32)
+        _, scale = rank_mark(rank)
+        side = round(unit * 2 * scale)
+        pick = (np.arange(side) * px.shape[0] / side).astype(int)
+        big = px[pick][:, pick]
+        shown = np.nonzero(big[..., 3].max(axis=1) > 0)[0]
+        cols = np.nonzero(big[..., 3].max(axis=0) > 0)[0]
+        cut = big[shown.min():shown.max() + 1, cols.min():cols.max() + 1]
+        cells.append(cut)
+        height = max(height, cut.shape[0])
+    width = max(c.shape[1] for c in cells) + unit // 2
     rows = []
     for ground in SHEET_GROUNDS:
-        row = np.zeros((cell, cell * len(RANKS), 3), np.float32) + np.array(ground, np.float32)
-        for i, rank in enumerate(RANKS):
-            px = np.asarray(ddtfile.decode(wanted[f"icon_rank_{rank}.ddt"])).astype(np.float32)
-            _, scale = rank_mark(rank)
-            side = round(SIZE * zoom * scale)
-            step = px.shape[0] / side
-            pick = (np.arange(side) * step).astype(int)
-            big = px[pick][:, pick]
-            top = (cell - side) // 2
-            left = i * cell + top
-            a = big[..., 3:4] / 255.0
-            area = row[top:top + side, left:left + side]
-            row[top:top + side, left:left + side] = big[..., :3] * a + area * (1 - a)
+        row = np.zeros((height + unit // 2, width * len(cells), 3), np.float32) + np.array(ground, np.float32)
+        for i, cut in enumerate(cells):
+            h, w = cut.shape[:2]
+            top, left = height + unit // 4 - h, i * width + (width - w) // 2
+            a = cut[..., 3:4] / 255.0
+            area = row[top:top + h, left:left + w]
+            row[top:top + h, left:left + w] = cut[..., :3] * a + area * (1 - a)
         rows.append(row)
     return np.concatenate(rows, axis=0).astype(np.uint8)
 
