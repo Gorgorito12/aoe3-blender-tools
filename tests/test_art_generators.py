@@ -147,6 +147,52 @@ class Rings(unittest.TestCase):
     def test_bad_folder_is_refused(self):
         self.assertNotEqual(run_tool("make_rings.py", "--folder", "a\\b", "--check").returncode, 0)
 
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_rank_marks_from_drawn_images(self):
+        """--rank-shapes: drawn marks (synthetic here: rings of growing height on a stem, symmetric) placed by the
+        same rules as the knots: centred on the HP bar (bounding box and alpha centroid), their lowest pixel at the
+        same height over the bar for every rank, a larger drawing in a larger sprite."""
+        import json
+        from core.pngio import encode_png
+        with tempfile.TemporaryDirectory() as tmp:
+            for rank in range(1, 6):
+                h, w = 120 + 30 * rank, 160
+                yy, xx = np.mgrid[0:h, 0:w]
+                ring = np.abs(np.hypot(xx - 79.5, yy - 50) - 35) < 10
+                stem = (np.abs(xx - 79.5) < 6) & (yy > 80)
+                bar = (np.abs(yy - (h - 12)) < 8) & (np.abs(xx - 79.5) < 70)
+                rgba = np.zeros((h, w, 4), np.uint8)
+                rgba[ring | stem | bar] = (230, 180, 40, 255)
+                with open(os.path.join(tmp, f"rank_{rank}.png"), "wb") as f:
+                    f.write(encode_png(rgba))
+            with open(os.path.join(tmp, "shapes.json"), "w") as f:
+                json.dump({"pixels_per_unit": 100}, f)
+            make_rings.RANK_SHAPES = tmp
+            make_rings._image_placement.cache_clear()
+            make_rings.rank_ddt.cache_clear()
+            try:
+                lows, scales = [], []
+                for rank in range(1, 6):
+                    px = ddt.decode(make_rings.rank_ddt(rank)).astype(float)
+                    alpha = px[..., 3]
+                    n = alpha.shape[1]
+                    self.assertEqual(n, make_rings.RANK_SHAPE_TEXTURE)
+                    cols = np.nonzero(alpha.max(axis=0) > 0)[0]
+                    self.assertLessEqual(abs(cols.min() - (n - 1 - cols.max())), 1, rank)
+                    centre = (alpha.sum(axis=0) * (np.arange(n) + 0.5)).sum() / alpha.sum()
+                    self.assertAlmostEqual(centre, n / 2, delta=0.5, msg=rank)
+                    scale = make_rings.rank_scale(rank)
+                    rows = np.nonzero(alpha.max(axis=1) > 127)[0]
+                    lows.append((n / 2 - (rows.max() + 1)) / (n / 2) * scale)  # glyph units over the centre
+                    scales.append(scale)
+                for low in lows:
+                    self.assertAlmostEqual(low, make_rings.RANK_TAIL_LIFT, delta=0.05)
+                self.assertEqual(scales, sorted(scales))  # taller drawings, larger sprites
+            finally:
+                make_rings.RANK_SHAPES = None
+                make_rings._image_placement.cache_clear()
+                make_rings.rank_ddt.cache_clear()
+
     def test_command_line_check(self):
         """One run of the tool (about 40 s: every texture is drawn in plain Python)."""
         with tempfile.TemporaryDirectory() as tmp:

@@ -4,6 +4,10 @@
     python -I tools/make_rings.py [--out <folder>] [--folder <name>]          writes every file
     python -I tools/make_rings.py [--out <folder>] [--folder <name>] --check  exit code 1 if a file in <folder>
                                                                               differs from what it would write
+    python -I tools/make_rings.py ... --rank-shapes <folder>  the rank marks from drawn images instead of the knots:
+                                                              rank_1.png .. rank_5.png (RGBA) and shapes.json
+                                                              {"pixels_per_unit": N}, placed by the same rules (needs
+                                                              numpy)
     python -I tools/make_rings.py ... --sheet <marks.png>     also a picture of the five rank marks, enlarged 4 times,
                                                               on grass and on dark (needs numpy)
 
@@ -128,6 +132,7 @@ RANK_SIDE = 0.75  # metres of a glyph unit
 RANK_TAIL_LIFT = 1.2  # glyph units from the sprite's centre (the bar) up to the tails: about 0.9 m
 RANK_TEXTURE = 256
 RANK_MIPS = 3  # 256, 128 and 64 texels: smaller levels blur the thin cord and border into the ground
+RANK_SHAPE_TEXTURE = 512  # a drawn mark (--rank-shapes) keeps more of its drawing: 512 to 64 texels, four levels
 # The HP bar's height over the ground, by ICON_HEIGHTS' kinds (the game's HITPOINTBAR tags: a Hussar's idle tag is at
 # 4.07..4.15 m; infantry measured at about 2.9 m); the kinds a unit with a rank never is keep the aura icons' heights.
 RANK_BAR_HEIGHTS = {"unit": 2.9, "cavalry": 4.1, "elephant": 5.1}
@@ -363,13 +368,101 @@ def _rank_level(texels):
     return ddtfile.compress(rgba, ddtfile.DXT3, refine=True)
 
 
+RANK_SHAPES = None  # set by --rank-shapes: a folder of drawn marks, rank_1.png .. rank_5.png and shapes.json
+
+
+def _rank_image(rank):
+    """A drawn mark (--rank-shapes): its RGBA pixels, premultiplied as floats, and its pixels per glyph unit."""
+    import json
+    import numpy as np
+    sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+    from core.pngio import read_png
+    folder = pathlib.Path(RANK_SHAPES)
+    unit = json.loads((folder / "shapes.json").read_text(encoding="utf-8"))["pixels_per_unit"]
+    px = read_png((folder / f"rank_{rank}.png").read_bytes()).astype(np.float64)
+    if px.shape[2] != 4:
+        raise ValueError(f"rank_{rank}.png: RGBA expected")
+    a = px[..., 3:4] / 255
+    return np.concatenate([px[..., :3] * a, a], axis=2), float(unit)
+
+
+def rank_scale(rank):
+    """The size of rank's sprite against RANK_SIDE, from its knot or its drawn mark."""
+    if RANK_SHAPES is None:
+        return rank_mark(rank)[1]
+    return _image_placement(rank)[0]
+
+
+@functools.lru_cache(maxsize=None)
+def _image_placement(rank):
+    """A drawn mark's sprite scale and where it goes: the same rules as the knots (its lowest shown pixel
+    RANK_TAIL_LIFT glyph units over the sprite's centre, its bounding box centred, the sprite just large enough)."""
+    import numpy as np
+    img, unit = _rank_image(rank)
+    alpha = img[..., 3]
+    rows = np.nonzero(alpha.max(axis=1) > 0)[0]
+    cols = np.nonzero(alpha.max(axis=0) > 0)[0]
+    width = (cols[-1] + 1 - cols[0]) / unit
+    height = (rows[-1] + 1 - rows[0]) / unit
+    reach = max(width / 2, RANK_TAIL_LIFT + height)
+    return reach / KNOT_REACH, rows[0], rows[-1] + 1, cols[0], cols[-1] + 1, unit
+
+
+def _image_level(rank, side):
+    """One level of a drawn mark's texture: the mark area-resampled into a side x side sprite."""
+    import numpy as np
+    img, _ = _rank_image(rank)
+    scale, top, bottom, left, right, unit = _image_placement(rank)
+    mark = img[top:bottom, left:right]
+    texel = 2 * scale / side  # glyph units a texel
+    # where the mark lands, in texels: centred, its bottom RANK_TAIL_LIFT over the centre
+    x0 = side / 2 - (right - left) / unit / texel / 2
+    y1 = side / 2 - RANK_TAIL_LIFT / texel
+    y0 = y1 - (bottom - top) / unit / texel
+    out = np.zeros((side, side, 4))
+    k = (bottom - top) / (y1 - y0)  # mark pixels a texel
+    ys = (np.arange(side + 1) - y0) * k
+    xs = (np.arange(side + 1) - x0) * k
+    # box filter: the sum of the mark over each texel's footprint, from a summed-area table
+    sat = np.zeros((mark.shape[0] + 1, mark.shape[1] + 1, 4))
+    sat[1:, 1:] = mark.cumsum(0).cumsum(1)
+
+    def area(yy, xx):
+        yy = np.clip(yy, 0, mark.shape[0])
+        xx = np.clip(xx, 0, mark.shape[1])
+        y_lo, x_lo = np.floor(yy).astype(int), np.floor(xx).astype(int)
+        y_hi, x_hi = np.minimum(y_lo + 1, mark.shape[0]), np.minimum(x_lo + 1, mark.shape[1])
+        fy, fx = (yy - y_lo)[:, None, None], (xx - x_lo)[None, :, None]
+        s = sat
+        top_ = s[y_lo][:, x_lo] * (1 - fx) + s[y_lo][:, x_hi] * fx
+        bot_ = s[y_hi][:, x_lo] * (1 - fx) + s[y_hi][:, x_hi] * fx
+        return top_ * (1 - fy) + bot_ * fy
+    total = area(ys, xs)
+    cell = total[1:, 1:] - total[:-1, 1:] - total[1:, :-1] + total[:-1, :-1]
+    out = cell / (k * k)
+    a = np.clip(out[..., 3], 0, 1)
+    rgb = np.where(a[..., None] > 0, out[..., :3] / np.maximum(a[..., None], 1e-6), 0)
+    return np.dstack([np.clip(rgb, 0, 255), a * 255]).round().astype(np.uint8)
+
+
 @functools.lru_cache(maxsize=None)  # the textures do not depend on --folder
 def rank_ddt(rank):
     """The DXT3 texture of a rank's mark, with its mips down to 4x4 (ranks 4 and 5 at twice the texels, so their
     cord keeps as many texels as the others')."""
-    glyph, scale = rank_mark(rank)
     size = RANK_TEXTURE
     mips = RANK_MIPS
+    if RANK_SHAPES is not None:
+        size, mips = RANK_SHAPE_TEXTURE, 4
+        sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+        from aoe3game import ddt as ddtfile
+        levels = [ddtfile.compress(_image_level(rank, size >> i), ddtfile.DXT3, refine=True) for i in range(mips)]
+        out = b"RTS3" + bytes((0, 1, 8, mips)) + struct.pack("<II", size, size)
+        offset = len(out) + 8 * mips
+        for level in levels:
+            out += struct.pack("<II", offset, len(level))
+            offset += len(level)
+        return out + b"".join(levels)
+    glyph, scale = rank_mark(rank)
     levels = []
     for i in range(mips):
         side = size >> i
@@ -717,7 +810,7 @@ def wanted_files(folder="rings"):
                 wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", ICON_SIDE, height, 0, ground=False))
     for rank, colour in RANKS.items():
         name = f"rank_{rank}"
-        _, scale = rank_mark(rank)
+        scale = rank_scale(rank)
         wanted[f"{name}.xml"] = text(xml("", logic=icon_logic(name)))
         wanted[f"icon_{name}.ddt"] = rank_ddt(rank)
         for _, size, height in ICON_HEIGHTS:
@@ -746,7 +839,7 @@ def rank_sheet(wanted, zoom=4):
     cells, height = [], 0
     for rank in RANKS:
         px = np.asarray(ddtfile.decode(wanted[f"icon_rank_{rank}.ddt"])).astype(np.float32)
-        _, scale = rank_mark(rank)
+        scale = rank_scale(rank)
         side = round(unit * 2 * scale)
         pos = np.clip((np.arange(side) + 0.5) * px.shape[0] / side - 0.5, 0, px.shape[0] - 1)
         lo = np.floor(pos).astype(int)
@@ -787,6 +880,8 @@ def main(argv):
     check = "--check" in argv
     out = pathlib.Path(option(argv, "--out", OUT))
     folder = option(argv, "--folder", "rings")
+    global RANK_SHAPES
+    RANK_SHAPES = option(argv, "--rank-shapes", None)
     if not folder or any(c in folder for c in "\\/:."):
         sys.exit("make_rings: --folder is one folder name under art/effects/")
     wanted = wanted_files(folder)
