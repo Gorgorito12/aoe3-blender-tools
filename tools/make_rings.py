@@ -123,10 +123,11 @@ RANK_OUTLINE_COLOUR = (27, 13, 0)
 KNOT_WIDTH = 0.089  # the cord's half width, in glyph units (the reference's thick cord)
 KNOT_OUTLINE = 0.055  # its dark border
 KNOT_REACH = 0.98  # how far from the sprite's centre a mark may reach, its border included
-SHINE = (1.0, 0.25)  # how much the place across a strand (top left light) and on the whole mark pick the tone
+SHINE = (1.25, 0.15)  # how much the place across a strand (top left light) and on the whole mark pick the tone
 RANK_SIDE = 0.75  # metres of a glyph unit
 RANK_TAIL_LIFT = 1.2  # glyph units from the sprite's centre (the bar) up to the tails: about 0.9 m
 RANK_TEXTURE = 256
+RANK_MIPS = 3  # 256, 128 and 64 texels: smaller levels blur the thin cord and border into the ground
 # The HP bar's height over the ground, by ICON_HEIGHTS' kinds (the game's HITPOINTBAR tags: a Hussar's idle tag is at
 # 4.07..4.15 m; infantry measured at about 2.9 m); the kinds a unit with a rank never is keep the aura icons' heights.
 RANK_BAR_HEIGHTS = {"unit": 2.9, "cavalry": 4.1, "elephant": 5.1}
@@ -193,14 +194,14 @@ def _back(point, root, d, n):
 KNOT_SHAPES = {
     "loop": {"cross": -0.2, "length": 1.132, "width": 0.398, "end": (0.719, -0.119), "c1": (0.034, -0.128),
              "c2": (0.513, 0.072)},
-    "trefoil": {"top": (-0.799, 0.615, 0.294, False), "tiers": ((-0.449, 0.855, 0.256, -2.031),),
-                "bar": (0.763, 0.064, 0.003)},
-    "eyes": {"top": (-0.757, 0.625, 0.265, True), "tiers": ((-0.436, 0.799, 0.239, -1.431),),
-             "bar": (0.726, 0.051, 0.018)},
-    "five": {"top": (-1.349, 0.54, 0.297, False), "tiers": ((-1.11, 0.802, 0.21, -8.831), (-0.451, 0.799, 0.226, -7.213)),
-             "bar": (0.726, 0.062, 0.001)},
-    "fiveeyes": {"top": (-1.32, 0.555, 0.271, True), "tiers": ((-1.051, 0.818, 0.204, -1.6), (-0.441, 0.821, 0.21, -5.75)),
-                 "bar": (0.734, 0.061, 0.004)},
+    "trefoil": {"top": (-0.799, 0.615, 0.294, False), "tiers": ((-0.449, 0.727, 0.307, 6.0),),
+                "bar": (0.763, 0.17, 0.003)},
+    "eyes": {"top": (-0.757, 0.625, 0.265, True), "tiers": ((-0.436, 0.679, 0.287, 6.0),),
+             "bar": (0.726, 0.17, 0.018)},
+    "five": {"top": (-1.349, 0.54, 0.297, False), "tiers": ((-1.110, 0.682, 0.252, 6.0), (-0.451, 0.679, 0.271, 6.0)),
+             "bar": (0.726, 0.17, 0.001)},
+    "fiveeyes": {"top": (-1.32, 0.555, 0.271, True), "tiers": ((-1.051, 0.695, 0.245, 6.0), (-0.441, 0.698, 0.252, 6.0)),
+                 "bar": (0.734, 0.17, 0.004)},
 }
 
 
@@ -292,12 +293,12 @@ def rank_texels(size, tones, glyph, outline):
             ox, oy = u - first[0], v - first[1]
             along = ox * tx + oy * ty
             nx, ny = (ox - along * tx) / first[2], (oy - along * ty) / first[2]
-            across = max(-1.0, min(1.0, -(nx + ny) / math.sqrt(2)))  # 1 on the strand's top-left edge
+            across = max(-1.0, min(1.0, -(0.3 * nx + ny) / 1.044))  # 1 on the strand's upper edge (a little left)
             whole = -(u + v) / 2  # 1 at the sprite's top left
             s = max(-1.0, min(1.0, SHINE[0] * across + SHINE[1] * whole))
             dark, base, light = tones
             if s >= 0:  # toward the light tone, its brightest only near the top-left edge
-                rgb = [b + (l - b) * s ** 1.4 for b, l in zip(base, light)]
+                rgb = [b + (l - b) * s for b, l in zip(base, light)]
             else:
                 rgb = [b + (d - b) * -s for b, d in zip(base, dark)]
             rgb = [c * share + o * (1 - share) for c, o in zip(rgb, RANK_OUTLINE_COLOUR)]
@@ -358,7 +359,7 @@ def rank_ddt(rank):
     cord keeps as many texels as the others')."""
     glyph, scale = rank_mark(rank)
     size = RANK_TEXTURE
-    mips = int(math.log2(size)) - 1
+    mips = RANK_MIPS
     levels = []
     for i in range(mips):
         side = size >> i
