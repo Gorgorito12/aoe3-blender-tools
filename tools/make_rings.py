@@ -120,10 +120,10 @@ RANK_METALS = {1: "bronze", 2: "silver", 3: "gold", 4: "gold", 5: "gold"}
 RANKS = {rank: RANK_TONES[metal][1] for rank, metal in RANK_METALS.items()}  # each rank's base colour
 RANK_KNOTS = {1: "loop", 2: "trefoil", 3: "eyes", 4: "five", 5: "fiveeyes"}
 RANK_OUTLINE_COLOUR = (27, 13, 0)
-KNOT_WIDTH = 0.089  # the cord's half width, in glyph units (the reference's thick cord)
+KNOT_WIDTH = 0.096  # the cord's half width, in glyph units (the reference's thick cord)
 KNOT_OUTLINE = 0.055  # its dark border
 KNOT_REACH = 0.98  # how far from the sprite's centre a mark may reach, its border included
-SHINE = (1.25, 0.15)  # how much the place across a strand (top left light) and on the whole mark pick the tone
+SHINE = (1.5, 0.15)  # how much the place across a strand (top left light) and on the whole mark pick the tone
 RANK_SIDE = 0.75  # metres of a glyph unit
 RANK_TAIL_LIFT = 1.2  # glyph units from the sprite's centre (the bar) up to the tails: about 0.9 m
 RANK_TEXTURE = 256
@@ -143,7 +143,7 @@ def rank_mark(rank):
     return tuple((x / scale, (y - shift) / scale, outer / scale, inner / scale) for x, y, outer, inner in glyph), scale
 
 
-def bezier(p0, p1, p2, p3, step=0.04):
+def bezier(p0, p1, p2, p3, step=0.02):
     """Points along a cubic Bezier curve, about `step` apart (the last point is left to the next piece)."""
     length = sum(math.dist(a, b) for a, b in ((p0, p1), (p1, p2), (p2, p3)))
     n = max(4, math.ceil(length / step))
@@ -192,16 +192,17 @@ def _back(point, root, d, n):
 # the tail bar (half length, how far its ends curve up, the height of its two control points). Fitted to the reference
 # sheet the Wars of Liberty team approved, by the overlap of the silhouettes.
 KNOT_SHAPES = {
-    "loop": {"cross": -0.2, "length": 1.132, "width": 0.398, "end": (0.719, -0.119), "c1": (0.034, -0.128),
-             "c2": (0.513, 0.072)},
-    "trefoil": {"top": (-0.799, 0.615, 0.294, False), "tiers": ((-0.449, 0.727, 0.307, 6.0),),
-                "bar": (0.763, 0.17, 0.003)},
-    "eyes": {"top": (-0.757, 0.625, 0.265, True), "tiers": ((-0.436, 0.679, 0.287, 6.0),),
-             "bar": (0.726, 0.17, 0.018)},
-    "five": {"top": (-1.349, 0.54, 0.297, False), "tiers": ((-1.110, 0.682, 0.252, 6.0), (-0.451, 0.679, 0.271, 6.0)),
-             "bar": (0.726, 0.17, 0.001)},
-    "fiveeyes": {"top": (-1.32, 0.555, 0.271, True), "tiers": ((-1.051, 0.695, 0.245, 6.0), (-0.441, 0.698, 0.252, 6.0)),
-                 "bar": (0.734, 0.17, 0.004)},
+    "loop": {"cross": -0.201, "length": 1.142, "width": 0.403, "end": (0.699, -0.124), "c1": (0.024, -0.168),
+             "c2": (0.472, 0.049)},
+    "trefoil": {"top": (-0.855, 0.53, 0.29, False), "tiers": ((-0.452, 0.82, 0.256, -9.25, 0.25),),
+                "bar": (0.753, 0.055, 0.003)},
+    "eyes": {"top": (-0.772, 0.625, 0.28, True), "tiers": ((-0.479, 0.81, 0.25, -13.5, 0.25),),
+             "bar": (0.716, 0.055, -0.002)},
+    "five": {"top": (-1.39, 0.5, 0.3, False), "tiers": ((-1.032, 0.79, 0.236, -6.0, 0.25), (-0.409, 0.79, 0.239, -7.5, 0.25)),
+             "bar": (0.756, 0.126, 0.001)},
+    "fiveeyes": {"top": (-1.295, 0.605, 0.271, True),
+                 "tiers": ((-1.045, 0.81, 0.212, -7.625, 0.25), (-0.425, 0.82, 0.232, -11.0, 0.25)),
+                 "bar": (0.763, 0.105, 0.007)},
 }
 
 
@@ -216,10 +217,18 @@ def stem(top):
     return bezier((0.0, top), (0.0, top), (0.0, 0.0), (0.0, 0.0), 0.03)
 
 
-def eye_pair(y, length, width, rise):
-    """Two eye-shaped loops on the stem at height y, pointing out left and right, tilted `rise` degrees up."""
-    right = knot_loop((0.0, y), math.radians(-rise), length, width, True)
+def side_pair(y, length, width, rise, lean=0.0, eye=True):
+    """Two side loops on the stem at height y, pointing out left and right, their axis `rise` degrees up (below the
+    horizontal when negative), their upper half `lean` fuller than the lower; eye-shaped (pointed) or round-ended."""
+    right = knot_loop((0.0, y), math.radians(-rise), length, width, eye, lean)
     return right + mirrored(right)
+
+
+def ring_loop(root, diameter):
+    """A full round ring standing on `root`: the cord leaves the stem's top and goes round."""
+    r = diameter / 2
+    n = max(24, math.ceil(2 * math.pi * r / 0.02))
+    return [(r * math.sin(2 * math.pi * i / n), root - r + r * math.cos(2 * math.pi * i / n)) for i in range(n)]
 
 
 def knot_points(kind, shape):
@@ -232,9 +241,10 @@ def knot_points(kind, shape):
         tail.append((-ex, ey))
         return points + tail + mirrored(tail)
     root, length, width, eye = shape["top"]
-    points = knot_loop((0.0, root), -math.pi / 2, length, width, eye) + stem(root)
-    for tier in shape["tiers"]:
-        points += eye_pair(*tier)
+    top = knot_loop((0.0, root), -math.pi / 2, length, width, True) if eye else ring_loop(root, length)
+    points = top + stem(root)
+    for tier in shape["tiers"]:  # (y, length, width, rise[, lean]): eye-shaped beside a pointed top, round beside a ring
+        points += side_pair(*tier, eye=eye)
     return points + tail_bar(*shape["bar"])
 
 
