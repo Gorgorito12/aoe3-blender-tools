@@ -101,8 +101,7 @@ class Rings(unittest.TestCase):
         """The loops show (texels not of the cord's colour closed in by it on four sides), ranks differ in shape, the
         colours are bronze, silver and gold, and the cord is shaded: lighter texels and darker ones of one hue."""
         masks = []
-        for rank, colour in ((1, (176, 141, 87)), (2, (172, 178, 190)), (3, (236, 186, 40)), (4, (236, 186, 40)),
-                             (5, (236, 186, 40))):
+        for rank, colour in sorted(make_rings.RANKS.items()):  # the base tones sampled from the approved sheet
             px = ddt.decode(self.files[f"icon_rank_{rank}.ddt"]).astype(int)
             cord = (px[..., 3] == 255) & (px[..., :3].sum(axis=2) > 200)
             masks.append(cord)
@@ -122,7 +121,7 @@ class Rings(unittest.TestCase):
                 self.assertGreater((masks[a] != masks[b]).sum(), 60, (a + 1, b + 1))
         bronze = ddt.decode(self.files["icon_rank_1.ddt"]).astype(int)
         shown = bronze[(bronze[..., 3] == 255) & (bronze[..., :3].sum(axis=2) > 200)][:, :3]
-        self.assertGreater(np.median(shown[:, 1]) / np.median(shown[:, 0]), 0.72)  # bronze, not copper
+        self.assertTrue(0.5 < np.median(shown[:, 1]) / np.median(shown[:, 0]) < 0.72)  # copper-bronze, as approved
 
     @unittest.skipIf(np is None, "numpy not available")
     def test_rank_marks_are_centred_on_the_bar(self):

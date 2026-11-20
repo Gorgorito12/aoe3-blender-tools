@@ -19,8 +19,8 @@ effects\\Chiefpower\\chiefpower model, which the particles hang on.
 - range_<metres>.xml, its particle and its texture: one thin line of that radius, to show a range on the ground;
 - for wood, food, gold and work, aura_<name>.xml, a marker: the ring and, floating over the unit,
   icon_<name>_<height>.particle with the glyph of icon_<name>.ddt, drawn here;
-- rank_<1-5>.xml, a rank mark floating over the unit: a soutache knot (a loop; three round loops; three eye-shaped
-  loops; five round loops; five eye-shaped loops), shaded as polished metal.
+- rank_<1-5>.xml, a rank mark floating over the unit: a soutache knot (one loop; a stem with a top loop and two or
+  four eye-shaped loops over a tail bar), shaded as polished metal, centred on the unit's HP bar.
 
 A unit or an aura shows one with <modelattachment>effects\\<folder>\\ring_<name>.xml</modelattachment>.
 """
@@ -91,13 +91,15 @@ GLYPH_ACCENTS = {
              (0.72, 0.54, 0.15, 0.0), (0.54, 0.72, 0.15, 0.0)),  # its bone
 }
 ICON_ACCENT = (245, 235, 210)
-# Rank marks: soutache knots, the braid of a hussar's uniform, floating over the unit with no ring: rank 1 a
-# single loop in bronze, rank 2 a trefoil of round loops in silver, rank 3 a trefoil of eye-shaped loops (each closing
-# in a point) in gold, rank 4 five round loops in three tiers in gold, rank 5 the same five loops eye-shaped in gold.
-# Each is one symmetric cord: the loops meet at a knot (two knots, crossing between them, at ranks 4 and 5), and
-# under it the two ends cross and run out left and right. The cord is shaded as polished metal: lighter on the side
-# of each strand toward the top left, darker toward the bottom right, with a thin bright streak, and the whole mark
-# a little lighter toward its top left. In the texture a smaller y is higher on screen.
+# Rank marks: soutache knots, the braid of a hussar's uniform, floating over the unit with no ring, drawn after the
+# reference sheet the Wars of Liberty team approved (2026-11-20): rank 1 one tall loop like a cursive "l", the cord
+# crossing itself near the bottom and both tails sweeping out left and right, in copper-bronze; rank 2 a round top loop
+# on a straight central stem, two horizontal eye-shaped (almond) loops on the stem and a tail bar under them whose ends
+# curve up, in silver; rank 3 the same with a pointed (flame) top loop, in gold; rank 4 the round top loop and four eye
+# loops in two tiers on the stem, in gold; rank 5 the same with the pointed top loop, in gold. A thick cord with a dark
+# border, shaded as polished metal: its light tone along the top-left side of each strand, its dark tone underneath.
+# Coordinates are in glyph units (RANK_SIDE metres each, about 150 pixels of the reference sheet); y grows downward.
+# In the texture a smaller y is higher on screen.
 #
 # Rule: a mark over a unit is horizontally CENTRED on the unit's HP bar, symmetric over it, never nearer one end. The
 # glyph is symmetric and centred on the texture's vertical centre line (tested). The game draws the bar at the unit's
@@ -108,16 +110,21 @@ ICON_ACCENT = (245, 235, 210)
 # sprite: a sprite faces the camera, so a shift inside it moves the knot straight up on screen. Every knot's tails sit
 # RANK_TAIL_LIFT above the sprite's centre, so all ranks keep the same gap to the bar; bar and mark scale alike with the
 # camera's zoom. A rank whose knot is larger gets a larger sprite.
-RANKS = {1: (176, 141, 87), 2: (172, 178, 190), 3: (236, 186, 40), 4: (236, 186, 40), 5: (236, 186, 40)}
+# The tones (dark, base, light) of each metal, sampled from the reference sheet.
+RANK_TONES = {
+    "bronze": ((172, 93, 22), (218, 130, 40), (250, 200, 150)),
+    "silver": ((122, 134, 160), (179, 185, 203), (240, 242, 250)),
+    "gold": ((190, 128, 18), (250, 178, 29), (255, 236, 160)),
+}
+RANK_METALS = {1: "bronze", 2: "silver", 3: "gold", 4: "gold", 5: "gold"}
+RANKS = {rank: RANK_TONES[metal][1] for rank, metal in RANK_METALS.items()}  # each rank's base colour
 RANK_KNOTS = {1: "loop", 2: "trefoil", 3: "eyes", 4: "five", 5: "fiveeyes"}
-KNOT_WIDTH = 0.085  # the cord's half width, in fractions of the sprite's half width
-KNOT_OUTLINE = 0.09  # its black border
-KNOT_CROSS_Y = 0.40  # where the two ends cross under the knot
-KNOT_TAIL_Y = 0.56  # the tails' ends: the lowest part of every knot (rank 3's lowest chevron reached 0.71)
+RANK_OUTLINE_COLOUR = (27, 13, 0)
+KNOT_WIDTH = 0.09  # the cord's half width, in glyph units (the reference's cord, 27 of its pixels)
+KNOT_OUTLINE = 0.07  # its dark border (the reference's, 10 pixels)
 KNOT_REACH = 0.98  # how far from the sprite's centre a mark may reach, its border included
-SHINE = (0.30, 0.12)  # brightness across a strand (top left lighter) and across the whole mark
-STREAK = (0.30, 0.62, 0.55)  # the bright streak: where across the strand, and how much of white
-RANK_SIDE = 0.75  # metres of a glyph unit: the half side of rank 1's knot box
+SHINE = (1.0, 0.25)  # how much the place across a strand (top left light) and on the whole mark pick the tone
+RANK_SIDE = 0.75  # metres of a glyph unit
 RANK_TAIL_LIFT = 1.2  # glyph units from the sprite's centre (the bar) up to the tails: about 0.9 m
 RANK_TEXTURE = 256
 # The HP bar's height over the ground, by ICON_HEIGHTS' kinds (the game's HITPOINTBAR tags: a Hussar's idle tag is at
@@ -135,7 +142,7 @@ def rank_mark(rank):
     return tuple((x / scale, (y - shift) / scale, outer / scale, inner / scale) for x, y, outer, inner in glyph), scale
 
 
-def bezier(p0, p1, p2, p3, step=0.045):
+def bezier(p0, p1, p2, p3, step=0.04):
     """Points along a cubic Bezier curve, about `step` apart (the last point is left to the next piece)."""
     length = sum(math.dist(a, b) for a, b in ((p0, p1), (p1, p2), (p2, p3)))
     n = max(4, math.ceil(length / step))
@@ -153,20 +160,22 @@ def mirrored(points):
     return [(-x, y) for x, y in points]
 
 
-def knot_loop(root, angle, length, width, eye):
+def knot_loop(root, angle, length, width, eye, lean=0.0):
     """A loop of the cord that leaves `root` and comes back to it, its far end `length` away at `angle` (radians,
-    0 to the right, -pi/2 up); `width` is about half its breadth. A round loop has a narrow neck at the root and a
-    round far end; an eye-shaped one is two arcs that meet in a point at the far end, like the outline of an eye."""
+    0 to the right, -pi/2 up); about 0.82 `width` is half its breadth. A round loop has a round far end; an eye-shaped
+    one is two arcs that meet in a point at both ends, like the outline of an eye. `lean` makes the half on the
+    `angle` + 90 degrees side that much flatter and the other that much fuller (a horizontal eye fuller on top)."""
     d = (math.cos(angle), math.sin(angle))
     n = (-d[1], d[0])
     at = lambda a, b: (root[0] + a * d[0] + b * n[0], root[1] + a * d[1] + b * n[1])
     tip = at(length, 0.0)
     if eye:
-        half = [at(0.28 * length, 1.15 * width), at(0.72 * length, 1.05 * width)]
-    else:  # full and round, as JTMaston preferred them
-        half = [at(0.30 * length, 1.25 * width), at(length, 0.95 * width)]
-    points = bezier(root, half[0], half[1], tip)
-    points += bezier(tip, at(*_back(half[1], root, d, n)), at(*_back(half[0], root, d, n)), root)
+        controls = [(0.28 * length, 1.15 * width), (0.72 * length, 1.05 * width)]
+    else:
+        controls = [(0.30 * length, 1.25 * width), (length, 0.95 * width)]
+    (a1, b1), (a2, b2) = controls
+    points = bezier(root, at(a1, b1 * (1 - lean)), at(a2, b2 * (1 - lean)), tip)
+    points += bezier(tip, at(a2, -b2 * (1 + lean)), at(a1, -b1 * (1 + lean)), root)
     return points
 
 
@@ -176,60 +185,51 @@ def _back(point, root, d, n):
     return vx * d[0] + vy * d[1], -(vx * n[0] + vy * n[1])
 
 
-def knot_link(top, bottom):
-    """The cord from one knot down to the next point under it, as two strands that cross halfway (an X), each
-    leaving to one side and arriving from the other."""
-    drop = bottom[1] - top[1]
-    piece = bezier(top, (top[0] - 0.30 * drop, top[1] + 0.30 * drop), (bottom[0] + 0.30 * drop, bottom[1] - 0.30 * drop),
-                   bottom)
-    return piece + mirrored(piece)
+BAR_Y = 0.0  # where the stem meets the tail bar: the knots' coordinates are measured from it
 
 
-def knot_tails(start):
-    """The two ends under the knot: from `start` (the knot, or the bottom of rank 1's loop) they cross the middle at
-    KNOT_CROSS_Y and run out to the sides, ending at KNOT_TAIL_Y."""
-    cross = (0.0, KNOT_CROSS_Y)
-    piece = [] if start == cross else knot_link(start, cross)  # rank 1: the loop's sides cross right there
-    tail = bezier(cross, (0.24, KNOT_CROSS_Y + 0.10), (0.52, KNOT_TAIL_Y + 0.04), (0.78, KNOT_TAIL_Y - 0.06))
-    tail.append((0.78, KNOT_TAIL_Y - 0.06))
-    return piece + tail + mirrored(tail)
+def tail_bar():
+    """The tail bar under the stem: flat, its ends curving up."""
+    half = bezier((0.0, BAR_Y), (0.35, BAR_Y + 0.01), (0.56, BAR_Y + 0.02), (0.66, BAR_Y - 0.15))
+    half.append((0.66, BAR_Y - 0.15))
+    return half + mirrored(half)
 
 
-def knot_petal(centre, angle, stem, length, width, eye):
-    """A loop on a short stem: the cord runs `stem` from the knot's centre along `angle`, then makes the loop. The
-    stems keep neighbouring loops apart, so a clear gap shows between them (JTMaston: as between rank 5's tiers)."""
-    root = (centre[0] + stem * math.cos(angle), centre[1] + stem * math.sin(angle))
-    return bezier(centre, centre, root, root, 0.03) + knot_loop(root, angle, length, width, eye)
+def stem(top):
+    return bezier((0.0, top), (0.0, top), (0.0, BAR_Y), (0.0, BAR_Y), 0.03)
 
 
-def knot_tier(centre, sides, eye, top=True):
-    """One tier of loops around a knot: the top loop (when `top`) and a pair on each side at `sides` = (angle in
-    degrees below the horizontal, stem, length, width)."""
-    points = []
-    if top:
-        points += knot_petal(centre, -math.pi / 2, 0.20, 0.60, 0.30, eye)
-    below, stem, length, width = sides
-    for angle in (math.radians(below), math.radians(180 - below)):
-        points += knot_petal(centre, angle, stem, length, width, eye)
-    return points
+def eye_pair(y, length, width, droop=12):
+    """Two eye-shaped loops on the stem at height y, pointing out left and right, `droop` degrees below the
+    horizontal, as the reference's lean a little down toward their tips."""
+    right = knot_loop((0.0, y), math.radians(droop), length, width, True, 0.08)
+    return right + mirrored(right)
 
 
 @functools.lru_cache(maxsize=None)
 def knot(kind):
-    """The circles of a rank's soutache knot: "loop" (rank 1), "trefoil" (2), "eyes" (3), "five" (4), "fiveeyes"
-    (5), in the coordinates of ranks 1 to 3's sprite."""
+    """The circles of a rank's soutache knot: "loop" (rank 1), "trefoil" (2), "eyes" (3), "five" (4), "fiveeyes" (5),
+    measured on the reference sheet (150 of its pixels a glyph unit, y from the tail bar's centre line)."""
     if kind == "loop":
-        cross = (0.0, KNOT_CROSS_Y)
-        points = knot_loop(cross, -math.pi / 2, 1.17, 0.40, False) + knot_tails(cross)
+        cross = (0.0, -0.12)
+        points = knot_loop(cross, -math.pi / 2, 1.11, 0.42, False)
+        tail = bezier(cross, (-0.12, -0.05), (-0.42, 0.02), (-0.68, -0.04))  # down to the left, then out
+        tail.append((-0.68, -0.04))
+        points += tail + mirrored(tail)
     elif kind in ("trefoil", "eyes"):
-        centre = (0.0, -0.10)
-        points = knot_tier(centre, (20, 0.24, 0.62, 0.27), kind == "eyes") + knot_tails(centre)
+        top = -0.70
+        if kind == "eyes":
+            points = knot_loop((0.0, top), -math.pi / 2, 0.74, 0.30, True)
+        else:
+            points = knot_loop((0.0, top), -math.pi / 2, 0.71, 0.36, False)
+        points += stem(top) + eye_pair(-0.62, 0.80, 0.23, 15) + tail_bar()
     else:
-        eye = kind == "fiveeyes"
-        upper, lower = (0.0, -0.98), (0.0, -0.04)
-        points = knot_tier(upper, (16, 0.24, 0.64, 0.27), eye)
-        points += knot_tier(lower, (20, 0.24, 0.62, 0.26), eye, top=False)
-        points += knot_link(upper, lower) + knot_tails(lower)
+        top = -1.34
+        if kind == "fiveeyes":
+            points = knot_loop((0.0, top), -math.pi / 2, 0.66, 0.28, True)
+        else:
+            points = knot_loop((0.0, top), -math.pi / 2, 0.62, 0.32, False)
+        points += stem(top) + eye_pair(-1.20, 0.78, 0.20, 12) + eye_pair(-0.60, 0.78, 0.20, 12) + tail_bar()
     return tuple((x, y, KNOT_WIDTH, 0.0) for x, y in points)
 
 
@@ -245,7 +245,7 @@ def _grid(glyph, grow, cell=0.25):
     return lambda u, v: cells.get((math.floor(u / cell), math.floor(v / cell)), ())
 
 
-def rank_texels(size, colour, glyph, outline):
+def rank_texels(size, tones, glyph, outline):
     """RGBA rows of a rank mark: alpha from four samples per texel side (the cord grown by its border), and inside the
     cord the colour shaded as polished metal; the border dark."""
     near = _grid(glyph, outline)
@@ -264,7 +264,7 @@ def rank_texels(size, colour, glyph, outline):
                     core += glyph_cover(u, v, cand, 0.0) > 0
             alpha = round(total / samples ** 2 * 15)
             if core * 2 < samples ** 2:
-                row.append((ICON_DARK, alpha))
+                row.append((RANK_OUTLINE_COLOUR, alpha))
                 continue
             u, v = (x + 0.5) / size * 2 - 1, (y + 0.5) / size * 2 - 1
             # across the strand: from the line through the two nearest centres (the strand's direction there), so
@@ -278,10 +278,12 @@ def rank_texels(size, colour, glyph, outline):
             nx, ny = (ox - along * tx) / first[2], (oy - along * ty) / first[2]
             across = max(-1.0, min(1.0, -(nx + ny) / math.sqrt(2)))  # 1 on the strand's top-left edge
             whole = -(u + v) / 2  # 1 at the sprite's top left
-            k = 1 + SHINE[0] * across + SHINE[1] * whole
-            rgb = [min(255.0, c * k) for c in colour]
-            if STREAK[0] < across < STREAK[1]:
-                rgb = [c + (255 - c) * STREAK[2] for c in rgb]
+            s = max(-1.0, min(1.0, SHINE[0] * across + SHINE[1] * whole))
+            dark, base, light = tones
+            if s >= 0:  # toward the light tone, its brightest only near the top-left edge
+                rgb = [b + (l - b) * s ** 1.4 for b, l in zip(base, light)]
+            else:
+                rgb = [b + (d - b) * -s for b, d in zip(base, dark)]
             row.append((tuple(round(c) for c in rgb), alpha))
         out.append(row)
     return out
@@ -295,7 +297,7 @@ def _unpack565(c):
 def rank_block(texels):
     """One DXT3 block from 16 (rgb, alpha) texels: the lightest and darkest shown colours as its two ends, every texel
     the nearest of the four colours between them (DXT3 always has four)."""
-    shown = [rgb for rgb, a in texels if a > 0] or [ICON_DARK]
+    shown = [rgb for rgb, a in texels if a > 0] or [RANK_OUTLINE_COLOUR]
     luma = lambda c: 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]
     c0, c1 = rgb565(max(shown, key=luma)), rgb565(min(shown, key=luma))
     if c0 < c1:
@@ -325,7 +327,7 @@ def rank_ddt(rank):
     levels = []
     for i in range(mips):
         side = size >> i
-        texels = rank_texels(side, RANKS[rank], glyph, KNOT_OUTLINE / scale)
+        texels = rank_texels(side, RANK_TONES[RANK_METALS[rank]], glyph, KNOT_OUTLINE / scale)
         level = bytearray()
         for by in range(0, side, 4):
             for bx in range(0, side, 4):
