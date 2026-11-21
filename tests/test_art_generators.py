@@ -104,6 +104,33 @@ class Rings(unittest.TestCase):
         self.assertGreater(rim[3], 100)
         self.assertGreater(int(rim[0]), int(rim[2]) + 60)   # food is red
 
+    def test_range_ring_particle_is_as_wide_as_the_ring(self):
+        """The game draws a flat particle `scale` metres wide in all (measured in game: the scale was once the half
+        width, and every range ring showed half its radius), so a ring of r metres has its rim at r."""
+        import re
+        for radius in make_rings.RANGES:
+            text = self.files[f"range_{radius}.particle"].decode("utf-8")
+            scale = float(re.search(r"<scale>([0-9.]+)</scale>", text)[1])
+            self.assertAlmostEqual(scale / 2 * make_rings.BANDS[0][1], radius, delta=0.002, msg=radius)
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_range_ring_line_ends_at_its_radius(self):
+        """The line's outer edge, read from the texture and the particle's width, is at the ring's radius."""
+        import re
+        for radius in (4, 12, 30, 100):
+            text = self.files[f"range_{radius}.particle"].decode("utf-8")
+            scale = float(re.search(r"<scale>([0-9.]+)</scale>", text)[1])
+            px = ddt.decode(self.files[f"range_{radius}.ddt"])
+            side = px.shape[0]
+            row = px[side // 2, side // 2:, 3].astype(int)       # from the centre to the right edge
+            solid = np.nonzero(row >= row.max() // 2)[0]
+            outer = (solid.max() + 1) / (side / 2) * scale / 2     # metres from the centre
+            texel = scale / side
+            self.assertLess(abs(outer - radius), 2 * texel, (radius, outer))
+            inner = solid.min() / (side / 2) * scale / 2
+            line = max(make_rings.RANGE_LINE, make_rings.RANGE_LINE_PER_METRE * radius)
+            self.assertLess(abs((outer - inner) - line), 2 * texel, (radius, outer - inner))
+
     def test_rank_knots_are_symmetric_and_keep_their_place(self):
         """Every knot is symmetric left to right, stays in its sprite, and ends at the same lowest height in the
         game (its tails), which keeps the HP bar clear; ranks 4 and 5 are larger sprites around the same centre."""

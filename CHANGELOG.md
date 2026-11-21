@@ -6,6 +6,11 @@ three together).
 
 ## Unreleased
 
+- `tools/make_rings.py`: range rings at their true size. The game draws a flat particle `<scale>` metres wide in all,
+  not twice that, so every `range_<metres>` ring showed half its radius (measured in game: the 12 m ring at 6 m).
+  `range_scale` writes twice the old scale (the textures are unchanged); after the fix the 4, 12 and 30 m rings pass
+  between markers just inside and outside their radius. The aura rings and icons, sized by eye in game, keep their
+  files; their comments now call the number the particle's scale (a unit's ring is 2.2 m across).
 - `tools/make_rings.py`: range rings up to 100 m (18, 22, 26, 28, 32, 36, 40, 45, 50, 60, 70, 80 and 100 added; the
   line widens a little on the large ones), and the markers' floating icons redrawn as cartoons by the new
   `tools/cartoon_icons.py` (shapes as signed distances, flat colours, a light tone per part, a thick dark outline):

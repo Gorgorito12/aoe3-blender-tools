@@ -58,9 +58,12 @@ RINGS = {
 # Radii as fractions of the half width, as (inner, outer): a wide band and a thin one.
 BANDS = ((0.74, 0.97), (0.52, 0.60))
 EDGE = 0.035  # the soft edge of a band, in the same fraction
-UNIT_RADIUS = 2.2  # metres, the half width of the texture on a unit; its rim is at 0.97 of that
-# By logic branch, most specific first: the size in the file names, the half width in metres, and for a building
-# the side of its own texture. <none> is everything else, a tree too.
+# The particle's scale of a unit's ring. The game draws a flat particle that many metres wide in all, not twice that
+# (range_scale, measured on the range rings): a unit's ring is 2.2 m across, its rim 1.07 m from the unit's centre.
+# These sizes were chosen by eye in game, so they stay as they are; only their name says "radius".
+UNIT_RADIUS = 2.2
+# By logic branch, most specific first: the size in the file names, the particle's scale (the ring's full width in
+# metres), and for a building the side of its own texture. <none> is everything else, a tree too.
 SHAPES = (
     ("none", "unit", UNIT_RADIUS, None),
     ("abstractcavalry", "cavalry", 4.6, None),
@@ -70,7 +73,8 @@ SHAPES = (
     ("building", "medium", 16, 256),
 )
 # The floating icon of aura_<name>.xml, by logic branch: the same keys as SHAPES, then the kinds of resource. The height
-# is in metres above the unit's feet, as the ring lies at them. The side is the half width of the sprite.
+# is in metres above the unit's feet, as the ring lies at them. The side is the sprite particle's scale, chosen by eye
+# in game (a flat particle is drawn that many metres wide, range_scale; a camera-facing one is not measured).
 ICON_HEIGHTS = (
     ("none", "unit", 3.2),
     ("abstractelephant", "elephant", 7.0),  # a mod's type (Wars of Liberty): elephants carry their bar far higher
@@ -96,7 +100,7 @@ MARKERS = {
     "fish": ("food", "fish"),
 }
 CARTOON_SIZE = 128
-CARTOON_SIDE = 1.25  # the half width of a marker's icon, in metres: larger than ICON_SIDE, so it reads from the normal camera
+CARTOON_SIDE = 1.25  # the particle's scale of a marker's icon: larger than ICON_SIDE, so it reads from the normal camera
 ICON_OUTLINE = 0.14  # the dark edge that keeps a glyph readable, in the same fraction of the half width
 ICON_DARK = (24, 20, 16)
 # Each glyph is a list of (x, y, outer radius, inner radius), in fractions of the half width.
@@ -713,11 +717,18 @@ def icon_attachment(name):
 
 
 def range_shape(radius):
-    """One band at the rim, RANGE_LINE metres wide: the particle's half width is radius / rim."""
+    """One band at the rim, RANGE_LINE metres wide: the texture's half width is radius / rim metres."""
     rim = BANDS[0][1]
     half = radius / rim
     line = max(RANGE_LINE, RANGE_LINE_PER_METRE * radius)
     return ((rim - line / half, rim),), EDGE * UNIT_RADIUS / half
+
+
+def range_scale(radius):
+    """The particle's scale for a range ring of `radius` metres. The game draws a flat particle `scale` metres wide
+    (its full width, not its half width; measured in game on 2026-11-21: a scale of 12.371, half width 12.371 m as
+    first meant, drew the 12 m ring at 6 m, and every range ring at half its radius), so twice the half width."""
+    return 2 * radius / BANDS[0][1]
 
 
 def range_logic(radius):
@@ -869,7 +880,7 @@ def wanted_files(folder="rings"):
         side = 256 if radius <= 16 else 512
         wanted[f"range_{radius}.ddt"] = ddt(RANGE_COLOURS, side, *range_shape(radius))
         wanted[f"range_{radius}.xml"] = text(xml("", logic=range_logic(radius)))
-        wanted[f"range_{radius}.particle"] = text(particle(f"range_{radius}", radius / BANDS[0][1]))
+        wanted[f"range_{radius}.particle"] = text(particle(f"range_{radius}", range_scale(radius)))
     return wanted
 
 
