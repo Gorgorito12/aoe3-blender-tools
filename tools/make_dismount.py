@@ -94,8 +94,8 @@ DEFAULT_RECIPE = {
          "horse": LIB + "cavalry\\horse_deathA",
          "tags": [{"type": "SpecificSoundSet", "checkvisible": "1", "set": "RagdollImpact", "at": 0.51}]},
     ],
-    "dismount": {"name": "dismount", "length": 2.0, "horse": LIB + "cavalry\\horse_idle_A"},
-    "mount": {"name": "mount", "length": 2.0, "horse": LIB + "cavalry\\horse_idle_A"},
+    "dismount": {"name": "dismount", "length": 2.5, "horse": LIB + "cavalry\\horse_idle_A"},
+    "mount": {"name": "mount", "length": 2.5, "horse": LIB + "cavalry\\horse_idle_A"},
 }
 FPS = 30
 
@@ -395,12 +395,12 @@ class Maker:
         k = self.r.get("keys", {})
         # file axes: x the unit's right (side < 0 is its left), y up, z forward
         # 1. up in the left stirrup, leaning forward over the neck
-        k1 = translate(m0, rig, root, (0.06 * side, k.get("rise", 0.22), 0.04))
+        k1 = translate(m0, rig, root, (0.06 * side, k.get("rise", 0.12), 0.04))
         k1 = rotate_about(k1, rig, "bip01 spine", "bip01 spine", (1, 0, 0), 18)
         # 2. the right leg swung back and up over the croup, the body over the left stirrup
-        k2 = translate(m0, rig, root, (0.16 * side, k.get("rise", 0.22) + 0.04, 0.02))
+        k2 = translate(m0, rig, root, (0.16 * side, k.get("rise", 0.12) + 0.04, 0.02))
         k2 = rotate_about(k2, rig, "bip01 spine", "bip01 spine", (1, 0, 0), 32)
-        k2 = rotate_about(k2, rig, "bip01 r thigh", "bip01 r thigh", (1, 0, 0), k.get("swing", 105))
+        k2 = rotate_about(k2, rig, "bip01 r thigh", "bip01 r thigh", (1, 0, 0), k.get("swing", 45))
         k2 = rotate_about(k2, rig, "bip01 r thigh", "bip01 r thigh", (0, 0, 1), -20 * side)
         # 3. both legs on the left side, facing the horse, the belly against the saddle
         st = rotate_about(s, rig, root, root, (0, 1, 0), -90 * side)
@@ -745,10 +745,11 @@ def main(argv):
                 with open(os.path.join(folder, recipe["prefix"] + "horse_" + name + ".gr2"), "wb") as f:
                     f.write(b[5])
                 print(f"{recipe['prefix']}horse_{name}.gr2  {len(b[5])} B")
-        horse_xml, rider_xml = anim_blocks(recipe, built)
-        for fname, text in (("anims-horse.xml", horse_xml), ("anims-rider.xml", rider_xml)):
-            with open(os.path.join(args.out, fname), "w", encoding="utf-8", newline="\r\n") as f:
-                f.write(text)
+        if only is None:                       # with --only the blocks would list only some names
+            horse_xml, rider_xml = anim_blocks(recipe, built)
+            for fname, text in (("anims-horse.xml", horse_xml), ("anims-rider.xml", rider_xml)):
+                with open(os.path.join(args.out, fname), "w", encoding="utf-8", newline="\r\n") as f:
+                    f.write(text)
         if args.keys:
             scene = Scene(game, maker, recipe)
             keys = maker.key_poses(recipe["dismount"]["horse"])
