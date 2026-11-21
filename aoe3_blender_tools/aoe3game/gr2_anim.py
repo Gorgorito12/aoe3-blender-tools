@@ -20,8 +20,9 @@ Python with numpy; tools/make_dismount.py uses it.
 - **Retargeting** puts one skeleton's world frames on another's bones of the same name
   (`localise`): two bipeds of one rig convention that differ in hierarchy (a rider whose thighs hang
   from the spine, a footman whose hang from the pelvis) then show the same pose.
-- **Writing** (`animation_file`): one track group, every track as degree-1 curves on its sampled
-  times (degree 0 when it never moves), in the basis given.
+- **Writing** (`animation_file`): one track group, its tracks sorted by name byte by byte (as the
+  stock files are: the runtime looks a bone's track up by binary search), every track as degree-1
+  curves on its sampled times (degree 0 when it never moves), in the basis given.
 """
 import bisect
 import math
@@ -335,7 +336,10 @@ def animation_file(name, duration, group_name, tracks, *, basis=STOCK, accumulat
                                  len(controls))}
 
     out = []
-    for bone, times, pos, quats in tracks:
+    # Sorted by name, byte by byte, as the exporter writes them ("HS Bone Tail_03" before "bone attachpoint" in the
+    # stock horse files): the runtime finds a bone's track by a binary search (GrannyResortTrackGroup exists for
+    # that), so an unsorted group binds only some of its tracks.
+    for bone, times, pos, quats in sorted(tracks, key=lambda t: t[0].encode("utf-8")):
         pos = np.asarray(pos, np.float64)
         quats = np.array(quats, np.float64)
         for i in range(1, len(quats)):                 # one hemisphere, so each span is the short way

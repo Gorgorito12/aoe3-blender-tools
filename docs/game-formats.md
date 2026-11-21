@@ -334,6 +334,10 @@ in game (test T0 in `docs/game-test.md`).
   with the thighs on the pelvis and the props in the hands. A track sets its bone's frame relative
   to the model's own parent, so an infantry animation played on a rider as it is folds him up; put
   on by place (each rider bone on the world frame of its namesake) it shows the same pose.
+- **Track order** (**measured**): the stock files keep a group's tracks sorted by name byte by byte (HS Bone Tail_03
+  before one attachpoint), and the runtime looks a bone's track up by binary search: written in
+  skeleton order, an animation bound only some bones in game (a rider half in its rest pose, a
+  transition that seemed not to play); sorted, every bone moved.
 - **Written** animations: one track group named after the model's root, every track as degree-1
   curves on 30 frames a second (degree 0 when it never moves), empty scale curves, as the stock
   files. Whether the game plays them is in "In game" below.

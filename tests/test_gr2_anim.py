@@ -114,6 +114,17 @@ class Files(unittest.TestCase):
         self.assertAlmostEqual(w["pelvis"][1, 3], 1.05, places=5)
         self.assertTrue(gr2.crc_ok(data))
 
+    def test_tracks_are_sorted_byte_by_byte(self):
+        # the stock horse files put "HS Bone Tail_03" before "bone attachpoint"; the runtime binary-searches them
+        times = np.array([0.0, 1.0])
+        still = np.zeros((2, 3))
+        names = ["bone attachpoint", "HS Bone Tail_03", "HS Bone Master", "Bip01 R Hand"]
+        data = animation_file("t", 1.0, "HS Bone Master",
+                              [(n, times, still, np.tile(IDQ, (2, 1))) for n in names])
+        root = gr2.load(data).root()
+        got = [t.get("Name") for t in root.get("TrackGroups")[0].get("TransformTracks")]
+        self.assertEqual(got, ["Bip01 R Hand", "HS Bone Master", "HS Bone Tail_03", "bone attachpoint"])
+
 
 class Tool(unittest.TestCase):
     def test_loop_length_fits_whole_cycles(self):
