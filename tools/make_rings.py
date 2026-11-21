@@ -96,6 +96,7 @@ MARKERS = {
     "fish": ("food", "fish"),
 }
 CARTOON_SIZE = 128
+CARTOON_SIDE = 1.25  # the half width of a marker's icon, in metres: larger than ICON_SIDE, so it reads from the normal camera
 ICON_OUTLINE = 0.14  # the dark edge that keeps a glyph readable, in the same fraction of the half width
 ICON_DARK = (24, 20, 16)
 # Each glyph is a list of (x, y, outer radius, inner radius), in fractions of the half width.
@@ -855,7 +856,7 @@ def wanted_files(folder="rings"):
         wanted[f"aura_{name}.xml"] = text(xml(ring, marker=True, icon=name))
         wanted[f"icon_{name}.ddt"] = cartoon_ddt(icon)
         for _, size, height in ICON_HEIGHTS:
-            wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", ICON_SIDE, height, 0, ground=False))
+            wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", CARTOON_SIDE, height, 0, ground=False))
     for rank, colour in RANKS.items():
         name = f"rank_{rank}"
         scale = rank_scale(rank)
