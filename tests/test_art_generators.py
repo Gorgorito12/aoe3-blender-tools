@@ -44,8 +44,33 @@ class Rings(unittest.TestCase):
             self.assertIn(f"range_{radius}.xml", names)
         for rank in range(1, 6):
             self.assertIn(f"rank_{rank}.xml", names)
-        self.assertIn("aura_gold.xml", names)
-        self.assertEqual(len(names), 190)
+        for marker in make_rings.MARKERS:
+            self.assertIn(f"aura_{marker}.xml", names)
+            self.assertIn(f"icon_{marker}.ddt", names)
+        self.assertEqual(len(names), 269)
+
+    def test_markers_show_their_ring_and_their_own_icon(self):
+        for marker, (ring, _) in make_rings.MARKERS.items():
+            text = self.files[f"aura_{marker}.xml"].decode("utf-8")
+            self.assertIn(f"effects\\myrings\\ring_{ring}_unit.particle", text, marker)
+            self.assertIn(f"effects\\myrings\\icon_{marker}_unit.particle", text, marker)
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_cartoon_icons_are_flat_and_outlined(self):
+        """Each marker icon is uncompressed, transparent at its corners, has a dark outline and some bright colour."""
+        for marker in make_rings.MARKERS:
+            data = self.files[f"icon_{marker}.ddt"]
+            hd = ddt.read_header(data)
+            self.assertEqual(hd.format, ddt.BGRA, marker)
+            self.assertEqual(hd.width, make_rings.CARTOON_SIZE, marker)
+            px = ddt.decode(data).astype(int)
+            for y, x in ((0, 0), (0, -1), (-1, 0), (-1, -1)):
+                self.assertEqual(px[y, x, 3], 0, marker)
+            solid = px[px[..., 3] == 255]
+            self.assertGreater(len(solid), 0.15 * px.shape[0] * px.shape[1], marker)
+            dark = (solid[:, :3].max(axis=1) < 60).mean()
+            self.assertGreater(dark, 0.10, marker)          # the outline
+            self.assertGreater(solid[:, :3].max(), 200, marker)
 
     def test_paths_name_the_folder(self):
         for name, data in self.files.items():
@@ -61,8 +86,9 @@ class Rings(unittest.TestCase):
         self.assertEqual(other["ring_gold.ddt"], self.files["ring_gold.ddt"])
 
     def test_textures_are_dxt3_with_mips(self):
+        cartoons = {f"icon_{marker}.ddt" for marker in make_rings.MARKERS}
         for name, data in self.files.items():
-            if name.endswith(".ddt"):
+            if name.endswith(".ddt") and name not in cartoons:
                 hd = ddt.read_header(data)
                 self.assertEqual(hd.format, ddt.DXT3, name)
                 self.assertEqual(hd.width, hd.height, name)
@@ -201,7 +227,7 @@ class Rings(unittest.TestCase):
                     f.write(data)
             result = run_tool("make_rings.py", "--out", tmp, "--folder", "myrings", "--check")
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertIn("190 files, 0 differ", result.stdout)
+            self.assertIn("269 files, 0 differ", result.stdout)
 
 
 class Icons(unittest.TestCase):

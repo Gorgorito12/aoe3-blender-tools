@@ -21,8 +21,10 @@ effects\\Chiefpower\\chiefpower model, which the particles hang on.
 - ring_<name>.ddt, the 64x64 DXT3 texture of a unit, a tree or a cavalryman;
 - ring_<name>_<size>.ddt, the texture of a building, with lines as thick in metres as those of a unit's ring;
 - range_<metres>.xml, its particle and its texture: one thin line of that radius, to show a range on the ground;
-- for wood, food, gold and work, aura_<name>.xml, a marker: the ring and, floating over the unit,
-  icon_<name>_<height>.particle with the glyph of icon_<name>.ddt, drawn here;
+- aura_<name>.xml, a marker: the ring and, floating over the unit, icon_<name>_<height>.particle with the picture of
+  icon_<name>.ddt, drawn here: for the resources (MARKERS) a cartoon of the gathering tool or of the food
+  (cartoon_icons.py: a pickaxe for gold, an axe for wood, a drumstick for food, and for each kind of food a bow,
+  berries, an ear of wheat and a fish), uncompressed so its colours stay flat; for work, a gear;
 - rank_<1-5>.xml, a rank mark floating over the unit: a soutache knot (one loop; a stem with a top loop and two or
   four eye-shaped loops over a tail bar), shaded as polished metal, centred on the unit's HP bar.
 
@@ -33,6 +35,9 @@ import math
 import pathlib
 import struct
 import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import cartoon_icons  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / "out" / "rings"
@@ -78,6 +83,19 @@ ICON_HEIGHTS = (
     ("building", "medium", 11.0),
 )
 ICON_SIDE = 0.9
+# The markers with a cartoon icon: aura_<name>.xml shows the ring of <ring> and the picture <icon> of cartoon_icons.py.
+# The names wood, food and gold are kept for the data that uses them; food is the general one, and each kind of food
+# has its own (hunt, berry, farm, fish), all with the food ring.
+MARKERS = {
+    "wood": ("wood", "axe"),
+    "food": ("food", "drumstick"),
+    "gold": ("gold", "pickaxe"),
+    "hunt": ("food", "bow"),
+    "berry": ("food", "berries"),
+    "farm": ("food", "wheat"),
+    "fish": ("food", "fish"),
+}
+CARTOON_SIZE = 128
 ICON_OUTLINE = 0.14  # the dark edge that keeps a glyph readable, in the same fraction of the half width
 ICON_DARK = (24, 20, 16)
 # Each glyph is a list of (x, y, outer radius, inner radius), in fractions of the half width.
@@ -476,9 +494,12 @@ def rank_ddt(rank):
     return out + b"".join(levels)
 
 
-# Range rings, by radius in metres, a thin line of RANGE_LINE metres in a neutral colour.
-RANGES = (4, 6, 8, 10, 12, 14, 16, 20, 24, 30)
+# Range rings, by radius in metres, a thin line of RANGE_LINE metres in a neutral colour. Up to 100 m, the longest
+# range of a mod's unit (a monitor in Wars of Liberty): a radius shows on the ring nearest to it. A texture of 256
+# texels up to 16 m, 512 above; the line widens with the radius so it stays about 1.5 texels wide on the largest.
+RANGES = (4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 45, 50, 60, 70, 80, 100)
 RANGE_LINE = 0.30
+RANGE_LINE_PER_METRE = 0.006
 RANGE_COLOURS = ((245, 245, 235), (255, 255, 255))
 OPACITY = 0.70  # the ground shows through
 # A DXT3 block holds two colours and two mixes of them. By how much of the main colour: 1, 2/3, 1/3, 0.
@@ -590,6 +611,27 @@ def icon_ddt(colours, glyph, accent=(), size=SIZE, outline=ICON_OUTLINE, accent_
     return out + b"".join(levels)
 
 
+@functools.lru_cache(maxsize=None)
+def cartoon_ddt(icon, size=CARTOON_SIZE):
+    """An uncompressed BGRA texture of a cartoon icon, with its mip levels down to 4x4 (2x2 box filter)."""
+    level = cartoon_icons.render(icon, size)
+    levels = []
+    while True:
+        levels.append(b"".join(bytes((b, g, r, a)) for row in level for r, g, b, a in row))
+        if len(level) // 2 < 4:
+            break
+        half = len(level) // 2
+        level = [[tuple((level[2 * y][2 * x][c] + level[2 * y][2 * x + 1][c] + level[2 * y + 1][2 * x][c] +
+                         level[2 * y + 1][2 * x + 1][c] + 2) // 4 for c in range(4)) for x in range(half)]
+                 for y in range(half)]
+    out = b"RTS3" + bytes((0, 1, 1, len(levels))) + struct.pack("<II", size, size)
+    offset = len(out) + 8 * len(levels)
+    for blob in levels:
+        out += struct.pack("<II", offset, len(blob))
+        offset += len(blob)
+    return out + b"".join(levels)
+
+
 def rgb565(colour):
     r, g, b = colour
     return (r >> 3) << 11 | (g >> 2) << 5 | b >> 3
@@ -673,7 +715,8 @@ def range_shape(radius):
     """One band at the rim, RANGE_LINE metres wide: the particle's half width is radius / rim."""
     rim = BANDS[0][1]
     half = radius / rim
-    return ((rim - RANGE_LINE / half, rim),), EDGE * UNIT_RADIUS / half
+    line = max(RANGE_LINE, RANGE_LINE_PER_METRE * radius)
+    return ((rim - line / half, rim),), EDGE * UNIT_RADIUS / half
 
 
 def range_logic(radius):
@@ -685,7 +728,7 @@ def range_logic(radius):
 """
 
 
-def xml(name, marker=False, logic=None):
+def xml(name, marker=False, logic=None, icon=None):
     return f"""<?xml version="1.0" encoding="utf-8"?>
 
 <animfile>
@@ -703,7 +746,7 @@ def xml(name, marker=False, logic=None):
 \t\t\t<component>chiefpower_a</component>
 \t\t</anim>
 \t</attachment>
-{icon_attachment(name) if marker else ""}\t<component>
+{icon_attachment(icon or name) if marker else ""}\t<component>
 \t\tchiefpower_a
 \t\t<assetreference type="GrannyModel">
 \t\t\t<file>effects\\Chiefpower\\chiefpower</file>
@@ -803,11 +846,16 @@ def wanted_files(folder="rings"):
             wanted[f"ring_{name}_{size}.particle"] = text(particle(texture, radius))
             if side:
                 wanted[f"{texture}.ddt"] = ddt(colour, side, *building_shape(radius))
-        if name in GLYPHS:
+        if name in GLYPHS and name not in MARKERS:
             wanted[f"aura_{name}.xml"] = text(xml(name, marker=True))
             wanted[f"icon_{name}.ddt"] = icon_ddt(colour, GLYPHS[name], GLYPH_ACCENTS.get(name, ()))
             for _, size, height in ICON_HEIGHTS:
                 wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", ICON_SIDE, height, 0, ground=False))
+    for name, (ring, icon) in MARKERS.items():
+        wanted[f"aura_{name}.xml"] = text(xml(ring, marker=True, icon=name))
+        wanted[f"icon_{name}.ddt"] = cartoon_ddt(icon)
+        for _, size, height in ICON_HEIGHTS:
+            wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", ICON_SIDE, height, 0, ground=False))
     for rank, colour in RANKS.items():
         name = f"rank_{rank}"
         scale = rank_scale(rank)

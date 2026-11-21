@@ -6,6 +6,12 @@ three together).
 
 ## Unreleased
 
+- `tools/make_rings.py`: range rings up to 100 m (18, 22, 26, 28, 32, 36, 40, 45, 50, 60, 70, 80 and 100 added; the
+  line widens a little on the large ones), and the markers' floating icons redrawn as cartoons by the new
+  `tools/cartoon_icons.py` (shapes as signed distances, flat colours, a light tone per part, a thick dark outline):
+  a pickaxe over a nugget for gold, an axe for wood, a leg of meat for food, and `aura_hunt`, `aura_berry`,
+  `aura_farm`, `aura_fish` with a bow, berries, an ear of wheat and a fish; 128-texel BGRA so the colours stay flat.
+
 - `tools/make_command_icon.py`: command button icons in the style of Wars of Liberty's own on / off buttons
   (64x64 BGRA, a mottled blue frame, a green tick for "on", a red tint and cross for "off"), drawn from
   code; the first glyph, `autoscout`, a map half explored with a dotted route and a spyglass, for the
