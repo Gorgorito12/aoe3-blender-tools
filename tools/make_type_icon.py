@@ -15,7 +15,8 @@ Glyphs (FILES: where `--out` writes each, under the art folder):
 - `line`: an infantryman from the waist up in a bell-topped shako with a brass plate and a plume, a blue coat with
   red collar and epaulettes, white crossbelts, his musket and bayonet upright at his side
   (ui/ingame/stat_icon_heavy_infantry.ddt);
-- `standing`: the same in a red coat with blue facings (WoL/ui/ingame/staticons/stat_icon_standing_unit.ddt);
+- `standing`: the same in a red coat with blue facings (ui/ingame/stat_icon_infantry.ddt, the icon a panel draws
+  for AbstractInfantry, and WoL/ui/ingame/staticons/stat_icon_standing_unit.ddt);
 - `winged_arrow`: an arrow flying to the upper right with a white wing at its back and red fletching
   (WoL/ui/ingame/staticons/stat_icon_ranged.ddt; chosen in review: it reads better at the panel's size);
 - `winged_bullet`: the alternative for the same file, a bullet flying upward between two spread white wings, a badge
@@ -234,7 +235,7 @@ def winged_arrow():
 GLYPHS = {"line": lambda: soldier("line"), "standing": lambda: soldier("standing"),
           "winged_bullet": winged_bullet, "winged_arrow": winged_arrow}
 FILES = {"line": ("ui/ingame/stat_icon_heavy_infantry.ddt",),
-         "standing": ("WoL/ui/ingame/staticons/stat_icon_standing_unit.ddt",),
+         "standing": ("ui/ingame/stat_icon_infantry.ddt", "WoL/ui/ingame/staticons/stat_icon_standing_unit.ddt"),
          "winged_arrow": ("WoL/ui/ingame/staticons/stat_icon_ranged.ddt",)}
 ALTERNATIVES = {"winged_bullet": "winged_arrow"}  # glyph -> the one whose file it can replace
 
