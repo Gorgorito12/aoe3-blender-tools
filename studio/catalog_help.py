@@ -5,6 +5,12 @@ catalog.py fills an option's empty help from here; tests/test_studio.py fails on
 left without help in either language."""
 
 HELP = {
+    'make_dismount': {
+        'sheets': ("Also draws every animation as a contact sheet of twelve frames, with the horse, from the side the rider gets off (sheets\\<name>.png).",
+                   "Dibuja además cada animación como hoja de contacto de doce cuadros, con el caballo, desde el lado por el que baja el jinete (sheets\\<nombre>.png)."),
+        'clips': ("Also writes every animation as a short video at 30 frames a second (sheets\\<name>.mp4); needs ffmpeg.",
+                  "Escribe además cada animación como un vídeo corto a 30 cuadros por segundo (sheets\\<nombre>.mp4); necesita ffmpeg."),
+    },
     'mesh_to_game': {
         'in': ("The model: an .obj (its .mtl and picture beside it), a .glb or a .gltf. One picture for the whole model.",
                "El modelo: un .obj (con su .mtl y su imagen al lado), un .glb o un .gltf. Una sola imagen para todo el modelo."),
