@@ -16,10 +16,10 @@ Glyphs (FILES: where `--out` writes each, under the art folder):
   red collar and epaulettes, white crossbelts, his musket and bayonet upright at his side
   (ui/ingame/stat_icon_heavy_infantry.ddt);
 - `standing`: the same in a red coat with blue facings (WoL/ui/ingame/staticons/stat_icon_standing_unit.ddt);
-- `winged_bullet`: a bullet flying upward between two spread white wings, a badge shape
-  (WoL/ui/ingame/staticons/stat_icon_ranged.ddt);
-- `winged_arrow`: an alternative for the same file, an arrow flying to the upper right with a white wing at its back
-  and red fletching (written only with `--glyph winged_arrow`).
+- `winged_arrow`: an arrow flying to the upper right with a white wing at its back and red fletching
+  (WoL/ui/ingame/staticons/stat_icon_ranged.ddt; chosen in review: it reads better at the panel's size);
+- `winged_bullet`: the alternative for the same file, a bullet flying upward between two spread white wings, a badge
+  shape (written only with `--glyph winged_bullet`).
 
 `--png` writes the glyphs enlarged 8 times. No pixel comes from the game.
 """
@@ -235,8 +235,8 @@ GLYPHS = {"line": lambda: soldier("line"), "standing": lambda: soldier("standing
           "winged_bullet": winged_bullet, "winged_arrow": winged_arrow}
 FILES = {"line": ("ui/ingame/stat_icon_heavy_infantry.ddt",),
          "standing": ("WoL/ui/ingame/staticons/stat_icon_standing_unit.ddt",),
-         "winged_bullet": ("WoL/ui/ingame/staticons/stat_icon_ranged.ddt",)}
-ALTERNATIVES = {"winged_arrow": "winged_bullet"}  # glyph -> the one whose file it can replace
+         "winged_arrow": ("WoL/ui/ingame/staticons/stat_icon_ranged.ddt",)}
+ALTERNATIVES = {"winged_bullet": "winged_arrow"}  # glyph -> the one whose file it can replace
 
 
 def render(glyph):
