@@ -76,7 +76,7 @@ ICON_HEIGHTS = (
     ("abstractelephant", "elephant", 7.0),  # a mod's type (Wars of Liberty): elephants carry their bar far higher
     ("abstractcavalry", "cavalry", 4.0),
     ("abstractartillery", "cavalry", 4.0),
-    ("tree", "tree", 8.0),
+    ("tree", "tree", 13.0),  # above the canopy of the common trees (Great Lakes birch and pine, ponderosa, palms); a redwood is taller
     ("abstractmine", "mine", 3.5),
     ("abstracttowncenter", "large", 14.0),
     ("abstracthouse", "small", 9.0),
