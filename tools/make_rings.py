@@ -54,17 +54,21 @@ SIZE = 64
 
 # One meaning per ring: its main colour, on the outside, and the lighter one it fades to.
 RINGS = {
-    "wood": ((235, 130, 20), (255, 225, 130)),    # amber: gathering wood
+    "wood": ((130, 62, 28), (200, 125, 78)),      # dark copper: gathering wood
     "food": ((220, 30, 30), (255, 160, 110)),     # red: gathering food, as the food icon of the panel
-    "gold": ((255, 205, 0), (255, 250, 170)),     # yellow: gathering gold, as the coin icon of the panel
-    "work": ((50, 205, 50), (220, 245, 90)),      # green: gathers or works faster
-    "damage": ((225, 20, 180), (255, 160, 235)),  # magenta: damage, kept away from the three colours above
-    "heal": ((245, 248, 255), (150, 215, 255)),   # white: hit points, healing
+    "gold": ((235, 130, 20), (255, 225, 130)),    # orange gold: gathering gold
+    "work": ((0, 190, 200), (170, 250, 255)),     # cyan: work rate (builds, trains or researches faster)
+    "damage": ((225, 20, 180), (255, 160, 235)),  # magenta: damage, kept away from the colours above
+    "rof": ((235, 230, 30), (255, 255, 190)),     # lemon: rate of fire
+    "hp": ((255, 95, 150), (255, 200, 220)),      # rose: maximum hit points
+    "heal": ((245, 248, 255), (150, 215, 255)),   # white: healing over time
     "speed": ((30, 105, 255), (140, 235, 255)),   # blue: moves faster
-    "export": ((0, 190, 200), (170, 250, 255)),   # cyan, the sea: export (trade with the home city)
+    "export": ((50, 205, 50), (220, 245, 90)),    # lime: export (trade with the home city)
     "xp": ((140, 60, 240), (215, 180, 255)),      # violet: experience
     "oil": ((40, 34, 30), (150, 135, 120)),       # black: oil
 }
+# These rings are the defaults: a civ with an aura of its own (a unique model attachment) keeps it, and these serve
+# every case with nothing of more personality.
 
 # Radii as fractions of the half width, as (inner, outer): a wide band and a thin one.
 BANDS = ((0.74, 0.97), (0.52, 0.60))
@@ -124,6 +128,9 @@ SHEET_GRID = (3, 3)
 SHEET_CELLS = {"pickaxe": (0, 0), "axe": (0, 1), "meat": (0, 2), "berries": (1, 0), "hoe": (1, 1), "fish": (1, 2),
                "ship": (2, 0), "leaves": (2, 1), "drop": (2, 2)}
 SHEET_FILL = 0.90
+# Cells whose icon keeps only its largest connected part: the pickaxe without the nugget drawn beside it (a tool
+# alone, as the other icons are).
+SHEET_LARGEST_ONLY = {"pickaxe"}
 SHEET_ALPHA = (48, 200)  # a sheet's alpha under the first is ground (a soft shadow, noise), over the second solid
 ICON_SHEET = None  # set by --icon-sheet
 CARTOON_SIZE = 128
@@ -559,6 +566,33 @@ def _white_to_alpha(cell):
     return np.dstack([np.clip(rgb, 0, 255), alpha])
 
 
+def _largest_part(mask):
+    """The largest 8-connected part of a boolean mask (numpy), as a mask."""
+    import collections
+    import numpy as np
+    label = np.zeros(mask.shape, np.int32)
+    h, w = mask.shape
+    best, best_size, current = 0, 0, 0
+    for y0, x0 in zip(*np.nonzero(mask)):
+        if label[y0, x0]:
+            continue
+        current += 1
+        label[y0, x0] = current
+        queue, size = collections.deque([(y0, x0)]), 0
+        while queue:
+            y, x = queue.popleft()
+            size += 1
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    ny, nx = y + dy, x + dx
+                    if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not label[ny, nx]:
+                        label[ny, nx] = current
+                        queue.append((ny, nx))
+        if size > best_size:
+            best, best_size = current, size
+    return label == best
+
+
 @functools.lru_cache(maxsize=None)
 def _sheet_icons():
     """{icon name: (premultiplied RGBA float pixels cut to the icon, alpha 0 to 1)} of the --icon-sheet's cells."""
@@ -573,6 +607,16 @@ def _sheet_icons():
             cell = _white_to_alpha(cell)
         low, high = SHEET_ALPHA
         a = np.clip((cell[..., 3] - low) / (high - low), 0, 1)
+        if name in SHEET_LARGEST_ONLY:  # parts joined only by a faint fringe count as apart; the kept one keeps its edge
+            keep = _largest_part(a > 0.3)
+            for _ in range(3):
+                grown = keep.copy()
+                grown[1:] |= keep[:-1]
+                grown[:-1] |= keep[1:]
+                grown[:, 1:] |= keep[:, :-1]
+                grown[:, :-1] |= keep[:, 1:]
+                keep = grown
+            a = a * keep
         solid = a > 0.5
         # what the icon covers: rows and columns with a few solid pixels (a stray speck of the ground is not one)
         ys = np.nonzero(solid.sum(axis=1) >= 3)[0]

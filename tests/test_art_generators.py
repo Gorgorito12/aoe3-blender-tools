@@ -50,7 +50,7 @@ class Rings(unittest.TestCase):
             self.assertIn(f"icon_{marker}.ddt", names)
         for marker in set(make_rings.MARKERS) - set(drawn):  # only a drawn sheet has their icons
             self.assertNotIn(f"aura_{marker}.xml", names)
-        self.assertEqual(len(names), 299)
+        self.assertEqual(len(names), 319)
 
     def test_markers_show_their_ring_and_their_own_icon(self):
         for marker, (ring, _) in make_rings.MARKERS.items():
@@ -261,7 +261,7 @@ class Rings(unittest.TestCase):
                     f.write(data)
             result = run_tool("make_rings.py", "--out", tmp, "--folder", "myrings", "--check")
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertIn("299 files, 0 differ", result.stdout)
+            self.assertIn("319 files, 0 differ", result.stdout)
 
     @unittest.skipIf(np is None, "numpy not available")
     def test_icons_from_a_drawn_sheet(self):
@@ -346,6 +346,31 @@ class AuraRings(unittest.TestCase):
         hue = lambda c: __import__("colorsys").rgb_to_hsv(*(np.array(c[:3]) / 255))[0]
         for texel in (out[0, 0], out[1, 1]):  # magenta, whatever the stock hue
             self.assertLess(min(abs(hue(texel) - hue(main)), 1 - abs(hue(texel) - hue(main))), 0.06)
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_anti_rings(self):
+        """Each variant reads as adverse on a synthetic ring like the stock one (an outer band and an inner line):
+        dash leaves gaps around it, teeth add texels inside the outer band, hatch cuts the band and darkens it."""
+        import make_aura_rings
+        n = 64
+        yy, xx = np.mgrid[0:n, 0:n]
+        r = np.hypot((xx + 0.5) / n * 2 - 1, (yy + 0.5) / n * 2 - 1)
+        rgba = np.zeros((n, n, 4), np.uint8)
+        ring = ((r > 0.8) & (r < 0.97)) | ((r > 0.56) & (r < 0.64))
+        rgba[ring] = (200, 60, 160, 255)
+        colours = make_rings.RINGS["damage"]
+        shown = (rgba[..., 3] > 0).sum()
+        dash = make_aura_rings.anti_level(rgba, colours, "dash")
+        self.assertLess((dash[..., 3] > 0).sum(), 0.8 * shown)
+        teeth = make_aura_rings.anti_level(rgba, colours, "teeth")
+        between = (r > 0.66) & (r < 0.78)
+        self.assertEqual((rgba[..., 3][between] > 0).sum(), 0)
+        self.assertGreater((teeth[..., 3][between] > 0).sum(), 20)
+        hatch = make_aura_rings.anti_level(rgba, colours, "hatch")
+        self.assertLess((hatch[..., 3] > 0).sum(), shown)
+        kept = hatch[..., 3] > 0
+        self.assertLess(hatch[kept][:, :3].max(axis=1).mean(), rgba[kept][:, :3].max(axis=1).mean())
+        self.assertEqual(set(make_aura_rings.NEGATIVE) - set(make_rings.RINGS), set())
 
     def test_models_by_size(self):
         import make_aura_rings
