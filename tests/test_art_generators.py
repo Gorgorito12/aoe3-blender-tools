@@ -34,6 +34,11 @@ class Rings(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.files = make_rings.wanted_files("myrings")
+        make_rings.RANGE_PARTICLES = True
+        try:
+            cls.particles = make_rings.wanted_files("myrings")
+        finally:
+            make_rings.RANGE_PARTICLES = False
 
     def test_every_kind_is_written(self):
         names = set(self.files)
@@ -50,7 +55,7 @@ class Rings(unittest.TestCase):
             self.assertIn(f"icon_{marker}.ddt", names)
         for marker in set(make_rings.MARKERS) - set(drawn):  # only a drawn sheet has their icons
             self.assertNotIn(f"aura_{marker}.xml", names)
-        self.assertEqual(len(names), 319)
+        self.assertEqual(len(names), 298)
 
     def test_markers_show_their_ring_and_their_own_icon(self):
         for marker, (ring, _) in make_rings.MARKERS.items():
@@ -95,7 +100,7 @@ class Rings(unittest.TestCase):
     def test_textures_are_dxt3_with_mips(self):
         cartoons = {f"icon_{marker}.ddt" for marker in make_rings.MARKERS}
         for name, data in self.files.items():
-            if name.endswith(".ddt") and name not in cartoons:
+            if name.endswith(".ddt") and name not in cartoons and not name.endswith("_bump.ddt"):
                 hd = ddt.read_header(data)
                 self.assertEqual(hd.format, ddt.DXT3, name)
                 self.assertEqual(hd.width, hd.height, name)
@@ -116,7 +121,7 @@ class Rings(unittest.TestCase):
         width, and every range ring showed half its radius), so a ring of r metres has its rim at r."""
         import re
         for radius in make_rings.RANGES:
-            text = self.files[f"range_{radius}.particle"].decode("utf-8")
+            text = self.particles[f"range_{radius}.particle"].decode("utf-8")
             scale = float(re.search(r"<scale>([0-9.]+)</scale>", text)[1])
             self.assertAlmostEqual(scale / 2 * make_rings.BANDS[0][1], radius, delta=0.002, msg=radius)
 
@@ -125,9 +130,9 @@ class Rings(unittest.TestCase):
         """The line's outer edge, read from the texture and the particle's width, is at the ring's radius."""
         import re
         for radius in (4, 12, 30, 100):
-            text = self.files[f"range_{radius}.particle"].decode("utf-8")
+            text = self.particles[f"range_{radius}.particle"].decode("utf-8")
             scale = float(re.search(r"<scale>([0-9.]+)</scale>", text)[1])
-            px = ddt.decode(self.files[f"range_{radius}.ddt"])
+            px = ddt.decode(self.particles[f"range_{radius}.ddt"])
             side = px.shape[0]
             row = px[side // 2, side // 2:, 3].astype(int)       # from the centre to the right edge
             solid = np.nonzero(row >= row.max() // 2)[0]
@@ -261,7 +266,7 @@ class Rings(unittest.TestCase):
                     f.write(data)
             result = run_tool("make_rings.py", "--out", tmp, "--folder", "myrings", "--check")
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertIn("319 files, 0 differ", result.stdout)
+            self.assertIn("298 files, 0 differ", result.stdout)
 
     @unittest.skipIf(np is None, "numpy not available")
     def test_icons_from_a_drawn_sheet(self):
@@ -313,20 +318,34 @@ class Rings(unittest.TestCase):
                 make_rings._sheet_icons.cache_clear()
                 make_rings.cartoon_ddt.cache_clear()
 
-    def test_range_rings_in_player_colours(self):
-        """--player-colours: range_<N>_p<k> for every player of RANGE_PLAYERS, the same texture, the particle tinted."""
-        make_rings.PLAYER_COLOURS = True
-        try:
-            files = make_rings.wanted_files("myrings")
-        finally:
-            make_rings.PLAYER_COLOURS = False
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_range_rings_are_meshes_in_player_colour(self):
+        """By default a range ring is a flat annulus mesh whose outer edge is at its radius, on one texture whose
+        alpha marks player colour (alpha 0 in the core, 255 on the white edges), with the units' player-colour shader."""
+        from aoe3game import gr2
+        tex = self.files["range_line.ddt"]
+        hd = ddt.read_header(tex)
+        self.assertEqual(tex[5], 1)  # alpha: player colour
+        px = ddt.decode(tex)
+        self.assertEqual(px[32, 0, 3], 0)       # the core: the owner's colour
+        self.assertEqual(px[1, 0, 3], 255)      # an edge: white
+        self.assertEqual(px[62, 0, 3], 255)
+        self.assertGreater(px[1, 0, :3].min(), 240)
+        self.assertIn("range_line_bump.ddt", self.files)
         for radius in make_rings.RANGES:
-            for k, (r, g, b) in enumerate(make_rings.RANGE_PLAYERS):
-                text = files[f"range_{radius}_p{k}.particle"].decode("utf-8")
-                self.assertIn(f"<color>{r << 16 | g << 8 | b}</color>", text)
-                self.assertIn(f"effects\\myrings\\range_{radius}</file>", text)
-                self.assertIn(f"range_{radius}_p{k}.particle", files[f"range_{radius}_p{k}.xml"].decode("utf-8"))
-        self.assertIn("<color>16777215</color>", files["range_12.particle"].decode("utf-8"))
+            self.assertNotIn(f"range_{radius}.particle", self.files)
+            text = self.files[f"range_{radius}.xml"].decode("utf-8")
+            self.assertIn('type="GrannyModel"', text)
+            self.assertIn(f"effects\\myrings\\range_{radius}</file>", text)
+            data = self.files[f"range_{radius}.gr2"]
+            self.assertTrue(gr2.crc_ok(data))
+            stats = gr2.load(data).stats()
+            (x0, _, z0), (x1, _, z1) = stats["bbox_m"]
+            self.assertAlmostEqual((x1 - x0) / 2, radius, delta=0.01 * radius, msg=radius)
+            self.assertTrue(any("myrings\\range_line.ddt" in t for t in stats["textures"]), radius)
+            self.assertIn(b"pixelxformColor", data)
+            self.assertIn(b"playerColor", data)
+        self.assertNotIn("range_line.ddt", self.particles)
 
 
 class AuraRings(unittest.TestCase):

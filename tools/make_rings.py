@@ -16,19 +16,24 @@
                                                               xp, oil)
     python -I tools/make_rings.py ... --marker-sheet <out.png>  a picture of the markers' icons: the sheet's cell, the
                                                               texture x3, and its small levels on four grounds
-    python -I tools/make_rings.py ... --player-colours        also range_<metres>_p<k>.xml for players 0 to 9
-                                                              (RANGE_PLAYERS), the particle tinted with their colour
+    python -I tools/make_rings.py ... --range-particles       the range rings as white flat particles, as before
+                                                              2026-11-22, instead of meshes in the owner's colour
 
 --out is where the files are written (default out/rings in the repository). --folder is the folder under
 art/effects/ of the game (or of a mod) the files are meant for, and goes into the paths the files name (default
 "rings": art/effects/rings/). No pixel and no mesh comes from the game; the only game asset named is the stock
-effects\\Chiefpower\\chiefpower model, which the particles hang on.
+effects\\Chiefpower\\chiefpower model, which the particles and meshes hang on.
+
+These rings are the defaults: a civ with an aura model of its own keeps it, and these serve every case with nothing of
+more personality.
 
 - ring_<name>.xml, the model: by <logic type="UnitType">, one flat particle on the ground of the size in SHAPES;
 - ring_<name>_<size>.particle, that particle, for each size;
 - ring_<name>.ddt, the 64x64 DXT3 texture of a unit, a tree or a cavalryman;
 - ring_<name>_<size>.ddt, the texture of a building, with lines as thick in metres as those of a unit's ring;
-- range_<metres>.xml, its particle and its texture: one thin line of that radius, to show a range on the ground;
+- range_<metres>.xml and range_<metres>.gr2: one line of that radius on the ground, to show a range, a flat annulus mesh
+  in the owner's colour with white edges (all on range_line.ddt and its flat bump map, range_line_bump.ddt); with
+  --range-particles (or without numpy) a white flat particle and its texture, range_<metres>.particle and .ddt;
 - aura_<name>.xml, a marker: the ring and, floating over the unit, icon_<name>_<height>.particle with the picture of
   icon_<name>.ddt: for the resources (MARKERS) the cell of a drawn sheet (--icon-sheet) or a cartoon of the
   gathering tool or of the food drawn by cartoon_icons.py (a pickaxe for gold, an axe for wood, a drumstick for food
@@ -693,13 +698,23 @@ RANGES = (4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 45, 5
 RANGE_LINE = 0.30
 RANGE_LINE_PER_METRE = 0.006
 RANGE_COLOURS = ((245, 245, 235), (255, 255, 255))
-# --player-colours: range_<metres>_p<k>.xml for each player k, its particle tinted by the particle's own <color> (a
-# particle has no player colour: its colour fields are UsePalette, NumPaletteColors, PaletteColors, ColorStages and
-# Color). The colours are color1 of the game's data\playercolors.xml (the same in the stock game and Wars of
-# Liberty), players 0 (Mother Nature) to 9; the ring's texture is near white, so the tint is the colour.
-RANGE_PLAYERS = ((130, 80, 0), (45, 45, 245), (210, 40, 40), (215, 215, 30), (150, 15, 250), (15, 210, 80),
-                 (255, 150, 5), (150, 255, 240), (255, 190, 255), (0, 0, 0))
-PLAYER_COLOURS = False  # set by --player-colours
+# Range rings in the owner's colour (the default; --range-particles gives the white particle rings instead). A
+# particle has no player colour (its colour fields are UsePalette, NumPaletteColors, PaletteColors, ColorStages and a
+# fixed Color), so the ring is a mesh: a flat annulus, its cut-out made by the geometry, which leaves its texture's
+# alpha free to mark player colour as on a unit (an alpha-1 DDT with the shader bumpspec_mask_pixelxform and
+# pixelxformColor = playerColor; measured in game, 2026-11-22: texels of alpha 0 took the owner's colour, blue on
+# player 1's units and red on player 2's, and the local player's on a building's placement ghost). One mesh per
+# radius, range_<metres>.gr2, all on one texture, range_line.ddt: across the line, a light grey core of alpha 0 (the
+# owner's colour) between two thin white edges (alpha 255), so it reads on any ground.
+RANGE_MESH_LINE = 0.8             # the line's width in metres, at least (thinner, the colour fades into the edges at a distance)
+RANGE_MESH_LINE_PER_METRE = 0.012  # and widening with the radius
+RANGE_MESH_HEIGHT = 0.25          # metres over the unit's feet
+RANGE_MESH_EDGE = 0.14            # each white edge's share of the line's width
+RANGE_MESH_STEP = 2.0             # metres of circumference a segment, from 48 to 256 segments
+# The core's grey: the shader multiplies it by the owner's colour and the sun brightens it (a light grey, 210, gave
+# a pale pink for red in game), so a mid grey keeps the colour full.
+RANGE_MESH_CORE = 150
+RANGE_PARTICLES = False           # set by --range-particles
 OPACITY = 0.70  # the ground shows through
 # A DXT3 block holds two colours and two mixes of them. By how much of the main colour: 1, 2/3, 1/3, 0.
 SHADES = (0, 2, 3, 1)
@@ -928,13 +943,59 @@ def range_scale(radius):
     return 2 * radius / BANDS[0][1]
 
 
-def range_logic(radius, name=None):
+def range_logic(radius, mesh=False):
+    kind, path = ("GrannyModel", f"range_{radius}") if mesh else ("ParticleSystem", f"range_{radius}.particle")
     return f"""\t\t\t\t<none>
-\t\t\t\t\t<assetreference type="ParticleSystem">
-\t\t\t\t\t\t<file>effects\\{FOLDER}\\{name or f"range_{radius}"}.particle</file>
+\t\t\t\t\t<assetreference type="{kind}">
+\t\t\t\t\t\t<file>effects\\{FOLDER}\\{path}</file>
 \t\t\t\t\t</assetreference>
 \t\t\t\t</none>
 """
+
+
+def range_mesh_line(radius):
+    return max(RANGE_MESH_LINE, RANGE_MESH_LINE_PER_METRE * radius)
+
+
+def range_mesh(radius):
+    """The .gr2 of a range ring of `radius` metres: a flat annulus, its outer edge at the radius, RANGE_MESH_HEIGHT over
+    the unit's feet, its UVs across the line (v from one edge to the other) on range_line.ddt, with the player-colour
+    shader. Written by aoe3game.gr2_write (pure Python); nothing comes from the game."""
+    sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+    from aoe3game import gr2_write
+    width = range_mesh_line(radius)
+    segments = max(48, min(256, math.ceil(2 * math.pi * radius / RANGE_MESH_STEP)))
+    pos, nor, uv, tris = [], [], [], []
+    for i in range(segments + 1):
+        t = i / segments
+        a = 2 * math.pi * t
+        for r, v in ((radius - width, 0.0), (radius, 1.0)):
+            pos.append((r * math.cos(a), r * math.sin(a), RANGE_MESH_HEIGHT))
+            nor.append((0.0, 0.0, 1.0))
+            uv.append((t, v))
+    for i in range(segments):
+        a, b, c, d = 2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3
+        tris += [(a, b, d), (a, d, c)]
+    art = f"E:\\uhc\\Art\\effects\\{FOLDER}\\"
+    return gr2_write.static_model(f"range_{radius}", pos, nor, uv, tris, texture=art + "range_line.ddt",
+                                  bump=art + "range_line_bump.ddt", player_colour=True)
+
+
+def range_line_textures():
+    """range_line.ddt (alpha 1: a light grey core of alpha 0, the owner's colour, between white edges of alpha 255,
+    across v) and range_line_bump.ddt (a flat normal map), each 64 x 64 with mips (needs numpy)."""
+    import numpy as np
+    sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+    from aoe3game import ddt as ddtfile
+    n = 64
+    v = (np.arange(n) + 0.5) / n
+    edge = (v < RANGE_MESH_EDGE) | (v > 1 - RANGE_MESH_EDGE)
+    tex = np.zeros((n, n, 4), np.uint8)
+    tex[~edge] = (RANGE_MESH_CORE,) * 3 + (0,)
+    tex[edge] = (250, 250, 245, 255)
+    bump = np.zeros((n, n, 4), np.uint8)
+    bump[...] = (128, 128, 255, 255)
+    return ddtfile.write_dxt(tex, ddtfile.DXT3, alpha=1), ddtfile.write_normal_map(bump)
 
 
 def xml(name, marker=False, logic=None, icon=None):
@@ -1077,15 +1138,21 @@ def wanted_files(folder="rings"):
         for _, size, height in ICON_HEIGHTS:
             wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", RANK_SIDE * scale,
                                                                    RANK_BAR_HEIGHTS.get(size, height), 0))
+    meshes = not RANGE_PARTICLES
+    if meshes:
+        try:
+            wanted["range_line.ddt"], wanted["range_line_bump.ddt"] = range_line_textures()
+        except ImportError:  # the textures need numpy: the white particle rings instead
+            print("make_rings: no numpy, so the range rings are the white particles (--range-particles)")
+            meshes = False
     for radius in RANGES:
-        side = 256 if radius <= 16 else 512
-        wanted[f"range_{radius}.ddt"] = ddt(RANGE_COLOURS, side, *range_shape(radius))
-        wanted[f"range_{radius}.xml"] = text(xml("", logic=range_logic(radius)))
-        wanted[f"range_{radius}.particle"] = text(particle(f"range_{radius}", range_scale(radius)))
-        for k, colour in enumerate(RANGE_PLAYERS if PLAYER_COLOURS else ()):
-            name = f"range_{radius}_p{k}"
-            wanted[f"{name}.xml"] = text(xml("", logic=range_logic(radius, name)))
-            wanted[f"{name}.particle"] = text(particle(f"range_{radius}", range_scale(radius), colour=colour))
+        wanted[f"range_{radius}.xml"] = text(xml("", logic=range_logic(radius, meshes)))
+        if meshes:
+            wanted[f"range_{radius}.gr2"] = range_mesh(radius)
+        else:
+            side = 256 if radius <= 16 else 512
+            wanted[f"range_{radius}.ddt"] = ddt(RANGE_COLOURS, side, *range_shape(radius))
+            wanted[f"range_{radius}.particle"] = text(particle(f"range_{radius}", range_scale(radius)))
     return wanted
 
 
@@ -1197,10 +1264,10 @@ def main(argv):
     check = "--check" in argv
     out = pathlib.Path(option(argv, "--out", OUT))
     folder = option(argv, "--folder", "rings")
-    global RANK_SHAPES, ICON_SHEET, PLAYER_COLOURS
+    global RANK_SHAPES, ICON_SHEET, RANGE_PARTICLES
     RANK_SHAPES = option(argv, "--rank-shapes", None)
     ICON_SHEET = option(argv, "--icon-sheet", None)
-    PLAYER_COLOURS = "--player-colours" in argv
+    RANGE_PARTICLES = "--range-particles" in argv
     if not folder or any(c in folder for c in "\\/:."):
         sys.exit("make_rings: --folder is one folder name under art/effects/")
     wanted = wanted_files(folder)

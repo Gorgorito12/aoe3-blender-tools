@@ -711,10 +711,10 @@ TOOLS = [
                 "Una hoja dibujada de 3 x 3 (PNG, o WebP con Pillow), un icono por celda: pico, hacha, carne; bayas, "
                 "azada, pez; barco, hojas, gota de petróleo. Un fondo blanco se vuelve transparente. Vacío: los "
                 "iconos dibujados."), filters=IMAGES),
-          Arg("player_colours", "--player-colours", "bool", L("Range rings in player colours",
-                                                               "Anillos de alcance en colores de jugador"),
-              L("Also range_<metres>_p<k> for players 0 to 9, tinted with their colour.",
-                "También range_<metros>_p<k> para los jugadores 0 a 9, teñidos con su color.")),
+          Arg("range_particles", "--range-particles", "bool", L("White range rings (particles)",
+                                                                 "Anillos de alcance blancos (partículas)"),
+              L("The range rings as white flat particles instead of meshes in the owner's colour.",
+                "Los anillos de alcance como partículas planas blancas en vez de mallas del color del dueño.")),
           Arg("marker_sheet", "--marker-sheet", "save", L("Picture of the marker icons",
                                                            "Imagen de los iconos de marcador"),
               L("Each icon as drawn, enlarged, and at the sizes it takes in game, on grass, dirt, snow and dark.",

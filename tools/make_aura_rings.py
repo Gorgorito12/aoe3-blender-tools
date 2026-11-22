@@ -90,7 +90,7 @@ def recolour(rgba, colours):
 # The stock texture's outer band lies at 0.80 to 0.97 of its half width, the inner line at 0.55 to 0.65.
 NEGATIVE = ("damage", "rof", "hp", "speed", "heal")
 ANTI_VARIANTS = ("dash", "teeth", "hatch")
-ANTI = "dash"
+ANTI = "teeth"  # chosen by the owner (2026-11-22): the effect's colour stays readable, the shape changes
 ANTI_SEGMENTS = 12   # dashes and teeth around the ring
 ANTI_GAP = 0.35      # the share of each dash period left empty
 HATCH_PERIOD = 0.16  # in fractions of the half width
