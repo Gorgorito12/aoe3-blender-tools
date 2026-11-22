@@ -10,6 +10,14 @@
                                                               numpy)
     python -I tools/make_rings.py ... --sheet <marks.png>     also a picture of the five rank marks, enlarged 4 times,
                                                               on grass and on dark (needs numpy)
+    python -I tools/make_rings.py ... --icon-sheet <icons.png>  the markers' icons from a drawn 3 x 3 sheet (SHEET_CELLS;
+                                                              PNG, or any image Pillow reads), on white or transparent
+                                                              (needs numpy); also the markers only a sheet has (export,
+                                                              xp, oil)
+    python -I tools/make_rings.py ... --marker-sheet <out.png>  a picture of the markers' icons: the sheet's cell, the
+                                                              texture x3, and its small levels on four grounds
+    python -I tools/make_rings.py ... --player-colours        also range_<metres>_p<k>.xml for players 0 to 9
+                                                              (RANGE_PLAYERS), the particle tinted with their colour
 
 --out is where the files are written (default out/rings in the repository). --folder is the folder under
 art/effects/ of the game (or of a mod) the files are meant for, and goes into the paths the files name (default
@@ -22,9 +30,9 @@ effects\\Chiefpower\\chiefpower model, which the particles hang on.
 - ring_<name>_<size>.ddt, the texture of a building, with lines as thick in metres as those of a unit's ring;
 - range_<metres>.xml, its particle and its texture: one thin line of that radius, to show a range on the ground;
 - aura_<name>.xml, a marker: the ring and, floating over the unit, icon_<name>_<height>.particle with the picture of
-  icon_<name>.ddt, drawn here: for the resources (MARKERS) a cartoon of the gathering tool or of the food
-  (cartoon_icons.py: a pickaxe for gold, an axe for wood, a drumstick for food, and for each kind of food a bow,
-  berries, an ear of wheat and a fish), uncompressed so its colours stay flat; for work, a gear;
+  icon_<name>.ddt: for the resources (MARKERS) the cell of a drawn sheet (--icon-sheet) or a cartoon of the
+  gathering tool or of the food drawn by cartoon_icons.py (a pickaxe for gold, an axe for wood, a drumstick for food
+  and hunts, berries, an ear of wheat for farms, a fish), uncompressed so its colours stay flat; for work, a gear;
 - rank_<1-5>.xml, a rank mark floating over the unit: a soutache knot (one loop; a stem with a top loop and two or
   four eye-shaped loops over a tail bar), shaded as polished metal, centred on the unit's HP bar.
 
@@ -53,6 +61,9 @@ RINGS = {
     "damage": ((225, 20, 180), (255, 160, 235)),  # magenta: damage, kept away from the three colours above
     "heal": ((245, 248, 255), (150, 215, 255)),   # white: hit points, healing
     "speed": ((30, 105, 255), (140, 235, 255)),   # blue: moves faster
+    "export": ((0, 190, 200), (170, 250, 255)),   # cyan, the sea: export (trade with the home city)
+    "xp": ((140, 60, 240), (215, 180, 255)),      # violet: experience
+    "oil": ((40, 34, 30), (150, 135, 120)),       # black: oil
 }
 
 # Radii as fractions of the half width, as (inner, outer): a wide band and a thin one.
@@ -87,18 +98,34 @@ ICON_HEIGHTS = (
     ("building", "medium", 11.0),
 )
 ICON_SIDE = 0.9
-# The markers with a cartoon icon: aura_<name>.xml shows the ring of <ring> and the picture <icon> of cartoon_icons.py.
-# The names wood, food and gold are kept for the data that uses them; food is the general one, and each kind of food
-# has its own (hunt, berry, farm, fish), all with the food ring.
+# The markers with a cartoon icon: aura_<name>.xml shows the ring of <ring> and the picture <icon>, a cell of the drawn
+# sheet (--icon-sheet, SHEET_CELLS) or, without one, a drawing of cartoon_icons.py (CARTOON_DRAWN). The names wood, food
+# and gold are kept for the data that uses them; food is the general one, and each kind of food has its own (hunt,
+# berry, farm, fish), all with the food ring. Meat stands for every animal, herded or hunted; the name hunt stays.
 MARKERS = {
     "wood": ("wood", "axe"),
-    "food": ("food", "drumstick"),
+    "food": ("food", "meat"),
     "gold": ("gold", "pickaxe"),
-    "hunt": ("food", "bow"),
+    "hunt": ("food", "meat"),
     "berry": ("food", "berries"),
-    "farm": ("food", "wheat"),
+    "farm": ("food", "hoe"),
     "fish": ("food", "fish"),
+    "export": ("export", "ship"),
+    "xp": ("xp", "leaves"),
+    "oil": ("oil", "drop"),
 }
+# Without a sheet: the icons cartoon_icons.py draws, by sheet name. A marker whose icon is in neither is not written.
+CARTOON_DRAWN = {"axe": "axe", "meat": "drumstick", "pickaxe": "pickaxe", "berries": "berries", "hoe": "wheat",
+                 "fish": "fish"}
+# A drawn sheet of icons (--icon-sheet): a grid of SHEET_GRID cells (rows, columns), one icon in each, on a transparent
+# ground or on white (made transparent from the cell's border inwards, the dark outline kept). Every icon is cut to what
+# it covers and drawn at one scale, the largest one's longer side SHEET_FILL of the texture, centred.
+SHEET_GRID = (3, 3)
+SHEET_CELLS = {"pickaxe": (0, 0), "axe": (0, 1), "meat": (0, 2), "berries": (1, 0), "hoe": (1, 1), "fish": (1, 2),
+               "ship": (2, 0), "leaves": (2, 1), "drop": (2, 2)}
+SHEET_FILL = 0.90
+SHEET_ALPHA = (48, 200)  # a sheet's alpha under the first is ground (a soft shadow, noise), over the second solid
+ICON_SHEET = None  # set by --icon-sheet
 CARTOON_SIZE = 128
 CARTOON_SIDE = 1.25  # the particle's scale of a marker's icon: larger than ICON_SIDE, so it reads from the normal camera
 ICON_OUTLINE = 0.14  # the dark edge that keeps a glyph readable, in the same fraction of the half width
@@ -442,11 +469,18 @@ def _image_level(rank, side):
     x0 = side / 2 - (right - left) / unit / texel / 2
     y1 = side / 2 - RANK_TAIL_LIFT / texel
     y0 = y1 - (bottom - top) / unit / texel
-    out = np.zeros((side, side, 4))
-    k = (bottom - top) / (y1 - y0)  # mark pixels a texel
+    a, rgb = _box_resample(mark, x0, y0, (bottom - top) / (y1 - y0), side)
+    rgb = np.where(a[..., None] > 0, rgb, 0)
+    return np.dstack([np.clip(rgb, 0, 255), a * 255]).round().astype(np.uint8)
+
+
+def _box_resample(mark, x0, y0, k, side):
+    """A premultiplied image (alpha 0 to 1) drawn into a side x side square, its top left corner at texel (x0, y0),
+    k of its pixels a texel, by a box filter (the sum of the image over each texel's footprint, from a summed-area
+    table). Returns (alpha, colour), the colour no longer premultiplied (0 where nothing is drawn)."""
+    import numpy as np
     ys = (np.arange(side + 1) - y0) * k
     xs = (np.arange(side + 1) - x0) * k
-    # box filter: the sum of the mark over each texel's footprint, from a summed-area table
     sat = np.zeros((mark.shape[0] + 1, mark.shape[1] + 1, 4))
     sat[1:, 1:] = mark.cumsum(0).cumsum(1)
 
@@ -464,8 +498,117 @@ def _image_level(rank, side):
     cell = total[1:, 1:] - total[:-1, 1:] - total[1:, :-1] + total[:-1, :-1]
     out = cell / (k * k)
     a = np.clip(out[..., 3], 0, 1)
-    rgb = np.where(a[..., None] > 0, out[..., :3] / np.maximum(a[..., None], 1e-6), 0)
-    return np.dstack([np.clip(rgb, 0, 255), a * 255]).round().astype(np.uint8)
+    return a, out[..., :3] / np.maximum(a[..., None], 1e-6)
+
+
+def _read_image(path):
+    """RGBA pixels (numpy, uint8) of a PNG (core.pngio) or, through Pillow when it is installed, any other image."""
+    import numpy as np
+    data = pathlib.Path(path).read_bytes()
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+        from core.pngio import read_png
+        px = np.asarray(read_png(data))
+    else:
+        try:
+            from PIL import Image
+        except ImportError:
+            sys.exit(f"make_rings: {path} is not a PNG; convert it to PNG or install Pillow")
+        with Image.open(path) as im:
+            px = np.asarray(im.convert("RGBA"))
+    if px.ndim == 2:
+        px = np.dstack([px] * 3)
+    if px.shape[2] == 3:
+        px = np.dstack([px, np.full(px.shape[:2], 255, px.dtype)])
+    return px[..., :4].astype(np.uint8)
+
+
+def _white_to_alpha(cell):
+    """A cell drawn on white, its ground made transparent: the near-white pixels joined to the cell's border are the
+    ground (an icon's own white parts, inside its dark outline, stay), and the pixels next to it keep only what is not
+    white of them (the anti-aliased edge of the outline, un-blended from white)."""
+    import numpy as np
+    rgb = cell[..., :3].astype(np.float64)
+    white = (rgb.min(axis=2) > 225) & (np.ptp(rgb, axis=2) < 30)
+    ground = np.zeros_like(white)
+    ground[0, :], ground[-1, :], ground[:, 0], ground[:, -1] = white[0, :], white[-1, :], white[:, 0], white[:, -1]
+    while True:  # flood from the border through the near-white pixels
+        grown = ground.copy()
+        grown[1:] |= ground[:-1]
+        grown[:-1] |= ground[1:]
+        grown[:, 1:] |= ground[:, :-1]
+        grown[:, :-1] |= ground[:, 1:]
+        grown &= white
+        if (grown == ground).all():
+            break
+        ground = grown
+    edge = ground.copy()
+    for _ in range(2):  # two pixels into the icon from its ground
+        e = edge.copy()
+        e[1:] |= edge[:-1]
+        e[:-1] |= edge[1:]
+        e[:, 1:] |= edge[:, :-1]
+        e[:, :-1] |= edge[:, 1:]
+        edge = e
+    alpha = np.full(white.shape, 255.0)
+    a = ((255 - rgb).max(axis=2) / 255)
+    alpha[edge] = a[edge] * 255
+    alpha[ground] = 0
+    keep = (alpha > 0) & edge
+    rgb[keep] = (rgb[keep] - 255 * (1 - a[keep][:, None])) / np.maximum(a[keep][:, None], 1e-6)
+    return np.dstack([np.clip(rgb, 0, 255), alpha])
+
+
+@functools.lru_cache(maxsize=None)
+def _sheet_icons():
+    """{icon name: (premultiplied RGBA float pixels cut to the icon, alpha 0 to 1)} of the --icon-sheet's cells."""
+    import numpy as np
+    px = _read_image(ICON_SHEET)
+    rows, cols = SHEET_GRID
+    h, w = px.shape[0] // rows, px.shape[1] // cols
+    out = {}
+    for name, (r, c) in SHEET_CELLS.items():
+        cell = px[r * h:(r + 1) * h, c * w:(c + 1) * w].astype(np.float64)
+        if cell[..., 3].min() == 255:  # no transparency: drawn on white
+            cell = _white_to_alpha(cell)
+        low, high = SHEET_ALPHA
+        a = np.clip((cell[..., 3] - low) / (high - low), 0, 1)
+        solid = a > 0.5
+        # what the icon covers: rows and columns with a few solid pixels (a stray speck of the ground is not one)
+        ys = np.nonzero(solid.sum(axis=1) >= 3)[0]
+        xs = np.nonzero(solid.sum(axis=0) >= 3)[0]
+        if not len(ys):
+            raise ValueError(f"make_rings: the sheet's cell {r},{c} ({name}) is empty")
+        top, bottom, left, right = ys[0], ys[-1] + 1, xs[0], xs[-1] + 1
+        cut = cell[top:bottom, left:right, :3] * a[top:bottom, left:right, None]
+        out[name] = np.dstack([cut, a[top:bottom, left:right]])
+    return out
+
+
+def sheet_icon(icon, size):
+    """RGBA rows (lists of tuples, as cartoon_icons.render gives them) of a sheet's icon in a size x size texture:
+    every icon at one scale, centred on its box; where nothing is drawn the colour is ICON_DARK, so the smaller levels
+    darken the edge toward the outline instead of toward white."""
+    import numpy as np
+    icons = _sheet_icons()
+    longest = max(max(m.shape[:2]) for m in icons.values())
+    k = longest / (SHEET_FILL * size)  # sheet pixels a texel
+    mark = icons[icon]
+    x0 = size / 2 - mark.shape[1] / k / 2
+    y0 = size / 2 - mark.shape[0] / k / 2
+    a, rgb = _box_resample(mark, x0, y0, k, size)
+    rgb = np.where(a[..., None] > 0, rgb, np.array(ICON_DARK, np.float64))
+    level = np.dstack([np.clip(rgb, 0, 255), a * 255]).round().astype(int)
+    return [[tuple(int(v) for v in texel) for texel in row] for row in level]
+
+
+def marker_icon(icon, size):
+    """The RGBA rows of a marker's icon: the sheet's cell, or cartoon_icons' drawing; None when there is neither."""
+    if ICON_SHEET is not None and icon in SHEET_CELLS:
+        return sheet_icon(icon, size)
+    if icon in CARTOON_DRAWN:
+        return cartoon_icons.render(CARTOON_DRAWN[icon], size)
+    return None
 
 
 @functools.lru_cache(maxsize=None)  # the textures do not depend on --folder
@@ -506,6 +649,13 @@ RANGES = (4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 45, 5
 RANGE_LINE = 0.30
 RANGE_LINE_PER_METRE = 0.006
 RANGE_COLOURS = ((245, 245, 235), (255, 255, 255))
+# --player-colours: range_<metres>_p<k>.xml for each player k, its particle tinted by the particle's own <color> (a
+# particle has no player colour: its colour fields are UsePalette, NumPaletteColors, PaletteColors, ColorStages and
+# Color). The colours are color1 of the game's data\playercolors.xml (the same in the stock game and Wars of
+# Liberty), players 0 (Mother Nature) to 9; the ring's texture is near white, so the tint is the colour.
+RANGE_PLAYERS = ((130, 80, 0), (45, 45, 245), (210, 40, 40), (215, 215, 30), (150, 15, 250), (15, 210, 80),
+                 (255, 150, 5), (150, 255, 240), (255, 190, 255), (0, 0, 0))
+PLAYER_COLOURS = False  # set by --player-colours
 OPACITY = 0.70  # the ground shows through
 # A DXT3 block holds two colours and two mixes of them. By how much of the main colour: 1, 2/3, 1/3, 0.
 SHADES = (0, 2, 3, 1)
@@ -618,8 +768,11 @@ def icon_ddt(colours, glyph, accent=(), size=SIZE, outline=ICON_OUTLINE, accent_
 
 @functools.lru_cache(maxsize=None)
 def cartoon_ddt(icon, size=CARTOON_SIZE):
-    """An uncompressed BGRA texture of a cartoon icon, with its mip levels down to 4x4 (2x2 box filter)."""
-    level = cartoon_icons.render(icon, size)
+    """An uncompressed BGRA texture of a marker's icon (marker_icon), with its mip levels down to 4x4 (2x2 box
+    filter); None when the icon has no picture."""
+    level = marker_icon(icon, size)
+    if level is None:
+        return None
     levels = []
     while True:
         levels.append(b"".join(bytes((b, g, r, a)) for row in level for r, g, b, a in row))
@@ -731,10 +884,10 @@ def range_scale(radius):
     return 2 * radius / BANDS[0][1]
 
 
-def range_logic(radius):
+def range_logic(radius, name=None):
     return f"""\t\t\t\t<none>
 \t\t\t\t\t<assetreference type="ParticleSystem">
-\t\t\t\t\t\t<file>effects\\{FOLDER}\\range_{radius}.particle</file>
+\t\t\t\t\t\t<file>effects\\{FOLDER}\\{name or f"range_{radius}"}.particle</file>
 \t\t\t\t\t</assetreference>
 \t\t\t\t</none>
 """
@@ -809,7 +962,7 @@ PARTICLE = (
         yspeedvar=0.000 zspeed=1.000 zspeedvar=0.000 cycletime=0.000 cycletimevar=0.000"""),
     ("speedstages", ""),
     ("color", """usepalette=0 loopingcycle=0 numpalettecolors=0 numstages=0 cycletime=0.000 cycletimevar=0.000
-        fworldlightinginfluence=0.000 color=16777215"""),
+        fworldlightinginfluence=0.000 color={colour}"""),
     ("palettecolors", ""),
     ("colorstages", ""),
     ("forces", """randomorientation=0 tumble=0 tumblebothdirections=0 randomaxis=0 internalgravity=0.000
@@ -823,7 +976,7 @@ PARTICLE = (
 )
 
 
-def particle(texture, radius, height=0.2, appearance=2, ground=True):
+def particle(texture, radius, height=0.2, appearance=2, ground=True, colour=(255, 255, 255)):
     out = "<particlefile>\n"
     for section, fields in PARTICLE:
         if fields is None:
@@ -831,8 +984,9 @@ def particle(texture, radius, height=0.2, appearance=2, ground=True):
                     f"\t\t\t<material>0</material>\n\t\t\t<weight>1.000</weight>\n\t\t</stage>\n\t</{section}>\n")
         elif fields:
             out += f"\t<{section}>\n"
+            packed = colour[0] << 16 | colour[1] << 8 | colour[2]  # 0xRRGGBB, as 16777215 is white
             for field in fields.format(radius=radius, height=height, appearance=appearance, terrain=1 if ground else -1,
-                                       terrainheight="0.200" if ground else "0.000").split():
+                                       colour=packed, terrainheight="0.200" if ground else "0.000").split():
                 key, value = field.split("=")
                 out += f"\t\t<{key}>{value}</{key}>\n"
             out += f"\t</{section}>\n"
@@ -864,8 +1018,11 @@ def wanted_files(folder="rings"):
             for _, size, height in ICON_HEIGHTS:
                 wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", ICON_SIDE, height, 0, ground=False))
     for name, (ring, icon) in MARKERS.items():
+        picture = cartoon_ddt(icon)
+        if picture is None:  # an icon only a drawn sheet has (--icon-sheet)
+            continue
         wanted[f"aura_{name}.xml"] = text(xml(ring, marker=True, icon=name))
-        wanted[f"icon_{name}.ddt"] = cartoon_ddt(icon)
+        wanted[f"icon_{name}.ddt"] = picture
         for _, size, height in ICON_HEIGHTS:
             wanted[f"icon_{name}_{size}.particle"] = text(particle(f"icon_{name}", CARTOON_SIDE, height, 0, ground=False))
     for rank, colour in RANKS.items():
@@ -881,6 +1038,10 @@ def wanted_files(folder="rings"):
         wanted[f"range_{radius}.ddt"] = ddt(RANGE_COLOURS, side, *range_shape(radius))
         wanted[f"range_{radius}.xml"] = text(xml("", logic=range_logic(radius)))
         wanted[f"range_{radius}.particle"] = text(particle(f"range_{radius}", range_scale(radius)))
+        for k, colour in enumerate(RANGE_PLAYERS if PLAYER_COLOURS else ()):
+            name = f"range_{radius}_p{k}"
+            wanted[f"{name}.xml"] = text(xml("", logic=range_logic(radius, name)))
+            wanted[f"{name}.particle"] = text(particle(f"range_{radius}", range_scale(radius), colour=colour))
     return wanted
 
 
@@ -927,6 +1088,58 @@ def rank_sheet(wanted, zoom=4):
     return np.concatenate(rows, axis=0).astype(np.uint8)
 
 
+MARKER_GROUNDS = ((96, 112, 58), (150, 128, 92), (230, 232, 236), (40, 32, 24))  # grass, dirt, snow, dark
+
+
+def marker_sheet(wanted, zoom=3, small=(32, 64)):
+    """RGB rows (numpy) of every marker's icon, a row each: its sheet cell as drawn (when --icon-sheet is set) on
+    white, the 128-texel texture enlarged `zoom` times on grass, then the texture's level nearest each of the `small`
+    sizes (the pixels it takes over a unit from the normal camera and zoomed in), on each of MARKER_GROUNDS."""
+    import numpy as np
+    sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+    from aoe3game import ddt as ddtfile
+    big = CARTOON_SIZE * zoom
+    gap = 16
+
+    def paste(row, rgb, a, left):
+        h, w = a.shape
+        top = (row.shape[0] - h) // 2
+        area = row[top:top + h, left:left + w]
+        row[top:top + h, left:left + w] = rgb * a[..., None] + area * (1 - a[..., None])
+
+    rows = []
+    for marker, (_, icon) in MARKERS.items():
+        name = f"icon_{marker}.ddt"
+        if name not in wanted:
+            continue
+        px = np.asarray(ddtfile.decode(wanted[name])).astype(np.float64)
+        smalls = sum(len(MARKER_GROUNDS) * (s + gap) for s in small)
+        row = np.zeros((big + gap, 2 * (big + gap) + smalls + gap, 3)) + np.array(MARKER_GROUNDS[0], np.float64)
+        row[:, :big + gap] = 255
+        if ICON_SHEET is not None and icon in SHEET_CELLS:
+            src = _sheet_icons()[icon]
+            f = big / max(src.shape[:2])
+            ys = np.minimum((np.arange(round(src.shape[0] * f)) / f).astype(int), src.shape[0] - 1)
+            xs = np.minimum((np.arange(round(src.shape[1] * f)) / f).astype(int), src.shape[1] - 1)
+            s = src[ys][:, xs]
+            a = s[..., 3]
+            paste(row, np.where(a[..., None] > 0, s[..., :3] / np.maximum(a[..., None], 1e-6), 0), a, gap // 2)
+        idx = np.arange(big) // zoom
+        e = px[idx][:, idx]
+        paste(row, e[..., :3], e[..., 3] / 255, big + gap + gap // 2)
+        x = 2 * (big + gap)
+        for size in small:
+            level = px
+            while level.shape[0] > size:  # the game's smaller levels (2x2 box), as the camera sees them
+                level = level.reshape(level.shape[0] // 2, 2, level.shape[1] // 2, 2, 4).mean(axis=(1, 3))
+            for ground in MARKER_GROUNDS:
+                row[:, x:x + size + gap] = ground
+                paste(row, level[..., :3], level[..., 3] / 255, x + gap // 2)
+                x += size + gap
+        rows.append(row)
+    return np.concatenate(rows, axis=0).clip(0, 255).astype(np.uint8)
+
+
 def option(args, name, default):
     if name in args:
         i = args.index(name)
@@ -940,8 +1153,10 @@ def main(argv):
     check = "--check" in argv
     out = pathlib.Path(option(argv, "--out", OUT))
     folder = option(argv, "--folder", "rings")
-    global RANK_SHAPES
+    global RANK_SHAPES, ICON_SHEET, PLAYER_COLOURS
     RANK_SHAPES = option(argv, "--rank-shapes", None)
+    ICON_SHEET = option(argv, "--icon-sheet", None)
+    PLAYER_COLOURS = "--player-colours" in argv
     if not folder or any(c in folder for c in "\\/:."):
         sys.exit("make_rings: --folder is one folder name under art/effects/")
     wanted = wanted_files(folder)
@@ -962,6 +1177,12 @@ def main(argv):
         from core.pngio import encode_png
         pathlib.Path(sheet).write_bytes(encode_png(rank_sheet(wanted)))
         print(f"make_rings: rank marks x4 in {sheet}")
+    markers = option(argv, "--marker-sheet", None)
+    if markers:
+        sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+        from core.pngio import encode_png
+        pathlib.Path(markers).write_bytes(encode_png(marker_sheet(wanted)))
+        print(f"make_rings: marker icons in {markers}")
     return 1 if bad else 0
 
 

@@ -44,13 +44,18 @@ class Rings(unittest.TestCase):
             self.assertIn(f"range_{radius}.xml", names)
         for rank in range(1, 6):
             self.assertIn(f"rank_{rank}.xml", names)
-        for marker in make_rings.MARKERS:
+        drawn = [m for m, (_, icon) in make_rings.MARKERS.items() if icon in make_rings.CARTOON_DRAWN]
+        for marker in drawn:
             self.assertIn(f"aura_{marker}.xml", names)
             self.assertIn(f"icon_{marker}.ddt", names)
-        self.assertEqual(len(names), 269)
+        for marker in set(make_rings.MARKERS) - set(drawn):  # only a drawn sheet has their icons
+            self.assertNotIn(f"aura_{marker}.xml", names)
+        self.assertEqual(len(names), 299)
 
     def test_markers_show_their_ring_and_their_own_icon(self):
         for marker, (ring, _) in make_rings.MARKERS.items():
+            if f"aura_{marker}.xml" not in self.files:
+                continue
             text = self.files[f"aura_{marker}.xml"].decode("utf-8")
             self.assertIn(f"effects\\myrings\\ring_{ring}_unit.particle", text, marker)
             self.assertIn(f"effects\\myrings\\icon_{marker}_unit.particle", text, marker)
@@ -59,6 +64,8 @@ class Rings(unittest.TestCase):
     def test_cartoon_icons_are_flat_and_outlined(self):
         """Each marker icon is uncompressed, transparent at its corners, has a dark outline and some bright colour."""
         for marker in make_rings.MARKERS:
+            if f"icon_{marker}.ddt" not in self.files:
+                continue
             data = self.files[f"icon_{marker}.ddt"]
             hd = ddt.read_header(data)
             self.assertEqual(hd.format, ddt.BGRA, marker)
@@ -254,7 +261,101 @@ class Rings(unittest.TestCase):
                     f.write(data)
             result = run_tool("make_rings.py", "--out", tmp, "--folder", "myrings", "--check")
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertIn("269 files, 0 differ", result.stdout)
+            self.assertIn("299 files, 0 differ", result.stdout)
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_icons_from_a_drawn_sheet(self):
+        """--icon-sheet: a 3 x 3 sheet on white (synthetic: a dark-outlined coloured square with a white middle in each
+        cell, of a size by cell). Every marker gets its icon, the ground is transparent, the icon's own white stays
+        opaque, every icon is centred and drawn at one scale (the largest one's side SHEET_FILL of the texture)."""
+        from core.pngio import encode_png
+        cell = 90
+        sheet = np.full((3 * cell, 3 * cell, 3), 255, np.uint8)
+        sides = {}
+        for name, (r, c) in make_rings.SHEET_CELLS.items():
+            side = 30 + 4 * (3 * r + c)
+            sides[name] = side
+            y0, x0 = r * cell + (cell - side) // 2, c * cell + (cell - side) // 2
+            sheet[y0:y0 + side, x0:x0 + side] = (20, 16, 12)                # the outline
+            sheet[y0 + 4:y0 + side - 4, x0 + 4:x0 + side - 4] = (40 * r, 200, 60 * c)
+            m = side // 2
+            sheet[y0 + m - 3:y0 + m + 3, x0 + m - 3:x0 + m + 3] = 255       # its own white
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "sheet.png")
+            with open(path, "wb") as f:
+                f.write(encode_png(sheet))
+            make_rings.ICON_SHEET = path
+            make_rings._sheet_icons.cache_clear()
+            make_rings.cartoon_ddt.cache_clear()
+            try:
+                files = make_rings.wanted_files("myrings")
+                size = make_rings.CARTOON_SIZE
+                largest = max(sides.values())
+                for marker, (ring, icon) in make_rings.MARKERS.items():
+                    self.assertIn(f"aura_{marker}.xml", files)
+                    self.assertIn(f"effects\\myrings\\ring_{ring}_unit.particle",
+                                  files[f"aura_{marker}.xml"].decode("utf-8"))
+                    px = ddt.decode(files[f"icon_{marker}.ddt"]).astype(int)
+                    self.assertEqual(ddt.read_header(files[f"icon_{marker}.ddt"]).format, ddt.BGRA)
+                    a = px[..., 3]
+                    self.assertEqual(a[0, 0], 0, marker)
+                    self.assertEqual(a[size // 2, size // 2], 255, marker)           # the white middle stays
+                    self.assertGreater(px[size // 2, size // 2, :3].min(), 200, marker)
+                    rows = np.nonzero(a.max(axis=1) > 127)[0]
+                    cols = np.nonzero(a.max(axis=0) > 127)[0]
+                    self.assertLessEqual(abs(cols.min() - (size - 1 - cols.max())), 2, marker)
+                    self.assertLessEqual(abs(rows.min() - (size - 1 - rows.max())), 2, marker)
+                    want = sides[icon] / largest * make_rings.SHEET_FILL * size
+                    self.assertAlmostEqual(cols.max() + 1 - cols.min(), want, delta=2.5, msg=marker)
+                self.assertEqual(files["icon_food.ddt"], files["icon_hunt.ddt"])  # meat for both
+            finally:
+                make_rings.ICON_SHEET = None
+                make_rings._sheet_icons.cache_clear()
+                make_rings.cartoon_ddt.cache_clear()
+
+    def test_range_rings_in_player_colours(self):
+        """--player-colours: range_<N>_p<k> for every player of RANGE_PLAYERS, the same texture, the particle tinted."""
+        make_rings.PLAYER_COLOURS = True
+        try:
+            files = make_rings.wanted_files("myrings")
+        finally:
+            make_rings.PLAYER_COLOURS = False
+        for radius in make_rings.RANGES:
+            for k, (r, g, b) in enumerate(make_rings.RANGE_PLAYERS):
+                text = files[f"range_{radius}_p{k}.particle"].decode("utf-8")
+                self.assertIn(f"<color>{r << 16 | g << 8 | b}</color>", text)
+                self.assertIn(f"effects\\myrings\\range_{radius}</file>", text)
+                self.assertIn(f"range_{radius}_p{k}.particle", files[f"range_{radius}_p{k}.xml"].decode("utf-8"))
+        self.assertIn("<color>16777215</color>", files["range_12.particle"].decode("utf-8"))
+
+
+class AuraRings(unittest.TestCase):
+    """make_aura_rings.py without the game: the recolouring and the model files it names (synthetic texels)."""
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_recolour_keeps_alpha_and_takes_the_ring_colour(self):
+        import make_aura_rings
+        rgba = np.zeros((4, 4, 4), np.uint8)
+        rgba[0, 0] = (200, 220, 40, 255)   # the stock gradient's yellow-green end
+        rgba[1, 1] = (20, 170, 140, 255)   # its teal end
+        rgba[2, 2] = (30, 30, 30, 0)       # transparent: untouched
+        main, light = make_rings.RINGS["damage"]
+        out = make_aura_rings.recolour(rgba, (main, light)).astype(int)
+        self.assertTrue((out[..., 3] == rgba[..., 3]).all())
+        self.assertTrue((out[2, 2] == rgba[2, 2]).all())
+        hue = lambda c: __import__("colorsys").rgb_to_hsv(*(np.array(c[:3]) / 255))[0]
+        for texel in (out[0, 0], out[1, 1]):  # magenta, whatever the stock hue
+            self.assertLess(min(abs(hue(texel) - hue(main)), 1 - abs(hue(texel) - hue(main))), 0.06)
+
+    def test_models_by_size(self):
+        import make_aura_rings
+        make_rings.FOLDER = "myrings"
+        text = make_rings.xml("wood", logic=make_aura_rings.mesh_logic("wood"))
+        for branch, size, _, _ in make_rings.SHAPES:
+            self.assertIn(f"<{branch}>", text)
+            self.assertIn(f"effects\\myrings\\auraring_wood_{size}</file>", text)
+        self.assertIn('type="GrannyModel"', text)
+        self.assertNotIn("replacetexture", text)
 
 
 class Icons(unittest.TestCase):
