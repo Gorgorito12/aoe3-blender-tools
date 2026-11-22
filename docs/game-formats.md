@@ -354,10 +354,21 @@ in game (test T0 in `docs/game-test.md`).
   `<attach>` lines (the villager's hammer, the musketeer's torch). Stock models with a skeleton
   and no meshes exist (`buildings\native_settlement\blankmaster`,
   `units\animals\swan\swan_family_model`, which carries its swans as attachments).
-  `make_dismount.py --horse hide` uses both: the animations on foot name a component whose model
-  is the horse's skeleton without meshes, which still carries the rider on its attach bone; the
-  game's granny2.dll reads that model as 0 meshes, 35 bones (`gr2_check.py`). Whether the game
-  draws the rider on it is **to verify** in game.
+  **Measured** in game (2026-11-22, Wars of Liberty's Chasseur): a second component named by the
+  animations on foot, with the horse's skeleton without meshes (granny2.dll read it as 0 meshes,
+  35 bones), with degenerate triangles, or even with the horse's own model, showed nothing on that
+  component, the hung rider included (or only his hats, on the ground): a rider hung with
+  `syncanims="1"` does not follow a switch of the base model's component. Not used.
+- **A horse hidden by its animation** (`make_dismount.py --horse hide`, **measured** in game
+  2026-11-22): the horse clips of the animations on foot put every bone the horse's meshes are
+  skinned to 30 m under the ground and keep the others (the root, `bone attachpoint`, the hit point
+  bar, the launch point) where they were; the rider, written in his bone's frame, is unchanged.
+  The horse is gone from the end of the dismount to the start of the mount, the rider fires, fights,
+  throws torches, heals, builds and dies on foot, and a game saved so loads so.
+- **A heal and a construction play fixed anim names** (**measured**, 2026-11-22): with an action's
+  `<anim>` set to another name, the unit healed and built in its idle; with anim blocks named
+  `Heal` and `Build` (the four Build names the stock explorer has: Build, BuildLifting, BuildSaw,
+  BuildStaking) the animations played. A copy of the Heal action under another name healed nothing.
 
 ## Textures (.ddt)
 
