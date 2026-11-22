@@ -339,6 +339,12 @@ class Maker:
         self._muzzle = None
         self.place = np.eye(4)
         self.place[:3, 3] = (recipe["side"], 0.0, recipe["forward"])
+        # hidden, the rider stands on the unit's centre on foot (under the hit point bar, on the
+        # selection circle), and steps there from the horse's side once the horse is gone
+        self.hide = recipe.get("horse", "keep") == "hide"
+        cx, cz = recipe.get("centre", (0.0, 0.0))
+        self.centre = np.eye(4)
+        self.centre[:3, 3] = (cx, 0.0, cz)
         # the bones the horse's meshes are skinned to: hidden, they go under the ground
         self.skinned = {b.get("BoneName").lower() for m in (self.horse_root.get("Meshes") or []) if m is not None
                         for b in (m.get("BoneBindings") or []) if b is not None and b.get("BoneName")}
@@ -393,31 +399,50 @@ class Maker:
         on = rider_pose[self.r["weapon"]["tobone"].lower()]
         return (on @ np.r_[self._muzzle, 1.0])[:3]
 
-    def horse_clip(self, entry, dur, times, poses):
+    def horse_clip(self, entry, dur, times, poses, buried):
         """Bytes of the horse animation of `entry` played over [0, dur], with the horse's launch
         bone on the rider's muzzle when the entry says `launch`, and the horse under the ground
-        when it is hidden."""
+        in the frames `buried` marks."""
         h = self.anim(entry["horse"])
         frames = []
         lp = self.r.get("launch_bone", "bone_launchpoint").lower()
-        hidden = self.hidden(entry)
-        for t, rider_pose in zip(times, poses):
+        for t, rider_pose, down in zip(times, poses, buried):
             w = self.horse_pose(entry["horse"], t)
             if entry.get("launch") and lp in w:
                 m = w[lp].copy()
                 m[:3, 3] = self.muzzle(rider_pose)
                 w = dict(w)
                 w[lp] = m
-            if hidden:
+            if down:
                 w = self.bury(w)
             frames.append(self.horse.localise(w))
         name = horse_clip_name(self.r, entry["name"])
         return animation_file(name, dur, h.group_name, tracks_of(self.horse, frames, times),
                               basis=self.horse.basis, accumulation=h.accumulation, source=name)
 
-    def standing(self, rel, t):
-        """The infantry pose at time t, on the ground beside the horse, as the rider's bones."""
-        return put_on(self.rider, ground_pose(self.foot, self.anim(rel), t, self.place))
+    def standing(self, rel, t, place=None):
+        """The infantry pose at time t, on the ground beside the horse (or at `place`), as the
+        rider's bones."""
+        p = self.place if place is None else place
+        return put_on(self.rider, ground_pose(self.foot, self.anim(rel), t, p))
+
+    def step(self, t, dur, start, end, facing):
+        """The rider stepping from `start` to `end` (ground x, z) over `dur` seconds: the idle
+        pose turning into the walk (facing `facing` degrees about the vertical, 90 = the unit's
+        right) and back into the idle at the end, the root on a smooth path between them."""
+        foot = {e["name"]: e["rider"] for e in self.r["foot"]}
+        idle, walk = foot["idle"], self.r.get("step_walk") or foot["walk"]
+        u = smooth(t / dur)
+        here = np.eye(4)
+        here[:3, 3] = (start[0] + u * (end[0] - start[0]), 0.0, start[1] + u * (end[1] - start[1]))
+        turn = np.eye(4)
+        turn[:3, :3] = quat_matrix(axis_quat((0, 1, 0), facing))
+        stand = self.standing(idle, 0.0, here)
+        wa = self.anim(walk)
+        going = self.standing(walk, math.fmod(t, wa.duration) if wa.duration else 0.0, here @ turn)
+        ramp = 0.3 * dur                                   # turning into the walk and out of it
+        w = min(1.0, t / ramp, (dur - t) / ramp)
+        return blend(self.rider, stand, going, smooth(w))
 
     def mounted(self, t, horse_anim, ht):
         """The rider's seat at time t of the mounted animation, on the horse at time ht."""
@@ -442,13 +467,14 @@ class Maker:
         n = max(2, int(round(dur * FPS)) + 1)
         times = np.linspace(0.0, dur, n)
         poses, attach = [], []
+        place = self.centre if self.hide else None
         for t in times:
             u = (t / dur) * cycles * ia.duration
             if entry["name"] != "death":
                 u = math.fmod(u, ia.duration) if u < cycles * ia.duration - 1e-6 else ia.duration
-            poses.append(self.standing(entry["rider"], min(u, ia.duration)))
+            poses.append(self.standing(entry["rider"], min(u, ia.duration), place))
             attach.append(self.horse_attach(entry["horse"], t))
-        return dur, times, poses, attach
+        return dur, times, poses, attach, [self.hide] * len(times)
 
     def key_poses(self, horse_anim):
         """The dismount's key poses in ground space: (time share, pose)."""
@@ -482,39 +508,67 @@ class Maker:
             k4 = rotate_about(k4, rig, arm, arm, (0, 0, 1), -k.get("arms_reaching", 75) * side)
         return [(0.0, m0), (0.18, k1), (0.38, k2), (0.56, k3), (0.76, k4), (1.0, s)]
 
+    def transition_length(self, entry):
+        """The transition's length: the recipe's, plus the step to or from the centre when hidden."""
+        return float(entry["length"]) + (self.step_length() if self.hide else 0.0)
+
+    def step_length(self):
+        return float(self.r.get("step_length", 1.0))
+
     def transition(self, entry, reverse):
-        dur = float(entry["length"])
+        """(duration, times, poses, attach frames, horse buried per frame). Hidden, the dismount
+        ends with the horse gone and the rider stepping from its side to the centre, and the mount
+        starts with that step back, the horse coming up only once he is beside it."""
+        dur0 = float(entry["length"])
+        dur = self.transition_length(entry)
         horse_anim = entry["horse"]
         keys = self.key_poses(horse_anim)
         n = int(round(dur * FPS)) + 1
         times = np.linspace(0.0, dur, n)
-        poses, attach = [], []
+        poses, attach, buried = [], [], []
         hand, prop = "bip01 r hand", self.r["weapon"]["tobone"].lower()
+        side = (self.place[0, 3], self.place[2, 3])
+        centre = (self.centre[0, 3], self.centre[2, 3])
+        right = 90.0 if centre[0] >= side[0] else -90.0     # facing the way he walks
+        step = self.step_length() if self.hide else 0.0
         for t in times:
-            u = t / dur
-            if reverse:
-                u = 1.0 - u
-            k = max(i for i, (share, _p) in enumerate(keys) if share <= u + 1e-9)
-            k = min(k, len(keys) - 2)
-            (s0, p0), (s1, p1) = keys[k], keys[k + 1]
-            w = smooth((u - s0) / (s1 - s0))
-            # the seat moves with the horse in the first and last key (keyed at time 0)
-            if k == 0:
-                p0 = self.mounted(0.0, horse_anim, t)
-            pose = blend(self.rider, p0, p1, w)
-            # the weapon stays in the right hand: its frame relative to the hand, slerped
-            ra = np.linalg.inv(p0[hand]) @ p0[prop]
-            rb = np.linalg.inv(p1[hand]) @ p1[prop]
-            pa, qa = split(ra)
-            pb, qb = split(rb)
-            pose[prop] = pose[hand] @ frame(pa + w * (pb - pa), slerp(qa, qb, w))
-            poses.append(pose)
+            if self.hide and not reverse and t > dur0 + 1e-9:
+                poses.append(self.step(t - dur0, step, side, centre, right))
+                buried.append(True)
+            elif self.hide and reverse and t < step - 1e-9:
+                poses.append(self.step(t, step, centre, side, -right))
+                buried.append(True)
+            else:
+                tk = t - step if (self.hide and reverse) else t
+                poses.append(self.key_pose(keys, horse_anim, tk / dur0, tk, reverse, hand, prop))
+                buried.append(False)
             attach.append(self.horse_attach(horse_anim, t))
-        return dur, times, poses, attach
+        return dur, times, poses, attach, buried
+
+    def key_pose(self, keys, horse_anim, u, t, reverse, hand, prop):
+        """The rider at share u of the dismount (of the mount when `reverse`), time t."""
+        if reverse:
+            u = 1.0 - u
+        u = min(max(u, 0.0), 1.0)
+        k = max(i for i, (share, _p) in enumerate(keys) if share <= u + 1e-9)
+        k = min(k, len(keys) - 2)
+        (s0, p0), (s1, p1) = keys[k], keys[k + 1]
+        w = smooth((u - s0) / (s1 - s0))
+        # the seat moves with the horse in the first and last key (keyed at time 0)
+        if k == 0:
+            p0 = self.mounted(0.0, horse_anim, t)
+        pose = blend(self.rider, p0, p1, w)
+        # the weapon stays in the right hand: its frame relative to the hand, slerped
+        ra = np.linalg.inv(p0[hand]) @ p0[prop]
+        rb = np.linalg.inv(p1[hand]) @ p1[prop]
+        pa, qa = split(ra)
+        pb, qb = split(rb)
+        pose[prop] = pose[hand] @ frame(pa + w * (pb - pa), slerp(qa, qb, w))
+        return pose
 
     def build(self, only=None, test=False):
-        """{name: (bytes, duration, times, poses, horse anim, horse clip bytes or None)}; with
-        `test`, the recipe's `test_foot` entries too."""
+        """{name: (bytes, duration, times, poses, horse anim, horse clip bytes or None, horse buried
+        per frame)}; with `test`, the recipe's `test_foot` entries too."""
         out = {}
         jobs = [(e["name"], e, None) for e in foot_entries(self.r, test)]
         jobs += [(self.r["dismount"]["name"], self.r["dismount"], False),
@@ -523,18 +577,18 @@ class Maker:
             if only and name not in only:
                 continue
             if reverse is None:
-                dur, times, poses, attach = self.foot_anim(entry)
+                dur, times, poses, attach, buried = self.foot_anim(entry)
             else:
-                dur, times, poses, attach = self.transition(entry, reverse)
+                dur, times, poses, attach, buried = self.transition(entry, reverse)
             frames = to_track_frames(self.rider, poses, attach)
-            full = self.r["prefix"] + name
+            full = rider_clip_name(self.r, name)
             data = animation_file(full, dur, self.rider.names[0], tracks_of(self.rider, frames, times),
                                   basis=self.rider.basis, source=full)
             hd = self.anim(entry["horse"]).duration
             clip = None
-            if abs(dur - hd) > 1e-3 or entry.get("launch") or self.hidden(entry):
-                clip = self.horse_clip(entry, dur, times, poses)
-            out[name] = (data, dur, times, poses, entry["horse"], clip)
+            if abs(dur - hd) > 1e-3 or entry.get("launch") or self.hide:
+                clip = self.horse_clip(entry, dur, times, poses, buried)
+            out[name] = (data, dur, times, poses, entry["horse"], clip, buried)
         return out
 
 
@@ -544,9 +598,16 @@ def foot_entries(recipe, test=False):
 
 def horse_clip_name(recipe, name):
     """The horse clip of animation `name`: <prefix>horse_<name>, or <prefix>horse_hidden_<name>
-    when the horse is hidden in it (both choices can then ship side by side)."""
-    hidden = not horse_drawn(recipe, name)
+    with the horse hidden (both choices can then ship side by side)."""
+    hidden = recipe.get("horse", "keep") == "hide"
     return recipe["prefix"] + ("horse_hidden_" if hidden else "horse_") + name
+
+
+def rider_clip_name(recipe, name):
+    """The rider's animation `name`: <prefix><name>, or <prefix>hidden_<name> with the horse
+    hidden (on the unit's centre on foot, the step in the transitions)."""
+    hidden = recipe.get("horse", "keep") == "hide"
+    return recipe["prefix"] + ("hidden_" if hidden else "") + name
 
 
 # --------------------------------------------------------------------------------------------------
@@ -661,10 +722,15 @@ class Scene:
             for m in meshes:
                 p = m.place(skel, None)
                 h = np.c_[p, np.ones(len(p))] @ place.T
+                if h[:, 1].max() < -1.0:       # a part placed under the ground (the hat file's own
+                    continue                   # scale): drawn from above it would cover the view
                 out.append((h[:, :3], m.m["triangles"], m.m["uvs"], m.tex, (40, 40, 40)))
         return out
 
-    def draw(self, items, size=360, azimuth=-60.0, elevation=20.0, span=3.8, centre=(-0.3, 1.25, 0.0)):
+    def draw(self, items, size=360, azimuth=-60.0, elevation=20.0, span=3.8, centre=(-0.3, 1.25, 0.0),
+             marks=None):
+        """The items drawn; `marks` [(points N x 3, colour)] are drawn over them as lines (the
+        selection circle, the unit's centre, the hit point bar)."""
         az, el = math.radians(azimuth), math.radians(elevation)
         # file axes: x left/right (x negative = the unit's left), y up, z forward
         view = np.array([math.sin(az) * math.cos(el), math.sin(el), math.cos(az) * math.cos(el)])
@@ -686,7 +752,13 @@ class Scene:
             n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
             shade = 0.55 + 0.45 * np.abs(n @ light)
             raster(canvas, zbuf, np.stack([sx, sy], 1), depth, tris, uvs, tex, shade, colour)
-        # the ground line under the horse
+        for pts, colour in marks or []:
+            d = np.asarray(pts, np.float64) - c
+            p2 = np.stack([size / 2 + (d @ right) * scale, size / 2 - (d @ up) * scale], 1)
+            for a, b in zip(p2[:-1], p2[1:]):
+                for s in np.linspace(0.0, 1.0, int(np.linalg.norm(b - a)) + 2):
+                    x, y = (a + s * (b - a)).round().astype(int)
+                    canvas[max(0, y - 1):y + 1, max(0, x - 1):x + 1] = colour
         return canvas.astype(np.uint8)
 
 
@@ -737,15 +809,29 @@ def horse_drawn(recipe, name):
     return recipe.get("horse", "keep") != "hide" or name in TRANSITIONS
 
 
+def unit_marks(maker, recipe):
+    """The selection circle (the anim file's decal: `selection` width x height, centred on the
+    unit), a cross on the unit's centre and the hit point bar's place, as lines on the ground."""
+    w, h = recipe.get("selection", (1.5, 3.0))
+    a = np.linspace(0.0, 2 * math.pi, 64)
+    ring = np.stack([0.5 * w * np.cos(a), np.full_like(a, 0.02), 0.5 * h * np.sin(a)], 1)
+    cross = [np.array([[-0.15, 0.02, 0.0], [0.15, 0.02, 0.0]]), np.array([[0.0, 0.02, -0.15], [0.0, 0.02, 0.15]])]
+    bar = maker.horse.by_name(maker.horse.rest_worlds()).get(recipe.get("hitpoint_bone", "bone hitpointbar"))
+    out = [(ring, (60, 60, 230))] + [(c, (220, 40, 40)) for c in cross]
+    if bar is not None:
+        x, z = bar[0, 3], bar[2, 3]
+        out.append((np.array([[x - 0.25, 0.02, z], [x + 0.25, 0.02, z]]), (40, 170, 40)))
+    return out
+
+
 def render(scene, maker, name, built, out_dir, clips, views):
-    data, dur, times, poses, horse_anim, _clip = built
+    data, dur, times, poses, horse_anim, _clip, buried = built
     picks = np.linspace(0, len(times) - 1, 12).round().astype(int)
     tiles = []
-    drawn = horse_drawn(maker.r, name)
     for azim in views:
         for i in picks:
             hp = maker.horse_pose(horse_anim, times[i])
-            img = scene.draw(scene.triangles(poses[i], hp, None, drawn), azimuth=azim)
+            img = scene.draw(scene.triangles(poses[i], hp, None, not buried[i]), azimuth=azim)
             tiles.append(label(img, f"{name} {times[i]:.2f}s"))
     save_png(os.path.join(out_dir, f"{name}.png"), sheet(tiles, 6))
     if clips and ffmpeg():
@@ -753,7 +839,7 @@ def render(scene, maker, name, built, out_dir, clips, views):
         try:
             for k, t in enumerate(times):
                 hp = maker.horse_pose(horse_anim, t)
-                img = scene.draw(scene.triangles(poses[k], hp, None, drawn), size=480, azimuth=views[0])
+                img = scene.draw(scene.triangles(poses[k], hp, None, not buried[k]), size=480, azimuth=views[0])
                 save_png(os.path.join(tmp, f"f{k:04d}.png"), label(img, f"{name} {t:.2f}s"))
             subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-framerate", str(FPS), "-i",
                             os.path.join(tmp, "f%04d.png"), "-pix_fmt", "yuv420p", "-vf",
@@ -762,33 +848,32 @@ def render(scene, maker, name, built, out_dir, clips, views):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-def overview(scene, maker, built, path, azimuth=-70.0, size=200, frames=8, title=""):
-    """One sheet for review: a row per animation, `frames` moments of it, the transitions first.
-    With the horse hidden, the dismount row ends with the moment after it (the hidden-horse
-    component: the horse gone) and the mount row starts with the moment before it."""
+def overview(scene, maker, built, path, azimuth=-70.0, size=200, frames=8, title="", top=False, names=None):
+    """One sheet for review: a row per animation (`names`, default all, the transitions first),
+    `frames` moments of it, the horse drawn only where it is not under the ground. `top`: seen
+    from above, with the selection circle (blue), the unit's centre (red cross) and the hit point
+    bar's place (green) on the ground."""
     import bitfont
-    hide = not horse_drawn(maker.r, "")
+    hide = maker.hide
     order = [n for n in TRANSITIONS if n in built] + [n for n in built if n not in TRANSITIONS]
-    cols = frames + (1 if hide else 0)
+    if names:
+        order = [n for n in names if n in built]
     rows = []
+    marks = unit_marks(maker, maker.r) if top else None
+    view = dict(elevation=72.0, centre=(-0.2, 0.0, 0.0), span=3.6) if top else {}
     for name in order:
-        _d, dur, times, poses, horse_anim, _c = built[name]
-        drawn = horse_drawn(maker.r, name)
-        picks = np.linspace(0, len(times) - 1, frames).round().astype(int)
+        _d, dur, times, poses, horse_anim, _c, buried = built[name]
+        n = frames + (2 if name in TRANSITIONS and hide else 0)
+        picks = np.linspace(0, len(times) - 1, n).round().astype(int)
         tiles = []
         for i in picks:
             hp = maker.horse_pose(horse_anim, times[i])
-            img = scene.draw(scene.triangles(poses[i], hp, None, drawn), size=size, azimuth=azimuth)
+            img = scene.draw(scene.triangles(poses[i], hp, None, not buried[i]), size=size, azimuth=azimuth,
+                             marks=marks, **view)
             tiles.append(label(img, f"{name} {times[i]:.2f}s"))
-        if hide and name in TRANSITIONS:
-            i = picks[-1] if name == "dismount" else picks[0]
-            hp = maker.horse_pose(horse_anim, times[i])
-            img = scene.draw(scene.triangles(poses[i], hp, None, False), size=size, azimuth=azimuth)
-            extra = label(img, "after: hidden" if name == "dismount" else "before: hidden")
-            tiles = tiles + [extra] if name == "dismount" else [extra] + tiles
-        while len(tiles) < cols:
-            tiles.append(np.full_like(tiles[0], 255))
-        rows.append(np.concatenate(tiles, axis=1))
+        rows.append(tiles)
+    cols = max(len(t) for t in rows)
+    rows = [np.concatenate(t + [np.full_like(t[0], 255)] * (cols - len(t)), axis=1) for t in rows]
     body = np.concatenate(rows, axis=0)
     head = np.full((28, body.shape[1], 3), 40, np.uint8)
     bitfont.draw(head, title or ("HORSE HIDDEN ON FOOT" if hide else "HORSE KEPT ON FOOT"), 6, 7,
@@ -835,7 +920,7 @@ def anim_blocks(recipe, built):
     entries = {e["name"]: e for e in foot_entries(recipe, True)}
     entries.update({recipe["dismount"]["name"]: recipe["dismount"], recipe["mount"]["name"]: recipe["mount"]})
     horse, rider = [], []
-    for name, (_d, _dur, _t, _p, horse_anim, clip) in built.items():
+    for name, (_d, _dur, _t, _p, horse_anim, clip, *_rest) in built.items():
         entry = entries.get(name, {})
         tags = "".join(_tag(t) for t in entry.get("tags", []))
         hfile = f"{folder}\\{horse_clip_name(recipe, name)}" if clip is not None else horse_anim
@@ -845,7 +930,7 @@ def anim_blocks(recipe, built):
                          f"\t\t\t<file>{hfile}</file>\n{tags}\t\t</assetreference>\n"
                          f"\t\t<component>ModelComp</component>\n\t</anim>")
             rider.append(f"\t<anim>{an}\n\t\t<assetreference type=\"GrannyAnim\">\n"
-                         f"\t\t\t<file>{folder}\\{prefix}{name}</file>\n\t\t</assetreference>\n"
+                         f"\t\t\t<file>{folder}\\{rider_clip_name(recipe, name)}</file>\n\t\t</assetreference>\n"
                          f"\t\t<component>ModelComp</component>\n{attach}\t</anim>")
     return "\n".join(horse) + "\n", "\n".join(rider) + "\n"
 
@@ -891,9 +976,10 @@ def main(argv):
         folder = os.path.join(args.out, "art", recipe["folder"])
         os.makedirs(folder, exist_ok=True)
         for name, b in built.items():
-            with open(os.path.join(folder, recipe["prefix"] + name + ".gr2"), "wb") as f:
+            rname = rider_clip_name(recipe, name)
+            with open(os.path.join(folder, rname + ".gr2"), "wb") as f:
                 f.write(b[0])
-            print(f"{recipe['prefix']}{name}.gr2  {b[1]:.2f} s  {len(b[2])} frames  {len(b[0])} B")
+            print(f"{rname}.gr2  {b[1]:.2f} s  {len(b[2])} frames  {len(b[0])} B")
             if b[5] is not None:
                 clip = horse_clip_name(recipe, name)
                 with open(os.path.join(folder, clip + ".gr2"), "wb") as f:
@@ -929,6 +1015,11 @@ def main(argv):
             if args.overview:
                 overview(scene, maker, built, os.path.join(sheets, "overview.png"), azimuth=views[0])
                 print("sheets\\overview.png")
+                overview(scene, maker, built, os.path.join(sheets, "overview-top.png"), azimuth=views[0],
+                         top=True, names=["dismount", "mount", "idle", "walk", "attack"],
+                         title=("HORSE HIDDEN" if maker.hide else "HORSE KEPT")
+                         + " - FROM ABOVE: SELECTION CIRCLE BLUE, UNIT CENTRE RED, HP BAR GREEN")
+                print("sheets\\overview-top.png")
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return 0

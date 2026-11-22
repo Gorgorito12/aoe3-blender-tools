@@ -167,13 +167,15 @@ class Tool(unittest.TestCase):
         blocks = {b.split("\n")[0]: b for b in horse.split("\t<anim>")[1:]}
         self.assertIn("chasseur_horse_hidden_idle</file>", blocks["Dismounted_Idle"])
         self.assertIn("chasseur_horse_hidden_raze_attack</file>", blocks["Dismounted_Raze_attack"])
-        self.assertIn("chasseur_horse_dismount</file>", blocks["Dismount"])
-        self.assertIn("chasseur_horse_mount</file>", blocks["Mount"])
+        self.assertIn("chasseur_horse_hidden_dismount</file>", blocks["Dismount"])
+        self.assertIn("chasseur_horse_hidden_mount</file>", blocks["Mount"])
         self.assertNotIn("<component>", horse.replace("<component>ModelComp</component>", ""))
         self.assertIn('<attach a="torch" frombone="ATTACHPOINT" tobone="L HAND" syncanims="0"/>', rider)
+        self.assertIn("chasseur_hidden_idle</file>", rider)          # centred on foot: his own clips
         kept_horse, kept_rider = md.anim_blocks(dict(md.DEFAULT_RECIPE), built)
         self.assertNotIn("horse_hidden_", kept_horse)
-        self.assertEqual(kept_rider, rider)                          # the rider's blocks do not change
+        self.assertNotIn("chasseur_hidden_", kept_rider)
+        self.assertIn("chasseur_idle</file>", kept_rider)
 
     def test_test_entries_play_heal_and_every_build_name(self):
         idle = "animation_library\\cavalry\\horse_idle_A"
@@ -197,6 +199,15 @@ class Tool(unittest.TestCase):
         maker.r = {"horse": "hide"}
         self.assertTrue(maker.hidden({"name": "idle"}))
         self.assertFalse(maker.hidden({"name": "dismount"}))
+
+    def test_hidden_transitions_add_the_step(self):
+        maker = md.Maker.__new__(md.Maker)
+        maker.r, maker.hide = {"step_length": 1.0}, True
+        self.assertAlmostEqual(maker.transition_length({"length": 2.5}), 3.5)
+        maker.hide = False
+        self.assertAlmostEqual(maker.transition_length({"length": 2.5}), 2.5)
+        self.assertEqual(md.rider_clip_name(dict(md.DEFAULT_RECIPE, horse="hide"), "mount"), "chasseur_hidden_mount")
+        self.assertEqual(md.rider_clip_name(dict(md.DEFAULT_RECIPE), "mount"), "chasseur_mount")
 
     def test_test_entries_only_on_request(self):
         names = [e["name"] for e in md.foot_entries(md.DEFAULT_RECIPE)]
