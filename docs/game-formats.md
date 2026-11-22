@@ -362,7 +362,10 @@ in game (test T0 in `docs/game-test.md`).
 - **A horse hidden by its animation** (`make_dismount.py --horse hide`, **measured** in game
   2026-11-22): the horse clips of the animations on foot put every bone the horse's meshes are
   skinned to 30 m under the ground and keep the others (the root, `bone attachpoint`, the hit point
-  bar, the launch point) where they were; the rider, written in his bone's frame, is unchanged.
+  bar, the launch point) where they were. The rider, written in his bone's frame, stands on the unit's
+  centre on foot (on the selection decal, under the hit point bar: measured on screenshots within a
+  few pixels); the dismount ends with a 1 s step from the horse's side to the centre once the horse
+  is under the ground, and the mount starts with the step back.
   The horse is gone from the end of the dismount to the start of the mount, the rider fires, fights,
   throws torches, heals, builds and dies on foot, and a game saved so loads so.
 - **A heal and a construction play fixed anim names** (**measured**, 2026-11-22): with an action's
