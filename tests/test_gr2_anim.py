@@ -158,6 +158,58 @@ class Tool(unittest.TestCase):
         self.assertIn('<tag type="Attack">0.46</tag>', horse)
         self.assertIn("chasseur_attack</file>", rider)
 
+    def test_hidden_horse_names_its_component_on_foot_only(self):
+        recipe = dict(md.DEFAULT_RECIPE, horse="hide")
+        idle = "animation_library\\cavalry\\horse_idle_A"
+        built = {"idle": (b"", 1.0, [], [], idle, None), "dismount": (b"", 2.5, [], [], idle, b"x"),
+                 "mount": (b"", 2.5, [], [], idle, b"x"), "raze_attack": (b"", 1.3, [], [], idle, b"x")}
+        horse, rider = md.anim_blocks(recipe, built)
+        blocks = {b.split("\n")[0]: b for b in horse.split("\t<anim>")[1:]}
+        self.assertIn("<component>HorseHidden</component>", blocks["Dismounted_Idle"])
+        self.assertIn("<component>HorseHidden</component>", blocks["Dismounted_Raze_attack"])
+        self.assertIn("<component>ModelComp</component>", blocks["Dismount"])
+        self.assertIn("<component>ModelComp</component>", blocks["Mount"])
+        self.assertNotIn("HorseHidden", rider)                     # the rider's file is the same
+        self.assertIn('<attach a="torch" frombone="ATTACHPOINT" tobone="L HAND" syncanims="0"/>', rider)
+        self.assertIn("chasseur_horse_hidden</file>", md.hidden_component(recipe))
+        kept, _ = md.anim_blocks(dict(md.DEFAULT_RECIPE), built)
+        self.assertNotIn("HorseHidden", kept)
+
+    def test_test_entries_only_on_request(self):
+        names = [e["name"] for e in md.foot_entries(md.DEFAULT_RECIPE)]
+        self.assertIn("raze_attack", names)
+        self.assertNotIn("heal", names)
+        names = [e["name"] for e in md.foot_entries(md.DEFAULT_RECIPE, True)]
+        self.assertIn("heal", names)
+        self.assertIn("build", names)
+
+    def test_hidden_model_keeps_the_skeleton_and_drops_the_meshes(self):
+        from aoe3game import gr2_write
+        from aoe3game.gr2_types import Spec
+        mesh = Spec("Mesh", [(gr2.STRING, "Name", None, 0)])
+        bone = Spec("Bone", [(gr2.STRING, "Name", None, 0), (gr2.INT32, "ParentIndex", None, 0)])
+        skel = Spec("Skeleton", [(gr2.STRING, "Name", None, 0), (gr2.REF_TO_ARRAY, "Bones", bone, 0)])
+        binding = Spec("MeshBinding", [(gr2.REFERENCE, "Mesh", mesh, 0)])
+        model = Spec("Model", [(gr2.STRING, "Name", None, 0), (gr2.REFERENCE, "Skeleton", skel, 0),
+                               (gr2.REF_TO_ARRAY, "MeshBindings", binding, 0)])
+        info = Spec("FileInfo", [(gr2.ARRAY_OF_REFS, "Skeletons", skel, 0),
+                                 (gr2.ARRAY_OF_REFS, "Meshes", mesh, 0),
+                                 (gr2.ARRAY_OF_REFS, "Models", model, 0)])
+        m = gr2_write.W(mesh, Name="body")
+        s = gr2_write.W(skel, Name="root", Bones=[gr2_write.W(bone, Name="root", ParentIndex=-1),
+                                                   gr2_write.W(bone, Name="bone attachpoint", ParentIndex=0)])
+        data = gr2_write.serialize(gr2_write.W(info, Skeletons=[s], Meshes=[m], Models=[
+            gr2_write.W(model, Name="root", Skeleton=s, MeshBindings=[gr2_write.W(binding, Mesh=m)])]))
+
+        class FakeGame:
+            def granny(self, rel):
+                return data
+        root = gr2.load(md.hidden_horse_model(FakeGame(), "x")).root()
+        self.assertEqual(len(root.get("Meshes") or []), 0)
+        self.assertEqual(len(root.get("Models")[0].get("MeshBindings") or []), 0)
+        self.assertEqual([b.get("Name") for b in root.get("Skeletons")[0].get("Bones")],
+                         ["root", "bone attachpoint"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -347,6 +347,17 @@ in game (test T0 in `docs/game-test.md`).
   a rider standing beside the horse is written in that bone's frame at each moment of the horse
   animation played with it (`make_dismount.py` does), and each pair of animations has one length
   (it writes a horse clip when the rider's is not a whole number of the horse's).
+- **A model per animation** (**measured** in the stock anim files): an `<anim>` names the
+  `<component>` it shows, and a file may define several. The cannon, culverin, falconet, great
+  bombard and rocket switch to a stripped model for their Bombard animations, the ships to a
+  death model, the surgeon and the explorer to a heal model; an `<anim>` may also carry its own
+  `<attach>` lines (the villager's hammer, the musketeer's torch). Stock models with a skeleton
+  and no meshes exist (`buildings\native_settlement\blankmaster`,
+  `units\animals\swan\swan_family_model`, which carries its swans as attachments).
+  `make_dismount.py --horse hide` uses both: the animations on foot name a component whose model
+  is the horse's skeleton without meshes, which still carries the rider on its attach bone; the
+  game's granny2.dll reads that model as 0 meshes, 35 bones (`gr2_check.py`). Whether the game
+  draws the rider on it is **to verify** in game.
 
 ## Textures (.ddt)
 

@@ -4,17 +4,30 @@ horse is the unit's model, the rider hangs on a horse bone with syncanims), and 
 animations on foot beside the horse, from the game's own infantry animations.
 
     venv\\Scripts\\python -I tools/make_dismount.py --game <game copy> --out <folder>
-        [--recipe <recipe.json>] [--granny-helper <exe>] [--sheets] [--clips] [--only NAME,...]
+        [--recipe <recipe.json>] [--granny-helper <exe>] [--horse keep|hide] [--test]
+        [--sheets] [--clips] [--overview] [--only NAME,...]
 
 What it writes below --out:
 - `art\\<recipe "folder">\\<name>.gr2`: one rider animation per entry of the recipe: the
   `foot` entries (an infantry animation on the rider, standing on the ground beside the horse,
   turned and timed to the horse animation the anim file pairs with it) and the two transitions
-  `dismount` and `mount` (from the rider's seat to that place and back);
+  `dismount` and `mount` (from the rider's seat to that place and back); with --test, the
+  `test_foot` entries too (actions the unit lacks, heal and build, for a test copy of it);
 - `anims-horse.xml`, `anims-rider.xml`: the `<anim>` blocks to add to the horse's and the rider's
-  anim files (the horse's carry the tags; the rider follows through syncanims);
+  anim files (the horse's carry the tags; the rider follows through syncanims; an entry's
+  `attach`, a torch or a hammer, goes on the rider's block); with --test, the test entries'
+  blocks in `anims-horse-test.xml`, `anims-rider-test.xml`;
+- with the horse hidden (the recipe's `"horse": "hide"`, or --horse hide), the model
+  `<prefix>horse_hidden.gr2` (the horse's skeleton, no meshes) and `component-horse.xml`, the
+  component that shows it: the horse is drawn in the two transitions and not on foot;
 - with --sheets, `sheets\\<name>.png`: each animation drawn frame by frame with the horse, from the
-  side the rider gets off; with --clips, `sheets\\<name>.mp4` (needs ffmpeg).
+  side the rider gets off; with --clips, `sheets\\<name>.mp4` (needs ffmpeg); with --overview,
+  `sheets\\overview.png`, a row per animation, for review.
+
+Per unit, the recipe chooses whether the horse stays beside the rider on foot ("keep") or is
+hidden ("hide"): the engine shows the component an animation names, so the animations on foot
+name one whose model draws nothing (as the stock cannons switch to a stripped model while
+unlimbered), and the rider, hung on the same bone, is not changed.
 
 How (aoe3game/gr2_anim.py): the infantry animation is posed on the infantry skeleton of the recipe
 (`foot_model`), its world frames are put on the rider's bones of the same name (the rider's rig
@@ -93,10 +106,41 @@ DEFAULT_RECIPE = {
         {"name": "death", "rider": LIB + "range\\death_standing_rifleman_A",
          "horse": LIB + "cavalry\\horse_deathA",
          "tags": [{"type": "SpecificSoundSet", "checkvisible": "1", "set": "RagdollImpact", "at": 0.51}]},
+        # the attack on buildings: the infantry's torch throw, the torch in the left hand (as the stock
+        # musketeer's anim file hangs it); "torch" is an attachment the rider's anim file defines
+        {"name": "raze_idle", "rider": LIB + "shared\\torch_throw_idle",
+         "horse": LIB + "cavalry\\horse_idle_A",
+         "attach": [{"a": "torch", "frombone": "ATTACHPOINT", "tobone": "L HAND"}]},
+        {"name": "raze_attack", "rider": LIB + "shared\\torch_throwA",
+         "horse": LIB + "cavalry\\horse_idle_A", "time": "rider",
+         "attach": [{"a": "torch", "frombone": "ATTACHPOINT", "tobone": "L HAND"}],
+         "tags": [{"type": "Attack", "at": 0.61},
+                  {"type": "SpecificSoundSet", "checkvisible": "1", "set": "TorchSwing", "at": 0.52}]},
+    ],
+    # Made only with --test: animations for actions the unit does not have (a test copy of the unit
+    # gets them), to see a heal and a construction on foot. No hammer: the rider's musket hangs on
+    # his right hand's prop bone, where a villager's hammer goes, so he hammers with it.
+    "test_foot": [
+        {"name": "heal", "rider": LIB + "natives\\priest\\heal",
+         "horse": LIB + "cavalry\\horse_idle_A", "time": "rider"},
+        {"name": "build", "rider": LIB + "villager\\villager_male_build1",
+         "horse": LIB + "cavalry\\horse_idle_A", "time": "rider",
+         "tags": [{"type": "SpecificSoundSet", "checkvisible": "1", "set": "Build", "at": 0.36},
+                  {"type": "SpecificSoundSet", "checkvisible": "1", "set": "Build", "at": 0.66},
+                  {"type": "SpecificSoundSet", "checkvisible": "1", "set": "Build", "at": 1.00}]},
     ],
     "dismount": {"name": "dismount", "length": 2.5, "horse": LIB + "cavalry\\horse_idle_A"},
     "mount": {"name": "mount", "length": 2.5, "horse": LIB + "cavalry\\horse_idle_A"},
+    # "keep": the horse stays beside the rider on foot; "hide": it is not drawn while he is on foot.
+    # Hidden, the animations on foot name a second component of the horse's anim file
+    # (`hidden_component`) whose model is the horse's skeleton without its meshes (written as
+    # <prefix>horse_hidden.gr2), as the stock artillery shows a stripped model while unlimbered: the
+    # horse is drawn through the dismount and the mount and not between them; the rider stays on
+    # the skeleton's attach bone, so the rider's animations are the same either way.
+    "horse": "keep",
+    "hidden_component": "HorseHidden",
 }
+HORSE_CHOICES = ("keep", "hide")
 FPS = 30
 
 
@@ -446,10 +490,11 @@ class Maker:
             attach.append(self.horse_attach(horse_anim, t))
         return dur, times, poses, attach
 
-    def build(self, only=None):
-        """{name: (bytes, duration, times, poses, horse anim, horse clip bytes or None)}."""
+    def build(self, only=None, test=False):
+        """{name: (bytes, duration, times, poses, horse anim, horse clip bytes or None)}; with
+        `test`, the recipe's `test_foot` entries too."""
         out = {}
-        jobs = [(e["name"], e, None) for e in self.r["foot"]]
+        jobs = [(e["name"], e, None) for e in foot_entries(self.r, test)]
         jobs += [(self.r["dismount"]["name"], self.r["dismount"], False),
                  (self.r["mount"]["name"], self.r["mount"], True)]
         for name, entry, reverse in jobs:
@@ -469,6 +514,26 @@ class Maker:
                 clip = self.horse_clip(entry, dur, times, poses)
             out[name] = (data, dur, times, poses, entry["horse"], clip)
         return out
+
+
+def foot_entries(recipe, test=False):
+    return list(recipe["foot"]) + (list(recipe.get("test_foot") or []) if test else [])
+
+
+def hidden_horse_model(game, rel):
+    """Bytes of the horse model `rel` with its skeleton and no meshes (nothing drawn): the model of
+    the anim file's hidden-horse component. Stock models without meshes exist (blankmaster,
+    swan_family_model: a skeleton that carries attachments)."""
+    from aoe3game import gr2_edit, gr2_write
+    doc = gr2.load(game.granny(rel))
+    root = gr2_edit.copy_tree(doc)
+    for key in ("Meshes", "VertexDatas", "TriTopologies", "Textures", "Materials"):
+        if key in root.values:
+            root.values[key] = []
+    for model in root.values.get("Models") or []:
+        if model is not None:
+            model.values["MeshBindings"] = []
+    return gr2_write.serialize(root, type_tag=doc.c.type_tag)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -564,12 +629,13 @@ class Scene:
             frm = fb["world"] if fb is not None else np.eye(4)
             self.parts.append((meshes, skel, np.linalg.inv(frm), spec["tobone"].lower()))
 
-    def triangles(self, rider_pose, horse_pose, attach):
-        """[(points N x 3 in the horse's model space, triangles, uvs, texture, colour)]."""
+    def triangles(self, rider_pose, horse_pose, attach, horse=True):
+        """[(points N x 3 in the horse's model space, triangles, uvs, texture, colour)]; without the
+        horse's meshes when `horse` is False (the hidden-horse component)."""
         rider_exact = {n: rider_pose[n.lower()] for n in self.maker.rider.names if n.lower() in rider_pose}
         horse_exact = {n: horse_pose[n.lower()] for n in self.maker.horse.names if n.lower() in horse_pose}
         out = []
-        for m in self.horse_meshes:
+        for m in (self.horse_meshes if horse else []):
             out.append((m.place(self.horse_skel, horse_exact), m.m["triangles"], m.m["uvs"], m.tex, (120, 80, 50)))
         for m in self.rider_meshes:
             p = m.place(self.rider_skel, rider_exact)
@@ -650,14 +716,23 @@ def ffmpeg():
     return None
 
 
+TRANSITIONS = ("dismount", "mount")
+
+
+def horse_drawn(recipe, name):
+    """Whether the horse is drawn in the animation `name`: always kept, or only in the transitions."""
+    return recipe.get("horse", "keep") != "hide" or name in TRANSITIONS
+
+
 def render(scene, maker, name, built, out_dir, clips, views):
     data, dur, times, poses, horse_anim, _clip = built
     picks = np.linspace(0, len(times) - 1, 12).round().astype(int)
     tiles = []
+    drawn = horse_drawn(maker.r, name)
     for azim in views:
         for i in picks:
             hp = maker.horse_pose(horse_anim, times[i])
-            img = scene.draw(scene.triangles(poses[i], hp, None), azimuth=azim)
+            img = scene.draw(scene.triangles(poses[i], hp, None, drawn), azimuth=azim)
             tiles.append(label(img, f"{name} {times[i]:.2f}s"))
     save_png(os.path.join(out_dir, f"{name}.png"), sheet(tiles, 6))
     if clips and ffmpeg():
@@ -665,13 +740,47 @@ def render(scene, maker, name, built, out_dir, clips, views):
         try:
             for k, t in enumerate(times):
                 hp = maker.horse_pose(horse_anim, t)
-                img = scene.draw(scene.triangles(poses[k], hp, None), size=480, azimuth=views[0])
+                img = scene.draw(scene.triangles(poses[k], hp, None, drawn), size=480, azimuth=views[0])
                 save_png(os.path.join(tmp, f"f{k:04d}.png"), label(img, f"{name} {t:.2f}s"))
             subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-framerate", str(FPS), "-i",
                             os.path.join(tmp, "f%04d.png"), "-pix_fmt", "yuv420p", "-vf",
                             "scale=480:480", os.path.join(out_dir, f"{name}.mp4")], check=True)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+def overview(scene, maker, built, path, azimuth=-70.0, size=200, frames=8, title=""):
+    """One sheet for review: a row per animation, `frames` moments of it, the transitions first.
+    With the horse hidden, the dismount row ends with the moment after it (the hidden-horse
+    component: the horse gone) and the mount row starts with the moment before it."""
+    import bitfont
+    hide = not horse_drawn(maker.r, "")
+    order = [n for n in TRANSITIONS if n in built] + [n for n in built if n not in TRANSITIONS]
+    cols = frames + (1 if hide else 0)
+    rows = []
+    for name in order:
+        _d, dur, times, poses, horse_anim, _c = built[name]
+        drawn = horse_drawn(maker.r, name)
+        picks = np.linspace(0, len(times) - 1, frames).round().astype(int)
+        tiles = []
+        for i in picks:
+            hp = maker.horse_pose(horse_anim, times[i])
+            img = scene.draw(scene.triangles(poses[i], hp, None, drawn), size=size, azimuth=azimuth)
+            tiles.append(label(img, f"{name} {times[i]:.2f}s"))
+        if hide and name in TRANSITIONS:
+            i = picks[-1] if name == "dismount" else picks[0]
+            hp = maker.horse_pose(horse_anim, times[i])
+            img = scene.draw(scene.triangles(poses[i], hp, None, False), size=size, azimuth=azimuth)
+            extra = label(img, "after: hidden" if name == "dismount" else "before: hidden")
+            tiles = tiles + [extra] if name == "dismount" else [extra] + tiles
+        while len(tiles) < cols:
+            tiles.append(np.full_like(tiles[0], 255))
+        rows.append(np.concatenate(tiles, axis=1))
+    body = np.concatenate(rows, axis=0)
+    head = np.full((28, body.shape[1], 3), 40, np.uint8)
+    bitfont.draw(head, title or ("HORSE HIDDEN ON FOOT" if hide else "HORSE KEPT ON FOOT"), 6, 7,
+                 (255, 255, 255), scale=2)
+    save_png(path, np.concatenate([head, body], axis=0))
 
 
 # --------------------------------------------------------------------------------------------------
@@ -689,24 +798,43 @@ def _tag(t):
     return f'\t\t\t<tag type="{t["type"]}"{attrs}>{float(t["at"]):.2f}</tag>\n'
 
 
+def _attach(a):
+    return (f'\t\t<attach a="{a["a"]}" frombone="{a["frombone"]}" tobone="{a["tobone"]}" '
+            f'syncanims="{a.get("syncanims", "0")}"/>\n')
+
+
 def anim_blocks(recipe, built):
     """The <anim> blocks for the two anim files: the horse's (its own animation or the clip made
-    for it, with the entry's tags: the base model's animation carries them) and the rider's (the
-    new files, played through syncanims)."""
+    for it, with the entry's tags: the base model's animation carries them; with the horse hidden,
+    the animations on foot name the hidden-horse component) and the rider's (the new files, played
+    through syncanims, with the entry's own attachments, a torch or a hammer)."""
     folder, prefix = recipe["folder"], recipe["prefix"]
-    entries = {e["name"]: e for e in recipe["foot"]}
+    entries = {e["name"]: e for e in foot_entries(recipe, True)}
     entries.update({recipe["dismount"]["name"]: recipe["dismount"], recipe["mount"]["name"]: recipe["mount"]})
     horse, rider = [], []
     for name, (_d, _dur, _t, _p, horse_anim, clip) in built.items():
-        tags = "".join(_tag(t) for t in entries.get(name, {}).get("tags", []))
+        entry = entries.get(name, {})
+        tags = "".join(_tag(t) for t in entry.get("tags", []))
         hfile = f"{folder}\\{prefix}horse_{name}" if clip is not None else horse_anim
+        comp = "ModelComp" if horse_drawn(recipe, name) else recipe.get("hidden_component", "HorseHidden")
         horse.append(f"\t<anim>{anim_name(name)}\n\t\t<assetreference type=\"GrannyAnim\">\n"
                      f"\t\t\t<file>{hfile}</file>\n{tags}\t\t</assetreference>\n"
-                     f"\t\t<component>ModelComp</component>\n\t</anim>")
+                     f"\t\t<component>{comp}</component>\n\t</anim>")
+        attach = "".join(_attach(a) for a in entry.get("attach", []))
         rider.append(f"\t<anim>{anim_name(name)}\n\t\t<assetreference type=\"GrannyAnim\">\n"
                      f"\t\t\t<file>{folder}\\{prefix}{name}</file>\n\t\t</assetreference>\n"
-                     f"\t\t<component>ModelComp</component>\n\t</anim>")
+                     f"\t\t<component>ModelComp</component>\n{attach}\t</anim>")
     return "\n".join(horse) + "\n", "\n".join(rider) + "\n"
+
+
+def hidden_component(recipe):
+    """The hidden-horse component for the horse's anim file. The decal and the rider's <attach>
+    line of the horse's own component must be copied into it (they differ per unit): the rider
+    hangs on the same bone of the skeleton."""
+    return (f"\t<component>\n\t\t{recipe.get('hidden_component', 'HorseHidden')}\n"
+            f"\t\t<assetreference type=\"GrannyModel\">\n"
+            f"\t\t\t<file>{recipe['folder']}\\{recipe['prefix']}horse_hidden</file>\n"
+            f"\t\t</assetreference>\n\t</component>\n")
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -719,6 +847,12 @@ def main(argv):
     ap.add_argument("--only")
     ap.add_argument("--views", default="-70")
     ap.add_argument("--keys", action="store_true", help="draw the dismount's key poses only")
+    ap.add_argument("--horse", choices=HORSE_CHOICES,
+                    help="keep the horse beside the rider on foot, or hide it (default: the recipe's)")
+    ap.add_argument("--test", action="store_true",
+                    help="also the recipe's test_foot animations (heal, build), in their own blocks")
+    ap.add_argument("--overview", action="store_true",
+                    help="one review sheet, a row per animation (sheets\\overview.png)")
     args = ap.parse_args(argv)
     try:
         refuse_steam(args.out)
@@ -729,12 +863,17 @@ def main(argv):
     if args.recipe:
         with open(args.recipe, encoding="utf-8") as f:
             recipe.update(json.load(f))
+    if args.horse:
+        recipe["horse"] = args.horse
+    if recipe.get("horse", "keep") not in HORSE_CHOICES:
+        print(f"recipe: horse must be one of {', '.join(HORSE_CHOICES)}", file=sys.stderr)
+        return 2
     work = tempfile.mkdtemp(prefix="dismount_work_")
     try:
         game = Game(args.game, args.granny_helper, work)
         maker = Maker(game, recipe)
         only = set(args.only.split(",")) if args.only else None
-        built = maker.build(only)
+        built = maker.build(only, args.test)
         folder = os.path.join(args.out, "art", recipe["folder"])
         os.makedirs(folder, exist_ok=True)
         for name, b in built.items():
@@ -745,11 +884,25 @@ def main(argv):
                 with open(os.path.join(folder, recipe["prefix"] + "horse_" + name + ".gr2"), "wb") as f:
                     f.write(b[5])
                 print(f"{recipe['prefix']}horse_{name}.gr2  {len(b[5])} B")
+        if recipe["horse"] == "hide":
+            data = hidden_horse_model(game, recipe["horse_model"])
+            with open(os.path.join(folder, recipe["prefix"] + "horse_hidden.gr2"), "wb") as f:
+                f.write(data)
+            print(f"{recipe['prefix']}horse_hidden.gr2  {len(data)} B (the horse's skeleton, no meshes)")
         if only is None:                       # with --only the blocks would list only some names
-            horse_xml, rider_xml = anim_blocks(recipe, built)
-            for fname, text in (("anims-horse.xml", horse_xml), ("anims-rider.xml", rider_xml)):
-                with open(os.path.join(args.out, fname), "w", encoding="utf-8", newline="\r\n") as f:
-                    f.write(text)
+            tests = {e["name"] for e in recipe.get("test_foot") or []}
+            parts = [("", {k: v for k, v in built.items() if k not in tests})]
+            if args.test:
+                parts.append(("-test", {k: v for k, v in built.items() if k in tests}))
+            for suffix, some in parts:
+                horse_xml, rider_xml = anim_blocks(recipe, some)
+                for fname, text in ((f"anims-horse{suffix}.xml", horse_xml), (f"anims-rider{suffix}.xml", rider_xml)):
+                    with open(os.path.join(args.out, fname), "w", encoding="utf-8", newline="\r\n") as f:
+                        f.write(text)
+            if recipe["horse"] == "hide":
+                with open(os.path.join(args.out, "component-horse.xml"), "w", encoding="utf-8",
+                          newline="\r\n") as f:
+                    f.write(hidden_component(recipe))
         if args.keys:
             scene = Scene(game, maker, recipe)
             keys = maker.key_poses(recipe["dismount"]["horse"])
@@ -758,14 +911,18 @@ def main(argv):
                            f"key {share:.2f} view {v}") for v in args.views.split(",") for share, p in keys]
             os.makedirs(os.path.join(args.out, "sheets"), exist_ok=True)
             save_png(os.path.join(args.out, "sheets", "keys.png"), sheet(tiles, len(keys)))
-        if args.sheets or args.clips:
+        if args.sheets or args.clips or args.overview:
             scene = Scene(game, maker, recipe)
             sheets = os.path.join(args.out, "sheets")
             os.makedirs(sheets, exist_ok=True)
             views = [float(v) for v in args.views.split(",")]
-            for name, b in built.items():
-                render(scene, maker, name, b, sheets, args.clips, views)
-                print(f"sheets\\{name}.png")
+            if args.sheets or args.clips:
+                for name, b in built.items():
+                    render(scene, maker, name, b, sheets, args.clips, views)
+                    print(f"sheets\\{name}.png")
+            if args.overview:
+                overview(scene, maker, built, os.path.join(sheets, "overview.png"), azimuth=views[0])
+                print("sheets\\overview.png")
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return 0

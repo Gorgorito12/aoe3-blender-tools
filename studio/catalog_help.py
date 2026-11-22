@@ -10,6 +10,12 @@ HELP = {
                    "Dibuja además cada animación como hoja de contacto de doce cuadros, con el caballo, desde el lado por el que baja el jinete (sheets\\<nombre>.png)."),
         'clips': ("Also writes every animation as a short video at 30 frames a second (sheets\\<name>.mp4); needs ffmpeg.",
                   "Escribe además cada animación como un vídeo corto a 30 cuadros por segundo (sheets\\<nombre>.mp4); necesita ffmpeg."),
+        'horse': ("keep: the horse stays beside the rider on foot. hide: it is drawn only while he gets off and on (a horse model with no meshes and the anim file component that shows it are written too). Empty: the recipe's choice (keep).",
+                  "keep: el caballo se queda junto al jinete a pie. hide: solo se dibuja mientras baja y sube (se escriben también un modelo del caballo sin mallas y el componente del anim file que lo muestra). Vacío: lo que diga la receta (keep)."),
+        'test': ("Also the recipe's test animations, for actions the unit does not have (heal, build), in their own anim file blocks, for a test copy of the unit.",
+                 "También las animaciones de prueba de la receta, para acciones que la unidad no tiene (curar, construir), en sus propios bloques del anim file, para una copia de prueba de la unidad."),
+        'overview': ("One sheet for review, a row per animation (sheets\\overview.png); with the horse hidden, the moments after the dismount and before the mount show it gone.",
+                     "Una hoja para revisar, una fila por animación (sheets\\overview.png); con el caballo oculto, los momentos tras desmontar y antes de montar lo muestran ausente."),
     },
     'mesh_to_game': {
         'in': ("The model: an .obj (its .mtl and picture beside it), a .glb or a .gltf. One picture for the whole model.",

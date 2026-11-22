@@ -886,7 +886,11 @@ TOOLS = [
               L("The unit's models, side and animations; empty: the Chasseur a Cheval of Wars of Liberty.",
                 "Los modelos, el lado y las animaciones de la unidad; vacío: el Chasseur a Cheval de Wars of "
                 "Liberty."), filters=JSON),
+          Arg("horse", "--horse", "choice", L("The horse on foot", "El caballo a pie"),
+              choices=("", "keep", "hide")),
+          Arg("test", "--test", "bool", L("Test animations (heal, build)", "Animaciones de prueba (curar, construir)")),
           Arg("sheets", "--sheets", "bool", L("Contact sheets", "Hojas de contacto")),
+          Arg("overview", "--overview", "bool", L("Review sheet", "Hoja de revisión")),
           Arg("clips", "--clips", "bool", L("Clips (needs ffmpeg)", "Clips (necesita ffmpeg)"))],
          needs=("game",), outputs=("out",)),
     Tool("recompress_models", "tools/recompress_models.py", "art",
