@@ -196,8 +196,17 @@ one as this repository's reader does (`gr2_check.py`) and its CRC is valid. **In
 (2026-11-20, a test copy of Wars of Liberty, three merged buildings beside the same three with their
 attachments, a plantation with 14 trees, a field with 10 and an orchard with 29): standing, at 30 %
 of their hit points and killed, each merged building looked as its twin did and collapsed into the
-same rubble; the game ran on. A Variation of attached models is fixed to its first pick by the merge,
-so every building of that kind shows the same one.
+same rubble; the game ran on.
+
+A Variation is kept. The game gives a unit one variation number, and every Variation logic of its
+anim file, its attachments' included, picks with that number: a mod that rotates each tree's list
+of choices (tree 1: a, b, c; tree 2: b, c, a) changes the whole layout with it. So the merge makes
+each model once per variant k, part i taking its choice k mod Ni, lcm(N1, N2...) variants
+(`_merged_var1`, `_var2`...), and the model's reference becomes a Variation over them in that order.
+**In game** (2026-11-21, Wars of Liberty test copy, a 29-tree orchard whose trees choose among 3):
+six orchards with their attachments showed three layouts, each building one of them; six merged
+showed the same three, and each building kept its layout. A Variation nested inside a
+Destruction logic draws.
 
 A model with no mesh, one bone and an animation is not an accessory: a mod hangs a creature on that
 bone (`syncanims="1"`) so that the bone's scale sizes it. `gr2_basis.normalise_rigid` refuses such a

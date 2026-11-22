@@ -7,9 +7,11 @@ no Granny runtime).
 import contextlib
 import io
 import os
+import re
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 
 import numpy as np
 
@@ -112,18 +114,42 @@ class Tool(unittest.TestCase):
     def test_merge(self):
         code, text = self.run_tool()
         self.assertEqual(code, 0, text)
-        self.assertIn("2 merged models", text)
+        self.assertIn("4 merged models", text)                              # 2 models x 2 tree choices
         with open(os.path.join(self.out, r"mod\farm\farm.xml"), encoding="utf-8") as fh:
             xml = fh.read()
         self.assertNotIn('a="tree_1"', xml)                                   # merged: its line gone
         self.assertIn('a="smoke"', xml)                                       # a particle stays
-        self.assertIn(r"<file>mod\farm\farm_merged</file>", xml)
-        self.assertIn(r"<file>mod\farm\farm_damaged_merged</file>", xml)
-        with open(os.path.join(self.out, r"mod\farm\farm_merged.gr2"), "rb") as fh:
-            merged = gr2_mesh.read(fh.read())
-        self.assertEqual([m["name"] for m in merged["meshes"]][1], "tree_a_0")  # the first pick
+        ET.fromstring(xml)                                                    # still well formed
+        # the Variation is kept: each model's reference became a Variation over its copies, in order
+        files = re.findall(r"<data>\s*<assetreference type=\"GrannyModel\"><file>([^<]+)</file>", xml)
+        for stem in ("farm", "farm_damaged"):
+            self.assertLess(files.index(rf"mod\farm\{stem}_merged_var1"), files.index(rf"mod\farm\{stem}_merged_var2"))
+        self.assertEqual(xml.count('<logic type="Variation">'), 3)            # the tree's own, and two new
+        for k, tree in ((1, "tree_a_0"), (2, "tree_b_0")):
+            with open(os.path.join(self.out, rf"mod\farm\farm_merged_var{k}.gr2"), "rb") as fh:
+                merged = gr2_mesh.read(fh.read())
+            self.assertEqual([m["name"] for m in merged["meshes"]][1], tree)  # choice k of the tree
         with open(os.path.join(self.out, "merge.txt"), encoding="utf-8") as fh:
             self.assertIn("smoke left as it is", fh.read())
+
+    def test_parts_choices_line_up(self):
+        """Two parts with 2 and 3 choices make lcm = 6 buildings, part i taking choice k mod Ni."""
+        put(self.art, r"trees\tree_c.gr2", model("tree_c", texture="tree"))
+        second = ("\t<attachment>\n\t\ttree_2\n\t\t<component>\n\t\t\ttree\n\t\t\t<logic type=\"Variation\">\n"
+                  + "".join(f"\t\t\t\t<data><assetreference type=\"GrannyModel\"><file>trees\\{t}</file>"
+                            "</assetreference></data>\n" for t in ("tree_c", "tree_a", "tree_b"))
+                  + "\t\t\t</logic>\n\t\t</component>\n\t</attachment>\n")
+        anim = ANIM.replace("\t<attachment>\n\t\tsmoke", second + "\t<attachment>\n\t\tsmoke")
+        anim = anim.replace('\t\t<attach a="smoke"', '\t\t<attach a="tree_2" frombone="ATTACHPOINT" '
+                            'tobone="bone_corn01" syncanims="0"/>\n\t\t<attach a="smoke"')
+        put(self.art, r"mod\farm\farm.xml", anim)
+        code, text = self.run_tool()
+        self.assertEqual(code, 0, text)
+        self.assertIn("12 merged models", text)                              # 2 models x 6
+        for k in range(6):
+            with open(os.path.join(self.out, rf"mod\farm\farm_merged_var{k + 1}.gr2"), "rb") as fh:
+                names = [m["name"] for m in gr2_mesh.read(fh.read())["meshes"]][1:]
+            self.assertEqual(names, [("tree_a", "tree_b")[k % 2] + "_0", ("tree_c", "tree_a", "tree_b")[k % 3] + "_1"])
 
     def test_dry_run(self):
         code, text = self.run_tool("--dry-run")

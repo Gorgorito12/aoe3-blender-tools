@@ -11,9 +11,8 @@ The manifest lists anim files below art, one per line (`#` starts a comment); pa
 looked up in the --art folders in order, loose files first, then each folder's .bar archives.
 
 An attachment is merged when it is static: its definition holds one component whose models are
-Granny models only (one, or a Variation of several: the first is taken, so every building of that
-kind shows the same pick) with no particle and no animation of its own, or an <include> of an anim
-file whose idle model is such a model. Flags (a cloth or an animated flag), smoke, fire, units and
+Granny models only (one, or a Variation of several) with no particle and no animation of its own,
+or an <include> of an anim file whose idle model is such a model. Flags (a cloth or an animated flag), smoke, fire, units and
 construction frames are left as attachments. For each component of the anim file (not one inside
 an <attachment> or an <anim>) that attaches static attachments directly, every model the
 component draws, in every branch of its logic (normal, damaged, low detail), is merged with them
@@ -21,10 +20,18 @@ component draws, in every branch of its logic (normal, damaged, low detail), is 
 `<model stem>_merged.gr2` in the anim file's own folder (`_2`, `_3` for another set), the
 component's <file> values name those copies, and the merged <attach> lines are deleted.
 
+A Variation is kept. The game gives a unit one variation number, and every Variation logic of its
+anim file, its attachments' included, picks with that same number: so parts hung with N1, N2...
+choices make lcm(N1, N2...) different buildings (at most MAX_VARIANTS; above that, the largest N).
+Each model the component draws is merged once per variant k, every part taking its choice
+k mod Ni, into `<model stem>_merged_var<k + 1>.gr2`, and its <assetreference> becomes a Variation
+logic over those copies, in order.
+
 Writes into --out, laid out as art: the edited anim files, the merged models (uncompressed:
 tools/recompress_models.py compresses them) and merge.txt (what was merged where, and what was left
 and why). Nothing is written with --dry-run.
 """
+import math
 import os
 import re
 import sys
@@ -41,6 +48,7 @@ ATTR_RE = re.compile(r"([\w.:-]+)\s*=\s*\"([^\"]*)\"")
 NOT_STATIC = re.compile(r"\.particle|clothflag|<flag|campfire|construction|\\constructions\\|_con\d?\b|frame|stage\d", re.I)
 STATIC_REFUSED = re.compile(r"\.particle|flag|campfire|construction|\\constructions\\|_con\d?\b|frame|stage\d", re.I)
 CONSTRUCTION = re.compile(r"construction|\\constructions\\|_con\d?\b|frame|stage\d", re.I)
+MAX_VARIANTS = 12          # the most merged copies one model gets for its parts' Variations
 
 
 class Element:
@@ -94,6 +102,19 @@ def parse(masked):
     return root
 
 
+def variation_choices(els, src):
+    """The model each choice of the first Variation logic inside these elements draws, in order,
+    or None when there is none (or a choice draws no model)."""
+    for el in els:
+        for e in el.walk():
+            if e.tag == "logic" and e.attrs.get("type", "").lower() == "variation":
+                picks = [models_in(d, src) for d in e.children if d.tag == "data"]
+                if picks and all(picks):
+                    return [p[0][1] for p in picks]
+                return None
+    return None
+
+
 def models_in(el, src):
     """The Granny model <file> elements inside an element: [(file element, value)]."""
     out = []
@@ -121,7 +142,8 @@ class Merger:
         return raw
 
     def static_model(self, att, src, anim):
-        """The model path a static attachment draws, or (None, why)."""
+        """The model paths a static attachment draws (one, or each choice of its Variation, in
+        order), or (None, why)."""
         # what it draws decides, not its name (SoI calls a tree canopy `iro_tc_smoke_00`)
         if any(e.tag == "assetreference" and e.attrs.get("type", "").lower() not in ("grannymodel",)
                for e in att.walk()):
@@ -153,11 +175,13 @@ class Merger:
             found = [m for c in drawn for m in models_in(c, text)]
             if len({v.lower() for _e, v in found}) > 1 and not any(e.tag == "logic" for e in used):
                 return None, f"its include {key} draws several models"
-            return (found[0][1], None) if found else (None, f"its include {key} draws no model")
+            if not found:
+                return None, f"its include {key} draws no model"
+            return variation_choices(drawn, text) or [found[0][1]], None
         found = models_in(att, src)
         if not found:
             return None, "no model"
-        return found[0][1], None
+        return variation_choices([att], src) or [found[0][1]], None
 
     def bake_anim(self, anim):
         found = self.arts.find(anim) or self.arts.find(anim + ".xmb")
@@ -195,13 +219,25 @@ class Merger:
             if any(CONSTRUCTION.search(v) for _f, v in bodies):
                 self.notes.append(f"{anim}: a construction stage keeps its attachments (the game's own pattern)")
                 continue
+            counts = [len(opts) for opts, _f, _t in parts_spec]
+            variants = math.lcm(*counts)
+            if variants > MAX_VARIANTS:
+                variants = max(counts)
+                self.notes.append(f"{anim}: the parts' Variations make more than {MAX_VARIANTS} buildings: "
+                                  f"{variants} kept")
             done = True
             for fel, value in bodies:
-                new = self.merged(folder, value, parts_spec, anim)
-                if new is None:
+                news = []
+                for k in range(variants):
+                    spec = [(opts[k % len(opts)], f, t) for opts, f, t in parts_spec]
+                    news.append(self.merged(folder, value, spec, anim, k if variants > 1 else None))
+                if None in news:
                     done = False
                     continue
-                edits.append((fel.inner_start, fel.end_inner, new))
+                if len(set(news)) == 1:
+                    edits.append((fel.inner_start, fel.end_inner, news[0]))
+                else:
+                    edits.append(variation_edit(text, fel, news))
             if done:
                 for c in lines:
                     s, e = bake_textures.line_span(text, c.start, c.end)
@@ -214,8 +250,9 @@ class Merger:
             self.write(found.display(key)[:-4] if key.endswith(".xmb") else found.display(key), out.encode("utf-8"))
         return merged
 
-    def merged(self, folder, body_value, parts_spec, anim):
-        """The path (below art, no extension) of the body merged with its parts, made once."""
+    def merged(self, folder, body_value, parts_spec, anim, variant=None):
+        """The path (below art, no extension) of the body merged with its parts, made once;
+        `variant` (from 0) names the copy of one choice of the parts' Variations."""
         ident = (hc_survey.norm(body_value), tuple((hc_survey.norm(m), f, t) for m, f, t in parts_spec))
         if ident in self.made:
             return self.made[ident]
@@ -242,7 +279,8 @@ class Merger:
         stem = os.path.splitext(os.path.basename(body_key))[0]
         n, rel = 1, None
         while rel is None or rel.lower() in self.taken or self.arts.exists(hc_survey.norm(rel) + ".gr2"):
-            rel = f"{folder}\\{stem}_merged" + ("" if n == 1 else f"_{n}")
+            rel = f"{folder}\\{stem}_merged" + ("" if variant is None else f"_var{variant + 1}") + \
+                ("" if n == 1 else f"_{n}")
             n += 1
         self.taken.add(rel.lower())
         if not self.dry:
@@ -258,6 +296,22 @@ class Merger:
         with open(p + ".merging", "wb") as fh:
             fh.write(data)
         os.replace(p + ".merging", p)
+
+
+def variation_edit(text, fel, news):
+    """The edit that puts a Variation logic over the copies `news` where the <assetreference>
+    holding the <file> element `fel` stood: one <data> per copy, the reference otherwise kept."""
+    ref = fel.parent
+    line = text.rfind("\n", 0, ref.start) + 1
+    indent = text[line:ref.start] if not text[line:ref.start].strip() else ""
+    out = ['<logic type="Variation">']
+    for new in news:
+        body = text[ref.start:fel.inner_start] + new + text[fel.end_inner:ref.end]
+        out.append(f"{indent}\t<data>")
+        out.append(f"{indent}\t\t" + body.replace("\n", "\n\t\t"))
+        out.append(f"{indent}\t</data>")
+    out.append(f"{indent}</logic>")
+    return ref.start, ref.end, "\n".join(out)
 
 
 def main(argv):
