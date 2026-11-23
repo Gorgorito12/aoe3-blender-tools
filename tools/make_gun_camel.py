@@ -6,7 +6,7 @@ animated with a rider who cranks it. Recipe-driven like make_dismount.py.
 
     venv\\Scripts\\python -I tools/make_gun_camel.py --game <game copy> --out <folder>
         [--recipe <recipe.json>] [--scales 0.55,0.7] [--granny-helper <exe>] [--no-verify]
-        [--sheet <png>] [--gifs <folder>] [--gif-fps 15]
+        [--sheet <png>] [--gifs <folder>] [--gif-fps 15] [--gaze <png>]
 
 What it writes below --out (`art\\<recipe "folder">\\`):
 - `<camel>_nogun.gr2`: the camel's body without the swivel gun's triangles (`cut`: the pieces bound to
@@ -23,18 +23,22 @@ What it writes below --out (`art\\<recipe "folder">\\`):
   `<name>-report.txt` with what was cut and placed and the checks.
 
 The variants (`variants` of the recipe):
-- A, from the saddle: the camel plays its own clips (idle, walk, jog, ranged attack, reload), its
-  head and neck lowered out of the line of fire at the gun and in the jog (`lower`); the rider sits
-  squared (`Rider.square`: shoulders level and square, back nearly upright, head level), on the move
-  with both hands on the reins; at the gun his right hand turns the crank (two-bone IK on the handle at every frame), the left hand
+- A, from the saddle: the camel plays its own clips (idle, walk, jog, run, ranged attack, reload),
+  its head and neck lowered out of the line of fire at the gun, in the jog and the run (`lower`);
+  the rider sits squared (`Rider.square`: the stock rider's turn to his right undone, back nearly
+  upright, shoulders and head level) and looks where he should (`Rider.look`: ahead on the move,
+  along the barrels at the gun, at the magazine in a reload); on the move his left palm rests on
+  the breech box and his right fist on the reins; at the gun his right hand turns the crank (two-bone IK on the handle at every frame), the left hand
   rests on the breech; the barrels spin while firing (three whole turns a clip, so repeated shots
   join; see BARREL_TURNS), the crank turns a third as fast, as on the stock gun, with six shots
   and a small recoil; on reload the left hand lifts the magazine out, puts it down at the saddle
   and seats a full one. A hand whose target is out of reach leans the trunk toward it.
 - B, deployed: the camel lies down (the game's own lying-down clips of the same rig, turned back
-  to the camel's heading, upright, and laid on the ground), the rider gets off and stands at the
-  gun, cranking it with the right hand, the left on the casing (mounted, both hands on the reins);
-  the gun stays on its post on the camel's back, so its aim follows the unit.
+  to the camel's heading, upright, and laid on the ground) and is held down 2 s while the rider gets
+  off step by step (`Unit.climb_keys`: up on his hands, the right leg over, down the flank, a step
+  forward, at the gun; the mount plays them backward before the camel rises); on foot he cranks
+  with the right hand, the left on the casing, looking downrange (mounted, both fists on the
+  reins); the gun stays on its post on the camel's back, so its aim follows the unit.
 
 Compressed game files are expanded by the game's own Granny runtime (`--granny-helper`, default
 tools\\granny_recompress.exe; `python -I tools/recompress_models.py --build-helper` makes it);
@@ -557,6 +561,10 @@ class Rider:
         base = self.rig.by_name(self.rig.pose(self.idle, 0.0))
         self.body = mp.Body(self.rig, {"mesh": read["meshes"][0], "skel": read["skeletons"][0]}, base, self.idle)
         self._anims = {}
+        # at rest the rider faces +z: the head's and the chest's forward axes in their own frames
+        rest = self.rig.by_name(self.rig.rest_worlds())
+        self.face_local = rest["bip01 head"][:3, :3].T @ Z
+        self.chest_local = rest["bip01 spine1"][:3, :3].T @ Z
 
     def anim(self, rel):
         if rel not in self._anims:
@@ -570,20 +578,22 @@ class Rider:
         return self.square(P, attach) if square else P
 
     def square(self, P, attach):
-        """A firm seat: the stock zamburak rider leans and twists toward his swivel gun and tilts his
-        head; here the shoulders are turned level and square to the camel's way (the trunk about
-        the spine's base), the back nearly upright (LEAN), and the head set level over them."""
+        """A firm seat: the stock zamburak rider leans about 35 degrees forward, turns his chest 35
+        degrees and his face 50 to his right and tilts his head (measured on its idle); here the
+        back is set nearly upright (LEAN), the chest turned back to the camel's way, the shoulders
+        level and the head level (where he looks is `look`'s)."""
         from aoe3game.gr2_pose import rotate_about
         A = attach[:3, :3]
         side, up, fwd = A @ X, A @ Y, A @ Z
         sh = lambda Q: Q["bip01 r upperarm"][:3, 3] - Q["bip01 l upperarm"][:3, 3]  # noqa: E731
         ear = lambda Q: Q["bip01 head"][:3, :3] @ (self.body.base["bip01 head"][:3, :3].T @ X)  # noqa: E731
         back = lambda Q: Q["bip01 neck"][:3, 3] - Q["bip01 spine"][:3, 3]  # noqa: E731
+        chest = lambda Q: Q["bip01 spine1"][:3, :3] @ self.chest_local  # noqa: E731
         crown = lambda Q: Q["bip01 head"][:3, :3] @ (self.body.base["bip01 head"][:3, :3].T @ Y)  # noqa: E731
         lean = math.sin(math.radians(self.LEAN))
         for bone, pivot, vec, axis, comp, want in (("bip01 spine1", "bip01 spine", back, side, fwd, lean),
+                                                   ("bip01 spine1", "bip01 spine", chest, up, side, 0.0),
                                                    ("bip01 spine1", "bip01 spine", sh, fwd, up, 0.0),
-                                                   ("bip01 spine1", "bip01 spine", sh, up, fwd, 0.0),
                                                    ("bip01 head", "bip01 head", ear, fwd, up, 0.0),
                                                    ("bip01 head", "bip01 head", crown, side, fwd, 0.05)):
             asin = lambda x: math.degrees(math.asin(max(-1.0, min(1.0, x))))  # noqa: E731
@@ -597,6 +607,49 @@ class Rider:
         return P
 
     LEAN = 10.0               # degrees the seated trunk leans forward (the stock rider: about 35)
+
+    def face(self, P):
+        return unit(P["bip01 head"][:3, :3] @ self.face_local)
+
+    def look(self, P, target, max_yaw=75.0, max_pitch=35.0):
+        """`P` with the head turned to look at the world point `target`: about the vertical, then up
+        or down, each within its limit. Only the head turns (the arms hang from the neck): a turn of
+        the shoulders is `turn_trunk_to`'s, before the hands are placed."""
+        from aoe3game.gr2_pose import rotate_about
+        head = P["bip01 head"][:3, 3]
+        d = np.asarray(target, np.float64) - head
+
+        def yaw_to(v, w):
+            a, b = np.array([v[0], v[2]]), np.array([w[0], w[2]])
+            return math.degrees(math.atan2(a[0] * b[1] - a[1] * b[0], a @ b))
+
+        # the angle about +y that turns the face toward d (a positive turn about +y takes z toward x)
+        yaw = -yaw_to(self.face(P), d)
+        yaw = max(-max_yaw, min(max_yaw, yaw))
+        P = rotate_about(P, self.rig, "bip01 head", "bip01 head", Y, yaw)
+        f = self.face(P)
+        want = math.degrees(math.atan2(d[1], math.hypot(d[0], d[2])))
+        have = math.degrees(math.atan2(f[1], math.hypot(f[0], f[2])))
+        pitch = max(-max_pitch, min(max_pitch, want - have))
+        axis = unit(np.cross(f, Y))
+        best = P
+        for sign in (1.0, -1.0):
+            Q = rotate_about(P, self.rig, "bip01 head", "bip01 head", axis, sign * pitch)
+            fq = self.face(Q)
+            got = math.degrees(math.atan2(fq[1], math.hypot(fq[0], fq[2])))
+            fb = self.face(best)
+            if abs(got - want) < abs(math.degrees(math.atan2(fb[1], math.hypot(fb[0], fb[2]))) - want):
+                best = Q
+        return best
+
+    def turn_trunk_to(self, P, target, share, most):
+        """The chest turned about the vertical (at the spine's base) by `share` of the angle to
+        `target`, at most `most` degrees: a man who looks far aside turns his shoulders too."""
+        from aoe3game.gr2_pose import rotate_about
+        c = unit(P["bip01 spine1"][:3, :3] @ self.chest_local)
+        d = np.asarray(target, np.float64) - P["bip01 spine1"][:3, 3]
+        a = math.degrees(math.atan2(c[2] * d[0] - c[0] * d[2], c[0] * d[0] + c[2] * d[2]))
+        return rotate_about(P, self.rig, "bip01 spine1", "bip01 spine", Y, max(-most, min(most, share * a)))
 
     def standing(self, foot_rig, anim, t, heading, at):
         """An infantry clip's pose at t put on the rider (bones placed by name), turned by `heading`
@@ -653,7 +706,7 @@ B_UP = LIB + "quads\\bighorn_sheep_laydown_getup"
 CLIPS = {
     # A: at the gun (idle, fire, reload) the camel keeps its head and neck lowered (`lower` degrees,
     # `dip` more in the middle of a burst), out of the line of fire; on the move it carries them as
-    # its own clips do, but for the jog, which lifts the head into the barrel (lowered 26).
+    # its own clips do, but for the jog (lowered 26) and the gallop (12), which lift it into the barrel.
     # The rider moves on an upright seat (`gait`: a small nod of the trunk with the
     # steps, no sway) instead of the stock rider walk and sword jog, whose hips and shoulders sway.
     "A": [
@@ -661,6 +714,7 @@ CLIPS = {
          "rider": ZAMB + "zamburak_rider_idle00", "lower": 22.0},
         {"name": "walk", "anim": "Walk", "camel": ZAMB + "zamburak_camel_walk00", "gait": 1.5},
         {"name": "jog", "anim": "Jog", "camel": ZAMB + "zamburak_camel_jog", "gait": 3.0, "lower": 26.0},
+        {"name": "run", "anim": "Run", "camel": LIB + "cavalry\\horse_gallop", "gait": 4.0, "lower": 12.0},
         {"name": "fire", "anim": "Attack_ranged", "camel": ZAMB + "zamburak_camel_attackRanged01", "do": "fire",
          "lower": 22.0, "dip": 6.0},
         {"name": "reload", "anim": "Attack_ranged_reload", "camel": ZAMB + "zamburak_camel_reload",
@@ -672,11 +726,15 @@ CLIPS = {
         {"name": "walk", "anim": "Walk", "camel": ZAMB + "zamburak_camel_walk00", "gait": 1.5, "seat": True},
         {"name": "jog", "anim": "Jog", "camel": ZAMB + "zamburak_camel_jog", "gait": 3.0, "lower": 26.0,
          "seat": True},
-        {"name": "deploy", "anim": "Bombard_unlimber", "borrow": B_DOWN, "do": "dismount"},
+        {"name": "run", "anim": "Run", "camel": LIB + "cavalry\\horse_gallop", "gait": 4.0, "lower": 12.0,
+         "seat": True},
+        # the lying-down clip, then the camel held down while he gets off step by step (2 s)
+        {"name": "deploy", "anim": "Bombard_unlimber", "borrow": B_DOWN, "do": "dismount", "hold_after": 2.0},
         {"name": "deployed", "anim": "Bombard_ranged_idle", "borrow": B_IDLE, "do": "stand"},
         {"name": "fire", "anim": "Bombard_ranged_attack", "still": B_IDLE, "length": 1.0, "do": "fire"},
         {"name": "reload", "anim": "Bombard_reload", "still": B_IDLE, "length": 3.0, "do": "reload"},
-        {"name": "undeploy", "anim": "Bombard_limber", "borrow": B_UP, "do": "mount"},
+        # the camel held down while he gets on step by step (2 s), then its getting-up clip
+        {"name": "undeploy", "anim": "Bombard_limber", "borrow": B_UP, "do": "mount", "hold_before": 2.0},
     ],
 }
 # the reload: (share of the clip, where the magazine is) - the left hand leaves the casing for the
@@ -707,6 +765,10 @@ class Unit:
         g = self.gun
         c = src.parts["cannon"]["positions"]
         rear = c[c[:, 2] < src.trunnion[2] + 0.3]                     # the casing, not the front ring
+        back = rear[rear[:, 2] < rear[:, 2].min() + 0.35]               # its rear box, by the breech
+        inner = back[:, 0].max() if variant == "A" else back[:, 0].min()   # the rider's side
+        self.casing_side = g.design_point(np.array([inner, 0.5 * (back[:, 1].min() + back[:, 1].max()),
+                                                    back[:, 2].mean()]))
         self.casing_top = g.design_point(np.array([src.trunnion[0], rear[:, 1].max(), src.trunnion[2]]))
         # the hand takes the magazine low, just above the hopper (its top is out of a man's reach
         # on foot)
@@ -734,6 +796,9 @@ class Unit:
         if what == "casing":
             return point(fr["cannon"] @ tr(-g.pivot), self.casing_top) + np.array([0.0, 0.03, 0.0]), \
                 (1.0, -0.2, 0.3), (0.0, -1.0, 0.0)
+        if what == "casing_side":           # the palm flat on the breech box's inner side
+            return point(fr["cannon"] @ tr(-g.pivot), self.casing_side) + np.array([0.035, 0.0, 0.0]), \
+                (0.0, -0.25, 1.0), (-1.0, 0.0, 0.0)
         if what == "magazine":
             return point(fr["ammo"], self.mag_grip) + np.array([side * 0.045, 0.0, 0.0]), \
                 (0.0, 0.2, 1.0), (-side, 0.0, 0.0)
@@ -917,7 +982,7 @@ class Unit:
             length = anim.duration
         elif "borrow" in clip:
             anim = cam.anim(clip["borrow"])
-            length = anim.duration
+            length = anim.duration + clip.get("hold_before", 0.0) + clip.get("hold_after", 0.0)
         else:
             anim = cam.anim(clip["still"])
             length = float(clip["length"])
@@ -932,8 +997,16 @@ class Unit:
                          for t, P in zip(times, poses)]
                 b.camel_bytes = cam.track_bytes(cname, times, poses, anim)
         elif "borrow" in clip:
-            poses = cam.grounded(anim, times)
+            before = clip.get("hold_before", 0.0)
+            src = [min(max(t - before, 0.0), anim.duration) for t in times]
+            uniq = {}
+            for tt in src:                     # a held pose is one object, so the climb's keys are made once
+                if tt not in uniq:
+                    uniq[tt] = cam.grounded(anim, [tt])[0]
+            poses = [uniq[tt] for tt in src]
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim)
+            # the rider climbs while the camel is held down: after it lies down, or before it gets up
+            b.window = (0.0, before) if before else (anim.duration, length)
         else:
             still = cam.grounded(anim, [0.0])[0]
             poses = [still] * n
@@ -979,9 +1052,13 @@ class Unit:
         return point(np.linalg.inv(self.C(P)), spot)
 
     def seated_hands(self, clip):
-        """Mounted: on the move, and in B (its crank outside, out of reach), both hands on the reins
-        at the pommel; A at the gun, the right hand on the crank and the left on the breech."""
-        if clip.get("gait") or self.variant == "B":
+        """Mounted: on the move, the right fist on the reins and the left palm resting on the
+        breech box's side (the trunk turned a little toward the gun); B at rest (its crank outside,
+        out of reach), both fists on the reins; A at the gun, the right hand on the crank and the
+        left on the breech."""
+        if clip.get("gait"):
+            return {"r": "reins", "l": "casing_side"}
+        if self.variant == "B":
             return {"r": "reins", "l": "reins"}
         return {"r": "crank", "l": "breech"}
 
@@ -999,8 +1076,10 @@ class Unit:
             tb = t * base.duration / length if do is None and clip.get("rider") else 0.0
             R = rider.seated(base, tb, attach)
             if clip.get("gait"):
-                # upright, shoulders square: only a small nod of the trunk with each of the two steps
+                # upright, shoulders square: only a small nod of the trunk with each of the two
+                # steps, the chest turned a little toward the gun his left hand rests on
                 R = rider.turn(R, "bip01 spine", X, clip["gait"] * math.sin(4 * math.pi * u))
+                R = rider.turn(R, "bip01 spine", Y, -6.0)
             if do == "fire":
                 R = rider.turn(R, "bip01 spine", X, 5.0 + 0.8 * math.sin(2 * math.pi * SHOTS * u))
             if do == "reload":
@@ -1015,39 +1094,117 @@ class Unit:
             for side in ("l", "r"):
                 if want.get(side) == "reins":
                     want[side] = self.reins(R, attach, side)
-            return self.hands(R, C, fr, want, b)
+            R = self.hands(R, C, fr, want, b)
+            return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
         # variant B on foot (facing +x: he leans toward the gun about the world's z)
         stand = self.stand_pose()
-        if do == "stand":
-            R = rider.turn(stand, "bip01 spine", Z, -1.5 * math.sin(2 * math.pi * u))
-            return self.hands(R, C, fr, {"r": "crank", "l": "casing"}, b)
-        if do == "fire":
-            R = rider.turn(stand, "bip01 spine", Z, -3.0 - 0.8 * math.sin(2 * math.pi * SHOTS * u))
-            return self.hands(R, C, fr, {"r": "crank", "l": "casing"}, b)
-        if do == "reload":
-            w = math.sin(math.pi * min(1.0, max(0.0, (u - 0.2) / 0.6)))
-            R = rider.turn(stand, "bip01 spine", Z, -6.0 * w)
-            return self.hands(R, C, fr, {"r": "crank", "l": self.reload_hand(u, fr)}, b)
-        # dismount / mount: between the seat and the place at the gun
-        if do == "dismount":
-            w = smooth((u - 0.62) / 0.38)
-        else:
-            w = 1.0 - smooth(u / 0.40)
-        seat = foot = None
-        if w < 1.0:                     # on the way the hands are in transit: their misses are not kept
+        if do in ("stand", "fire", "reload"):
+            R = self.at_gun(stand, C, fr, do, u, b)
+            return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
+        # dismount / mount: seated while the camel moves, the climb (keys) while it is held down
+        t0, t1 = getattr(b, "window", (0.0, length))
+        if t < t0 - 1e-9 or t > t1 + 1e-9:
             seat = rider.seated(rider.idle, 0.0, attach)
-            seat = self.hands(seat, C, fr, {"l": self.reins(seat, attach, "l"), "r": self.reins(seat, attach, "r")},
-                              b if w <= 0.0 else None)
-        if w > 0.0:
-            foot = self.hands(stand, C, fr, {"r": "crank", "l": "casing"}, b if w >= 1.0 else None)
-        if w <= 0.0:
-            return seat
-        if w >= 1.0:
-            return foot
-        from aoe3game.gr2_pose import blend, translate
-        R = blend(self.rider.rig, seat, foot, w)
-        return translate(R, self.rider.rig, self.rider.rig.names[0].lower(),
-                         np.array([0.0, 0.35 * math.sin(math.pi * w), 0.0]))
+            seat = self.hands(seat, C, fr, {"l": self.reins(seat, attach, "l"), "r": self.reins(seat, attach, "r")}, b)
+            return rider.look(seat, self.gaze(None, {}, seat, C, fr, attach))
+        k = (t - t0) / max(t1 - t0, 1e-9)
+        return self.climb(P, C, fr, attach, k if do == "dismount" else 1.0 - k)
+
+    def at_gun(self, stand, C, fr, do, u, b):
+        """The gunner on foot at the gun (B): leaning toward it, his chest turned partly toward
+        where it fires, the right hand on the crank and the left on the casing or the magazine."""
+        rider = self.rider
+        lean = {"stand": -1.5 * math.sin(2 * math.pi * u), "fire": -3.0 - 0.8 * math.sin(2 * math.pi * SHOTS * u),
+                "reload": -6.0 * math.sin(math.pi * min(1.0, max(0.0, (u - 0.2) / 0.6)))}[do]
+        R = rider.turn(stand, "bip01 spine", Z, lean)
+        R = rider.turn_trunk_to(R, self.downrange(C, fr), 0.1 if do == "reload" else 0.35, 22.0)
+        left = self.reload_hand(u, fr) if do == "reload" else "casing"
+        return self.hands(R, C, fr, {"r": "crank", "l": left}, b)
+
+    def downrange(self, C, fr):
+        """A point far along the barrels, where the gun fires."""
+        return point(C, fr["muzzle"][:3, 3]) + 12.0 * self.world_dir(C, Z)
+
+    def gaze(self, do, clip, R, C, fr, attach):
+        """Where the rider looks: along the barrels toward the target at the gun, at the magazine
+        while he swaps it, and ahead along the camel's way when mounted at rest or on the move."""
+        if do == "reload":
+            return point(C, fr["ammo"][:3, 3])
+        if do in ("fire", "stand") or (self.variant == "A" and not clip.get("gait") and do is None
+                                        and clip.get("name") == "idle"):
+            return self.downrange(C, fr)
+        return R["bip01 head"][:3, 3] + 12.0 * unit(attach[:3, :3] @ Z)
+
+    def climb_keys(self, P, C, fr):
+        """The key poses of getting off the couched camel on its left side (the gun's side), as
+        (share, pose): seated; the weight on the hands at the pommel; the right leg swung over the
+        saddle; both legs down the flank, facing the saddle, hands on it; standing beside it; a step
+        forward along the camel; at the gun. The mount is the same keys played backward."""
+        cache = getattr(self, "_climb", None)
+        if cache is not None and cache[0] is P:
+            return cache[1]
+        from aoe3game.gr2_pose import rotate_about, translate
+        import make_dismount as md
+        rider, rig = self.rider, self.rider.rig
+        root = rig.names[0].lower()
+        attach = P[self.camel.rider_bone]
+        A = attach[:3, :3]
+        fwd, up, right = A @ Z, A @ Y, A @ X
+        left = -right
+        seat_at = attach[:3, 3]
+        way = rider.face(rider.seated(rider.idle, 0.0, attach))
+        k0 = rider.seated(rider.idle, 0.0, attach)
+        k0 = self.hands(k0, C, fr, {"l": self.reins(k0, attach, "l"), "r": self.reins(k0, attach, "r")})
+        # 1. up off the seat on the hands, leaning over the pommel
+        k1 = translate(rider.seated(rider.idle, 0.0, attach), rig, root, 0.07 * up + 0.05 * left)
+        k1 = rider.turn(k1, "bip01 spine", right, 20.0)
+        k1 = self.hands(k1, C, fr, {"l": self.reins(k1, attach, "l"), "r": self.reins(k1, attach, "r")})
+        # 2. the right leg swung up and over the saddle toward the left, the body over the left flank
+        k2 = translate(rider.seated(rider.idle, 0.0, attach), rig, root, 0.12 * up + 0.17 * left)
+        k2 = rider.turn(k2, "bip01 spine", right, 28.0)
+        k2 = rotate_about(k2, rig, "bip01 r thigh", "bip01 r thigh", right, 50.0)
+        k2 = rotate_about(k2, rig, "bip01 r thigh", "bip01 r thigh", fwd, 25.0)
+        k2 = self.hands(k2, C, fr, {"l": self.reins(k2, attach, "l"), "r": self.reins(k2, attach, "r")})
+        # 3. both legs down the left flank, facing the saddle (+x), the belly against it
+        S = rider.standing(self.foot, rider.anim(STAND_CLIP), 0.0, 90.0, np.zeros(3))
+        cur = S[root][:3, 3]
+        k3 = translate(S, rig, root, seat_at + 0.40 * left - 0.50 * up - 0.05 * fwd - cur)
+        on_saddle = {s: ("world", seat_at + 0.16 * left + 0.02 * up + (0.16 if s == "l" else -0.16) * fwd,
+                         right, -up) for s in ("l", "r")}
+        k3 = self.hands(k3, C, fr, on_saddle)
+        # 4. standing on the ground beside the saddle, the hands still on it
+        k4 = translate(S, rig, root, np.array([seat_at[0] - 0.62 - cur[0], 0.0, seat_at[2] - 0.05 - cur[2]]))
+        k4 = self.hands(k4, C, fr, {s: ("world", seat_at + 0.24 * left - 0.06 * up +
+                                        (0.16 if s == "l" else -0.16) * fwd, right, -up) for s in ("l", "r")})
+        k4 = rider.look(k4, seat_at)
+        k3 = rider.look(k3, seat_at)
+        # 5. a step forward along the flank (an infantry walk's mid-stride, facing forward)
+        stand = self.stand_pose()
+        a, c = k4[root][:3, 3], stand[root][:3, 3]
+        walk = rider.anim(LIB + "range\\march_rifleman")
+        mid = 0.5 * (a + c)
+        k5 = rider.standing(self.foot, walk, 0.3 * walk.duration, 45.0, np.zeros(3))
+        k5 = translate(k5, rig, root, np.array([mid[0] - k5[root][0, 3], 0.0, mid[2] - k5[root][2, 3]]))
+        k5 = rider.look(k5, k5["bip01 head"][:3, 3] + 5.0 * unit(fwd + right))
+        # 6. at the gun
+        k6 = self.at_gun(stand, C, fr, "stand", 0.0, None)
+        k6 = rider.look(k6, self.downrange(C, fr))
+        k0 = rider.look(k0, k0["bip01 head"][:3, 3] + 12.0 * fwd)
+        k1 = rider.look(k1, seat_at + 0.6 * left - up * 0.6 + 0.4 * fwd)
+        k2 = rider.look(k2, seat_at + 1.0 * left - up * 1.2)
+        keys = [(0.0, k0), (0.14, k1), (0.30, k2), (0.48, k3), (0.64, k4), (0.82, k5), (1.0, k6)]
+        self._climb = (P, keys)
+        return keys
+
+    def climb(self, P, C, fr, attach, share):
+        """The rider at `share` (0 seated, 1 at the gun) of getting off the couched camel."""
+        from aoe3game.gr2_pose import blend
+        keys = self.climb_keys(P, C, fr)
+        share = min(max(share, 0.0), 1.0)
+        i = max(j for j, (k, _p) in enumerate(keys) if k <= share + 1e-9)
+        i = min(i, len(keys) - 2)
+        (s0, p0), (s1, p1) = keys[i], keys[i + 1]
+        return blend(self.rider.rig, p0, p1, smooth((share - s0) / (s1 - s0)))
 
     # -- the files
 
@@ -1290,10 +1447,10 @@ SEQUENCES = {
     "B": [("idle", 0.0, 1.0), ("deploy", None, None), ("deployed", 0.0, 1.0), ("fire", None, None),
           ("fire", None, None), ("reload", None, None), ("fire", None, None), ("undeploy", None, None),
           ("idle", 0.0, 1.0)],
-    "move": [("walk", 0.0, None, 3), ("jog", 0.0, None, 4)],
+    "move": [("walk", 0.0, None, 3), ("jog", 0.0, None, 4), ("run", 0.0, None, 4)],
 }
 CAPTIONS = {"idle": "IDLE", "fire": "FIRE", "reload": "RELOAD", "deploy": "DEPLOY (LIE DOWN, GET OFF)",
-            "deployed": "DEPLOYED IDLE", "undeploy": "UNDEPLOY (GET ON, STAND UP)", "walk": "WALK", "jog": "JOG"}
+            "deployed": "DEPLOYED IDLE", "undeploy": "UNDEPLOY (GET ON, STAND UP)", "walk": "WALK", "jog": "JOG", "run": "RUN"}
 
 
 def gif(path, pb, seq, label, fps=15, width=520, height=420, azimuth=-50.0, span=3.6, centre=(-0.1, 1.55, 0.25),
@@ -1324,6 +1481,33 @@ def gif(path, pb, seq, label, fps=15, width=520, height=420, azimuth=-50.0, span
     pics[0].save(path, save_all=True, append_images=pics[1:], duration=int(round(1000 / fps)), loop=0,
                  optimize=True)
     return os.path.getsize(path), len(frames)
+
+
+GAZE_ROWS = [(("A", "idle", 0.0), "A IDLE AT THE GUN: ALONG THE BARRELS"),
+             (("A", "fire", 0.5), "A FIRING: ALONG THE BARRELS"),
+             (("A", "walk", 0.2), "A ON THE MOVE: AHEAD, LEFT HAND ON THE GUN"),
+             (("B", "fire", 0.5), "B FIRING ON FOOT: DOWNRANGE")]
+
+
+def gaze_sheet(path, plays, scale):
+    """Where the rider looks, without doubt: each pose from the front, the unit's left and its
+    right, close on the rider."""
+    w, h = 300, 280
+    out = []
+    for (variant, clip, t), text in GAZE_ROWS:
+        pb = plays.get((variant, scale))
+        if pb is None:
+            continue
+        items, _m = pb.items(clip, t)
+        _P, _G, R = pb.poses(clip, t)
+        head = R["bip01 head"][:3, 3]
+        centre = (head[0], head[1] - 0.45, head[2])
+        tiles = [caption(draw(items, w, h, az, 8.0, 2.0, centre), f"{name}") for name, az in
+                 (("FRONT", 0.0), ("UNIT'S LEFT", -90.0), ("UNIT'S RIGHT", 90.0))]
+        out.append(title(3 * w, f"{text} ({scale:.2f})", scale=1))
+        out.append(np.concatenate(tiles, 1))
+    from PIL import Image
+    Image.fromarray(np.concatenate([title(3 * w, "WHERE THE RIDER LOOKS", back=(70, 40, 20))] + out, 0)).save(path)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -1415,6 +1599,7 @@ def main(argv):
     ap.add_argument("--gifs", help="a folder for the GIFs")
     ap.add_argument("--gif-fps", type=int, default=15)
     ap.add_argument("--gif-scale", type=float, help="the gun scale the GIFs show (default: the first)")
+    ap.add_argument("--gaze", help="a sheet of where the rider looks (PNG): front, left and right views")
     args = ap.parse_args(argv)
     try:
         for p in (args.out, args.sheet, args.gifs):
@@ -1506,6 +1691,9 @@ def main(argv):
             model_sheet(args.sheet, game, recipe, camel, rider, scene, plays,
                         args.cache if os.path.isdir(args.cache or "") else None)
             print(args.sheet)
+        if args.gaze:
+            gaze_sheet(args.gaze, plays, args.gif_scale if args.gif_scale else recipe["scales"][0])
+            print(args.gaze)
         if args.gifs:
             os.makedirs(args.gifs, exist_ok=True)
             scale = args.gif_scale if args.gif_scale else recipe["scales"][0]
@@ -1515,7 +1703,8 @@ def main(argv):
                 if pb is None:
                     continue
                 path = os.path.join(args.gifs, f"{recipe['name'].replace('_', '-')}-{fname}.gif")
-                size, n = gif(path, pb, SEQUENCES[variant], f"{variant} {scale:.2f}", args.gif_fps, azimuth=az,
+                fps = args.gif_fps if variant == "A" else max(8, args.gif_fps - 3)   # B is long: under 6 MB
+                size, n = gif(path, pb, SEQUENCES[variant], f"{variant} {scale:.2f}", fps, azimuth=az,
                               span=span, centre=centre)
                 print(f"{path} {n} frames {size / 1e6:.1f} MB")
             pb = plays.get(("A", scale))

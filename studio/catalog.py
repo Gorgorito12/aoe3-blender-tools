@@ -1202,6 +1202,7 @@ TOOLS = [
           Arg("variants", "--variants", "text", L("Variants", "Variantes"), default="A,B"),
           Arg("sheet", "--sheet", "save", L("Model sheet", "Hoja del modelo"), filters=(("PNG", "*.png"),)),
           Arg("gifs", "--gifs", "folder", L("GIF folder", "Carpeta de GIF")),
+          Arg("gaze", "--gaze", "save", L("Gaze sheet", "Hoja de la mirada"), filters=(("PNG", "*.png"),)),
           Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
          needs=("game",), outputs=("out",)),
     Tool("recompress_models", "tools/recompress_models.py", "art",

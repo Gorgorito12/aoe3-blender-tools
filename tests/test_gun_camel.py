@@ -238,6 +238,16 @@ class Rhythm(unittest.TestCase):
             self.assertTrue(np.allclose(m[:3, 3], u.gun.at["ammo"]))
             self.assertTrue(np.allclose(m[:3, :3], np.eye(3)))
 
+    def test_the_climb_holds_the_camel_down(self):
+        b = {c["name"]: c for c in gc.CLIPS["B"]}
+        self.assertGreater(b["deploy"].get("hold_after", 0.0), 1.0)       # gets off after it lies down
+        self.assertGreater(b["undeploy"].get("hold_before", 0.0), 1.0)    # gets on before it rises
+        for variant in ("A", "B"):
+            names = {c["name"] for c in gc.CLIPS[variant]}
+            self.assertTrue({"walk", "jog", "run"} <= names, variant)
+            moving = [c for c in gc.CLIPS[variant] if c["name"] in ("walk", "jog", "run")]
+            self.assertTrue(all(c.get("gait") and not c.get("rider") for c in moving), variant)
+
     def test_every_clip_names_its_length(self):
         for variant, clips in gc.CLIPS.items():
             names = [c["anim"] for c in clips]
