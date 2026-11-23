@@ -824,6 +824,125 @@ TOOLS = [
               L("Writes nothing: says whether the files on disk are what would be written.",
                 "No escribe nada: dice si los archivos en disco son lo que se escribiría."))],
          outputs=("out", "all", "png")),
+    Tool("make_type_icon", "tools/make_type_icon.py", "art",
+         L("Unit type icons", "Iconos de tipo de unidad"),
+         L("Draws the unit type icons a stat panel puts after a bonus multiplier (\"1.5x against <icon>\") in a "
+           "painted style: 32x32 BGRA .ddt files under their game paths. No pixel comes from the game.",
+           "Dibuja los iconos de tipo de unidad que un panel de estadísticas pone tras un multiplicador de "
+           "bonificación (\"1.5x contra <icono>\") en un estilo pintado: archivos .ddt BGRA de 32x32 en sus rutas "
+           "del juego. Ningún píxel sale del juego."),
+         [out_dir(required=False, label=L("Art folder", "Carpeta art"),
+                  help=L("Every glyph is written under this folder at its game path (ui/ingame/...). Empty: a folder "
+                         "of its own in the work folder.",
+                         "Cada dibujo se escribe en esta carpeta en su ruta del juego (ui/ingame/...). Vacío: una "
+                         "carpeta propia dentro de la carpeta de trabajo.")),
+          Arg("glyph", "--glyph", "text", L("Only these glyphs", "Solo estos dibujos"),
+              L("Glyph names separated by spaces: line, standing, winged_arrow, winged_bullet (the alternative of "
+                "winged_arrow, written only when named). Empty: line, standing and winged_arrow.",
+                "Nombres de dibujo separados por espacios: line, standing, winged_arrow, winged_bullet (la "
+                "alternativa de winged_arrow, solo se escribe si se nombra). Vacío: line, standing y winged_arrow."),
+              repeat=True, placeholder="line standing"),
+          Arg("png", "--png", "save", L("Preview picture", "Imagen de vista previa"),
+              L("Also a PNG of the glyphs enlarged 8 times on the panel's brown.",
+                "También un PNG con los dibujos ampliados 8 veces sobre el marrón del panel."), filters=PNG),
+          Arg("check", "--check", "bool", L("Only compare", "Solo comparar"),
+              L("Writes nothing: says whether the files in the art folder are what would be written.",
+                "No escribe nada: dice si los archivos de la carpeta art son lo que se escribiría."))],
+         outputs=("out", "png")),
+    Tool("import_icon", "tools/import_icon.py", "art",
+         L("Import a drawn icon", "Importar un icono dibujado"),
+         L("Turns an icon drawn elsewhere (a PNG with a transparent background) into a game icon texture: a "
+           "square, uncompressed BGRA .ddt with one level. Optionally recolours one region, narrows a wide picture "
+           "between two sides, and widens it for a panel that squeezes square icons. Nothing is redrawn.",
+           "Convierte un icono dibujado en otro programa (un PNG con fondo transparente) en una textura de icono "
+           "del juego: un .ddt BGRA cuadrado, sin comprimir, con un nivel. Opcionalmente recolorea una región, "
+           "estrecha un dibujo ancho entre dos lados y lo ensancha para un panel que aplasta los iconos cuadrados. "
+           "No se redibuja nada."),
+         [Arg("png", "--png", "file", L("Drawn icon", "Icono dibujado"),
+              L("A PNG with a transparent background (a .ddt is read too).",
+                "Un PNG con fondo transparente (también se lee un .ddt)."), required=True, filters=IMAGES),
+          Arg("out", "--out", "save", L("Texture to write", "Textura a escribir"),
+              L("The icon's .ddt. Empty: icon.ddt in the work folder.",
+                "El .ddt del icono. Vacío: icon.ddt en la carpeta de trabajo."), filters=DDT, work="icon.ddt"),
+          Arg("size", "--size", "int", L("Size", "Tamaño"),
+              L("The square's side in texels. Default 32.", "El lado del cuadrado en téxeles. Por defecto 32.")),
+          Arg("aspect", "--aspect", "float", L("Panel aspect", "Proporción del panel"),
+              L("The share of its width a panel keeps when it draws a square icon; the picture is widened by "
+                "1 / aspect so it shows with its own proportions in game (the minimized unit panel: 0.65). 1 keeps "
+                "it as drawn. Default 0.72.",
+                "La parte de su anchura que un panel conserva al dibujar un icono cuadrado; el dibujo se ensancha "
+                "1 / proporción para que se vea con sus propias proporciones en el juego (el panel de unidad "
+                "minimizado: 0.65). 1 lo deja como está dibujado. Por defecto 0.72.")),
+          Arg("set_height", "--set-height", "float", L("Set height", "Altura del conjunto"),
+              L("Source pixels that fill the square's height: one scale for every picture of a set. Empty: the "
+                "longer side fills the square.",
+                "Píxeles de origen que llenan la altura del cuadrado: una escala para todos los dibujos de un "
+                "conjunto. Vacío: el lado más largo llena el cuadrado.")),
+          Arg("valign", "--valign", "choice", L("Vertical place", "Posición vertical"),
+              L("centre, or bottom (set on the bottom edge: busts cut at the waist).",
+                "centre, o bottom (apoyado en el borde inferior: bustos cortados por la cintura)."),
+              choices=("centre", "bottom"), default="centre"),
+          Arg("tint", "--tint", "color", L("Recolour a region toward", "Recolorear una región hacia"),
+              L("The region connected to the seed pixel takes this colour; its shading, highlights and dark bands "
+                "stay, the outline and every other region keep their pixels.",
+                "La región conectada al píxel semilla toma este color; se conservan su sombreado, sus brillos y sus "
+                "bandas oscuras, y el contorno y las demás regiones guardan sus píxeles.")),
+          Arg("tint_seed", "--tint-seed", "text", L("Seed pixel", "Píxel semilla"),
+              L("X,Y: a pixel of the region to recolour, in the PNG's pixels. Needed with a colour.",
+                "X,Y: un píxel de la región a recolorear, en píxeles del PNG. Necesario con un color."),
+              placeholder="120,340"),
+          Arg("tint_floor", "--tint-floor", "float", L("Region floor", "Umbral de la región"),
+              L("Luminance (0-255) between the outline's and the region's darkest part. Default 35.",
+                "Luminancia (0-255) entre la del contorno y la parte más oscura de la región. Por defecto 35.")),
+          Arg("tint_mid", "--tint-mid", "float", L("Grey that becomes the colour", "Gris que pasa a ser el color"),
+              L("The luminance (0-255) of the region's main face. Empty: the region's median.",
+                "La luminancia (0-255) de la cara principal de la región. Vacío: la mediana de la región.")),
+          Arg("tint_lighten", "--tint-lighten", "float", L("Lighten the colour", "Aclarar el color"),
+              L("Mixes the colour toward white first, 0 to 1. Default 0.",
+                "Mezcla primero el color hacia el blanco, de 0 a 1. Por defecto 0.")),
+          Arg("sides", "--sides", "text", L("Sides", "Lados"),
+              L("L,R: the middle's first column and the right side's first column, for a picture made of a middle "
+                "between two sides (a bullet between its wings) to be narrowed without redrawing it.",
+                "L,R: la primera columna del centro y la primera del lado derecho, para estrechar sin redibujarlo "
+                "un dibujo hecho de un centro entre dos lados (una bala entre sus alas)."), placeholder="321,769"),
+          Arg("sides_cut", "--sides-cut", "text", L("Cut from the sides", "Recorte de los lados"),
+              L("A,B: the columns A..L-1 and R..B-1 are taken out, where the sides run straight.",
+                "A,B: se quitan las columnas A..L-1 y R..B-1, donde los lados son rectos."), placeholder="186,904"),
+          Arg("sides_scale", "--sides-scale", "float", L("Scale of the sides", "Escala de los lados"),
+              L("Default 1.", "Por defecto 1.")),
+          Arg("sides_tuck", "--sides-tuck", "int", L("Tuck the sides", "Meter los lados"),
+              L("Pixels each side slides behind the middle. Default 0.",
+                "Píxeles que cada lado se desliza detrás del centro. Por defecto 0.")),
+          Arg("preview", "--preview", "save", L("Preview picture", "Imagen de vista previa"),
+              L("Also a PNG of the result enlarged 8 times on the panel's brown.",
+                "También un PNG del resultado ampliado 8 veces sobre el marrón del panel."), filters=PNG)],
+         outputs=("out", "preview")),
+    Tool("make_command_icon", "tools/make_command_icon.py", "art",
+         L("Command button icons", "Iconos de botones de comando"),
+         L("Draws a command button's two icons, on and off, in the style of Wars of Liberty's own buttons: 64x64 "
+           "BGRA .ddt files, a blue frame, a green tick for on, a red tint and cross for off. No pixel comes from "
+           "the game.",
+           "Dibuja los dos iconos de un botón de comando, activado y desactivado, en el estilo de los botones de "
+           "Wars of Liberty: archivos .ddt BGRA de 64x64, un marco azul, una marca verde para activado, un tinte y "
+           "una cruz rojos para desactivado. Ningún píxel sale del juego."),
+         [Arg("glyph", "--glyph", "choice", L("Glyph", "Dibujo"),
+              L("autoscout: a map half explored with a dotted route and a spyglass (uhc_autoscout_start.ddt, "
+                "uhc_autoscout_stop.ddt).",
+                "autoscout: un mapa medio explorado con una ruta punteada y un catalejo (uhc_autoscout_start.ddt, "
+                "uhc_autoscout_stop.ddt)."),
+              choices=("autoscout",), default="autoscout"),
+          out_dir(required=False, key="all", flag="--all",
+                  help=L("Both icons are written there under their game file names. Empty: a folder of its own in "
+                         "the work folder.",
+                         "Los dos iconos se escriben allí con sus nombres de archivo del juego. Vacío: una carpeta "
+                         "propia dentro de la carpeta de trabajo.")),
+          Arg("png", "--png", "save", L("Preview picture", "Imagen de vista previa"),
+              L("Also a PNG of both icons enlarged 4 times.", "También un PNG de los dos iconos ampliados 4 veces."),
+              filters=PNG),
+          Arg("check", "--check", "bool", L("Only compare", "Solo comparar"),
+              L("Writes nothing: says whether the files in the folder are what would be written.",
+                "No escribe nada: dice si los archivos de la carpeta son lo que se escribiría."))],
+         outputs=("all", "png")),
     Tool("extend_font", "tools/extend_font.py", "art",
          L("Missing letters in a font", "Letras que faltan en una fuente"),
          L("Adds the accented Latin letters a TrueType font lacks (ă ș ț ő ł ...), built from its own letters and "
@@ -894,6 +1013,42 @@ TOOLS = [
           Arg("factor", "--factor", "float", L("Factor", "Factor"), default=10.0),
           Arg("verbose", "-v", "bool", L("Verbose", "Detallado"))] + granny_args(),
          writes="in_place", trial=["--dry-run"], outputs=("out",)),
+    Tool("dmg_bones", "tools/dmg_bones.py", "art",
+         L("Damage templates' bones", "Huesos de las plantillas de daño"),
+         L("Lists the damage templates whose parts name a bone the model using them lacks, or one its anim file "
+           "does not define (<definebone>): the game reloads such a model while units still draw it and can crash. "
+           "Optionally writes fixed copies of the anim files (the missing <definebone> lines) into a folder of "
+           "your choice; the game folder is only read.",
+           "Lista las plantillas de daño cuyas partes nombran un hueso que el modelo que las usa no tiene, o que su "
+           "anim file no define (<definebone>): el juego recarga ese modelo mientras las unidades aún lo dibujan y "
+           "puede cerrarse. Opcionalmente escribe copias corregidas de los anim files (las líneas <definebone> que "
+           "faltan) en una carpeta que elijas; la carpeta del juego solo se lee."),
+         [game_dir(flag=None),
+          Arg("granny_install", "--granny-install", "folder", L("Game folder (for granny2.dll)",
+                                                                "Carpeta del juego (para granny2.dll)"),
+              L("Reads compressed models through its granny2.dll, never copied or changed. Empty: the game folder.",
+                "Lee los modelos comprimidos con su granny2.dll, que nunca se copia ni se modifica. Vacío: la "
+                "carpeta del juego.")),
+          Arg("helper", "--helper", "file", L("Helper program", "Programa auxiliar"),
+              L("granny_recompress.exe, built by \"Build the recompression helper\". Empty: the one built there.",
+                "granny_recompress.exe, hecho con \"Construir el auxiliar de recompresión\". Vacío: el que se "
+                "construyó ahí."),
+              filters=(("Program", "*.exe"),), work=os.path.join("..", "recompress_helper", "granny_recompress.exe")),
+          Arg("only", "--only", "text", L("Only anim files containing", "Solo anim files que contengan"),
+              L("Only the anim files whose path contains this text (any case). Empty: every one.",
+                "Solo los anim files cuya ruta contenga este texto (sin distinguir mayúsculas). Vacío: todos.")),
+          Arg("csv", "--csv", "save", L("Table to write", "Tabla a escribir"),
+              L("Every listed pair as a CSV table.", "Cada par listado como una tabla CSV."),
+              filters=(("CSV", "*.csv"),)),
+          Arg("fix", "--fix", "outdir", L("Fixed anim files into", "Anim files corregidos en"),
+              L("A folder outside the game: a copy of every anim file with a bone not defined, with its <definebone> "
+                "lines added, at art\\<its own path>. Empty: nothing is fixed.",
+                "Una carpeta fuera del juego: una copia de cada anim file con un hueso sin definir, con sus líneas "
+                "<definebone> añadidas, en art\\<su propia ruta>. Vacío: no se corrige nada.")),
+          Arg("fix_list", "--fix-list", "save", L("List of the fixed files", "Lista de los archivos corregidos"),
+              L("With a fix folder: one CSV row per file written.",
+                "Con una carpeta de corrección: una fila CSV por archivo escrito."), filters=(("CSV", "*.csv"),))],
+         needs=("game",), outputs=("csv", "fix", "fix_list")),
     Tool("fit_borrowed", "tools/fit_borrowed.py", "art",
          L("Fit to a borrowed template or animation", "Ajustar a una plantilla o animación prestada"),
          L("Fits models that borrow another model's damage template or death animation: debris meshes "

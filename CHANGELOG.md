@@ -6,6 +6,37 @@ three together).
 
 ## Unreleased
 
+- Studio forms in Art utilities for `tools/make_type_icon.py`, `tools/import_icon.py`,
+  `tools/make_command_icon.py` and `tools/dmg_bones.py`, which had none (`tests/test_studio.py` failed on
+  them).
+- `tools/dmg_bones.py`: the damage templates whose parts name a bone the model using them lacks, or one its
+  anim file does not define with `<definebone>` (the game then reloads the model while units still draw it
+  and can crash), from the loose files and the `art\*.bar` archives, buildings' `<simskeleton>` included;
+  `--fix <folder>` writes copies of the anim files with the missing `<definebone>` lines (a loose `.xml`
+  edited as text, an archived one as a loose `.xml.xmb`), never in the game folder. Test:
+  `tests/test_dmg_bones.py`.
+- `tools/fit_borrowed.py` (`aoe3game/gr2_fit.py`, a form in Art utilities): a model fitted in place to a
+  borrowed damage template or animation: debris meshes renamed on export get the template part's name, and
+  bones take a reference model's rest frames, so a borrowed collapse animation places every piece as on the
+  reference. Test: `tests/test_gr2_fit.py`.
+- `tools/make_dismount.py` (`aoe3game/gr2_anim.py`, a form in Art utilities): dismount and mount
+  animations for a cavalry unit whose rider hangs on its horse, the rider's animations on foot made from
+  the infantry's, the horse kept beside him or hidden under the ground with the rider on the unit's centre,
+  the melee on foot only when asked, test animations for heal and build, contact and review sheets.
+  `gr2_anim.py` reads, poses and writes animations (tracks sorted by name, as the runtime looks them up).
+  Test: `tests/test_gr2_anim.py`.
+- `tools/make_type_icon.py`: unit type icons in a painted style (two infantrymen in shakos, a winged
+  arrow, a winged bullet as the alternative), 32x32 BGRA under their game paths. `tools/import_icon.py`:
+  an icon drawn elsewhere (a PNG) into a game icon `.ddt`, widened for panels that squeeze square icons
+  (`--aspect`), reduced by area averaging, recoloured by region (`--tint`), narrowed between its sides
+  (`--sides`). `tools/make_stat_icon.py --aspect`. Tests: `tests/test_import_icon.py`,
+  `tests/test_stat_icons.py`.
+- `tools/make_rings.py`: veterancy rank marks as soutache knots centred on the hit point bar, or from
+  drawn images (`--rank-shapes`); marker icons cut from a drawn sheet (`--icon-sheet`) with new markers
+  (ship, xp, oil); range rings as flat meshes in the owner's colour (`--range-particles` keeps the
+  particle rings). `tools/make_aura_rings.py` (a form in Art utilities): the game's own aura ring
+  recoloured per ring colour, with anti-rings for negative effects; its output derives from the game's
+  art and stays out of public repositories.
 - `tools/make_rings.py`: range rings for attacks that reach only ships, `range_<metres>_ships` (the same line in 48
   dashes), and fills, `rangefill_<metres>_p<player>`: a disc under the ring on the game's `alphablend` shader, clear at
   the centre and rising to 30-38 % at the edge, one texture per player colour (that shader has no player colour).
