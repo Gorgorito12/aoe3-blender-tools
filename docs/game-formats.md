@@ -373,6 +373,45 @@ in game (test T0 in `docs/game-test.md`).
   `Heal` and `Build` (the four Build names the stock explorer has: Build, BuildLifting, BuildSaw,
   BuildStaking) the animations played. A copy of the Heal action under another name healed nothing.
 
+### A unit's animations on another model (`aoe3game/gr2_retarget.py`, `tools/retarget_anims.py`)
+
+- **An animation plays only on the model it is named for** (**measured** in the code of the
+  game's exe, The Asian Dynasties, 2026-11-23): both places that start an animation on a model
+  (the calls at 0x426A5F and 0x4B6F1F) first call `GrannyFindTrackGroupForModel(animation, the
+  model's name)`, the name of `GrannyGetSourceModel(instance)`, and skip the animation when it
+  finds no track group of that name. A Granny animation holds a track group per model, named after
+  the model; in the game's files a model is named after its skeleton's root.
+- **The Aztec Macehualtin** (`units\natives\aztec\macehuatlin\macehuatlin_01`, its low-detail
+  model and its sling) is named `bone_master`: a master bone at the origin above the standard biped,
+  with the hit point bar and a `bone_launchpoint` on it. Its animations
+  (`animation_library\natives\macehuatlin\*`, raw 3ds Max files: inches, Z up) hold one track group
+  `bone_master`. Every standard infantry model compared (Wars of Liberty's skirmisher and
+  `redolero_2age`, the game's native rifleman and Holcan spearman) is named `Bip01`, its biped
+  the root. So on any of them the slinger's animations are not bound (inferred from the code: the
+  model shows its bind pose; not yet seen in game). The rigs are otherwise the same biped: the same
+  bone names, axes and lengths (rest positions within 1.6 cm, rotations equal), the Macehualtin's
+  extra toe and ponytail bones aside.
+- **The sling** is an attachment with an anim file of its own
+  (`macehuatlin_sling01.xml`, `attach a="sling" frombone="bone_sling" tobone="PROP1"
+  syncanims="1"`): its model is also named `bone_master` and its clips
+  (`animation_library\natives\macehuatlin\sling\*`, the same names as the body's) bind to it on
+  any body, following the hand's `Bip01 Prop1`. It needs no change.
+- **Tag files**: each Macehualtin clip has a `.gr2.precomp` with the usual bone tags and a
+  `LAUNCHPOINT` (where the stone leaves: constant, 2.5 units ahead of the unit at 1.45 up in the
+  attack). A retargeted clip gets its own, the bone tags sampled on the target, `MASTER`,
+  `LAUNCHPOINT` and the rotations kept.
+- **Retargeting** (`gr2_retarget.Retarget`): each target bone takes the source bone's change of
+  world rotation from its rest pose; its position follows its parent and its own rest offset; the
+  biped root moves as the source's, scaled by the ratio of the two roots' heights; the props
+  (`Bip01 Prop1`, `Prop2`) keep the source's frame in the hand, so the sling hangs as on the
+  Macehualtin; the hit point bar keeps the source's place. Written in one track group named after
+  the target model, 60 samples a second, degree-1 curves (at 30 a second the fastest melee swing
+  drifted up to 0.14 in a frame entry from the source; at 60, 0.04).
+- **Checked** (2026-11-23): the 35 clips on two targets (70 files) compressed to Oodle1 by the
+  game's granny2.dll and expanded back (CRC, `info`, round trip as `recompress_models.py` checks),
+  and posed on the target from the runtime's copy, equal to the retarget's own frames within 0.04.
+  Whether the game plays them, the sling and the stone from the hand, is **to verify** in game.
+
 ## Textures (.ddt)
 
 | Offset | Content |

@@ -31,6 +31,13 @@ three together).
   (64x64 BGRA, a mottled blue frame, a green tick for "on", a red tint and cross for "off"), drawn from
   code; the first glyph, `autoscout`, a map half explored with a dotted route and a spyglass, for the
   auto scout buttons. Test: `tests/test_command_icons.py`.
+- **A unit's animations on another model** (`tools/retarget_anims.py`, a form in Art utilities;
+  `aoe3game/gr2_retarget.py`): the game plays an animation on a model only through a track group named
+  after the model (measured in its code), so the Aztec Macehualtin's slinger animations (`bone_master`)
+  do nothing on a standard infantry model (`Bip01`). The tool puts each clip on the target's skeleton,
+  writes it with its tag file, the anim file blocks to paste and a review sheet; recipes for a Wars of
+  Liberty light infantry model and the game's native rifleman. `aoe3game/gr2_anim.py` comes from the
+  dismount work (unchanged).
 
 - **A copy's fonts** (`tools/game_fonts.py`, two forms in Art utilities): which letters each typeface of
   `fonts3.xml` lacks, and every font with a file extended at once (`extend_font.py`) under a new family

@@ -988,6 +988,28 @@ TOOLS = [
               L("Lists every model with its sizes, not only the totals.",
                 "Lista cada modelo con sus tamaños, no solo los totales."))],
          needs=("game",), outputs=("out",), minutes=3),
+    Tool("retarget_anims", "tools/retarget_anims.py", "art",
+         L("A unit's animations on another model", "Las animaciones de una unidad en otro modelo"),
+         L("Puts one model's animations on another model's skeleton (by default the Aztec Macehualtin's slinger "
+           "animations on a standard infantry model, where the game would not play them): Granny files and their "
+           "tag files, the anim file blocks to paste, a report; optionally a review sheet and contact sheets.",
+           "Pone las animaciones de un modelo en el esqueleto de otro (por defecto las de hondero del Macehualtin "
+           "azteca en un modelo de infantería estándar, donde el juego no las reproduce): archivos Granny y sus "
+           "archivos de etiquetas, los bloques del anim file para pegar y un informe; opcionalmente una hoja de "
+           "revisión y hojas de contacto."),
+         [game_dir(),
+          out_dir(help=L("Where the animations, the anim file blocks and the sheets go. Never a Steam library.",
+                         "Dónde van las animaciones, los bloques del anim file y las hojas. Nunca una "
+                         "biblioteca de Steam.")),
+          Arg("recipe", "--recipe", "text", L("Recipes", "Recetas"), repeat=True, placeholder="skirmisher native"),
+          Arg("granny_helper", "--granny-helper", "file", L("Helper program", "Programa auxiliar"),
+              filters=(("Program", "*.exe"),), work=os.path.join("..", "recompress_helper", "granny_recompress.exe")),
+          Arg("only", "--only", "text", L("Only these clips", "Solo estos clips")),
+          Arg("preview", "--preview", "save", L("Review sheet", "Hoja de revisión"), filters=(("PNG", "*.png"),)),
+          Arg("preview_clips", "--preview-clips", "text", L("Clips of the review sheet", "Clips de la hoja de revisión")),
+          Arg("sheets", "--sheets", "bool", L("Contact sheets", "Hojas de contacto")),
+          Arg("fps", "--fps", "float", L("Samples a second", "Muestras por segundo"))],
+         needs=("game",), outputs=("out",), minutes=2),
     Tool("gr2_check", "tools/gr2_check.py", "art",
          L("Check models with the game's runtime", "Comprobar modelos con el motor del juego"),
          L("What the game's own granny2.dll reads in a model (meshes, vertices, bone bindings, skeletons), beside "

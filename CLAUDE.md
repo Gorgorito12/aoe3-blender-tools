@@ -65,6 +65,8 @@ python -I tests/test_gr2_fit.py                  # fit_borrowed on synthetic mod
 python -I tests/test_gr2_edit.py                  # a model's whole tree written again; the runtime check (fake)
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
 python -I tests/test_dmg_bones.py                 # dmg_bones.py --fix: definebone lines, text and .xmb
+venv/bin/python -I tests/test_retarget_anims.py    # gr2_retarget and retarget_anims on synthetic rigs
+venv/bin/python -I tools/retarget_anims.py --game <copy> --out <dir> [--recipe skirmisher --recipe native] [--preview <png>]
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
 venv/bin/python -I -X utf8 tools/game_fonts.py stage --game <copy> --out <dir outside it> --suffix WoL   # a copy's fonts, extended
 venv/bin/python -I -X utf8 tests/test_game_fonts.py  # a copy's fonts surveyed, extended, deployed and undone
@@ -121,7 +123,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_skin.py` (a
   unit's skeleton with rotations followed, four weights a vertex, skinning to a pose), `gr2_edit.py`
   (a model's whole tree copied and written again: the start of a transplant), `gr2_fit.py` (a
-  model fitted in place to a borrowed damage template or animation), `gr2_types.py`
+  model fitted in place to a borrowed damage template or animation), `gr2_anim.py` (animations
+  read, posed and written), `gr2_retarget.py` (a model's animations put on another skeleton, with
+  their tag files), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
   portrait framing; numpy), `animxml.py`, `precomp.py` (an animation's tag file,
