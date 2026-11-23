@@ -6,6 +6,27 @@ three together).
 
 ## Unreleased
 
+- `tools/make_rings.py`: range rings for attacks that reach only ships, `range_<metres>_ships` (the same line in 48
+  dashes), and fills, `rangefill_<metres>_p<player>`: a disc under the ring on the game's `alphablend` shader, clear at
+  the centre and rising to 30-38 % at the edge, one texture per player colour (that shader has no player colour).
+  `--no-range-fills` and `--no-ship-rings` leave them out.
+- `aoe3game.gr2_write.static_model`: `colour_effect`, the effect of a player-coloured material (the units' shader by
+  default).
+- `tools/make_rings.py`: range rings without the white edges, the whole line in the owner's colour like a selection
+  circle, and thinner (0.5 m, +0.008 m per metre of radius). Their flat bump map had a shine of 128 in its red channel
+  and a normal tilted along the ring in its alpha: the sun's shine added white and the colour looked pale. It is now
+  flat with no shine (R 0, A 128, as the game's own flat bump).
+- `tools/make_rings.py`: range rings at their true size. The game draws a flat particle `<scale>` metres wide in all,
+  not twice that, so every `range_<metres>` ring showed half its radius (measured in game: the 12 m ring at 6 m).
+  `range_scale` writes twice the old scale (the textures are unchanged); after the fix the 4, 12 and 30 m rings pass
+  between markers just inside and outside their radius. The aura rings and icons, sized by eye in game, keep their
+  files; their comments now call the number the particle's scale (a unit's ring is 2.2 m across).
+- `tools/make_rings.py`: range rings up to 100 m (18, 22, 26, 28, 32, 36, 40, 45, 50, 60, 70, 80 and 100 added; the
+  line widens a little on the large ones), and the markers' floating icons redrawn as cartoons by the new
+  `tools/cartoon_icons.py` (shapes as signed distances, flat colours, a light tone per part, a thick dark outline):
+  a pickaxe over a nugget for gold, an axe for wood, a leg of meat for food, and `aura_hunt`, `aura_berry`,
+  `aura_farm`, `aura_fish` with a bow, berries, an ear of wheat and a fish; 128-texel BGRA so the colours stay flat.
+
 - `tools/make_command_icon.py`: command button icons in the style of Wars of Liberty's own on / off buttons
   (64x64 BGRA, a mottled blue frame, a green tick for "on", a red tint and cross for "off"), drawn from
   code; the first glyph, `autoscout`, a map half explored with a dotted route and a spyglass, for the

@@ -62,6 +62,58 @@ class BoldStyle(unittest.TestCase):
             self.assertEqual(msi.main(["--style", "bold", "--all", tmp, "--check"]), 1)
 
 
+class TypeIcons(unittest.TestCase):
+    def test_format_edges_and_room(self):
+        for glyph, draw in msi.TYPE_GLYPHS.items():
+            data = msi.encode_type(glyph)
+            h = ddt.read_header(data)
+            self.assertEqual((h.width, h.height, h.format, h.alpha, h.mips), (32, 32, ddt.BGRA, 4, 1), glyph)
+            rgba = np.asarray(ddt.decode(data))
+            shown = rgba[..., 3] == 255
+            self.assertEqual(set(np.unique(rgba[..., 3]).tolist()), {0, 255}, glyph)
+            edge = shown & ~(np.roll(shown, 1, 0) & np.roll(shown, -1, 0) & np.roll(shown, 1, 1) &
+                             np.roll(shown, -1, 1))
+            self.assertTrue((rgba[edge, :3] == 0).all(), glyph)
+            ys, xs = np.nonzero(draw().cover)
+            self.assertGreaterEqual(min(xs.min(), ys.min()), 2, glyph)
+            self.assertLessEqual(max(xs.max(), ys.max()), 29, glyph)
+            colour = shown & (rgba[..., :3].max(axis=2) > 40)
+            self.assertGreater(int(colour.sum()), 80, glyph)  # a sabre's blade is the thinnest
+
+    def test_coats(self):
+        """The standing unit wears red, the line unit blue: the same soldier otherwise."""
+        def coat(glyph):
+            rgba = msi.render_type(glyph).astype(int)
+            torso = rgba[22:29, 8:24, :3].reshape(-1, 3)
+            return int((torso[:, 0] - torso[:, 2] > 80).sum()), int((torso[:, 2] - torso[:, 0] > 80).sum())
+        red, blue = coat("standing"), coat("line")
+        self.assertGreater(red[0], 30)
+        self.assertGreater(blue[1], 30)
+        self.assertGreater(red[0], 3 * red[1])
+        self.assertGreater(blue[1], 3 * blue[0])
+        shape = lambda g: msi.render_type(g)[..., 3] == 255  # noqa: E731
+        self.assertTrue((shape("standing") == shape("line")).all())
+
+    def test_files_keep_the_mod_names(self):
+        paths = [p for files in msi.TYPE_FILES.values() for p in files]
+        self.assertEqual(len(paths), len(set(paths)))
+        self.assertEqual(set(msi.TYPE_FILES), set(msi.TYPE_GLYPHS))
+        for p in paths:
+            self.assertTrue(p.startswith(("ui/ingame/", "WoL/ui/ingame/staticons/")), p)
+            self.assertTrue(p.endswith(".ddt"), p)
+        self.assertIn("WoL/ui/ingame/staticons/stat_icon_ranged.ddt", msi.TYPE_FILES["winged_bullet"])
+        self.assertIn("WoL/ui/ingame/staticons/stat_icon_standing_unit.ddt", msi.TYPE_FILES["standing"])
+
+    def test_types_write_and_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(msi.main(["--types", tmp]), 0)
+            written = sorted(str(p.relative_to(tmp)).replace(os.sep, "/") for p in pathlib.Path(tmp).rglob("*.ddt"))
+            self.assertEqual(written, sorted(p for files in msi.TYPE_FILES.values() for p in files))
+            self.assertEqual(msi.main(["--types", tmp, "--check"]), 0)
+            (pathlib.Path(tmp) / "ui/ingame/stat_hero.ddt").write_bytes(b"RTS3")
+            self.assertEqual(msi.main(["--types", tmp, "--check"]), 1)
+
+
 class SoftStyle(unittest.TestCase):
     def test_first_set_unchanged_format(self):
         h = ddt.read_header(msi.encode("stopwatch"))

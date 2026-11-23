@@ -276,6 +276,7 @@ def to_file(p, units):
 
 def static_model(name, positions, normals, uvs, triangles, *, texture, bump,
                  bones=(), effect="bumpspec_mask_alphatest", player_colour=False,
+                 colour_effect="bumpspec_mask_pixelxform",
                  units_per_meter=STOCK_BASIS["units_per_meter"], v_flip=True, source=""):
     """Bytes of a .gr2 holding one static, textured mesh.
 
@@ -283,7 +284,8 @@ def static_model(name, positions, normals, uvs, triangles, *, texture, bump,
     triangles: vertex index triples, any winding (each one is put in the game's order, counter
     clockwise around its normal in the stored coordinates). texture, bump: the stored texture
     names (the engine matches the part after "\\art\\"). bones: (name, (x, y, z) metres) attach
-    points, children of the root as the game's buildings have them.
+    points, children of the root as the game's buildings have them. player_colour: the material's
+    pixelxformColor is the owner's colour (playerColor), on colour_effect (the units' shader by default).
     """
     S = schema()
     n = len(positions)
@@ -326,7 +328,7 @@ def static_model(name, positions, normals, uvs, triangles, *, texture, bump,
     map_diffuse = W(S["Material"], Name="Map #0", Maps=[], Texture=tex_diffuse)
     map_bump = W(S["Material"], Name="Map #1", Maps=[], Texture=tex_bump)
     if player_colour:
-        params = W(S["ShaderParamsColour"], ESEffectName="bumpspec_mask_pixelxform",
+        params = W(S["ShaderParamsColour"], ESEffectName=colour_effect,
                    ESEffectParamName1="lighting", ESEffectParamValue1="lighting\\specpower16",
                    ESEffectParamLookup1=0, ESEffectParamName2="pixelxformColor",
                    ESEffectParamValue2="playerColor", ESEffectParamLookup2=2)

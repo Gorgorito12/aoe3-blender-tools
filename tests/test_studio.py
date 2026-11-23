@@ -1076,7 +1076,7 @@ class Forms(unittest.TestCase):
     def test_the_catalog_is_complete_and_in_both_languages(self):
         scripts = {t.script for t in catalog.TOOLS}
         for name in os.listdir(os.path.join(ROOT, "tools")) + ["../scripts/" + n for n in os.listdir(os.path.join(ROOT, "scripts"))]:
-            if not name.endswith(".py") or name in ("bitfont.py", "build_app.py"):
+            if not name.endswith(".py") or name in ("bitfont.py", "build_app.py", "cartoon_icons.py"):
                 continue                   # a library, and the build of the studio itself
             rel = ("tools/" + name) if not name.startswith("..") else name[3:]
             self.assertIn(rel, scripts, f"{rel} has no form in studio/catalog.py")
