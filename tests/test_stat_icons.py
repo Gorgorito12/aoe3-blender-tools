@@ -114,6 +114,32 @@ class TypeIcons(unittest.TestCase):
             self.assertEqual(msi.main(["--types", tmp, "--check"]), 1)
 
 
+class SquareAspect(unittest.TestCase):
+    """--aspect 1: the glyphs for a panel that draws icons square."""
+
+    def tearDown(self):
+        msi.set_aspect(0.72)
+
+    def test_round_in_the_texture(self):
+        msi.set_aspect(1.0)
+        icon = msi.render_bold("cylinder")
+        ys, xs = np.nonzero(icon[..., 3])
+        w, h = xs.max() - xs.min() + 1, ys.max() - ys.min() + 1
+        self.assertLessEqual(abs(int(w) - int(h)), 1)     # a disc, not an ellipse
+        self.assertGreaterEqual(h, 30)                    # it fills the square
+        icon = msi.render_bold("stopwatch")
+        ys, xs = np.nonzero(icon[..., 3])
+        self.assertLess(xs.max() - xs.min(), ys.max() - ys.min())   # the case round, the crown on top
+
+    def test_default_unchanged(self):
+        msi.set_aspect(1.0)
+        msi.set_aspect(0.72)
+        before = msi.encode_bold("cylinder")
+        self.assertEqual(ddt.read_header(before).width, 32)
+        ys, xs = np.nonzero(msi.render_bold("cylinder")[..., 3])
+        self.assertGreater(xs.max() - xs.min(), ys.max() - ys.min())  # wider than tall, as for the squeezing panel
+
+
 class SoftStyle(unittest.TestCase):
     def test_first_set_unchanged_format(self):
         h = ddt.read_header(msi.encode("stopwatch"))
