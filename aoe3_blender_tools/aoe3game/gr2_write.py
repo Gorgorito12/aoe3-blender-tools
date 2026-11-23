@@ -85,6 +85,7 @@ class _Writer:
         self.types = {}             # id(spec) -> loc
         self.objects = {}           # id(W) -> loc
         self.strings = {}
+        self.align = 4              # the section's alignment
 
     def alloc(self, run, size, align=4):
         b = self.runs[run]
@@ -144,7 +145,14 @@ class _Writer:
             if not value.count:
                 return None, 0
             run = element_bits(value.spec)
-            loc = self.alloc(run, len(value.raw), max(1, run // 8))
+            align = max(1, run // 8)
+            if [m[1] for m in value.spec.members] == ["FD"]:
+                # the game's packed vertex stream: the game reads it only 16-byte aligned (a model
+                # written with it at an odd offset is not drawn: seen in game 2026-11-23; the
+                # stock files give it a section of its own, aligned to 16)
+                run, align = 32, 16
+                self.align = 16
+            loc = self.alloc(run, len(value.raw), align)
             self.runs[run][loc[1]:loc[1] + len(value.raw)] = value.raw
             return loc, value.count
         items = list(value or [])
@@ -236,8 +244,10 @@ def serialize(root, *, type_tag=TYPE_TAG):
     header_end = 0x20 + gr2.HEADER_SIZE[6] + gr2.SECTION_RECORD     # 132
     reloc_off = header_end
     data_off = reloc_off + gr2.RELOCATION * len(relocs)
+    pad = (-data_off) % w.align if w.align > 4 else 0      # the section starts aligned in the file too
+    data_off += pad
     total = data_off + len(data)
-    sec = gr2.Section(0, data_off, len(data), len(data), 4, base[16], base[8],
+    sec = gr2.Section(0, data_off, len(data), len(data), w.align, base[16], base[8],
                       reloc_off, len(relocs), data_off, 0)
     out = bytearray()
     out += gr2.MAGIC
@@ -248,6 +258,7 @@ def serialize(root, *, type_tag=TYPE_TAG):
     out += sec.pack()
     for s, t in relocs:
         out += struct.pack("<3I", s, 0, t)
+    out += bytes(pad)
     out += data
     assert len(out) == total
     struct.pack_into("<I", out, 0x28, gr2.file_crc(out))

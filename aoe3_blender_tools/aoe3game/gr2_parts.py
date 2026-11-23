@@ -38,9 +38,11 @@ NORMAL_BIAS = 63.5          # a packed normal byte b stands for (b - 63.5) / 63.
 # Reading
 
 
-def packed_normals(raw):
+def packed_normals(raw, tangents=False):
     """Unit normals (N x 3, file axes) of a packed vertex stream: per rigid block of four, four
-    4-byte words after the positions; per skinned vertex, the word after its weights."""
+    4-byte words after the positions; per skinned vertex, the word after its weights. With
+    `tangents`, the tangents instead: the next four words (rigid) or the next word (skinned), in
+    the same code."""
     gr2_mesh.packed(raw)                                   # the header's checks
     (_m, _s, _h, count, _g, table, blocks, rigid_bytes, skinned, _sb, rigid,
      _n) = struct.unpack_from("<12I", raw, 0)
@@ -49,8 +51,8 @@ def packed_normals(raw):
     b = np.frombuffer(raw, np.uint8, skinned * gr2_mesh.FD_SKINNED,
                       at + rigid_bytes).reshape(skinned, gr2_mesh.FD_SKINNED)
     words = np.empty((count, 4), np.float64)
-    words[:rigid] = a[:, 48:64].reshape(blocks * 4, 4)
-    words[rigid:] = b[:, 16:20]
+    words[:rigid] = (a[:, 64:80] if tangents else a[:, 48:64]).reshape(blocks * 4, 4)
+    words[rigid:] = b[:, 20:24] if tangents else b[:, 16:20]
     n = (words[:, :3] - NORMAL_BIAS) / NORMAL_BIAS
     return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
 
@@ -102,6 +104,7 @@ def mesh_parts(data):
         if gr2_mesh.is_packed(vs):
             pos = gr2_mesh.packed(vs.raw)[0].astype(np.float64)
             nrm = packed_normals(vs.raw)
+            tan = packed_normals(vs.raw, tangents=True)
             skin = gr2_mesh.packed_skin(vs.raw)
         else:
             pos = gr2_mesh._column(vs, "Position", 3)
@@ -110,6 +113,8 @@ def mesh_parts(data):
             pos = pos.astype(np.float64)
             nrm = gr2_mesh._column(vs, "Normal", 3)
             nrm = np.zeros_like(pos) if nrm is None else nrm.astype(np.float64)
+            tan = gr2_mesh._column(vs, "Tangent", 3)
+            tan = np.zeros_like(pos) if tan is None else tan.astype(np.float64)
             skin = gr2_mesh._skin_columns(vs)
         n = len(pos)
         if skin is None:
@@ -123,7 +128,7 @@ def mesh_parts(data):
             tri_mat[max(0, first):max(0, first + cnt)] = mat
         names = [b.get("BoneName") for b in (m.get("BoneBindings") or []) if b is not None]
         mats = [b.get("Material") if b is not None else None for b in (m.get("MaterialBindings") or [])]
-        out.append({"name": m.get("Name"), "positions": pos, "normals": nrm, "uvs": _raw_uvs(vs, n),
+        out.append({"name": m.get("Name"), "positions": pos, "normals": nrm, "tangents": tan, "uvs": _raw_uvs(vs, n),
                     "triangles": tris, "vertex_bone": vb, "skin_names": names, "tri_material": tri_mat,
                     "materials": mats, "mesh": m, "doc": doc})
     return out
@@ -210,6 +215,30 @@ def cut_triangles(data, mesh_name, keep):
     return gr2_write_serialize(root, doc)
 
 
+def add_bones(data, bones):
+    """The bytes of `data` (an uncompressed model) with bones added at the end of its skeleton:
+    [(name, parent bone name, 4 x 4 local frame (rigid, column vectors), 4 x 4 world frame at the
+    bind pose (for the InverseWorldTransform))]. Nothing else changes: a bone no vertex is bound to,
+    such as a launch point an animation moves."""
+    doc = gr2.load(data)
+    root = gr2_edit.copy_tree(doc)
+    skel = root.values["Skeletons"][0]
+    bones_list = skel.values["Bones"]
+    names = [b.values.get("Name") for b in bones_list]
+    proto = bones_list[0]
+    for name, parent, local, world in bones:
+        if name in names:
+            raise ValueError(f"the skeleton has a bone {name!r} already")
+        w = W(proto.spec, **{k: v for k, v in proto.values.items()})
+        w.values["Name"] = name
+        w.values["ParentIndex"] = names.index(parent)
+        w.values["Transform"] = _transform(np.asarray(local, np.float64))
+        w.values["InverseWorldTransform"] = _iwt(np.asarray(world, np.float64))
+        bones_list.append(w)
+        names.append(name)
+    return serialize(root, type_tag=doc.c.type_tag)
+
+
 def gr2_write_serialize(root, doc):
     return serialize(root, type_tag=doc.c.type_tag)
 
@@ -277,7 +306,9 @@ def rigid_model(source, name, bones, parts, *, source_name=""):
     (ArtToolInfo) are kept. bones: [(name, parent index or -1, 4 x 4 world frame at rest, rigid,
     column vectors, file units)], the first the root (the model is named after it). parts: dicts
     with name, bone (a name of `bones`), positions and normals (N x 3, model space, file axes),
-    uvs (N x 2 as stored), triangles (file winding: counter-clockwise seen from outside), and
+    optionally tangents (N x 3; the vertices then carry them, as the game's plain unit meshes do:
+    without them the bump shaders lit the stock Gatling's barrels far too bright in game), uvs (N x 2
+    as stored), triangles (file winding: counter-clockwise seen from outside), and
     materials (per triangle, a Material object, gr2.Obj, of any loaded file). Each part becomes one
     mesh, its triangles grouped by material, bound whole to its bone."""
     S = schema()
@@ -315,8 +346,14 @@ def rigid_model(source, name, bones, parts, *, source_name=""):
             if all(mw is not u for u in used):
                 used.append(mw)
         tris = tris[order]
-        raw = b"".join(struct.pack("<8f", *pos[i], *nrm[i], *uvs[i]) for i in range(len(pos)))
-        vdata = W(S["VertexData"], Vertices=Flat(S["VertexPNT"], raw, len(pos)), VertexAnnotationSets=[])
+        tan = part.get("tangents")
+        if tan is not None:
+            tan = np.asarray(tan, np.float64)
+            raw = b"".join(struct.pack("<11f", *pos[i], *nrm[i], *tan[i], *uvs[i]) for i in range(len(pos)))
+            vdata = W(S["VertexData"], Vertices=Flat(_pntt(), raw, len(pos)), VertexAnnotationSets=[])
+        else:
+            raw = b"".join(struct.pack("<8f", *pos[i], *nrm[i], *uvs[i]) for i in range(len(pos)))
+            vdata = W(S["VertexData"], Vertices=Flat(S["VertexPNT"], raw, len(pos)), VertexAnnotationSets=[])
         flat = tris.ravel().tolist()
         if len(pos) <= 0xFFFF:
             i16, i32 = Flat(S["Int16"], struct.pack(f"<{len(flat)}H", *flat), len(flat)), []
@@ -352,6 +389,15 @@ def rigid_model(source, name, bones, parts, *, source_name=""):
              Skeletons=[skeleton], VertexDatas=vdatas, TriTopologies=topos, Meshes=meshes, Models=[model],
              TrackGroups=[], Animations=[])
     return serialize(root, type_tag=doc.c.type_tag)
+
+
+def _pntt():
+    """The vertex type of the game's plain unit meshes with a tangent (the stock Gatling's
+    magazine): position, normal, tangent, UV."""
+    from .gr2 import REAL32
+    from .gr2_types import Spec
+    return Spec("VertexPNTT", [(REAL32, "Position", None, 3), (REAL32, "Normal", None, 3),
+                               (REAL32, "Tangent", None, 3), (REAL32, "TextureCoordinates0", None, 2)])
 
 
 def face_normals_ok(positions, normals, triangles):

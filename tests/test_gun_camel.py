@@ -146,6 +146,59 @@ class RigidModel(unittest.TestCase):
         self.assertTrue(np.allclose(pb, gc.apply(turn, b["file_positions"]), atol=1e-5))
 
 
+class InGameFixes(unittest.TestCase):
+    """What the game needed (2026-11-23): a packed stream 16-byte aligned, bones added for the launch
+    point, tangents on the gun's vertices, constant scales in a clip."""
+
+    def test_a_packed_stream_is_written_16_byte_aligned(self):
+        from aoe3game.gr2_types import Spec
+        from aoe3game import gr2 as g2
+        raw = packed_stream([(64, 64, 127)] * 4, (64, 64, 127))
+        fd = Spec("FDVertex", [(g2.UINT8, "FD", None, 0)])
+        from aoe3game.gr2_types import schema
+        S = schema()
+        root = gr2_write.W(S["VertexData"], Vertices=gr2_write.Flat(fd, raw, len(raw)), VertexAnnotationSets=[])
+        data = gr2_write.serialize(root)
+        at = data.find(struct.pack("<I", gr2_mesh.FD_MAGIC))
+        self.assertEqual(at % 16, 0)
+        self.assertTrue(gr2.crc_ok(data))
+        self.assertEqual(gr2.load(data).root().get("Vertices").raw, raw)
+
+    def test_bones_added_at_the_end(self):
+        data = quad_model()
+        local = gc.tr((0.1, 0.2, 0.3))
+        out = gr2_parts.add_bones(data, [("bone_launchpoint", "part", local, local)])
+        rig = Rig.of(gr2.load(out).root())
+        self.assertEqual(rig.names[-1], "bone_launchpoint")
+        self.assertTrue(np.allclose(rig.by_name(rig.rest_worlds())["bone_launchpoint"][:3, 3], (0.1, 0.2, 0.3)))
+        self.assertTrue(np.array_equal(gr2_mesh.read(out)["meshes"][0]["triangles"],
+                                       gr2_mesh.read(data)["meshes"][0]["triangles"]))
+        with self.assertRaises(ValueError):
+            gr2_parts.add_bones(out, [("bone_launchpoint", "part", local, local)])
+
+    def test_tangents_are_written_and_read_back(self):
+        src = quad_model()
+        part = gc.sub_part(gr2_parts.mesh_parts(src)[0], np.array([True, True, False, False]))
+        part["tangents"] = np.tile([1.0, 0.0, 0.0], (len(part["positions"]), 1))
+        out = gr2_parts.rigid_model(src, "root", [("root", -1, np.eye(4)), ("bone_a", 0, np.eye(4))],
+                                    [dict(part, name="a", bone="bone_a")])
+        back = gr2_parts.mesh_parts(out)[0]
+        self.assertTrue(np.allclose(back["tangents"], part["tangents"]))
+        self.assertTrue(np.allclose(back["positions"], part["positions"]))
+
+    def test_a_constant_scale_in_a_clip(self):
+        from aoe3game.gr2_anim import animation_file, Curve
+        t = np.array([0.0, 1.0])
+        tracks = [("Root", t, np.zeros((2, 3)), np.tile([0, 0, 0, 1.0], (2, 1)))]
+        data = animation_file("x", 1.0, "Root", tracks, scales={"root": [2, 0, 0, 0, 2, 0, 0, 0, 2]})
+        tr = gr2.load(data).root().get("TrackGroups")[0].get("TransformTracks")[0]
+        c = Curve.of(tr.get("ScaleShearCurve"))
+        self.assertTrue(np.allclose(c.controls[0], [2, 0, 0, 0, 2, 0, 0, 0, 2]))
+        plain = animation_file("x", 1.0, "Root", tracks)
+        tr = gr2.load(plain).root().get("TrackGroups")[0].get("TransformTracks")[0]
+        self.assertTrue(Curve.of(tr.get("ScaleShearCurve")).empty())
+
+
 class SwivelCut(unittest.TestCase):
     def test_pieces_and_post(self):
         # a body at x >= 0, and two pieces at x < -0.2 above y 1.6: a vertical post and a bar on it
