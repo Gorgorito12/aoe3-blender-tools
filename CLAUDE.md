@@ -64,6 +64,7 @@ python -I tools/fit_borrowed.py <model|folder> [--dmg <template>] [--rest-from <
 python -I tests/test_gr2_fit.py                  # fit_borrowed on synthetic models, plain Python
 python -I tests/test_gr2_edit.py                  # a model's whole tree written again; the runtime check (fake)
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
+python -I tests/test_dmg_bones.py                 # dmg_bones.py --fix: definebone lines, text and .xmb
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
 venv/bin/python -I -X utf8 tools/game_fonts.py stage --game <copy> --out <dir outside it> --suffix WoL   # a copy's fonts, extended
 venv/bin/python -I -X utf8 tests/test_game_fonts.py  # a copy's fonts surveyed, extended, deployed and undone
