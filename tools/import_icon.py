@@ -4,7 +4,8 @@ uncompressed BGRA .ddt with one level, as a mod's own stat and unit type icons.
 
     venv\\Scripts\\python -I tools/import_icon.py --png <icon.png> --out <icon.ddt> [--aspect 0.65] [--size 32]
         [--set-height 890 --valign bottom]
-        [--tint "#C75A21" --tint-seed X,Y [--tint-mid 177] [--tint-lighten 0.15]] [--preview <x8.png>]
+        [--tint "#C75A21" --tint-seed X,Y [--tint-mid 177] [--tint-lighten 0.15]]
+        [--sides 321,769 [--sides-cut 186,904] [--sides-scale 0.75] [--sides-tuck 30]] [--preview <x8.png>]
 
 What it does, in order (nothing is redrawn):
 - `--tint`: recolours one region of the picture, the pixels connected to the seed (X,Y in the PNG's pixels) that are
@@ -13,6 +14,11 @@ What it does, in order (nothing is redrawn):
   its main face) becomes the colour itself, darker greys the colour darkened in proportion, lighter greys the colour
   mixed toward white, so shading, highlights and dark bands stay. `--tint-lighten f` mixes the colour toward white by
   f first. The outline and every other region keep their pixels.
+- `--sides L,R`: the picture as a middle (columns L..R-1) between two sides (a winged bullet: the bullet between its
+  wings), to make a wide picture narrower without redrawing it: `--sides-cut A,B` takes out the columns A..L-1 and
+  R..B-1 (where the sides run straight, so their tips stay as drawn), `--sides-scale s` scales the sides (nearest),
+  `--sides-tuck t` slides each side t pixels behind the middle; the sides keep their vertical centre and the middle
+  is drawn over them;
 - crops the picture to its visible pixels;
 - `--aspect`: the share of its width a panel keeps when it draws a square icon (the minimized unit panel draws a
   type icon of an attack row in 11 x 17 pixels at 1920 x 1080: 0.65; the default 0.72 is make_type_icon's). The
@@ -20,7 +26,8 @@ What it does, in order (nothing is redrawn):
 - fits it in the square (`--size`), the longer side filling it, or at the scale where `--set-height` source pixels
   fill it (one scale for the pictures of a set), and reduces it by area averaging with premultiplied alpha: each texel
   is the mean of the picture's pixels it covers, so a pixel-art picture whose grid does not divide the size keeps
-  every outline as a soft edge rather than losing rows or columns;
+  every outline as a soft edge rather than losing rows or columns (a picture smaller than that, such as an icon
+  .ddt whose content fills 28 of its 32 rows, is enlarged by linear interpolation instead);
 - centres it, both sides of the same parity as the square so the margins are equal (a mark centred on its line);
   `--valign bottom` sets it on the bottom edge instead (busts cut at the waist).
 
@@ -104,11 +111,56 @@ def tint(rgba, mask, colour, lighten=0.0, white=0.8, mid=None):
     return out
 
 
+def _over(dst, layer, x, y):
+    """`layer` pasted at (x, y) over `dst`, where its alpha is above half."""
+    h, w = layer.shape[:2]
+    x0, y0, x1, y1 = max(x, 0), max(y, 0), min(x + w, dst.shape[1]), min(y + h, dst.shape[0])
+    if x1 > x0 and y1 > y0:
+        part = layer[y0 - y:y1 - y, x0 - x:x1 - x]
+        dst[y0:y1, x0:x1] = np.where(part[..., 3:4] > 127, part, dst[y0:y1, x0:x1])
+
+
+def compose_sides(rgba, sides, cut=None, scale=1.0, tuck=0):
+    """The picture with its two sides (columns before sides[0], from sides[1] on) shortened (`cut`: the columns
+    cut[0]..sides[0]-1 and sides[1]..cut[1]-1 go), scaled (nearest) and slid `tuck` pixels behind the middle."""
+    a = rgba_of(rgba)
+    l, r = sides
+    lc, rc = cut if cut else (l, r)
+    left, middle, right = a[:, :lc], a[:, l:r], a[:, rc:]
+    if scale != 1.0:
+        def nearest(part):
+            h, w = part.shape[:2]
+            nh, nw = max(1, round(h * scale)), max(1, round(w * scale))
+            return part[(np.arange(nh) * h // nh)[:, None], (np.arange(nw) * w // nw)[None, :]]
+        left, right = nearest(left), nearest(right)
+    ys = np.nonzero(a[:, :l, 3] > 127)[0]
+    cy = (ys.min() + ys.max()) / 2 if len(ys) else a.shape[0] / 2
+    lv, rv = left.shape[1] - tuck, right.shape[1] - tuck
+    out = np.zeros((a.shape[0], lv + middle.shape[1] + rv, 4), np.uint8)
+    y = int(round(cy - left.shape[0] / 2)) if scale != 1.0 else 0
+    _over(out, left, 0, y)
+    _over(out, right, out.shape[1] - right.shape[1], y)
+    _over(out, middle, lv, 0)
+    return out
+
+
 def _even_to(n, size):
     """`n` rounded to the nearest whole number of the parity of `size` (equal margins), within 1..size."""
     lo = int(np.floor(n))
     cands = [c for c in (lo - 1, lo, lo + 1, lo + 2) if 1 <= c <= size and (size - c) % 2 == 0]
     return min(cands, key=lambda c: abs(c - n))
+
+
+def _linear_resize(img, h, w):
+    """H x W x C float image resampled to h x w by linear interpolation between pixel centres."""
+    def axis(n_in, n_out):
+        c = np.clip((np.arange(n_out) + 0.5) * n_in / n_out - 0.5, 0, n_in - 1)
+        i0 = np.floor(c).astype(int)
+        return i0, np.minimum(i0 + 1, n_in - 1), c - i0
+    y0, y1, fy = axis(img.shape[0], h)
+    x0, x1, fx = axis(img.shape[1], w)
+    rows = img[y0] * (1 - fy)[:, None, None] + img[y1] * fy[:, None, None]
+    return rows[:, x0] * (1 - fx)[None, :, None] + rows[:, x1] * fx[None, :, None]
 
 
 def fit(rgba, size=32, aspect=0.72, set_height=None, valign="centre"):
@@ -128,11 +180,12 @@ def fit(rgba, size=32, aspect=0.72, set_height=None, valign="centre"):
         raise ValueError(f"at that scale the picture ({w / aspect:.0f} x {h} widened) is larger than the square")
     tw = _even_to(wide * scale, size)
     th = _even_to(h * scale, size) if valign == "centre" else max(1, min(size, int(round(h * scale))))
-    if th > h or tw > w:
-        raise ValueError(f"the picture ({w} x {h}) is smaller than the icon it would fill ({tw} x {th})")
     prem = a.copy()
     prem[..., :3] *= a[..., 3:4] / 255.0
-    small = ddt.area_resize(prem, th, tw).astype(np.float64)
+    if th > h or tw > w:  # a small picture enlarged (a 28-texel icon to 32): linear, not area
+        small = _linear_resize(prem, th, tw)
+    else:
+        small = ddt.area_resize(prem, th, tw).astype(np.float64)
     alpha = small[..., 3:4]
     small[..., :3] = np.where(alpha > 0, small[..., :3] * 255.0 / np.maximum(alpha, 1e-9), 0)
     out = np.zeros((size, size, 4), np.uint8)
@@ -155,7 +208,7 @@ def enlarged(icon, zoom=8, bg=PANEL_BROWN):
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--png", required=True, help="the drawn icon, transparent background")
+    ap.add_argument("--png", required=True, help="the drawn icon, transparent background (a .ddt is read too)")
     ap.add_argument("--out", help="the .ddt to write")
     ap.add_argument("--size", type=int, default=32, help="the square's side in texels (32)")
     ap.add_argument("--aspect", type=float, default=0.72,
@@ -169,14 +222,23 @@ def main(argv):
                     help="a luminance between the outline's and the region's darkest part (35)")
     ap.add_argument("--tint-mid", type=float, help="the grey (0-255 luminance) that becomes the colour (the median)")
     ap.add_argument("--tint-lighten", type=float, default=0.0, help="mix the colour toward white first (0..1)")
+    ap.add_argument("--sides", help="L,R: the middle's first column and the right side's first column")
+    ap.add_argument("--sides-cut", help="A,B: the columns A..L-1 and R..B-1 go (the sides shortened)")
+    ap.add_argument("--sides-scale", type=float, default=1.0, help="scale of the sides (nearest)")
+    ap.add_argument("--sides-tuck", type=int, default=0, help="pixels each side slides behind the middle")
     ap.add_argument("--preview", help="write the icon enlarged 8 times on the panel's brown (PNG)")
     a = ap.parse_args(argv)
-    src = rgba_of(read_png(pathlib.Path(a.png).read_bytes()))
+    raw = pathlib.Path(a.png).read_bytes()
+    src = rgba_of(ddt.decode(raw) if a.png.lower().endswith(".ddt") else read_png(raw))
     if a.tint:
         if not a.tint_seed:
             ap.error("--tint needs --tint-seed")
         seed = tuple(int(v) for v in a.tint_seed.split(","))
         src = tint(src, region(src, seed, a.tint_floor), parse_colour(a.tint), a.tint_lighten, mid=a.tint_mid)
+    if a.sides:
+        pair = lambda v: tuple(int(x) for x in v.split(","))  # noqa: E731
+        src = compose_sides(src, pair(a.sides), pair(a.sides_cut) if a.sides_cut else None, a.sides_scale,
+                            a.sides_tuck)
     icon = fit(src, a.size, a.aspect, a.set_height, a.valign)
     if a.out:
         data = encode(icon)

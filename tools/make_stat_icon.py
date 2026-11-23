@@ -6,14 +6,16 @@ types, range, bonuses), in two styles:
   icons are made; solid shapes, strokes of 3 to 7 texels, alpha only 0 or 255 (one sample per texel, no
   supersampling), each part with its own black contour and the glyph with a black outline 2 texels wide. The
   panel draws icons at about 10 x 14 screen pixels (narrower than tall), so round parts are drawn wider than tall
-  (`AX`) to look round there;
+  (`AX`, `--aspect`, default 0.72) to look round there; `--aspect 1` draws them round in the texture, for a panel
+  that draws icons square (one whose `<icon="(N)">` width matches its text line);
 - `--style soft` (the first set, kept for comparison): 16x16 DXT3, one level, drawn at 8 samples per texel side
   and averaged (soft edges), outlined in a dark brown. Drawn 10 pixels wide, its 1-texel strokes come out thin
   and blurred.
 
     venv\\Scripts\\python -I tools/make_stat_icon.py [--style bold] [--glyph stopwatch] [--out <file.ddt>]
                                                   [--png <preview.png>] [--check]
-    venv\\Scripts\\python -I tools/make_stat_icon.py --style bold --all <folder> [--png <sheet.png>] [--check]
+    venv\\Scripts\\python -I tools/make_stat_icon.py --style bold --all <folder> [--aspect 1] [--png <sheet.png>]
+                                                  [--check]
 
 Bold glyphs (the file name `--all` gives each one):
 - `stopwatch` (`stat_icon_rof.ddt`): a rate of fire: a brass case with a crown, a cream face, two hands;
@@ -315,6 +317,12 @@ class Bold:
         return np.hypot((self.x - cx) * AX, self.y - cy)
 
 
+def set_aspect(ax):
+    """Draws the next glyphs for a panel that keeps `ax` of a square icon's width (1: square)."""
+    global AX
+    AX = float(ax)
+
+
 def bold_stopwatch():
     """Rate of fire: a brass stopwatch, its crown on top, a cream face with two thick hands."""
     k = Bold()
@@ -432,19 +440,21 @@ GUN_LIGHT = (214, 220, 230)
 
 def bold_cylinder():
     """Projectiles per reload: a revolver's cylinder seen from the chambers' side: a steel disc, six round chambers
-    around the centre pin."""
+    around the centre pin. The disc keeps its width in the texture whatever AX is (scale s = AX / 0.72: at 0.72 the
+    original drawing, at 1 a round disc that fills the square)."""
     k = Bold()
     x, y = k.x, k.y
     cx, cy = 16.0, 16.0
+    s = AX / 0.72
     d = k.round(cx, cy)
-    body = d <= 10.0
+    body = d <= 10.0 * s
     k.paint(body, GUN)
-    k.paint(body & ((x - cx) * AX + (y - cy) > 4.5), GUN_DARK)
-    k.paint(body & ((x - cx) * AX + (y - cy) < -8.0), GUN_LIGHT)
+    k.paint(body & ((x - cx) * AX + (y - cy) > 4.5 * s), GUN_DARK)
+    k.paint(body & ((x - cx) * AX + (y - cy) < -8.0 * s), GUN_LIGHT)
     for q in range(6):  # the chambers
         a = math.radians(60 * q)
-        k.paint(k.round(cx + 6.0 * math.sin(a) / AX, cy - 6.0 * math.cos(a)) <= 1.9, BLACK)
-    k.paint(d <= 1.4, BLACK)  # the centre pin
+        k.paint(k.round(cx + 6.0 * s * math.sin(a) / AX, cy - 6.0 * s * math.cos(a)) <= 1.9 * s, BLACK)
+    k.paint(d <= 1.4 * s, BLACK)  # the centre pin
     return k
 
 
@@ -976,8 +986,11 @@ def main(argv):
                     "their paths under it (ui/ingame/..., WoL/ui/ingame/staticons/...)")
     ap.add_argument("--compare", metavar="GAME", help="with --types and --png: the preview is a sheet of each "
                     "file as this game copy has it (left) and the new one (right), enlarged 4 times")
+    ap.add_argument("--aspect", type=float, default=AX,
+                    help="AX: the share of a square icon's width the panel keeps (0.72; 1 = drawn square)")
     ap.add_argument("--check", action="store_true")
     a = ap.parse_args(argv)
+    set_aspect(a.aspect)
     if a.types:
         status = 0
         for glyph, rels in TYPE_FILES.items():
