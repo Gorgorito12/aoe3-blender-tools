@@ -158,6 +158,18 @@ def point(m, p):
     return (m @ np.r_[np.asarray(p, np.float64), 1.0])[:3]
 
 
+def rigid(m):
+    """A 4 x 4 frame without its scale and shear (the nearest rotation, same translation)."""
+    u, _s, vt = np.linalg.svd(np.asarray(m, np.float64)[:3, :3])
+    r = u @ vt
+    if np.linalg.det(r) < 0:
+        u[:, -1] *= -1
+        r = u @ vt
+    out = np.array(m, np.float64)
+    out[:3, :3] = r
+    return out
+
+
 def lower_keys(d):
     return {k.lower(): v for k, v in d.items()}
 
@@ -479,10 +491,16 @@ class Camel:
         self.cut = cut_data
         read = gr2_mesh.read(cut_data)
         self.mesh, self.skel = read["meshes"][0], read["skeletons"][0]
-        self._anims = {}
+        self._anims, self._scales = {}, {}
+        croot = gr2.load(cut_data).root()
+        self.rest_scales = []
+        for b in croot.get("Skeletons")[0].get("Bones"):
+            t = b.get("Transform")
+            self.rest_scales.append(np.array(t["scale_shear"], np.float64).reshape(3, 3)
+                                    if int(t["flags"]) & 4 else np.eye(3))
         self.base = self.anim(spec.get("idle", ZAMB + "zamburak_camel_idle00"))
         P0 = self.pose(self.base, 0.0)
-        self.hang_local = np.linalg.inv(P0[self.mount]) @ P0[self.hang]       # the hang bone on the chest
+        self.hang_local = np.linalg.inv(rigid(P0[self.mount])) @ rigid(P0[self.hang])   # the hang bone on the chest
         self.hang_bind = self.bind @ self.hang_local      # the hang bone at the bind pose (the chest's scale)
 
     def fix_hang(self, pose):
@@ -490,23 +508,92 @@ class Camel:
         if self.hang == self.mount:
             return pose
         from aoe3game.gr2_pose import set_frame
-        return set_frame(pose, self.rig, self.hang, pose[self.mount] @ self.hang_local)
+        return set_frame(pose, self.rig, self.hang, rigid(pose[self.mount]) @ self.hang_local)
 
     def anim(self, rel):
         if rel not in self._anims:
-            self._anims[rel] = Animation.load(self.game.granny(rel))
+            data = self.game.granny(rel)
+            a = Animation.load(data)
+            self._scales[id(a)] = self.effective_scales(gr2.load(data).root())
+            self._anims[rel] = a
         return self._anims[rel]
 
-    def pose(self, anim, t):
-        return self.rig.by_name(self.rig.pose(anim, t))
+    def load(self, data):
+        """An animation of our own (bytes), registered with its scales."""
+        a = Animation.load(data)
+        self._scales[id(a)] = self.effective_scales(gr2.load(data).root())
+        return a
+
+    def effective_scales(self, root):
+        """The scale/shear (3 x 3, model axes) the runtime gives each bone in a clip: its track's
+        constant curve turned into the model's axes; none (identity) when its track has an empty
+        curve; the skeleton's rest scale when the clip has no track for it (measured on the stock
+        camel's tag files, 2026-11-23: the idle's tags fit identity, not the rest scales)."""
+        from aoe3game.gr2_anim import Basis, Curve
+        C, _s = Basis.of(root).to(self.rig.basis)
+        curves = {}
+        for tr in (root.get("TrackGroups") or [None])[0].get("TransformTracks") or []:
+            curves[tr.get("Name").lower()] = Curve.of(tr.get("ScaleShearCurve"))
+        out = []
+        for i, n in enumerate(self.rig.names):
+            c = curves.get(n.lower())
+            if c is None:
+                out.append(self.rest_scales[i])
+            elif c.empty():
+                out.append(np.eye(3))
+            else:
+                out.append(C @ np.asarray(c.controls[0], np.float64).reshape(3, 3) @ C.T)
+        return out
+
+    def locals_(self, anim, t):
+        """[(position, quaternion)] per bone at t: the track's (in the model's axes and units) or
+        the rest's."""
+        from aoe3game.gr2_anim import matrix_quat
+        from aoe3game.gr2_skin import quat_matrix
+        c, sc = anim.basis.to(self.rig.basis)
+        out = []
+        for i, n in enumerate(self.rig.names):
+            tr = anim.tracks.get(n.lower())
+            rp, rq = self.rig.rest[i]
+            if tr is None:
+                out.append((rp, rq))
+                continue
+            p, q = tr.local(t, (None, None))
+            p = rp if p is None else sc * (c @ p)
+            q = rq if q is None else matrix_quat(c @ quat_matrix(q) @ c.T)
+            out.append((p, q))
+        return out
+
+    def worlds(self, locs, scales):
+        from aoe3game.gr2_anim import frame
+        out = []
+        for i, ((p, q), S) in enumerate(zip(locs, scales)):
+            m = frame(p, q)
+            m[:3, :3] = m[:3, :3] @ S
+            par = self.rig.parents[i]
+            out.append(out[par] @ m if par >= 0 else m)
+        return self.rig.by_name(out)
+
+    def pose(self, anim, t, scales=None):
+        """World frames by name at t as the runtime draws them (scales included)."""
+        return self.worlds(self.locals_(anim, t), scales or self._scales[id(anim)])
+
+    # the bones a borrowed clip does not scale (the camel keeps its own idle's): the sheep's clips
+    # scale the master to 0.58, which shrinks the whole camel
+    OWN_SCALE = ("hs bone master", "hs bone chest", "bone attachpoint", "bone hitpointbar")
+
+    def borrowed_scales(self, anim):
+        own, theirs = self._scales[id(self.base)], self._scales[id(anim)]
+        return [theirs[i] if (n.lower() in anim.tracks and n.lower() not in self.OWN_SCALE) else own[i]
+                for i, n in enumerate(self.rig.names)]
 
     def borrowed(self, anim, t):
         """The pose at t of a clip of the same rig made for another animal: its tracks where it has
         them, the camel's idle (first frame) for the bones it lacks (the rider's bone above all)."""
-        own = self.rig.localise(self.pose(self.base, 0.0))
-        theirs = self.rig.localise(self.pose(anim, t))
+        own = self.locals_(self.base, 0.0)
+        theirs = self.locals_(anim, t)
         locs = [theirs[i] if n.lower() in anim.tracks else own[i] for i, n in enumerate(self.rig.names)]
-        return self.rig.by_name(self.rig.worlds(locs))
+        return self.worlds(locs, self.borrowed_scales(anim))
 
     def lowest(self, pose):
         exact = {n: pose[n.lower()] for n in (b["name"] for b in self.skel["bones"]) if n.lower() in pose}
@@ -571,30 +658,42 @@ class Camel:
             out.append({k: tr((0.0, dy, 0.0)) @ v for k, v in p.items()})
         return out
 
-    # bones whose scale the clips leave at none: the posing here has none, so the rider and the gun
-    # are placed where the game draws them (a stock walk scales these three by about 0.78, 1.18 and
-    # 1.09; the sheep's lying clips scale the master by 0.58)
-    UNSCALED = ("hs bone master", "hs bone chest", "bone attachpoint", "bone hitpointbar")
-
-    def scale_curves(self, rel):
-        """{bone: 9 floats}: the clip's constant scale/shear per bone (the legs' mirrors, the hooves,
-        the head), the UNSCALED bones left out."""
-        root = gr2.load(self.game.granny(rel)).root()
-        out = {}
-        from aoe3game.gr2_anim import Curve
-        for tr in (root.get("TrackGroups") or [None])[0].get("TransformTracks") or []:
-            c = Curve.of(tr.get("ScaleShearCurve"))
-            name = tr.get("Name").lower()
-            if not c.empty() and name not in self.UNSCALED and self.rig.has(name):
-                out[name] = [float(v) for v in c.controls[0]]
-        return out
-
-    def track_bytes(self, name, times, poses, like, scales=None):
-        frames = [self.rig.localise(p) for p in poses]
+    def track_bytes(self, name, times, poses, like, scales):
+        """A clip of our own from world frames drawn with `scales` (one 3 x 3 per bone): each bone's
+        local rotation with its scale taken out, and that scale written as its constant curve, so
+        the runtime draws exactly these frames."""
+        from aoe3game.gr2_anim import matrix_quat
+        inv_s = [np.linalg.inv(S) for S in scales]
+        frames = []
+        for P in poses:
+            w = [P[n.lower()] for n in self.rig.names]
+            loc = []
+            for i in range(len(w)):
+                par = self.rig.parents[i]
+                m = np.linalg.inv(w[par]) @ w[i] if par >= 0 else w[i]
+                r = m[:3, :3] @ inv_s[i]
+                u, _sv, vt = np.linalg.svd(r)
+                r = u @ vt
+                loc.append((m[:3, 3].copy(), matrix_quat(r)))
+            frames.append(loc)
         tracks = [(bone, times, np.array([f[i][0] for f in frames]), np.array([f[i][1] for f in frames]))
                   for i, bone in enumerate(self.rig.names)]
+        sc = {n.lower(): [float(v) for v in S.ravel()] for n, S in zip(self.rig.names, scales)}
         return animation_file(name, float(times[-1]), self.rig.names[0], tracks, basis=self.rig.basis,
-                              accumulation=like.accumulation, timestep=like.timestep, source=name, scales=scales)
+                              accumulation=like.accumulation, timestep=like.timestep, source=name, scales=sc)
+
+    def hang_scale(self, pose, scales):
+        """`scales` with the hang bone's replaced by the one that keeps it rigid under its parent
+        (after fix_hang)."""
+        if self.hang == self.mount:
+            return scales
+        i = self.rig.index[self.hang]
+        par = self.rig.parents[i]
+        m = np.linalg.inv(pose[self.rig.names[par].lower()]) @ pose[self.hang]
+        r = rigid(m)[:3, :3]
+        out = list(scales)
+        out[i] = r.T @ m[:3, :3]
+        return out
 
 
 # --------------------------------------------------------------------------------------------------
@@ -754,6 +853,8 @@ B_DOWN = LIB + "quads\\bighorn_sheep_laydownA"
 B_IDLE = LIB + "quads\\bighorn_sheep_laydown_idleA"
 B_UP = LIB + "quads\\bighorn_sheep_laydown_getup"
 FOOT_DEATH = LIB + "range\\death_standing_rifleman_A"
+CAMEL_DEATH = "units\\asians\\indians\\sowar\\sowarCamel_death00"
+RIDER_DEATH = LIB + "cavalry\\sword_deathA"       # 3.0 s, as long as the camel's
 
 # The clips of each variant: our name, the anim name it plays under, where the camel's motion comes
 # from (a stock clip of the camel, a borrowed lying-down clip of the same rig laid on the ground, or
@@ -777,6 +878,8 @@ CLIPS = {
          "lower": 22.0, "dip": 6.0},
         {"name": "reload", "anim": "Attack_ranged_reload", "camel": ZAMB + "zamburak_camel_reload",
          "do": "reload", "lower": 22.0},
+        # one death for every death anim name (the camel's and the gun's must be the same clip)
+        {"name": "fall", "anim": "Death", "camel": CAMEL_DEATH, "do": "fall"},
     ],
     "B": [
         {"name": "idle", "anim": "Idle", "camel": ZAMB + "zamburak_camel_idle00",
@@ -795,6 +898,7 @@ CLIPS = {
         {"name": "undeploy", "anim": "Bombard_limber", "borrow": B_UP, "do": "mount", "hold_before": 2.0},
         # killed while deployed: the lying camel rolls onto its right side, the gunner falls at the gun
         {"name": "death", "anim": "Bombard_death", "still": B_IDLE, "length": 3.0, "do": "foot_death"},
+        {"name": "fall", "anim": "Death", "camel": CAMEL_DEATH, "do": "fall"},
     ],
 }
 # the reload: (share of the clip, where the magazine is) - the left hand leaves the casing for the
@@ -837,7 +941,7 @@ class Unit:
     # -- the gun in the world (camel space) at a camel pose
 
     def C(self, P):
-        return P[self.camel.hang] @ self.gun.S
+        return rigid(P[self.camel.hang]) @ self.gun.S
 
     @staticmethod
     def world_dir(C, v):
@@ -1050,10 +1154,10 @@ class Unit:
         times = np.linspace(0.0, length, n)
         b = Built(clip, times)
         cname = f"{self.r['name']}_camel_{self.variant}_{clip['name']}"
-        src = clip.get("camel") or clip.get("borrow") or clip.get("still")
-        scales = cam.scale_curves(src)
+        scales = cam._scales[id(anim)] if "camel" in clip else cam.borrowed_scales(anim)
         if "camel" in clip:
-            # written as our own clip even when unchanged: its scale curves then follow UNSCALED
+            # written as our own clip even when unchanged (every bone with the scale the runtime
+            # gives it in the stock clip, so it draws the same)
             poses = [cam.pose(anim, t) for t in times]
             if clip.get("lower"):
                 poses = [cam.lower_head(P, clip["lower"] + clip.get("dip", 0.0) * math.sin(math.pi * t / length) ** 2)
@@ -1078,9 +1182,14 @@ class Unit:
             still = cam.grounded(anim, [0.0])[0]
             poses = [still] * n
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
-        poses = [cam.fix_hang(P) for P in poses]
-        if b.camel_bytes is not None:
+        stock_attach = None
+        if clip.get("do") == "fall":
+            stock_attach = [rigid(P[cam.rider_bone]) for P in poses]
+        if "camel" not in clip or clip.get("do") == "fall":   # the rider's bone kept on the chest
+            poses = [cam.fix_hang(P) for P in poses]
+            scales = cam.hang_scale(poses[0], scales)
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
+        b.scales = scales
         do = clip.get("do")
         base = rider.anim(clip["rider"]) if clip.get("rider") else rider.idle
         bag = None
@@ -1099,8 +1208,14 @@ class Unit:
                 state["magazine"] = self.magazine_frame(keys, u)
             fr = g.frames(state)
             C = self.C(P)
-            attach = P[cam.rider_bone]
-            R = self.rider_pose(clip, do, t, length, u, P, C, fr, base, attach, b)
+            attach = rigid(P[cam.rider_bone])
+            if do == "fall":
+                # the stock rider death, played where the stock clip had his bone
+                k = len(b.camel)
+                anim = rider.anim(RIDER_DEATH)
+                R = rider.seated(anim, min(t, anim.duration), stock_attach[k], square=False)
+            else:
+                R = self.rider_pose(clip, do, t, length, u, P, C, fr, base, attach, b)
             b.camel.append(P)
             b.gun.append(fr)
             b.rider.append(R)
@@ -1111,7 +1226,7 @@ class Unit:
         """Where the magazine is put down, in design space: A, at the saddle beside the rider's left
         knee; B, beside the gunner's left hip."""
         if self.variant == "A":
-            S = self.rider.seated(self.rider.idle, 0.0, P[self.camel.rider_bone])
+            S = self.rider.seated(self.rider.idle, 0.0, rigid(P[self.camel.rider_bone]))
             knee = 0.4 * S["bip01 l thigh"][:3, 3] + 0.6 * S["bip01 l calf"][:3, 3]
             out = 0.14 * unit(S["bip01 l thigh"][:3, 3] - S["bip01 r thigh"][:3, 3])
             spot = knee + out + np.array([0.0, 0.40, 0.0])
@@ -1143,6 +1258,8 @@ class Unit:
 
     def rider_pose(self, clip, do, t, length, u, P, C, fr, base, attach, b):
         rider = self.rider
+        if do == "fall":
+            return rider.seated(rider.idle, 0.0, attach)
         if do in (None, "fire", "reload") and self.variant == "A" or do is None:
             tb = t * base.duration / length if do is None and clip.get("rider") else 0.0
             R = rider.seated(base, tb, attach)
@@ -1170,6 +1287,8 @@ class Unit:
             return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
         # variant B on foot (facing +x: he leans toward the gun about the world's z)
         stand = self.stand_pose()
+        if do == "fall":                     # the rider's own death clips play (anim file)
+            return rider.seated(rider.idle, 0.0, attach)
         if do in ("stand", "fire", "reload"):
             R = self.at_gun(stand, C, fr, do, u, b)
             return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
@@ -1288,10 +1407,11 @@ class Unit:
         g, name = self.gun, self.r["name"]
         bones = GunDesign.BONES
         locs = []
-        for fr in b.gun:
+        shifts = getattr(b, "gun_shift", None) or [np.eye(4)] * len(b.gun)
+        for fr, shift in zip(b.gun, shifts):
             worlds = {"root": np.eye(4)}
             for k in bones[1:]:
-                worlds[k] = g.to_model(fr[k])
+                worlds[k] = shift @ g.to_model(fr[k])
             loc = []
             for k in bones:
                 par = g.parent[k]
@@ -1305,7 +1425,7 @@ class Unit:
         b.gun_bytes = animation_file(self.clip_name("gun", b), float(b.times[-1]), names[0], tracks,
                                      basis=self.rider.rig.basis, accumulation=like.accumulation,
                                      timestep=like.timestep, source=self.clip_name("gun", b))
-        rl = [self.rider.to_local(R, P[self.camel.rider_bone]) for R, P in zip(b.rider, b.camel)]
+        rl = [self.rider.to_local(R, rigid(P[self.camel.rider_bone])) for R, P in zip(b.rider, b.camel)]
         b.rider_bytes = self.rider.track_bytes(self.clip_name("rider", b), b.times, rl, like)
         return b
 
@@ -1329,16 +1449,16 @@ class Playback:
         self.gun_fig = Figure(game, model_bytes)
         self.clips = {}
         for name, b in built.items():
-            camel = Animation.load(b.camel_bytes) if b.camel_bytes else unit.camel.anim(b.clip["camel"])
+            camel = unit.camel.load(b.camel_bytes) if b.camel_bytes else unit.camel.anim(b.clip["camel"])
             self.clips[name] = (camel, Animation.load(b.gun_bytes), Animation.load(b.rider_bytes), b)
 
     def poses(self, name, t):
         camel, gun, rider, _b = self.clips[name]
         cam, rr = self.unit.camel, self.unit.rider
-        P = cam.rig.by_name(cam.rig.pose(camel, t))
-        chest = P[cam.hang]
+        P = cam.pose(camel, t)
+        chest = rigid(P[cam.hang])
         G = {k: chest @ v for k, v in self.gun_rig.by_name(self.gun_rig.pose(gun, t)).items()}
-        attach = P[cam.rider_bone]
+        attach = rigid(P[cam.rider_bone])
         R = {k: attach @ v for k, v in rr.rig.by_name(rr.rig.pose(rider, t)).items()}
         return P, G, R
 
@@ -1364,11 +1484,12 @@ class Playback:
         """The largest distance between a built frame's bone and the read-back one (gun and rider)."""
         _c, _g, _r, b = self.clips[name]
         worst = 0.0
-        for t, P, fr, R in zip(b.times, b.camel, b.gun, b.rider):
+        shifts = getattr(b, "gun_shift", None) or [np.eye(4)] * len(b.gun)
+        for t, P, fr, R, shift in zip(b.times, b.camel, b.gun, b.rider, shifts):
             P2, G2, R2 = self.poses(name, t)
-            chest = P2[self.unit.camel.hang]
+            chest = rigid(P2[self.unit.camel.hang])
             for k in GunDesign.BONES[1:]:
-                want = chest @ self.unit.gun.to_model(fr[k])
+                want = chest @ shift @ self.unit.gun.to_model(fr[k])
                 worst = max(worst, float(np.abs(want[:3, 3] - G2[GunDesign.bone_name(k)][:3, 3]).max()))
             for k, v in R.items():
                 worst = max(worst, float(np.abs(v[:3, 3] - R2[k][:3, 3]).max()))
@@ -1669,6 +1790,60 @@ def launch_bones(cut, camel, src, recipe):
     return gr2_parts.add_bones(cut, [("bone_launchpoint", chest, local, world), ("bone_muzzle", chest, local, world)])
 
 
+LEG_WORDS = ("hip", "leg", "shin", "hoof", "arm", "clavicle", "shoulder", "pelvis", "stomach")
+
+
+def leg_gap(camel, b):
+    """For a clip made from a stock camel clip: the largest distance between a leg bone as the
+    runtime draws our written clip (read back with its scales) and as it draws the stock clip, or
+    None. The legs are never edited, so anything above float noise is a bug (a mirrored leg drawn
+    lifted, seen in game 2026-11-23, came from a scale copied in the clip's own axes)."""
+    if "camel" not in b.clip or b.camel_bytes is None:
+        return None
+    stock = camel.anim(b.clip["camel"])
+    mine = camel.load(b.camel_bytes)
+    bones = [n.lower() for n in camel.rig.names if any(w in n.lower() for w in LEG_WORDS)]
+    worst = 0.0
+    for t in b.times[::5]:
+        a, c = camel.pose(stock, t), camel.pose(mine, t)
+        worst = max(worst, max(float(np.abs(a[k][:3, 3] - c[k][:3, 3]).max()) for k in bones))
+    return worst
+
+
+TAG_BONES = {"ATTACHPOINT": "bone attachpoint", "MASTER": "hs bone master", "HEAD": "hs bone head",
+             "PELVIS": "hs bone pelvis", "R HAND": "bip01 r hand", "HITPOINTBAR": "bone hitpointbar"}
+NECK_BONES = ("hs bone neck lower", "hs bone neck upper")
+
+
+def camel_precomp(camel, template, length, pose_at):
+    """The tag file (.gr2.precomp) of a camel clip of ours: the stock idle's tags (ATTACHPOINT, the
+    rider's and the gun's tag, MASTER, HEAD, NECK, R HAND, PELVIS), sampled from our clip (ten keys
+    a second as the stock files). The game reads an animation's tags from this file; a clip
+    without one left the gun to jump off the corpse when it began to fade (seen in game)."""
+    from aoe3game import precomp
+    from aoe3game.gr2_anim import matrix_quat
+    import struct as st
+    pre = precomp.load(template)
+    keys = max(2, int(round(length * 10)) + 1)
+    times = np.linspace(0.0, length, keys)
+    poses = [pose_at(float(t)) for t in times]
+    neck = 0
+    for index, tracks in pre.mapping:
+        tag = pre.names[index].upper()
+        for k, tr in enumerate(tracks):
+            bone = NECK_BONES[min(k, 1)] if tag == "NECK" else TAG_BONES.get(tag)
+            if bone is None or bone not in poses[0]:
+                continue
+            pre.positions[tr] = [tuple(float(v) for v in P[bone][:3, 3]) for P in poses]
+            pre.rotations[tr] = [st.pack("<4f", *matrix_quat(rigid(P[bone])[:3, :3])) for P in poses]
+    for tr in range(len(pre.positions)):          # every track to the new number of keys
+        if len(pre.positions[tr]) != keys:
+            pre.positions[tr] = [pre.positions[tr][0]] * keys
+            pre.rotations[tr] = [pre.rotations[tr][0]] * keys
+    pre.duration = float(length)
+    return pre.encode()
+
+
 def runtime_check(data, runtime, tag):
     import make_pray as mp
     return mp.runtime_check(data, runtime, tag)
@@ -1733,6 +1908,8 @@ def main(argv):
         rider = Rider(game, recipe["rider"])
         foot = Rig.of(gr2.load(game.granny(FOOT_MODEL)).root())
         scene = Scene(game, recipe, camel, rider)
+        camel_tags = game._g.raw(ZAMB + "zamburak_camel_idle00.gr2.precomp", "")
+        tags = {}
         plays, units = {}, {}
         for variant in recipe["variants"]:
             for scale in recipe["scales"]:
@@ -1747,6 +1924,9 @@ def main(argv):
                     files[unit.clip_name("rider", b)] = b.rider_bytes
                     if b.camel_bytes:
                         files[unit.clip_name("camel", b)] = b.camel_bytes
+                        mine = camel.load(b.camel_bytes)
+                        tags[unit.clip_name("camel", b) + ".gr2.precomp"] = camel_precomp(
+                            camel, camel_tags, b.length, lambda t, a=mine: camel.pose(a, t))
                 pb = Playback(game, scene, unit, model, built)
                 plays[(variant, scale)] = pb
                 units[(variant, scale)] = (unit, built)
@@ -1759,6 +1939,10 @@ def main(argv):
                     report.append(f"  gunner on foot: crank at {si['handle height']:.2f}, his shoulders at "
                                   f"{si['shoulder height']:.2f}, crouch {si['crouch']:.2f}")
                 for name, b in built.items():
+                    legs = leg_gap(unit.camel, b)
+                    if legs is not None:
+                        report.append(f"  {name:9} legs against the stock clip {b.clip['camel'].split(chr(92))[-1]}: {legs:.1e}")
+                        failed |= legs > 1e-3
                     gap = pb.gap(name)
                     ok = gap < 1e-3 and b.reach < 0.03
                     report.append(f"  {name:9} {b.clip['anim']:22} {b.length:.3f} s {len(b.times)} frames; "
@@ -1776,6 +1960,10 @@ def main(argv):
                 report.append(f"runtime {fname}.gr2 {len(data)} B: crc {crc}, read {read}, oodle1 {packed} B"
                               + ("" if ok else "  FAIL"))
                 failed |= not ok
+        for fname, data in tags.items():
+            with open(os.path.join(folder, fname), "wb") as f:
+                f.write(data)
+        report.append(f"tag files: {len(tags)} (.gr2.precomp of the camel clips)")
         with open(os.path.join(args.out, f"{recipe['name']}-report.txt"), "w", encoding="utf-8") as f:
             f.write("\n".join(report) + "\n")
         print("\n".join(report))
