@@ -42,7 +42,8 @@ python tools/build_zip.py                          # dist/ zips (extension and l
 python -I tests/test_game_formats.py               # game formats, plain Python (venv for numpy parts)
 python -I tests/test_xmbedit.py                    # compiled XML (.xmb) and its text round trip
 venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, make_bar (about 70 s)
-venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, hard edges, outline
+venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, hard edges, outline; make_type_icon
+venv/bin/python -I tests/test_import_icon.py       # import_icon: a drawn PNG into a 32x32 icon .ddt (aspect, scale, tint)
 venv/bin/python -I tests/test_command_icons.py     # make_command_icon: format, frame, tick and cross
 venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout file's gadgets as boxes
 python -I tests/test_uilayout.py                  # interface layouts byte for byte, fonts, string table
@@ -59,8 +60,13 @@ python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
 python -I tools/recompress_models.py <folder> -o <out> --granny-install <game> [--like <originals>]   # --build-helper once
 python -I tests/test_recompress_models.py         # recompression with a fake runtime, plain Python
 python -I tools/gr2_check.py <model.gr2|folder> --granny-install <game> --rewrite   # the game's runtime as the judge
+python -I tools/fit_borrowed.py <model|folder> [--dmg <template>] [--rest-from <reference.gr2>] [--dry-run]   # fit to a borrowed .dmg or animation
+python -I tests/test_gr2_fit.py                  # fit_borrowed on synthetic models, plain Python
 python -I tests/test_gr2_edit.py                  # a model's whole tree written again; the runtime check (fake)
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
+python -I tests/test_dmg_bones.py                 # dmg_bones.py --fix: definebone lines, text and .xmb
+venv/bin/python -I tests/test_retarget_anims.py    # gr2_retarget and retarget_anims on synthetic rigs
+venv/bin/python -I tools/retarget_anims.py --game <copy> --out <dir> [--recipe skirmisher --recipe native] [--preview <png>]
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
 venv/bin/python -I -X utf8 tools/game_fonts.py stage --game <copy> --out <dir outside it> --suffix WoL   # a copy's fonts, extended
 venv/bin/python -I -X utf8 tests/test_game_fonts.py  # a copy's fonts surveyed, extended, deployed and undone
@@ -116,7 +122,10 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_skin.py` (a
   unit's skeleton with rotations followed, four weights a vertex, skinning to a pose), `gr2_edit.py`
-  (a model's whole tree copied and written again: the start of a transplant), `gr2_types.py`
+  (a model's whole tree copied and written again: the start of a transplant), `gr2_fit.py` (a
+  model fitted in place to a borrowed damage template or animation), `gr2_anim.py` (animations
+  read, posed and written), `gr2_retarget.py` (a model's animations put on another skeleton, with
+  their tag files), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
   portrait framing; numpy), `animxml.py`, `precomp.py` (an animation's tag file,

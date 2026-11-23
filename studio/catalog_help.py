@@ -5,6 +5,34 @@ catalog.py fills an option's empty help from here; tests/test_studio.py fails on
 left without help in either language."""
 
 HELP = {
+    'make_dismount': {
+        'sheets': ("Also draws every animation as a contact sheet of twelve frames, with the horse, from the side the rider gets off (sheets\\<name>.png).",
+                   "Dibuja además cada animación como hoja de contacto de doce cuadros, con el caballo, desde el lado por el que baja el jinete (sheets\\<nombre>.png)."),
+        'clips': ("Also writes every animation as a short video at 30 frames a second (sheets\\<name>.mp4); needs ffmpeg.",
+                  "Escribe además cada animación como un vídeo corto a 30 cuadros por segundo (sheets\\<nombre>.mp4); necesita ffmpeg."),
+        'horse': ("keep: the horse stays beside the rider on foot. hide: it is seen only while he gets off and on (its clips on foot keep it under the ground), and the rider stands on the unit's centre on foot, stepping there in the transitions (3.5 s); the files are named hidden_<name>.gr2. Empty: the recipe's choice (keep).",
+                  "keep: el caballo se queda junto al jinete a pie. hide: solo se ve mientras baja y sube (sus clips a pie lo dejan bajo tierra), y el jinete queda en el centro de la unidad a pie, al que llega con unos pasos en las transiciones (3,5 s); los archivos se llaman hidden_<nombre>.gr2. Vacío: lo que diga la receta (keep)."),
+        'test': ("Also the recipe's test animations, for actions the unit does not have (heal, build), in their own anim file blocks, for a test copy of the unit.",
+                 "También las animaciones de prueba de la receta, para acciones que la unidad no tiene (curar, construir), en sus propios bloques del anim file, para una copia de prueba de la unidad."),
+        'overview': ("One sheet for review, a row per animation (sheets\\overview.png); with the horse hidden, the moments after the dismount and before the mount show it gone.",
+                     "Una hoja para revisar, una fila por animación (sheets\\overview.png); con el caballo oculto, los momentos tras desmontar y antes de montar lo muestran ausente."),
+    },
+    'retarget_anims': {
+        'recipe': ("Recipe names (skirmisher: Wars of Liberty's light infantry model; native: the game's native rifleman) or JSON files with the same keys (source model and anim file, the clips' folder, the target model, the output folder), separated by spaces; several make one review sheet with every target. Empty: skirmisher.",
+                   "Nombres de receta (skirmisher: el modelo de infantería ligera de Wars of Liberty; native: el fusilero nativo del juego) o archivos JSON con las mismas claves (modelo y anim file de origen, la carpeta de los clips, el modelo de destino, la carpeta de salida), separados por espacios; varias hacen una sola hoja de revisión con todos los destinos. Vacío: skirmisher."),
+        'granny_helper': ("granny_recompress.exe, which expands the game's compressed models and animations through its own granny2.dll. Empty: the one built by \"Build the recompression helper\".",
+                          "granny_recompress.exe, que expande los modelos y animaciones comprimidos del juego con su propio granny2.dll. Vacío: el que hizo \"Construir el auxiliar de recompresión\"."),
+        'only': ("Clip names (the file names without .gr2), separated by commas. Empty: every clip of the source anim file in the clips' folder.",
+                 "Nombres de clip (los nombres de archivo sin .gr2), separados por comas. Vacío: todos los clips del anim file de origen en la carpeta de clips."),
+        'preview': ("A PNG for review: a few moments of each chosen clip on the source model beside every target, and a first row with what the game shows today.",
+                    "Un PNG para revisar: unos momentos de cada clip elegido en el modelo de origen junto a cada destino, y una primera fila con lo que el juego muestra hoy."),
+        'preview_clips': ("The clips of the review sheet, separated by commas. Empty: idle, walk, run, the sling attack and reload, the melee, the torch and two deaths.",
+                          "Los clips de la hoja de revisión, separados por comas. Vacío: reposo, caminar, correr, el ataque y la recarga de honda, el cuerpo a cuerpo, la antorcha y dos muertes."),
+        'sheets': ("Also draws every clip as a contact sheet of twelve moments on every model (sheets\\<clip>.png).",
+                   "Dibuja además cada clip como hoja de contacto de doce momentos en cada modelo (sheets\\<clip>.png)."),
+        'fps': ("Samples a second of the written animations. Default 60: at 30 the fastest melee swing drifted from the original.",
+                "Muestras por segundo de las animaciones escritas. Por defecto 60: a 30 el golpe cuerpo a cuerpo más rápido se apartaba del original."),
+    },
     'mesh_to_game': {
         'in': ("The model: an .obj (its .mtl and picture beside it), a .glb or a .gltf. One picture for the whole model.",
                "El modelo: un .obj (con su .mtl y su imagen al lado), un .glb o un .gltf. Una sola imagen para todo el modelo."),
@@ -146,6 +174,20 @@ HELP = {
         'verbose': (
             "Also lists the bones kept and the files left unchanged.",
             "También lista los huesos conservados y los archivos que no cambian."),
+    },
+    'fit_borrowed': {
+        'dmg': (
+            "The damage template (.dmg or .dmg.xmb) the models' anim file names. Debris meshes whose name is a part's name plus .001 (and bound to its bone) get the part's name. Empty: no mesh is renamed.",
+            "La plantilla de daños (.dmg o .dmg.xmb) que nombra el archivo de animación de los modelos. Las mallas de escombros cuyo nombre es el de una pieza más .001 (y unidas a su hueso) reciben el nombre de la pieza. Vacío: no se renombra ninguna malla."),
+        'inputs': (
+            "Granny models (.gr2), or folders searched for every .gr2 below them.",
+            "Modelos Granny (.gr2), o carpetas en las que se busca cada .gr2 que contengan."),
+        'rest_from': (
+            "The model the borrowed animation was made on (its death model for a death animation). Bones with the same name, parent and place take its rest frames; the meshes do not move. Empty: no bone changes.",
+            "El modelo sobre el que se hizo la animación prestada (su modelo de muerte para una animación de muerte). Los huesos con el mismo nombre, padre y lugar toman sus marcos de reposo; las mallas no se mueven. Vacío: ningún hueso cambia."),
+        'verbose': (
+            "Also lists every bone changed.",
+            "También lista cada hueso que cambia."),
     },
     'fix_hitpointbar': {
         'art': (

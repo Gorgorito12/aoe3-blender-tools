@@ -6,10 +6,69 @@ three together).
 
 ## Unreleased
 
+- Studio forms in Art utilities for `tools/make_type_icon.py`, `tools/import_icon.py`,
+  `tools/make_command_icon.py` and `tools/dmg_bones.py`, which had none (`tests/test_studio.py` failed on
+  them).
+- `tools/dmg_bones.py`: the damage templates whose parts name a bone the model using them lacks, or one its
+  anim file does not define with `<definebone>` (the game then reloads the model while units still draw it
+  and can crash), from the loose files and the `art\*.bar` archives, buildings' `<simskeleton>` included;
+  `--fix <folder>` writes copies of the anim files with the missing `<definebone>` lines (a loose `.xml`
+  edited as text, an archived one as a loose `.xml.xmb`), never in the game folder. Test:
+  `tests/test_dmg_bones.py`.
+- `tools/fit_borrowed.py` (`aoe3game/gr2_fit.py`, a form in Art utilities): a model fitted in place to a
+  borrowed damage template or animation: debris meshes renamed on export get the template part's name, and
+  bones take a reference model's rest frames, so a borrowed collapse animation places every piece as on the
+  reference. Test: `tests/test_gr2_fit.py`.
+- `tools/make_dismount.py` (`aoe3game/gr2_anim.py`, a form in Art utilities): dismount and mount
+  animations for a cavalry unit whose rider hangs on its horse, the rider's animations on foot made from
+  the infantry's, the horse kept beside him or hidden under the ground with the rider on the unit's centre,
+  the melee on foot only when asked, test animations for heal and build, contact and review sheets.
+  `gr2_anim.py` reads, poses and writes animations (tracks sorted by name, as the runtime looks them up).
+  Test: `tests/test_gr2_anim.py`.
+- `tools/make_type_icon.py`: unit type icons in a painted style (two infantrymen in shakos, a winged
+  arrow, a winged bullet as the alternative), 32x32 BGRA under their game paths. `tools/import_icon.py`:
+  an icon drawn elsewhere (a PNG) into a game icon `.ddt`, widened for panels that squeeze square icons
+  (`--aspect`), reduced by area averaging, recoloured by region (`--tint`), narrowed between its sides
+  (`--sides`). `tools/make_stat_icon.py --aspect`. Tests: `tests/test_import_icon.py`,
+  `tests/test_stat_icons.py`.
+- `tools/make_rings.py`: veterancy rank marks as soutache knots centred on the hit point bar, or from
+  drawn images (`--rank-shapes`); marker icons cut from a drawn sheet (`--icon-sheet`) with new markers
+  (ship, xp, oil); range rings as flat meshes in the owner's colour (`--range-particles` keeps the
+  particle rings). `tools/make_aura_rings.py` (a form in Art utilities): the game's own aura ring
+  recoloured per ring colour, with anti-rings for negative effects; its output derives from the game's
+  art and stays out of public repositories.
+- `tools/make_rings.py`: range rings for attacks that reach only ships, `range_<metres>_ships` (the same line in 48
+  dashes), and fills, `rangefill_<metres>_p<player>`: a disc under the ring on the game's `alphablend` shader, clear at
+  the centre and rising to 30-38 % at the edge, one texture per player colour (that shader has no player colour).
+  `--no-range-fills` and `--no-ship-rings` leave them out.
+- `aoe3game.gr2_write.static_model`: `colour_effect`, the effect of a player-coloured material (the units' shader by
+  default).
+- `tools/make_rings.py`: range rings without the white edges, the whole line in the owner's colour like a selection
+  circle, and thinner (0.5 m, +0.008 m per metre of radius). Their flat bump map had a shine of 128 in its red channel
+  and a normal tilted along the ring in its alpha: the sun's shine added white and the colour looked pale. It is now
+  flat with no shine (R 0, A 128, as the game's own flat bump).
+- `tools/make_rings.py`: range rings at their true size. The game draws a flat particle `<scale>` metres wide in all,
+  not twice that, so every `range_<metres>` ring showed half its radius (measured in game: the 12 m ring at 6 m).
+  `range_scale` writes twice the old scale (the textures are unchanged); after the fix the 4, 12 and 30 m rings pass
+  between markers just inside and outside their radius. The aura rings and icons, sized by eye in game, keep their
+  files; their comments now call the number the particle's scale (a unit's ring is 2.2 m across).
+- `tools/make_rings.py`: range rings up to 100 m (18, 22, 26, 28, 32, 36, 40, 45, 50, 60, 70, 80 and 100 added; the
+  line widens a little on the large ones), and the markers' floating icons redrawn as cartoons by the new
+  `tools/cartoon_icons.py` (shapes as signed distances, flat colours, a light tone per part, a thick dark outline):
+  a pickaxe over a nugget for gold, an axe for wood, a leg of meat for food, and `aura_hunt`, `aura_berry`,
+  `aura_farm`, `aura_fish` with a bow, berries, an ear of wheat and a fish; 128-texel BGRA so the colours stay flat.
+
 - `tools/make_command_icon.py`: command button icons in the style of Wars of Liberty's own on / off buttons
   (64x64 BGRA, a mottled blue frame, a green tick for "on", a red tint and cross for "off"), drawn from
   code; the first glyph, `autoscout`, a map half explored with a dotted route and a spyglass, for the
   auto scout buttons. Test: `tests/test_command_icons.py`.
+- **A unit's animations on another model** (`tools/retarget_anims.py`, a form in Art utilities;
+  `aoe3game/gr2_retarget.py`): the game plays an animation on a model only through a track group named
+  after the model (measured in its code), so the Aztec Macehualtin's slinger animations (`bone_master`)
+  do nothing on a standard infantry model (`Bip01`). The tool puts each clip on the target's skeleton,
+  writes it with its tag file, the anim file blocks to paste and a review sheet; recipes for a Wars of
+  Liberty light infantry model and the game's native rifleman. `aoe3game/gr2_anim.py` comes from the
+  dismount work (unchanged).
 
 - **A copy's fonts** (`tools/game_fonts.py`, two forms in Art utilities): which letters each typeface of
   `fonts3.xml` lacks, and every font with a file extended at once (`extend_font.py`) under a new family

@@ -1076,7 +1076,7 @@ class Forms(unittest.TestCase):
     def test_the_catalog_is_complete_and_in_both_languages(self):
         scripts = {t.script for t in catalog.TOOLS}
         for name in os.listdir(os.path.join(ROOT, "tools")) + ["../scripts/" + n for n in os.listdir(os.path.join(ROOT, "scripts"))]:
-            if not name.endswith(".py") or name in ("bitfont.py", "build_app.py"):
+            if not name.endswith(".py") or name in ("bitfont.py", "build_app.py", "cartoon_icons.py"):
                 continue                   # a library, and the build of the studio itself
             rel = ("tools/" + name) if not name.startswith("..") else name[3:]
             self.assertIn(rel, scripts, f"{rel} has no form in studio/catalog.py")
@@ -1162,6 +1162,27 @@ class Forms(unittest.TestCase):
             cmd, *_ = catalog.command(st, "make_stat_icon", {"glyph": "eye", "style": "bold"})   # as the page sends it
             self.assertEqual(cmd[cmd.index("--style") + 1], "bold")
             self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_stat_icon", "stat_icon.ddt"))
+            # the icon tools: type icons into an art folder, a drawn icon imported, command buttons
+            cmd, *_ = catalog.command(st, "make_type_icon", {"glyph": "line winged_bullet", "check": True})
+            self.assertEqual([cmd[i + 1] for i, x in enumerate(cmd) if x == "--glyph"], ["line", "winged_bullet"])
+            self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_type_icon"))
+            self.assertIn("--check", cmd)
+            cmd, *_ = catalog.command(st, "import_icon", {"png": "a.png", "aspect": "0.65", "tint": "#c75a21",
+                                                          "tint_seed": "10,20", "valign": "bottom"})
+            self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "import_icon", "icon.ddt"))
+            self.assertEqual(cmd[cmd.index("--tint") + 1], "C75A21")
+            self.assertEqual(cmd[cmd.index("--aspect") + 1], "0.65")
+            with self.assertRaises(catalog.ToolError):
+                catalog.command(st, "import_icon", {})              # the drawn icon is needed
+            cmd, *_ = catalog.command(st, "make_command_icon", {"glyph": "autoscout"})
+            self.assertEqual(cmd[cmd.index("--all") + 1], os.path.join(tmp, "make_command_icon"))
+            # damage templates' bones: the game first, fixes only into a folder that is asked for
+            cmd, *_ = catalog.command(st, "dmg_bones", {"game": "copy", "only": "cavalry"})
+            script = next(i for i, x in enumerate(cmd) if x.endswith("dmg_bones.py"))
+            self.assertEqual(cmd[script + 1], "copy")
+            self.assertNotIn("--fix", cmd)
+            cmd, *_ = catalog.command(st, "dmg_bones", {"game": "copy", "fix": os.path.join(tmp, "fixed")})
+            self.assertEqual(cmd[cmd.index("--fix") + 1], os.path.join(tmp, "fixed"))
             # the home-city tools: a plan per civ, each after its own flag; install asks first
             cmd, *_ = catalog.command(st, "hc_survey", {"game": "copy", "target": r"WoL\homecity",
                                                         "plan": "Spanish British"})
