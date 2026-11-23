@@ -315,6 +315,64 @@ equals what `gr2.load` reads in all 400, and each one written again reads alike 
 a valid CRC. Whether the game draws and animates a written unit as the original is **to verify**
 in game (test T0 in `docs/game-test.md`).
 
+### Animations read and written (`aoe3game/gr2_anim.py`, `tools/make_dismount.py`)
+
+- **Curves** (**measured**, granny2.dll 2.5.0.10 disassembled, 2026-11-21): the game's animation
+  files keep every track as the old curve type `{Degree, Knots, Controls}`, control i belonging to
+  knot i. `GrannySampleBSpline1x1` on the span k[i-1] <= t <= k[i] is (1 - u) P[i-1] + u P[i];
+  `2x1` weighs P[i-2], P[i-1], P[i] with the de Boor weights of k[i-2] .. k[i+1]: a standard
+  B-spline whose control m is P[m + 1]. The stock exports use degree 0 (one knot) for what never
+  moves and degree 2 with sparse knots for the rest, a knot a hair after the first. The ends are
+  clamped (the runtime's own padding of the ends, `GrannyConstructBSplineBuffers`, is not read).
+- **Bases**: each file states its own (the stock animation library mixes `ESPostExport` files,
+  right -x, up +y, back +z, 0.615 units a metre, with raw 3ds Max ones, right +x, up +z, back -y,
+  inches), and the game converts every file on loading: a rider's raw Max animation plays on an
+  `ESPostExport` rider. Converting is a similarity (positions scaled and turned, frames conjugated,
+  a mirror between the two allowed).
+- **Rigs differ**: Wars of Liberty's rider models are bipeds rooted at `Bip01 Root` whose thighs
+  hang from the spine and whose props hang from the root; the stock infantry's rig roots at `Bip01`
+  with the thighs on the pelvis and the props in the hands. A track sets its bone's frame relative
+  to the model's own parent, so an infantry animation played on a rider as it is folds him up; put
+  on by place (each rider bone on the world frame of its namesake) it shows the same pose.
+- **Track order** (**measured**): the stock files keep a group's tracks sorted by name byte by byte (HS Bone Tail_03
+  before one attachpoint), and the runtime looks a bone's track up by binary search: written in
+  skeleton order, an animation bound only some bones in game (a rider half in its rest pose, a
+  transition that seemed not to play); sorted, every bone moved.
+- **Written** animations: one track group named after the model's root, every track as degree-1
+  curves on 30 frames a second (degree 0 when it never moves), empty scale curves, as the stock
+  files. Whether the game plays them is in "In game" below.
+- **A rider hung on a horse** (`attach ... syncanims="1"`): every animation name of the unit is
+  played by the horse's anim file and by the rider's; the tags (attack, sound, particles) are read
+  from the horse's, the base model. The rider's origin follows the horse's `bone attachpoint`, so
+  a rider standing beside the horse is written in that bone's frame at each moment of the horse
+  animation played with it (`make_dismount.py` does), and each pair of animations has one length
+  (it writes a horse clip when the rider's is not a whole number of the horse's).
+- **A model per animation** (**measured** in the stock anim files): an `<anim>` names the
+  `<component>` it shows, and a file may define several. The cannon, culverin, falconet, great
+  bombard and rocket switch to a stripped model for their Bombard animations, the ships to a
+  death model, the surgeon and the explorer to a heal model; an `<anim>` may also carry its own
+  `<attach>` lines (the villager's hammer, the musketeer's torch). Stock models with a skeleton
+  and no meshes exist (`buildings\native_settlement\blankmaster`,
+  `units\animals\swan\swan_family_model`, which carries its swans as attachments).
+  **Measured** in game (2026-11-22, Wars of Liberty's Chasseur): a second component named by the
+  animations on foot, with the horse's skeleton without meshes (granny2.dll read it as 0 meshes,
+  35 bones), with degenerate triangles, or even with the horse's own model, showed nothing on that
+  component, the hung rider included (or only his hats, on the ground): a rider hung with
+  `syncanims="1"` does not follow a switch of the base model's component. Not used.
+- **A horse hidden by its animation** (`make_dismount.py --horse hide`, **measured** in game
+  2026-11-22): the horse clips of the animations on foot put every bone the horse's meshes are
+  skinned to 30 m under the ground and keep the others (the root, `bone attachpoint`, the hit point
+  bar, the launch point) where they were. The rider, written in his bone's frame, stands on the unit's
+  centre on foot (on the selection decal, under the hit point bar: measured on screenshots within a
+  few pixels); the dismount ends with a 1 s step from the horse's side to the centre once the horse
+  is under the ground, and the mount starts with the step back.
+  The horse is gone from the end of the dismount to the start of the mount, the rider fires, fights,
+  throws torches, heals, builds and dies on foot, and a game saved so loads so.
+- **A heal and a construction play fixed anim names** (**measured**, 2026-11-22): with an action's
+  `<anim>` set to another name, the unit healed and built in its idle; with anim blocks named
+  `Heal` and `Build` (the four Build names the stock explorer has: Build, BuildLifting, BuildSaw,
+  BuildStaking) the animations played. A copy of the Heal action under another name healed nothing.
+
 ## Textures (.ddt)
 
 | Offset | Content |

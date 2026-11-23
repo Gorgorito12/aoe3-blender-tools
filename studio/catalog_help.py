@@ -5,6 +5,18 @@ catalog.py fills an option's empty help from here; tests/test_studio.py fails on
 left without help in either language."""
 
 HELP = {
+    'make_dismount': {
+        'sheets': ("Also draws every animation as a contact sheet of twelve frames, with the horse, from the side the rider gets off (sheets\\<name>.png).",
+                   "Dibuja además cada animación como hoja de contacto de doce cuadros, con el caballo, desde el lado por el que baja el jinete (sheets\\<nombre>.png)."),
+        'clips': ("Also writes every animation as a short video at 30 frames a second (sheets\\<name>.mp4); needs ffmpeg.",
+                  "Escribe además cada animación como un vídeo corto a 30 cuadros por segundo (sheets\\<nombre>.mp4); necesita ffmpeg."),
+        'horse': ("keep: the horse stays beside the rider on foot. hide: it is seen only while he gets off and on (its clips on foot keep it under the ground), and the rider stands on the unit's centre on foot, stepping there in the transitions (3.5 s); the files are named hidden_<name>.gr2. Empty: the recipe's choice (keep).",
+                  "keep: el caballo se queda junto al jinete a pie. hide: solo se ve mientras baja y sube (sus clips a pie lo dejan bajo tierra), y el jinete queda en el centro de la unidad a pie, al que llega con unos pasos en las transiciones (3,5 s); los archivos se llaman hidden_<nombre>.gr2. Vacío: lo que diga la receta (keep)."),
+        'test': ("Also the recipe's test animations, for actions the unit does not have (heal, build), in their own anim file blocks, for a test copy of the unit.",
+                 "También las animaciones de prueba de la receta, para acciones que la unidad no tiene (curar, construir), en sus propios bloques del anim file, para una copia de prueba de la unidad."),
+        'overview': ("One sheet for review, a row per animation (sheets\\overview.png); with the horse hidden, the moments after the dismount and before the mount show it gone.",
+                     "Una hoja para revisar, una fila por animación (sheets\\overview.png); con el caballo oculto, los momentos tras desmontar y antes de montar lo muestran ausente."),
+    },
     'mesh_to_game': {
         'in': ("The model: an .obj (its .mtl and picture beside it), a .glb or a .gltf. One picture for the whole model.",
                "El modelo: un .obj (con su .mtl y su imagen al lado), un .glb o un .gltf. Una sola imagen para todo el modelo."),

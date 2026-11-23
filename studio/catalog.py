@@ -907,6 +907,29 @@ TOOLS = [
           Arg("workers", "--workers", "int", L("Workers", "Procesos")),
           Arg("work", "--work", "folder", L("Work folder", "Carpeta de trabajo"))],
          needs=("granny", "test_copy"), writes="copy", trial=[], commit=["--install"], minutes=5),
+    Tool("make_dismount", "tools/make_dismount.py", "art",
+         L("Dismount and mount animations", "Animaciones de desmontar y montar"),
+         L("For a cavalry unit whose rider hangs on its horse: the rider's animations on foot beside the horse, "
+           "made from the game's infantry animations, and the dismount and mount transitions, as Granny files "
+           "with the anim file blocks; optional contact sheets and clips.",
+           "Para una unidad de caballería cuyo jinete cuelga de su caballo: las animaciones del jinete a pie junto "
+           "al caballo, hechas con las animaciones de infantería del juego, y las transiciones de desmontar y "
+           "montar, como archivos Granny con los bloques del anim file; hojas de contacto y clips opcionales."),
+         [game_dir(),
+          out_dir(help=L("Where the animations, the anim file blocks and the sheets go. Never a Steam library.",
+                         "Dónde van las animaciones, los bloques del anim file y las hojas. Nunca una "
+                         "biblioteca de Steam.")),
+          Arg("recipe", "--recipe", "file", L("Recipe (JSON)", "Receta (JSON)"),
+              L("The unit's models, side and animations; empty: the Chasseur a Cheval of Wars of Liberty.",
+                "Los modelos, el lado y las animaciones de la unidad; vacío: el Chasseur a Cheval de Wars of "
+                "Liberty."), filters=JSON),
+          Arg("horse", "--horse", "choice", L("The horse on foot", "El caballo a pie"),
+              choices=("", "keep", "hide")),
+          Arg("test", "--test", "bool", L("Test animations (heal, build)", "Animaciones de prueba (curar, construir)")),
+          Arg("sheets", "--sheets", "bool", L("Contact sheets", "Hojas de contacto")),
+          Arg("overview", "--overview", "bool", L("Review sheet", "Hoja de revisión")),
+          Arg("clips", "--clips", "bool", L("Clips (needs ffmpeg)", "Clips (necesita ffmpeg)"))],
+         needs=("game",), outputs=("out",)),
     Tool("recompress_models", "tools/recompress_models.py", "art",
          L("Compress models again", "Volver a comprimir modelos"),
          L("Compresses Granny models a tool wrote uncompressed (a bone scale fix, an own texture, a rebake) through "

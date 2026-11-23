@@ -1,0 +1,1044 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Dismount and mount animations for a cavalry unit whose rider is an attachment of its horse (the
+horse is the unit's model, the rider hangs on a horse bone with syncanims), and the rider's
+animations on foot beside the horse, from the game's own infantry animations.
+
+    venv\\Scripts\\python -I tools/make_dismount.py --game <game copy> --out <folder>
+        [--recipe <recipe.json>] [--granny-helper <exe>] [--horse keep|hide] [--melee] [--test]
+        [--sheets] [--clips] [--overview] [--only NAME,...]
+
+What it writes below --out:
+- `art\\<recipe "folder">\\<name>.gr2`: one rider animation per entry of the recipe: the
+  `foot` entries (an infantry animation on the rider, standing on the ground beside the horse,
+  turned and timed to the horse animation the anim file pairs with it) and the two transitions
+  `dismount` and `mount` (from the rider's seat to that place and back); a `foot` entry marked
+  `"hand": true` (the melee with the musket) only with the recipe's `"melee": true` or --melee (by
+  default a ranged unit keeps its shot on foot and has no hand attack there); with --test, the
+  `test_foot` entries too (actions the unit lacks, heal and build, for a test copy of it);
+- `anims-horse.xml`, `anims-rider.xml`: the `<anim>` blocks to add to the horse's and the rider's
+  anim files (the horse's carry the tags; the rider follows through syncanims; an entry's
+  `attach`, a torch or a hammer, goes on the rider's block); with --test, the test entries'
+  blocks in `anims-horse-test.xml`, `anims-rider-test.xml`;
+- with the horse hidden (the recipe's `"horse": "hide"`, or --horse hide), every animation on
+  foot gets a horse clip of its own, `<prefix>horse_hidden_<name>.gr2`;
+- with --sheets, `sheets\\<name>.png`: each animation drawn frame by frame with the horse, from the
+  side the rider gets off; with --clips, `sheets\\<name>.mp4` (needs ffmpeg); with --overview,
+  `sheets\\overview.png`, a row per animation, for review.
+
+Per unit, the recipe chooses whether the horse stays beside the rider on foot ("keep") or is
+hidden ("hide"). Hidden, the horse clips of the animations on foot put every bone the horse's
+meshes are skinned to `hidden_depth` metres (default 30) under the ground, and leave where they
+were the bones that are not skinned: the root, the bone the rider hangs on, the hit point bar and
+the launch point. The horse is not seen and the rider, written in the frame of his bone, does not
+change. (Tried first, 2026-11-22: a second <component> with a horse model that draws nothing,
+named by the animations on foot as the stock cannons name their stripped model. In game the unit
+then showed nothing, rider included, or the rider's hats on the ground.)
+
+How (aoe3game/gr2_anim.py): the infantry animation is posed on the infantry skeleton of the recipe
+(`foot_model`), its world frames are put on the rider's bones of the same name (the rider's rig
+differs in hierarchy: the bones are not copied, their places are), moved to the ground beside the
+horse (`side`, `forward`), and then expressed in the frame of the horse bone the rider hangs on,
+at each moment of the horse animation played with it, so the rider stands still on the ground
+while the horse breathes or walks. The transitions are made from key poses: the rider's seat
+(`mounted` animation), rising in the stirrups, the right leg over the croup, hanging on the
+saddle's side, and the standing pose; the root follows a smooth path between them, every bone is
+turned by slerp, and the weapon stays in the right hand.
+
+Compressed game models and animations are expanded by the game's own Granny runtime through the
+32-bit helper of recompress_models.py (`--granny-helper`, default tools\\granny_recompress.exe;
+`python -I tools/recompress_models.py --build-helper` makes it); nothing of the game is stored.
+Refuses a Steam folder as output.
+"""
+import argparse
+import copy
+import json
+import math
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+import numpy as np
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "aoe3_blender_tools"))
+import bar  # noqa: E402
+from aoe3game import ddt, gr2, gr2_mesh, gr2_skin  # noqa: E402
+from aoe3game.deploy import RefusedPath, refuse_steam  # noqa: E402
+from aoe3game.gr2_anim import (Animation, Rig, axis_quat, frame, matrix_quat, slerp, split,  # noqa: E402
+                               animation_file)
+from aoe3game.gr2_skin import quat_matrix  # noqa: E402
+
+LIB = "animation_library\\"
+DEFAULT_RECIPE = {
+    "folder": "WoL\\units\\cavalry\\chasseur_a_cheval\\dismount",
+    "prefix": "chasseur_",
+    "rider_model": "WoL\\units\\cavalry\\chasseur_a_cheval\\chasseur_a_cheval_1age",
+    "horse_model": "WoL\\units\\cavalry\\chasseur_a_cheval\\chasseur_a_cheval_horse",
+    "foot_model": "WoL\\units\\infantry_ranged\\skirmisher\\skirmisher_age2",
+    "weapon": {"model": "units\\natives\\lakota\\rifle_rider\\rifle_rider_1_gun",
+               "frombone": "Bip 01 Master", "tobone": "Bip01 Prop1"},
+    "hat": {"model": "WoL\\units\\cavalry\\chasseur_a_cheval\\hat_1", "frombone": "bone_hat",
+            "tobone": "Bip01 Head"},
+    "horse_bone": "bone attachpoint",
+    "mounted": LIB + "natives\\apache_cavalry\\idle1",
+    "side": -0.85,
+    "forward": -0.15,
+    "foot": [
+        {"name": "idle", "rider": LIB + "range\\volley\\volley_standing_idle",
+         "horse": LIB + "cavalry\\horse_idle_A"},
+        {"name": "bored", "rider": LIB + "range\\bored_rifleman_A",
+         "horse": LIB + "cavalry\\horse_idle_I"},
+        {"name": "walk", "rider": LIB + "range\\march_rifleman",
+         "horse": LIB + "cavalry\\horse_walk_A"},
+        {"name": "jog", "rider": LIB + "range\\jog_rifleman_A",
+         "horse": LIB + "cavalry\\horse_trot"},
+        {"name": "run", "rider": LIB + "range\\run_rifleman_A",
+         "horse": LIB + "cavalry\\horse_jog"},
+        {"name": "attack", "rider": LIB + "range\\volley\\volley_standing_fire",
+         "horse": LIB + "cavalry\\horse_idle_A", "time": "rider", "launch": True,
+         "tags": [{"type": "Attack", "at": 0.46},
+                  {"type": "SpecificSoundSet", "checkvisible": "1", "set": "RifleShot", "at": 0.46},
+                  {"type": "Particles", "particlename": "musketshot", "at": 0.46}]},
+        {"name": "reload", "rider": LIB + "range\\volley\\volley_standing_reload",
+         "horse": LIB + "cavalry\\horse_idle_A", "time": "rider"},
+        # the hand attack on foot: made only with "melee": true (below), for a unit that fights hand
+        # to hand on foot; the Chasseur keeps its shot on foot instead (that action fires at point
+        # blank, minrange 0)
+        {"name": "melee", "hand": True, "rider": LIB + "range\\melee_rifleman_standing_A",
+         "horse": LIB + "cavalry\\horse_idle_A", "time": "rider",
+         "tags": [{"type": "Attack", "at": 0.51},
+                  {"type": "SpecificSoundSet", "checkvisible": "1", "set": "Swoosh", "at": 0.45}]},
+        {"name": "death", "rider": LIB + "range\\death_standing_rifleman_A",
+         "horse": LIB + "cavalry\\horse_deathA",
+         "tags": [{"type": "SpecificSoundSet", "checkvisible": "1", "set": "RagdollImpact", "at": 0.51}]},
+        # the attack on buildings: the infantry's torch throw, the torch in the left hand (as the stock
+        # musketeer's anim file hangs it); "torch" is an attachment the rider's anim file defines
+        {"name": "raze_idle", "rider": LIB + "shared\\torch_throw_idle",
+         "horse": LIB + "cavalry\\horse_idle_A",
+         "attach": [{"a": "torch", "frombone": "ATTACHPOINT", "tobone": "L HAND"}]},
+        {"name": "raze_attack", "rider": LIB + "shared\\torch_throwA",
+         "horse": LIB + "cavalry\\horse_idle_A", "time": "rider",
+         "attach": [{"a": "torch", "frombone": "ATTACHPOINT", "tobone": "L HAND"}],
+         "tags": [{"type": "Attack", "at": 0.61},
+                  {"type": "SpecificSoundSet", "checkvisible": "1", "set": "TorchSwing", "at": 0.52}]},
+    ],
+    # Made only with --test: animations for actions the unit does not have (a test copy of the unit
+    # gets them), to see a heal and a construction on foot. No hammer: the rider's musket hangs on
+    # his right hand's prop bone, where a villager's hammer goes, so he hammers with it. Their anim
+    # names are Heal and Build: the game plays those for a heal and a construction (an action's
+    # <anim> Dismounted_Heal / Dismounted_Build left the unit in its idle, 2026-11-22).
+    "test_foot": [
+        {"name": "heal", "anim": "Heal", "rider": LIB + "natives\\priest\\heal",
+         "horse": LIB + "cavalry\\horse_idle_A", "time": "rider"},
+        {"name": "build", "anim": ["Build", "BuildLifting", "BuildSaw", "BuildStaking"], "rider": LIB + "villager\\villager_male_build1",
+         "horse": LIB + "cavalry\\horse_idle_A", "time": "rider",
+         "tags": [{"type": "SpecificSoundSet", "checkvisible": "1", "set": "Build", "at": 0.36},
+                  {"type": "SpecificSoundSet", "checkvisible": "1", "set": "Build", "at": 0.66},
+                  {"type": "SpecificSoundSet", "checkvisible": "1", "set": "Build", "at": 1.00}]},
+    ],
+    "dismount": {"name": "dismount", "length": 2.5, "horse": LIB + "cavalry\\horse_idle_A"},
+    "mount": {"name": "mount", "length": 2.5, "horse": LIB + "cavalry\\horse_idle_A"},
+    # "keep": the horse stays beside the rider on foot; "hide": it is not seen while he is on foot.
+    # Hidden, the horse clips on foot put the horse's skinned bones `hidden_depth` metres under the
+    # ground; the bone the rider hangs on stays, so the rider's animations are the same either way.
+    "horse": "keep",
+    "hidden_depth": 30.0,
+    # whether the `foot` entries marked "hand" (the melee on foot) are made; false: the unit keeps
+    # its ranged attack on foot and has no hand attack there (Wars of Liberty's request, 2026-11-23)
+    "melee": False,
+}
+HORSE_CHOICES = ("keep", "hide")
+FPS = 30
+
+
+# --------------------------------------------------------------------------------------------------
+# The game's files
+
+
+class Game:
+    """Art files of a game copy, loose first, then the art archives; Granny files expanded by the
+    game's runtime (the helper), with their root type reference put back."""
+
+    def __init__(self, folder, helper, work):
+        self.folder, self.helper, self.work = folder, helper, work
+        self._index = None
+
+    def index(self):
+        if self._index is None:
+            self._index = {}
+            art = os.path.join(self.folder, "art")
+            for name in sorted(os.listdir(art)):
+                if name.lower().endswith(".bar"):
+                    path = os.path.join(art, name)
+                    for stored, off, size in bar.read_entries(path):
+                        key = stored.lower().replace("/", "\\")
+                        if key.startswith("art\\"):
+                            key = key[4:]
+                        self._index.setdefault(key, (path, off, size))
+        return self._index
+
+    def raw(self, rel, ext=".gr2"):
+        rel = rel.lower().replace("/", "\\")
+        if not rel.endswith(ext):
+            rel += ext
+        loose = os.path.join(self.folder, "art", rel)
+        if os.path.exists(loose):
+            with open(loose, "rb") as f:
+                return f.read()
+        hit = self.index().get(rel)
+        if hit is None:
+            raise FileNotFoundError(f"art\\{rel} is neither loose nor in an archive")
+        path, off, size = hit
+        with open(path, "rb") as f:
+            f.seek(off)
+            return f.read(size)
+
+    def granny(self, rel):
+        data = self.raw(rel)
+        try:
+            gr2.read_container(data)
+            compressed = any(s.compression for s in gr2.read_container(data).sections)
+        except gr2.Gr2Error:
+            compressed = True
+        if not compressed:
+            return data
+        from recompress_models import Runtime, put_root_type
+        from uncompress_models import ROOT_TYPE
+        rt = Runtime(self.helper, os.path.join(self.folder, "granny2.dll"), self.work)
+        flat = rt.recompress(data, 0, 0)
+        return put_root_type(flat, data[ROOT_TYPE:ROOT_TYPE + 8])
+
+    def texture(self, stored):
+        """RGBA of a texture a model names (its path after `art\\`), or None."""
+        low = stored.lower().replace("/", "\\")
+        at = low.find("\\art\\")
+        rel = low[at + 5:] if at >= 0 else os.path.basename(low)
+        rel = os.path.splitext(rel)[0]
+        try:
+            return ddt.decode(self.raw(rel, ".ddt"))
+        except (FileNotFoundError, ValueError, KeyError):
+            return None
+
+
+# --------------------------------------------------------------------------------------------------
+# Poses
+
+
+def lower(d):
+    return {k.lower(): v for k, v in d.items()}
+
+
+def ground_pose(rig, anim, t, place):
+    """World frames (by lower-case name) of `rig` at time t of `anim`, moved by `place`."""
+    return {k: place @ w for k, w in rig.by_name(rig.pose(anim, t)).items()}
+
+
+def put_on(rider, src, root_from="bip01"):
+    """The infantry pose `src` (world frames by name) as the rider's: each rider bone on the frame
+    of the bone of the same name; the rider's root on the infantry's root."""
+    out = dict(src)
+    root = rider.names[0].lower()
+    if root not in out and root_from in src:
+        out[root] = src[root_from]
+    return {k: v for k, v in out.items() if rider.has(k)}
+
+
+def to_track_frames(rider, worlds_by_t, attach_by_t):
+    """Rider locals per frame: each pose (ground space) seen from the horse bone at that moment."""
+    frames = []
+    for pose, attach in zip(worlds_by_t, attach_by_t):
+        inv = np.linalg.inv(attach)
+        local_world = {k: inv @ w for k, w in pose.items()}
+        frames.append(rider.localise(local_world))
+    return frames
+
+
+def tracks_of(rider, frames, times, bones=None):
+    out = []
+    for i, name in enumerate(rider.names):
+        if bones is not None and name.lower() not in bones:
+            continue
+        pos = np.array([f[i][0] for f in frames])
+        quat = np.array([f[i][1] for f in frames])
+        out.append((name, times, pos, quat))
+    return out
+
+
+def rotate_about(pose, rig, bone, pivot_bone, axis, degrees):
+    """`pose` with `bone` and everything below it turned about the world axis through the
+    position of `pivot_bone` (both lower-case names)."""
+    r = np.eye(4)
+    r[:3, :3] = quat_matrix(axis_quat(axis, degrees))
+    c = pose[pivot_bone][:3, 3]
+    t1, t2 = np.eye(4), np.eye(4)
+    t1[:3, 3], t2[:3, 3] = -c, c
+    m = t2 @ r @ t1
+    below = descendants(rig, bone)
+    return {k: (m @ w if k in below else w) for k, w in pose.items()}
+
+
+def descendants(rig, bone):
+    idx = rig.index[bone]
+    out = {bone}
+    for i, name in enumerate(rig.names):
+        j = i
+        while j >= 0:
+            if j == idx:
+                out.add(name.lower())
+                break
+            j = rig.parents[j]
+    return out
+
+
+def translate(pose, rig, bone, offset):
+    m = np.eye(4)
+    m[:3, 3] = offset
+    below = descendants(rig, bone)
+    return {k: (m @ w if k in below else w) for k, w in pose.items()}
+
+
+def blend(rig, a, b, u):
+    """Bone by bone between two poses (world frames): every local frame slerped, the root's
+    position interpolated; the result as world frames."""
+    la, lb = rig.localise(a), rig.localise(b)
+    locs = []
+    for (pa, qa), (pb, qb) in zip(la, lb):
+        locs.append((pa + u * (pb - pa), slerp(qa, qb, u)))
+    return rig.by_name(rig.worlds(locs))
+
+
+def loop_length(horse, rider, most=6, close=0.04):
+    """(length, rider cycles): a whole number of horse cycles holding a whole number of rider
+    cycles to within `close` (the rider's animation is stretched by that much), the fewest."""
+    best = None
+    for h in range(1, most + 1):
+        r = max(1, round(h * horse / rider))
+        err = abs(h * horse - r * rider) / (r * rider)
+        if best is None or err < best[0] - 1e-9:
+            best = (err, h * horse, r)
+        if err <= close:
+            break
+    return best[1], best[2]
+
+
+def smooth(u):
+    u = min(max(u, 0.0), 1.0)
+    return u * u * (3 - 2 * u)
+
+
+# --------------------------------------------------------------------------------------------------
+# The maker
+
+
+class Maker:
+    def __init__(self, game, recipe):
+        self.game, self.r = game, recipe
+        g = game.granny
+        self.rider_root = gr2.load(g(recipe["rider_model"])).root()
+        self.horse_root = gr2.load(g(recipe["horse_model"])).root()
+        self.rider = Rig.of(self.rider_root)
+        self.horse = Rig.of(self.horse_root)
+        self.foot = Rig.of(gr2.load(g(recipe["foot_model"])).root())
+        self.anims = {}
+        self.hb = recipe["horse_bone"].lower()
+        self._muzzle = None
+        self.place = np.eye(4)
+        self.place[:3, 3] = (recipe["side"], 0.0, recipe["forward"])
+        # hidden, the rider stands on the unit's centre on foot (under the hit point bar, on the
+        # selection circle), and steps there from the horse's side once the horse is gone
+        self.hide = recipe.get("horse", "keep") == "hide"
+        cx, cz = recipe.get("centre", (0.0, 0.0))
+        self.centre = np.eye(4)
+        self.centre[:3, 3] = (cx, 0.0, cz)
+        # the bones the horse's meshes are skinned to: hidden, they go under the ground
+        self.skinned = {b.get("BoneName").lower() for m in (self.horse_root.get("Meshes") or []) if m is not None
+                        for b in (m.get("BoneBindings") or []) if b is not None and b.get("BoneName")}
+
+    def hidden(self, entry):
+        """Whether the horse is hidden in the animation of `entry` (the recipe hides it on foot)."""
+        return not horse_drawn(self.r, entry["name"])
+
+    def bury(self, w):
+        """A horse pose (world frames by name) with every skinned bone `hidden_depth` metres under the
+        ground and every other bone (the root, the rider's attach bone, the hit point bar, the launch
+        point) where it was: the horse is not seen, and what hangs on it does not move."""
+        b = self.horse.basis
+        drop = np.eye(4)
+        drop[:3, 3] = -float(self.r.get("hidden_depth", 30.0)) * b.upm * np.asarray(b.up, np.float64)
+        return {k: (drop @ m if k in self.skinned else m) for k, m in w.items()}
+
+    def anim(self, rel):
+        if rel not in self.anims:
+            self.anims[rel] = Animation.load(self.game.granny(rel))
+        return self.anims[rel]
+
+    def horse_time(self, horse_anim, t):
+        """The horse animation's own time at t: looped, except a death, which holds its end."""
+        h = self.anim(horse_anim)
+        if not h.duration:
+            return 0.0
+        if "death" in horse_anim.lower():
+            return min(t, h.duration)
+        if abs(t - h.duration) < 1e-6:
+            return h.duration
+        return math.fmod(t, h.duration)
+
+    def horse_attach(self, horse_anim, t):
+        return self.horse_pose(horse_anim, t)[self.hb]
+
+    def horse_pose(self, horse_anim, t):
+        h = self.anim(horse_anim)
+        return self.horse.by_name(self.horse.pose(h, self.horse_time(horse_anim, t)))
+
+    def muzzle(self, rider_pose):
+        """The weapon's far end (the muzzle) in ground space, or None without a weapon."""
+        if self._muzzle is None:
+            spec = self.r.get("weapon")
+            read = gr2_mesh.read(self.game.granny(spec["model"]))
+            skel = read["skeletons"][0]
+            fb = {b["name"].lower(): b for b in skel["bones"]}.get(spec["frombone"].lower())
+            base = fb["world"] if fb is not None else np.eye(4)
+            pts = np.concatenate([m["file_positions"] for m in read["meshes"]]).astype(np.float64)
+            local = (np.c_[pts, np.ones(len(pts))] @ np.linalg.inv(base).T)[:, :3]
+            self._muzzle = local[np.argmax(np.linalg.norm(local, axis=1))]
+        on = rider_pose[self.r["weapon"]["tobone"].lower()]
+        return (on @ np.r_[self._muzzle, 1.0])[:3]
+
+    def horse_clip(self, entry, dur, times, poses, buried):
+        """Bytes of the horse animation of `entry` played over [0, dur], with the horse's launch
+        bone on the rider's muzzle when the entry says `launch`, and the horse under the ground
+        in the frames `buried` marks."""
+        h = self.anim(entry["horse"])
+        frames = []
+        lp = self.r.get("launch_bone", "bone_launchpoint").lower()
+        for t, rider_pose, down in zip(times, poses, buried):
+            w = self.horse_pose(entry["horse"], t)
+            if entry.get("launch") and lp in w:
+                m = w[lp].copy()
+                m[:3, 3] = self.muzzle(rider_pose)
+                w = dict(w)
+                w[lp] = m
+            if down:
+                w = self.bury(w)
+            frames.append(self.horse.localise(w))
+        name = horse_clip_name(self.r, entry["name"])
+        return animation_file(name, dur, h.group_name, tracks_of(self.horse, frames, times),
+                              basis=self.horse.basis, accumulation=h.accumulation, source=name)
+
+    def standing(self, rel, t, place=None):
+        """The infantry pose at time t, on the ground beside the horse (or at `place`), as the
+        rider's bones."""
+        p = self.place if place is None else place
+        return put_on(self.rider, ground_pose(self.foot, self.anim(rel), t, p))
+
+    def step(self, t, dur, start, end, facing):
+        """The rider stepping from `start` to `end` (ground x, z) over `dur` seconds: the idle
+        pose turning into the walk (facing `facing` degrees about the vertical, 90 = the unit's
+        right) and back into the idle at the end, the root on a smooth path between them."""
+        foot = {e["name"]: e["rider"] for e in self.r["foot"]}
+        idle, walk = foot["idle"], self.r.get("step_walk") or foot["walk"]
+        u = smooth(t / dur)
+        here = np.eye(4)
+        here[:3, 3] = (start[0] + u * (end[0] - start[0]), 0.0, start[1] + u * (end[1] - start[1]))
+        turn = np.eye(4)
+        turn[:3, :3] = quat_matrix(axis_quat((0, 1, 0), facing))
+        stand = self.standing(idle, 0.0, here)
+        wa = self.anim(walk)
+        going = self.standing(walk, math.fmod(t, wa.duration) if wa.duration else 0.0, here @ turn)
+        ramp = 0.3 * dur                                   # turning into the walk and out of it
+        w = min(1.0, t / ramp, (dur - t) / ramp)
+        return blend(self.rider, stand, going, smooth(w))
+
+    def mounted(self, t, horse_anim, ht):
+        """The rider's seat at time t of the mounted animation, on the horse at time ht."""
+        a = self.anim(self.r["mounted"])
+        seat = self.rider.by_name(self.rider.pose(a, min(t, a.duration)))
+        attach = self.horse_attach(horse_anim, ht)
+        return {k: attach @ w for k, w in seat.items()}
+
+    # -- the animations --
+
+    def foot_anim(self, entry):
+        """(duration, times, ground poses, attach frames) of a foot entry: the infantry animation
+        played a whole number of times over the horse animation's length (a death once)."""
+        ia, ha = self.anim(entry["rider"]), self.anim(entry["horse"])
+        hd = ha.duration or ia.duration
+        if entry.get("time") == "rider" or hd <= 0:
+            dur, cycles = ia.duration, 1               # a horse clip of that length goes with it
+        elif entry["name"] == "death":
+            dur, cycles = max(ia.duration, hd), 1
+        else:
+            dur, cycles = loop_length(hd, ia.duration)
+        n = max(2, int(round(dur * FPS)) + 1)
+        times = np.linspace(0.0, dur, n)
+        poses, attach = [], []
+        place = self.centre if self.hide else None
+        for t in times:
+            u = (t / dur) * cycles * ia.duration
+            if entry["name"] != "death":
+                u = math.fmod(u, ia.duration) if u < cycles * ia.duration - 1e-6 else ia.duration
+            poses.append(self.standing(entry["rider"], min(u, ia.duration), place))
+            attach.append(self.horse_attach(entry["horse"], t))
+        return dur, times, poses, attach, [self.hide] * len(times)
+
+    def key_poses(self, horse_anim):
+        """The dismount's key poses in ground space: (time share, pose)."""
+        rig = self.rider
+        root = rig.names[0].lower()
+        m0 = self.mounted(0.0, horse_anim, 0.0)
+        s = self.standing(self.r["foot"][0]["rider"], 0.0)
+        side = math.copysign(1.0, self.r["side"])          # -1: the rider's left (the horse's left)
+        seat = self.horse_attach(horse_anim, 0.0)[:3, 3]
+        k = self.r.get("keys", {})
+        # file axes: x the unit's right (side < 0 is its left), y up, z forward
+        # 1. up in the left stirrup, leaning forward over the neck
+        k1 = translate(m0, rig, root, (0.06 * side, k.get("rise", 0.12), 0.04))
+        k1 = rotate_about(k1, rig, "bip01 spine", "bip01 spine", (1, 0, 0), 18)
+        # 2. the right leg swung back and up over the croup, the body over the left stirrup
+        k2 = translate(m0, rig, root, (0.16 * side, k.get("rise", 0.12) + 0.04, 0.02))
+        k2 = rotate_about(k2, rig, "bip01 spine", "bip01 spine", (1, 0, 0), 32)
+        k2 = rotate_about(k2, rig, "bip01 r thigh", "bip01 r thigh", (1, 0, 0), k.get("swing", 45))
+        k2 = rotate_about(k2, rig, "bip01 r thigh", "bip01 r thigh", (0, 0, 1), -20 * side)
+        # 3. both legs on the left side, facing the horse, the belly against the saddle
+        st = rotate_about(s, rig, root, root, (0, 1, 0), -90 * side)
+        cur = st[root][:3, 3]
+        k3 = translate(st, rig, root, (seat[0] + side * 0.42 - cur[0], seat[1] - 0.55 - cur[1],
+                                       seat[2] - 0.05 - cur[2]))
+        for arm in ("bip01 l upperarm", "bip01 r upperarm"):
+            k3 = rotate_about(k3, rig, arm, arm, (0, 0, 1), -k.get("arms_on_saddle", 60) * side)
+        # 4. slid down the side, the feet just above the ground, the hands still on the saddle
+        cur = st[root][:3, 3]
+        k4 = translate(st, rig, root, (seat[0] + side * 0.62 - cur[0], 0.06, seat[2] - 0.05 - cur[2]))
+        for arm in ("bip01 l upperarm", "bip01 r upperarm"):
+            k4 = rotate_about(k4, rig, arm, arm, (0, 0, 1), -k.get("arms_reaching", 75) * side)
+        return [(0.0, m0), (0.18, k1), (0.38, k2), (0.56, k3), (0.76, k4), (1.0, s)]
+
+    def transition_length(self, entry):
+        """The transition's length: the recipe's, plus the step to or from the centre when hidden."""
+        return float(entry["length"]) + (self.step_length() if self.hide else 0.0)
+
+    def step_length(self):
+        return float(self.r.get("step_length", 1.0))
+
+    def transition(self, entry, reverse):
+        """(duration, times, poses, attach frames, horse buried per frame). Hidden, the dismount
+        ends with the horse gone and the rider stepping from its side to the centre, and the mount
+        starts with that step back, the horse coming up only once he is beside it."""
+        dur0 = float(entry["length"])
+        dur = self.transition_length(entry)
+        horse_anim = entry["horse"]
+        keys = self.key_poses(horse_anim)
+        n = int(round(dur * FPS)) + 1
+        times = np.linspace(0.0, dur, n)
+        poses, attach, buried = [], [], []
+        hand, prop = "bip01 r hand", self.r["weapon"]["tobone"].lower()
+        side = (self.place[0, 3], self.place[2, 3])
+        centre = (self.centre[0, 3], self.centre[2, 3])
+        right = 90.0 if centre[0] >= side[0] else -90.0     # facing the way he walks
+        step = self.step_length() if self.hide else 0.0
+        for t in times:
+            if self.hide and not reverse and t > dur0 + 1e-9:
+                poses.append(self.step(t - dur0, step, side, centre, right))
+                buried.append(True)
+            elif self.hide and reverse and t < step - 1e-9:
+                poses.append(self.step(t, step, centre, side, -right))
+                buried.append(True)
+            else:
+                tk = t - step if (self.hide and reverse) else t
+                poses.append(self.key_pose(keys, horse_anim, tk / dur0, tk, reverse, hand, prop))
+                buried.append(False)
+            attach.append(self.horse_attach(horse_anim, t))
+        return dur, times, poses, attach, buried
+
+    def key_pose(self, keys, horse_anim, u, t, reverse, hand, prop):
+        """The rider at share u of the dismount (of the mount when `reverse`), time t."""
+        if reverse:
+            u = 1.0 - u
+        u = min(max(u, 0.0), 1.0)
+        k = max(i for i, (share, _p) in enumerate(keys) if share <= u + 1e-9)
+        k = min(k, len(keys) - 2)
+        (s0, p0), (s1, p1) = keys[k], keys[k + 1]
+        w = smooth((u - s0) / (s1 - s0))
+        # the seat moves with the horse in the first and last key (keyed at time 0)
+        if k == 0:
+            p0 = self.mounted(0.0, horse_anim, t)
+        pose = blend(self.rider, p0, p1, w)
+        # the weapon stays in the right hand: its frame relative to the hand, slerped
+        ra = np.linalg.inv(p0[hand]) @ p0[prop]
+        rb = np.linalg.inv(p1[hand]) @ p1[prop]
+        pa, qa = split(ra)
+        pb, qb = split(rb)
+        pose[prop] = pose[hand] @ frame(pa + w * (pb - pa), slerp(qa, qb, w))
+        return pose
+
+    def build(self, only=None, test=False):
+        """{name: (bytes, duration, times, poses, horse anim, horse clip bytes or None, horse buried
+        per frame)}; with `test`, the recipe's `test_foot` entries too."""
+        out = {}
+        jobs = [(e["name"], e, None) for e in foot_entries(self.r, test)]
+        jobs += [(self.r["dismount"]["name"], self.r["dismount"], False),
+                 (self.r["mount"]["name"], self.r["mount"], True)]
+        for name, entry, reverse in jobs:
+            if only and name not in only:
+                continue
+            if reverse is None:
+                dur, times, poses, attach, buried = self.foot_anim(entry)
+            else:
+                dur, times, poses, attach, buried = self.transition(entry, reverse)
+            frames = to_track_frames(self.rider, poses, attach)
+            full = rider_clip_name(self.r, name)
+            data = animation_file(full, dur, self.rider.names[0], tracks_of(self.rider, frames, times),
+                                  basis=self.rider.basis, source=full)
+            hd = self.anim(entry["horse"]).duration
+            clip = None
+            if abs(dur - hd) > 1e-3 or entry.get("launch") or self.hide:
+                clip = self.horse_clip(entry, dur, times, poses, buried)
+            out[name] = (data, dur, times, poses, entry["horse"], clip, buried)
+        return out
+
+
+def foot_entries(recipe, test=False):
+    """The animations on foot to make: the recipe's `foot` (an entry marked "hand" only with
+    "melee": true) and, with `test`, its `test_foot`."""
+    foot = [e for e in recipe["foot"] if not e.get("hand") or recipe.get("melee")]
+    return foot + (list(recipe.get("test_foot") or []) if test else [])
+
+
+def horse_clip_name(recipe, name):
+    """The horse clip of animation `name`: <prefix>horse_<name>, or <prefix>horse_hidden_<name>
+    with the horse hidden (both choices can then ship side by side)."""
+    hidden = recipe.get("horse", "keep") == "hide"
+    return recipe["prefix"] + ("horse_hidden_" if hidden else "horse_") + name
+
+
+def rider_clip_name(recipe, name):
+    """The rider's animation `name`: <prefix><name>, or <prefix>hidden_<name> with the horse
+    hidden (on the unit's centre on foot, the step in the transitions)."""
+    hidden = recipe.get("horse", "keep") == "hide"
+    return recipe["prefix"] + ("hidden_" if hidden else "") + name
+
+
+# --------------------------------------------------------------------------------------------------
+# Drawing (a small rasteriser: orthographic, textured, one light)
+
+
+class Mesh:
+    def __init__(self, mesh, texture):
+        self.m, self.tex = mesh, texture
+
+    def place(self, rig_skel, pose_exact):
+        m = self.m
+        return gr2_skin.deform(m["file_positions"], m["vertex_bones4"], m["vertex_weights4"],
+                               m["skin_names"], rig_skel, pose_exact)
+
+
+def model_meshes(game, root, data):
+    read = gr2_mesh.read(data)
+    skel = read["skeletons"][0]
+    out = []
+    for mesh in read["meshes"]:
+        tex = None
+        ft = mesh["face_textures"]
+        idx = [int(i) for i in np.unique(ft) if i >= 0]
+        for i in idx:
+            name = read["textures"][i]
+            if name and not name.lower().endswith("_b.ddt"):
+                tex = game.texture(name)
+                if tex is not None:
+                    break
+        if tex is None:
+            for name in read["textures"]:
+                if name and "_b." not in name.lower():
+                    tex = game.texture(name)
+                    if tex is not None:
+                        break
+        out.append(Mesh(mesh, tex))
+    return out, skel
+
+
+def raster(canvas, zbuf, pts2, depth, tris, uvs, tex, shade, colour):
+    h, w = zbuf.shape
+    for t, tri in enumerate(tris):
+        a, b, c = pts2[tri]
+        x0, x1 = int(max(0, math.floor(min(a[0], b[0], c[0])))), int(min(w - 1, math.ceil(max(a[0], b[0], c[0]))))
+        y0, y1 = int(max(0, math.floor(min(a[1], b[1], c[1])))), int(min(h - 1, math.ceil(max(a[1], b[1], c[1]))))
+        if x0 > x1 or y0 > y1:
+            continue
+        den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        if abs(den) < 1e-12:
+            continue
+        xs, ys = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+        l0 = ((b[1] - c[1]) * (xs - c[0]) + (c[0] - b[0]) * (ys - c[1])) / den
+        l1 = ((c[1] - a[1]) * (xs - c[0]) + (a[0] - c[0]) * (ys - c[1])) / den
+        l2 = 1 - l0 - l1
+        inside = (l0 >= -1e-6) & (l1 >= -1e-6) & (l2 >= -1e-6)
+        if not inside.any():
+            continue
+        z = l0 * depth[tri[0]] + l1 * depth[tri[1]] + l2 * depth[tri[2]]
+        sub = zbuf[y0:y1 + 1, x0:x1 + 1]
+        win = inside & (z < sub)
+        if not win.any():
+            continue
+        sub[win] = z[win]
+        if tex is not None and uvs is not None:
+            uv = (l0[..., None] * uvs[tri[0]] + l1[..., None] * uvs[tri[1]] + l2[..., None] * uvs[tri[2]])
+            th, tw = tex.shape[:2]
+            tx = np.clip((np.mod(uv[..., 0], 1.0) * tw).astype(int), 0, tw - 1)
+            ty = np.clip(((1.0 - np.mod(uv[..., 1], 1.0)) * th).astype(int), 0, th - 1)
+            col = tex[ty, tx, :3].astype(np.float64)
+        else:
+            col = np.broadcast_to(np.array(colour, np.float64), xs.shape + (3,))
+        canvas[y0:y1 + 1, x0:x1 + 1][win] = np.clip(col[win] * shade[t], 0, 255)
+
+
+class Scene:
+    def __init__(self, game, maker, recipe):
+        g = game.granny
+        self.maker = maker
+        self.rider_meshes, self.rider_skel = model_meshes(game, None, g(recipe["rider_model"]))
+        self.horse_meshes, self.horse_skel = model_meshes(game, None, g(recipe["horse_model"]))
+        self.parts = []
+        for key in ("weapon", "hat"):
+            spec = recipe.get(key)
+            if not spec:
+                continue
+            try:
+                meshes, skel = model_meshes(game, None, g(spec["model"]))
+            except (FileNotFoundError, gr2.Gr2Error):
+                continue
+            names = {b["name"].lower(): b for b in skel["bones"]}
+            fb = names.get(spec["frombone"].lower())
+            frm = fb["world"] if fb is not None else np.eye(4)
+            self.parts.append((meshes, skel, np.linalg.inv(frm), spec["tobone"].lower()))
+
+    def triangles(self, rider_pose, horse_pose, attach, horse=True):
+        """[(points N x 3 in the horse's model space, triangles, uvs, texture, colour)]; without the
+        horse's meshes when `horse` is False (the hidden-horse component)."""
+        rider_exact = {n: rider_pose[n.lower()] for n in self.maker.rider.names if n.lower() in rider_pose}
+        horse_exact = {n: horse_pose[n.lower()] for n in self.maker.horse.names if n.lower() in horse_pose}
+        out = []
+        for m in (self.horse_meshes if horse else []):
+            out.append((m.place(self.horse_skel, horse_exact), m.m["triangles"], m.m["uvs"], m.tex, (120, 80, 50)))
+        for m in self.rider_meshes:
+            p = m.place(self.rider_skel, rider_exact)
+            out.append((p, m.m["triangles"], m.m["uvs"], m.tex, (60, 80, 160)))
+        for meshes, skel, inv_from, tobone in self.parts:
+            on = rider_pose.get(tobone)
+            if on is None:
+                continue
+            place = on @ inv_from
+            for m in meshes:
+                p = m.place(skel, None)
+                h = np.c_[p, np.ones(len(p))] @ place.T
+                if h[:, 1].max() < -1.0:       # a part placed under the ground (the hat file's own
+                    continue                   # scale): drawn from above it would cover the view
+                out.append((h[:, :3], m.m["triangles"], m.m["uvs"], m.tex, (40, 40, 40)))
+        return out
+
+    def draw(self, items, size=360, azimuth=-60.0, elevation=20.0, span=3.8, centre=(-0.3, 1.25, 0.0),
+             marks=None):
+        """The items drawn; `marks` [(points N x 3, colour)] are drawn over them as lines (the
+        selection circle, the unit's centre, the hit point bar)."""
+        az, el = math.radians(azimuth), math.radians(elevation)
+        # file axes: x left/right (x negative = the unit's left), y up, z forward
+        view = np.array([math.sin(az) * math.cos(el), math.sin(el), math.cos(az) * math.cos(el)])
+        right = np.cross([0.0, 1.0, 0.0], view)
+        right /= np.linalg.norm(right)
+        up = np.cross(view, right)
+        canvas = np.full((size, size, 3), 236.0)
+        zbuf = np.full((size, size), np.inf)
+        light = view * 0.6 + up * 0.5 + right * 0.2
+        light /= np.linalg.norm(light)
+        scale = size / span
+        c = np.asarray(centre)
+        for pts, tris, uvs, tex, colour in items:
+            d = pts - c
+            sx = size / 2 + (d @ right) * scale
+            sy = size / 2 - (d @ up) * scale
+            depth = -(d @ view)
+            n = np.cross(pts[tris[:, 1]] - pts[tris[:, 0]], pts[tris[:, 2]] - pts[tris[:, 0]])
+            n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-12
+            shade = 0.55 + 0.45 * np.abs(n @ light)
+            raster(canvas, zbuf, np.stack([sx, sy], 1), depth, tris, uvs, tex, shade, colour)
+        for pts, colour in marks or []:
+            d = np.asarray(pts, np.float64) - c
+            p2 = np.stack([size / 2 + (d @ right) * scale, size / 2 - (d @ up) * scale], 1)
+            for a, b in zip(p2[:-1], p2[1:]):
+                for s in np.linspace(0.0, 1.0, int(np.linalg.norm(b - a)) + 2):
+                    x, y = (a + s * (b - a)).round().astype(int)
+                    canvas[max(0, y - 1):y + 1, max(0, x - 1):x + 1] = colour
+        return canvas.astype(np.uint8)
+
+
+def save_png(path, rgb):
+    import zlib
+    import struct as st
+    h, w = rgb.shape[:2]
+    raw = b"".join(b"\0" + rgb[y].astype(np.uint8).tobytes() for y in range(h))
+
+    def chunk(kind, data):
+        return st.pack(">I", len(data)) + kind + data + st.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", st.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+
+
+def label(img, text):
+    """A dark band with the frame's text (5 x 7 dots), at the bottom of `img`."""
+    import bitfont  # tools/bitfont.py
+    out = img.copy()
+    out[-16:, :] = (40, 40, 40)
+    bitfont.draw(out, text, 4, out.shape[0] - 12, (255, 255, 255))
+    return out
+
+
+def sheet(frames, cols):
+    h, w = frames[0].shape[:2]
+    rows = (len(frames) + cols - 1) // cols
+    out = np.full((rows * h, cols * w, 3), 255, np.uint8)
+    for i, f in enumerate(frames):
+        r, c = divmod(i, cols)
+        out[r * h:(r + 1) * h, c * w:(c + 1) * w] = f
+    return out
+
+
+def ffmpeg():
+    for cand in (os.environ.get("UHC_FFMPEG"), shutil.which("ffmpeg"), r"C:\Tools\ffmpeg\ffmpeg.exe"):
+        if cand and os.path.exists(cand):
+            return cand
+    return None
+
+
+TRANSITIONS = ("dismount", "mount")
+
+
+def horse_drawn(recipe, name):
+    """Whether the horse is drawn in the animation `name`: always kept, or only in the transitions."""
+    return recipe.get("horse", "keep") != "hide" or name in TRANSITIONS
+
+
+def unit_marks(maker, recipe):
+    """The selection circle (the anim file's decal: `selection` width x height, centred on the
+    unit), a cross on the unit's centre and the hit point bar's place, as lines on the ground."""
+    w, h = recipe.get("selection", (1.5, 3.0))
+    a = np.linspace(0.0, 2 * math.pi, 64)
+    ring = np.stack([0.5 * w * np.cos(a), np.full_like(a, 0.02), 0.5 * h * np.sin(a)], 1)
+    cross = [np.array([[-0.15, 0.02, 0.0], [0.15, 0.02, 0.0]]), np.array([[0.0, 0.02, -0.15], [0.0, 0.02, 0.15]])]
+    bar = maker.horse.by_name(maker.horse.rest_worlds()).get(recipe.get("hitpoint_bone", "bone hitpointbar"))
+    out = [(ring, (60, 60, 230))] + [(c, (220, 40, 40)) for c in cross]
+    if bar is not None:
+        x, z = bar[0, 3], bar[2, 3]
+        out.append((np.array([[x - 0.25, 0.02, z], [x + 0.25, 0.02, z]]), (40, 170, 40)))
+    return out
+
+
+def render(scene, maker, name, built, out_dir, clips, views):
+    data, dur, times, poses, horse_anim, _clip, buried = built
+    picks = np.linspace(0, len(times) - 1, 12).round().astype(int)
+    tiles = []
+    for azim in views:
+        for i in picks:
+            hp = maker.horse_pose(horse_anim, times[i])
+            img = scene.draw(scene.triangles(poses[i], hp, None, not buried[i]), azimuth=azim)
+            tiles.append(label(img, f"{name} {times[i]:.2f}s"))
+    save_png(os.path.join(out_dir, f"{name}.png"), sheet(tiles, 6))
+    if clips and ffmpeg():
+        tmp = tempfile.mkdtemp(prefix="dismount_")
+        try:
+            for k, t in enumerate(times):
+                hp = maker.horse_pose(horse_anim, t)
+                img = scene.draw(scene.triangles(poses[k], hp, None, not buried[k]), size=480, azimuth=views[0])
+                save_png(os.path.join(tmp, f"f{k:04d}.png"), label(img, f"{name} {t:.2f}s"))
+            subprocess.run([ffmpeg(), "-y", "-loglevel", "error", "-framerate", str(FPS), "-i",
+                            os.path.join(tmp, "f%04d.png"), "-pix_fmt", "yuv420p", "-vf",
+                            "scale=480:480", os.path.join(out_dir, f"{name}.mp4")], check=True)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def overview(scene, maker, built, path, azimuth=-70.0, size=200, frames=8, title="", top=False, names=None):
+    """One sheet for review: a row per animation (`names`, default all, the transitions first),
+    `frames` moments of it, the horse drawn only where it is not under the ground. `top`: seen
+    from above, with the selection circle (blue), the unit's centre (red cross) and the hit point
+    bar's place (green) on the ground."""
+    import bitfont
+    hide = maker.hide
+    order = [n for n in TRANSITIONS if n in built] + [n for n in built if n not in TRANSITIONS]
+    if names:
+        order = [n for n in names if n in built]
+    rows = []
+    marks = unit_marks(maker, maker.r) if top else None
+    view = dict(elevation=72.0, centre=(-0.2, 0.0, 0.0), span=3.6) if top else {}
+    for name in order:
+        _d, dur, times, poses, horse_anim, _c, buried = built[name]
+        n = frames + (2 if name in TRANSITIONS and hide else 0)
+        picks = np.linspace(0, len(times) - 1, n).round().astype(int)
+        tiles = []
+        for i in picks:
+            hp = maker.horse_pose(horse_anim, times[i])
+            img = scene.draw(scene.triangles(poses[i], hp, None, not buried[i]), size=size, azimuth=azimuth,
+                             marks=marks, **view)
+            tiles.append(label(img, f"{name} {times[i]:.2f}s"))
+        rows.append(tiles)
+    cols = max(len(t) for t in rows)
+    rows = [np.concatenate(t + [np.full_like(t[0], 255)] * (cols - len(t)), axis=1) for t in rows]
+    body = np.concatenate(rows, axis=0)
+    head = np.full((28, body.shape[1], 3), 40, np.uint8)
+    bitfont.draw(head, title or ("HORSE HIDDEN ON FOOT" if hide else "HORSE KEPT ON FOOT"), 6, 7,
+                 (255, 255, 255), scale=2)
+    save_png(path, np.concatenate([head, body], axis=0))
+
+
+# --------------------------------------------------------------------------------------------------
+
+
+ANIM_NAMES = {"dismount": "Dismount", "mount": "Mount"}
+
+
+def anim_names(name, entry=None):
+    """The anim file names of animation `name`: the entry's own `anim` (a name or a list) when it
+    gives one, else Dismount, Mount or Dismounted_<Name>. A heal plays the anim name Heal whatever
+    its action says (measured in game 2026-11-22), and a construction one of the Build names."""
+    own = (entry or {}).get("anim")
+    if own:
+        return [own] if isinstance(own, str) else list(own)
+    return [ANIM_NAMES.get(name, "Dismounted_" + name.capitalize())]
+
+
+def anim_name(name, entry=None):
+    return anim_names(name, entry)[0]
+
+
+def _tag(t):
+    attrs = "".join(f' {k}="{v}"' for k, v in t.items() if k not in ("type", "at"))
+    return f'\t\t\t<tag type="{t["type"]}"{attrs}>{float(t["at"]):.2f}</tag>\n'
+
+
+def _attach(a):
+    return (f'\t\t<attach a="{a["a"]}" frombone="{a["frombone"]}" tobone="{a["tobone"]}" '
+            f'syncanims="{a.get("syncanims", "0")}"/>\n')
+
+
+def anim_blocks(recipe, built):
+    """The <anim> blocks for the two anim files: the horse's (its own animation or the clip made
+    for it, the horse under the ground where it is hidden, with the entry's tags: the base model's
+    animation carries them) and the rider's (the new files, played through syncanims, with the
+    entry's own attachments, a torch)."""
+    folder, prefix = recipe["folder"], recipe["prefix"]
+    entries = {e["name"]: e for e in foot_entries(recipe, True)}
+    entries.update({recipe["dismount"]["name"]: recipe["dismount"], recipe["mount"]["name"]: recipe["mount"]})
+    horse, rider = [], []
+    for name, (_d, _dur, _t, _p, horse_anim, clip, *_rest) in built.items():
+        entry = entries.get(name, {})
+        tags = "".join(_tag(t) for t in entry.get("tags", []))
+        hfile = f"{folder}\\{horse_clip_name(recipe, name)}" if clip is not None else horse_anim
+        attach = "".join(_attach(a) for a in entry.get("attach", []))
+        for an in anim_names(name, entry):
+            horse.append(f"\t<anim>{an}\n\t\t<assetreference type=\"GrannyAnim\">\n"
+                         f"\t\t\t<file>{hfile}</file>\n{tags}\t\t</assetreference>\n"
+                         f"\t\t<component>ModelComp</component>\n\t</anim>")
+            rider.append(f"\t<anim>{an}\n\t\t<assetreference type=\"GrannyAnim\">\n"
+                         f"\t\t\t<file>{folder}\\{rider_clip_name(recipe, name)}</file>\n\t\t</assetreference>\n"
+                         f"\t\t<component>ModelComp</component>\n{attach}\t</anim>")
+    return "\n".join(horse) + "\n", "\n".join(rider) + "\n"
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--game", required=True)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--recipe")
+    ap.add_argument("--granny-helper", default=os.path.join(HERE, "granny_recompress.exe"))
+    ap.add_argument("--sheets", action="store_true")
+    ap.add_argument("--clips", action="store_true")
+    ap.add_argument("--only")
+    ap.add_argument("--views", default="-70")
+    ap.add_argument("--keys", action="store_true", help="draw the dismount's key poses only")
+    ap.add_argument("--horse", choices=HORSE_CHOICES,
+                    help="keep the horse beside the rider on foot, or hide it (default: the recipe's)")
+    ap.add_argument("--melee", action="store_true",
+                    help="also the hand attack on foot (the recipe's foot entries marked hand)")
+    ap.add_argument("--test", action="store_true",
+                    help="also the recipe's test_foot animations (heal, build), in their own blocks")
+    ap.add_argument("--overview", action="store_true",
+                    help="one review sheet, a row per animation (sheets\\overview.png)")
+    args = ap.parse_args(argv)
+    try:
+        refuse_steam(args.out)
+    except RefusedPath as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    recipe = copy.deepcopy(DEFAULT_RECIPE)
+    if args.recipe:
+        with open(args.recipe, encoding="utf-8") as f:
+            recipe.update(json.load(f))
+    if args.horse:
+        recipe["horse"] = args.horse
+    if args.melee:
+        recipe["melee"] = True
+    if recipe.get("horse", "keep") not in HORSE_CHOICES:
+        print(f"recipe: horse must be one of {', '.join(HORSE_CHOICES)}", file=sys.stderr)
+        return 2
+    work = tempfile.mkdtemp(prefix="dismount_work_")
+    try:
+        game = Game(args.game, args.granny_helper, work)
+        maker = Maker(game, recipe)
+        only = set(args.only.split(",")) if args.only else None
+        built = maker.build(only, args.test)
+        folder = os.path.join(args.out, "art", recipe["folder"])
+        os.makedirs(folder, exist_ok=True)
+        for name, b in built.items():
+            rname = rider_clip_name(recipe, name)
+            with open(os.path.join(folder, rname + ".gr2"), "wb") as f:
+                f.write(b[0])
+            print(f"{rname}.gr2  {b[1]:.2f} s  {len(b[2])} frames  {len(b[0])} B")
+            if b[5] is not None:
+                clip = horse_clip_name(recipe, name)
+                with open(os.path.join(folder, clip + ".gr2"), "wb") as f:
+                    f.write(b[5])
+                print(f"{clip}.gr2  {len(b[5])} B")
+        if only is None:                       # with --only the blocks would list only some names
+            tests = {e["name"] for e in recipe.get("test_foot") or []}
+            parts = [("", {k: v for k, v in built.items() if k not in tests})]
+            if args.test:
+                parts.append(("-test", {k: v for k, v in built.items() if k in tests}))
+            for suffix, some in parts:
+                horse_xml, rider_xml = anim_blocks(recipe, some)
+                for fname, text in ((f"anims-horse{suffix}.xml", horse_xml), (f"anims-rider{suffix}.xml", rider_xml)):
+                    with open(os.path.join(args.out, fname), "w", encoding="utf-8", newline="\r\n") as f:
+                        f.write(text)
+        if args.keys:
+            scene = Scene(game, maker, recipe)
+            keys = maker.key_poses(recipe["dismount"]["horse"])
+            hp = maker.horse_pose(recipe["dismount"]["horse"], 0.0)
+            tiles = [label(scene.draw(scene.triangles(p, hp, None), size=420, azimuth=float(v)),
+                           f"key {share:.2f} view {v}") for v in args.views.split(",") for share, p in keys]
+            os.makedirs(os.path.join(args.out, "sheets"), exist_ok=True)
+            save_png(os.path.join(args.out, "sheets", "keys.png"), sheet(tiles, len(keys)))
+        if args.sheets or args.clips or args.overview:
+            scene = Scene(game, maker, recipe)
+            sheets = os.path.join(args.out, "sheets")
+            os.makedirs(sheets, exist_ok=True)
+            views = [float(v) for v in args.views.split(",")]
+            if args.sheets or args.clips:
+                for name, b in built.items():
+                    render(scene, maker, name, b, sheets, args.clips, views)
+                    print(f"sheets\\{name}.png")
+            if args.overview:
+                overview(scene, maker, built, os.path.join(sheets, "overview.png"), azimuth=views[0])
+                print("sheets\\overview.png")
+                overview(scene, maker, built, os.path.join(sheets, "overview-top.png"), azimuth=views[0],
+                         top=True, names=["dismount", "mount", "idle", "walk", "attack"],
+                         title=("HORSE HIDDEN" if maker.hide else "HORSE KEPT")
+                         + " - FROM ABOVE: SELECTION CIRCLE BLUE, UNIT CENTRE RED, HP BAR GREEN")
+                print("sheets\\overview-top.png")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
