@@ -17,6 +17,18 @@ HELP = {
         'overview': ("One sheet for review, a row per animation (sheets\\overview.png); with the horse hidden, the moments after the dismount and before the mount show it gone.",
                      "Una hoja para revisar, una fila por animación (sheets\\overview.png); con el caballo oculto, los momentos tras desmontar y antes de montar lo muestran ausente."),
     },
+    'make_pray': {
+        'design': ("Which designs, separated by commas: 1 kneeling with joined hands, 2 standing with the sign of the cross, 3 bowing down to the ground.",
+                   "Qué diseños, separados por comas: 1 de rodillas con las manos juntas, 2 de pie con la señal de la cruz, 3 inclinándose hasta el suelo."),
+        'sex': ("male, female or both (the review sheet and the GIFs need both).",
+                "male, female o ambos (la hoja de revisión y los GIF necesitan ambos)."),
+        'preview': ("Also a review sheet: for each design a row per villager and view (3/4 and side), moments of the entry, the loop and the exit.",
+                    "Además una hoja de revisión: por diseño, una fila por aldeano y vista (3/4 y lateral), momentos de la entrada, el bucle y la salida."),
+        'gifs': ("Also one GIF per design, both villagers side by side: the entry, the loop and the exit.",
+                 "Además un GIF por diseño, los dos aldeanos lado a lado: la entrada, el bucle y la salida."),
+        'no_verify': ("Skips reading every file back and the game's granny2.dll checks (CRC, read, compressed and expanded back).",
+                      "Omite releer cada archivo y las comprobaciones con granny2.dll del juego (CRC, lectura, compresión y expansión)."),
+    },
     'retarget_anims': {
         'recipe': ("Recipe names (skirmisher: Wars of Liberty's light infantry model; native: the game's native rifleman) or JSON files with the same keys (source model and anim file, the clips' folder, the target model, the output folder), separated by spaces; several make one review sheet with every target. Empty: skirmisher.",
                    "Nombres de receta (skirmisher: el modelo de infantería ligera de Wars of Liberty; native: el fusilero nativo del juego) o archivos JSON con las mismas claves (modelo y anim file de origen, la carpeta de los clips, el modelo de destino, la carpeta de salida), separados por espacios; varias hacen una sola hoja de revisión con todos los destinos. Vacío: skirmisher."),

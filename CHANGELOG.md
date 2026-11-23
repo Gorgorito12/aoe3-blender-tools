@@ -6,6 +6,13 @@ three together).
 
 ## Unreleased
 
+- `tools/make_pray.py` (`aoe3game/gr2_pose.py`, a form in Art utilities): three praying animations for the
+  villagers (kneeling with joined hands, standing with the sign of the cross, bowing down to the ground),
+  each an entry from the idle, a seamless loop and an exit, for the male and the female villager, made
+  from key poses with two-bone IK; checked for seams, foot sliding, the ground and hands inside the body,
+  and through the game's granny2.dll; review sheet and GIFs. `make_dismount.py`'s pose helpers moved to
+  `gr2_pose.py`. Test: `tests/test_make_pray.py`.
+- `tools/panel_rows.py` (a form in Art utilities): a resource panel's painted rows re-laid in the interface textures, with new rows that carry an icon of your own (a new resource row), from a JSON spec; only the panel's DXT blocks are encoded again. `tools/draw_praying_hands.py`: a praying hands icon as a PNG. Test: `tests/test_panel_rows.py`.
 - Studio forms in Art utilities for `tools/make_type_icon.py`, `tools/import_icon.py`,
   `tools/make_command_icon.py` and `tools/dmg_bones.py`, which had none (`tests/test_studio.py` failed on
   them).

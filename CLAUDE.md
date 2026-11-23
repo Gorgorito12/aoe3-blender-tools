@@ -43,6 +43,7 @@ python -I tests/test_game_formats.py               # game formats, plain Python 
 python -I tests/test_xmbedit.py                    # compiled XML (.xmb) and its text round trip
 venv/bin/python -I tests/test_art_generators.py    # make_rings, make_icons, make_bar (about 70 s)
 venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, hard edges, outline; make_type_icon
+venv/bin/python -I tests/test_panel_rows.py        # panel_rows, draw_praying_hands: rows moved, a new row, blocks kept
 venv/bin/python -I tests/test_import_icon.py       # import_icon: a drawn PNG into a 32x32 icon .ddt (aspect, scale, tint)
 venv/bin/python -I tests/test_command_icons.py     # make_command_icon: format, frame, tick and cross
 venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout file's gadgets as boxes
@@ -66,6 +67,8 @@ python -I tests/test_gr2_edit.py                  # a model's whole tree written
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
 python -I tests/test_dmg_bones.py                 # dmg_bones.py --fix: definebone lines, text and .xmb
 venv/bin/python -I tests/test_retarget_anims.py    # gr2_retarget and retarget_anims on synthetic rigs
+venv/bin/python -I tests/test_make_pray.py         # gr2_pose (IK, keys) and make_pray on synthetic rigs
+venv/bin/python -I tools/make_pray.py --game <copy> --out <dir> [--preview <png>] [--gifs <dir>]   # villager praying
 venv/bin/python -I tools/retarget_anims.py --game <copy> --out <dir> [--recipe skirmisher --recipe native] [--preview <png>]
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
 venv/bin/python -I -X utf8 tools/game_fonts.py stage --game <copy> --out <dir outside it> --suffix WoL   # a copy's fonts, extended
@@ -124,7 +127,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   unit's skeleton with rotations followed, four weights a vertex, skinning to a pose), `gr2_edit.py`
   (a model's whole tree copied and written again: the start of a transplant), `gr2_fit.py` (a
   model fitted in place to a borrowed damage template or animation), `gr2_anim.py` (animations
-  read, posed and written), `gr2_retarget.py` (a model's animations put on another skeleton, with
+  read, posed and written), `gr2_pose.py` (poses as world frames: branches turned, two-bone IK,
+  keys interpolated without overshoot), `gr2_retarget.py` (a model's animations put on another skeleton, with
   their tag files), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
