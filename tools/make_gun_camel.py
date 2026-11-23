@@ -714,7 +714,10 @@ CLIPS = {
          "rider": ZAMB + "zamburak_rider_idle00", "lower": 22.0},
         {"name": "walk", "anim": "Walk", "camel": ZAMB + "zamburak_camel_walk00", "gait": 1.5},
         {"name": "jog", "anim": "Jog", "camel": ZAMB + "zamburak_camel_jog", "gait": 3.0, "lower": 26.0},
-        {"name": "run", "anim": "Run", "camel": LIB + "cavalry\\horse_gallop", "gait": 4.0, "lower": 12.0},
+        # the gallop moves the rider's bone against the chest (the gun rises and falls 0.13 against him
+        # each stride, and a hand on it flipped its elbow): both fists on the reins there
+        {"name": "run", "anim": "Run", "camel": LIB + "cavalry\\horse_gallop", "gait": 4.0, "lower": 12.0,
+         "reins_only": True},
         {"name": "fire", "anim": "Attack_ranged", "camel": ZAMB + "zamburak_camel_attackRanged01", "do": "fire",
          "lower": 22.0, "dip": 6.0},
         {"name": "reload", "anim": "Attack_ranged_reload", "camel": ZAMB + "zamburak_camel_reload",
@@ -727,7 +730,7 @@ CLIPS = {
         {"name": "jog", "anim": "Jog", "camel": ZAMB + "zamburak_camel_jog", "gait": 3.0, "lower": 26.0,
          "seat": True},
         {"name": "run", "anim": "Run", "camel": LIB + "cavalry\\horse_gallop", "gait": 4.0, "lower": 12.0,
-         "seat": True},
+         "reins_only": True, "seat": True},
         # the lying-down clip, then the camel held down while he gets off step by step (2 s)
         {"name": "deploy", "anim": "Bombard_unlimber", "borrow": B_DOWN, "do": "dismount", "hold_after": 2.0},
         {"name": "deployed", "anim": "Bombard_ranged_idle", "borrow": B_IDLE, "do": "stand"},
@@ -1053,11 +1056,12 @@ class Unit:
 
     def seated_hands(self, clip):
         """Mounted: on the move, the right fist on the reins and the left palm resting on the
-        breech box's side (the trunk turned a little toward the gun); B at rest (its crank outside,
+        breech box's side (the trunk turned a little toward the gun), but at the gallop
+        (`reins_only`) both fists on the reins; B at rest (its crank outside,
         out of reach), both fists on the reins; A at the gun, the right hand on the crank and the
         left on the breech."""
         if clip.get("gait"):
-            return {"r": "reins", "l": "casing_side"}
+            return {"r": "reins", "l": "reins" if clip.get("reins_only") else "casing_side"}
         if self.variant == "B":
             return {"r": "reins", "l": "reins"}
         return {"r": "crank", "l": "breech"}
@@ -1079,7 +1083,8 @@ class Unit:
                 # upright, shoulders square: only a small nod of the trunk with each of the two
                 # steps, the chest turned a little toward the gun his left hand rests on
                 R = rider.turn(R, "bip01 spine", X, clip["gait"] * math.sin(4 * math.pi * u))
-                R = rider.turn(R, "bip01 spine", Y, -6.0)
+                if not clip.get("reins_only"):
+                    R = rider.turn(R, "bip01 spine", Y, -6.0)
             if do == "fire":
                 R = rider.turn(R, "bip01 spine", X, 5.0 + 0.8 * math.sin(2 * math.pi * SHOTS * u))
             if do == "reload":

@@ -247,6 +247,8 @@ class Rhythm(unittest.TestCase):
             self.assertTrue({"walk", "jog", "run"} <= names, variant)
             moving = [c for c in gc.CLIPS[variant] if c["name"] in ("walk", "jog", "run")]
             self.assertTrue(all(c.get("gait") and not c.get("rider") for c in moving), variant)
+            run = next(c for c in moving if c["name"] == "run")
+            self.assertTrue(run.get("reins_only"), variant)          # the gallop moves the gun against him
 
     def test_every_clip_names_its_length(self):
         for variant, clips in gc.CLIPS.items():
