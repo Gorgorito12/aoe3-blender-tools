@@ -849,6 +849,61 @@ TOOLS = [
               L("Writes nothing: says whether the files in the art folder are what would be written.",
                 "No escribe nada: dice si los archivos de la carpeta art son lo que se escribiría."))],
          outputs=("out", "png")),
+    Tool("draw_praying_hands", "tools/draw_praying_hands.py", "art",
+         L("Praying hands icon", "Icono de manos rezando"),
+         L("Draws a praying hands icon (two hands pressed together, a white cuff, a brown sleeve) as a PNG, shaded "
+           "like the painted resource icons of the in-game panel. No pixel comes from the game.",
+           "Dibuja un icono de manos rezando (dos manos juntas, un puño blanco, una manga marrón) como PNG, "
+           "sombreado como los iconos de recursos pintados del panel del juego. Ningún píxel sale del juego."),
+         [Arg("out", "--out", "save", L("Picture to write", "Imagen a escribir"),
+              L("The icon as a PNG. Empty: praying_hands.png in the work folder.",
+                "El icono como PNG. Vacío: praying_hands.png en la carpeta de trabajo."), filters=PNG,
+              work="praying_hands.png"),
+          Arg("size", "--size", "int", L("Size", "Tamaño"),
+              L("The square's side in pixels. Default 128.", "El lado del cuadrado en píxeles. Por defecto 128.")),
+          Arg("halo", "--halo", "float", L("Halo", "Halo"),
+              L("The strength of the pale gold halo behind the hands, 0 to 1. Default 0.35.",
+                "La intensidad del halo dorado pálido detrás de las manos, de 0 a 1. Por defecto 0.35.")),
+          Arg("tilt", "--tilt", "float", L("Tilt", "Inclinación"),
+              L("Degrees the hands lean to the right. Default 6.",
+                "Grados que las manos se inclinan a la derecha. Por defecto 6.")),
+          Arg("width", "--width", "float", L("Width", "Anchura"),
+              L("Horizontal stretch of the figure. Default 1.15.",
+                "Estiramiento horizontal de la figura. Por defecto 1.15.")),
+          Arg("sheet", "--sheet", "save", L("Preview picture", "Imagen de vista previa"),
+              L("Also the icon at its size and at 64, 34 and 24 pixels on the panel's dark wood.",
+                "También el icono a su tamaño y a 64, 34 y 24 píxeles sobre la madera oscura del panel."),
+              filters=PNG)],
+         outputs=("out", "sheet")),
+    Tool("panel_rows", "tools/panel_rows.py", "art",
+         L("Resource panel rows", "Filas del panel de recursos"),
+         L("Re-lays the painted rows of a resource panel in the game's interface textures and inserts new rows "
+           "with an icon of your own (a new resource), so the new row looks like the others. A JSON spec gives "
+           "the panels' rows; the textures are rebuilt from the originals and only the panel's blocks change.",
+           "Reorganiza las filas pintadas de un panel de recursos en las texturas de la interfaz del juego e "
+           "inserta filas nuevas con un icono propio (un recurso nuevo), para que la fila nueva se vea como las "
+           "demás. Un JSON describe las filas de los paneles; las texturas se reconstruyen desde las originales y "
+           "solo cambian los bloques del panel."),
+         [Arg("spec", "--spec", "file", L("Spec", "Especificación"),
+              L("The JSON that names the textures, their panels' rows, the new order and the icons.",
+                "El JSON que nombra las texturas, las filas de sus paneles, el orden nuevo y los iconos."),
+              required=True, filters=JSON),
+          Arg("src", "--in", "folder", L("Original textures folder", "Carpeta de las texturas originales"),
+              L("The folder the spec's paths start from (a game copy's root): read only.",
+                "La carpeta de la que parten las rutas de la especificación (la raíz de una copia del juego): "
+                "solo se lee."), required=True, setting="game"),
+          out_dir(required=False, help=L("The rebuilt .ddt files at the spec's paths. Empty: a folder of its own "
+                                         "in the work folder.",
+                                         "Los .ddt reconstruidos en las rutas de la especificación. Vacío: una "
+                                         "carpeta propia dentro de la carpeta de trabajo.")),
+          Arg("png", "--png", "outdir", L("PNG copies into", "Copias PNG en"),
+              L("Also each rebuilt texture as a PNG, to look at.",
+                "También cada textura reconstruida como PNG, para verla.")),
+          Arg("positions", "--positions", "save", L("Row positions", "Posiciones de las filas"),
+              L("A JSON with every panel's new rows (texture rows), to place a layout's gadgets on.",
+                "Un JSON con las filas nuevas de cada panel (filas de la textura), para colocar los elementos de "
+                "una interfaz."), filters=JSON)],
+         outputs=("out", "png", "positions")),
     Tool("import_icon", "tools/import_icon.py", "art",
          L("Import a drawn icon", "Importar un icono dibujado"),
          L("Turns an icon drawn elsewhere (a PNG with a transparent background) into a game icon texture: a "
