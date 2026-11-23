@@ -1102,6 +1102,26 @@ TOOLS = [
           Arg("overview", "--overview", "bool", L("Review sheet", "Hoja de revisión")),
           Arg("clips", "--clips", "bool", L("Clips (needs ffmpeg)", "Clips (necesita ffmpeg)"))],
          needs=("game",), outputs=("out",)),
+    Tool("make_pray", "tools/make_pray.py", "art",
+         L("Villager praying animations", "Animaciones de aldeano rezando"),
+         L("Three praying animations for the villagers (kneeling with joined hands, standing with the sign of "
+           "the cross, bowing down to the ground), each an entry from the idle, a seamless loop and an exit, for "
+           "the male and the female villager, as Granny files checked by the game's runtime; optional review "
+           "sheet and GIFs.",
+           "Tres animaciones de rezo para los aldeanos (de rodillas con las manos juntas, de pie con la señal de "
+           "la cruz, inclinándose hasta el suelo), cada una con entrada desde el reposo, un bucle sin cortes y "
+           "una salida, para el aldeano y la aldeana, como archivos Granny comprobados por el runtime del juego; "
+           "hoja de revisión y GIF opcionales."),
+         [game_dir(),
+          out_dir(help=L("Where the animations, the anim file blocks and the report go. Never a Steam library.",
+                         "Dónde van las animaciones, los bloques del anim file y el informe. Nunca una "
+                         "biblioteca de Steam.")),
+          Arg("design", "--design", "text", L("Designs", "Diseños"), default="1,2,3"),
+          Arg("sex", "--sex", "text", L("Villagers", "Aldeanos"), default="male,female"),
+          Arg("preview", "--preview", "save", L("Review sheet", "Hoja de revisión"), filters=(("PNG", "*.png"),)),
+          Arg("gifs", "--gifs", "folder", L("GIF folder", "Carpeta de GIF")),
+          Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
+         needs=("game",), outputs=("out",)),
     Tool("recompress_models", "tools/recompress_models.py", "art",
          L("Compress models again", "Volver a comprimir modelos"),
          L("Compresses Granny models a tool wrote uncompressed (a bone scale fix, an own texture, a rebake) through "

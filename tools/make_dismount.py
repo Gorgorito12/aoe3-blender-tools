@@ -69,6 +69,7 @@ from aoe3game import ddt, gr2, gr2_mesh, gr2_skin  # noqa: E402
 from aoe3game.deploy import RefusedPath, refuse_steam  # noqa: E402
 from aoe3game.gr2_anim import (Animation, Rig, axis_quat, frame, matrix_quat, slerp, split,  # noqa: E402
                                animation_file)
+from aoe3game.gr2_pose import blend, descendants, rotate_about, smooth, translate  # noqa: E402,F401
 from aoe3game.gr2_skin import quat_matrix  # noqa: E402
 
 LIB = "animation_library\\"
@@ -267,49 +268,6 @@ def tracks_of(rider, frames, times, bones=None):
     return out
 
 
-def rotate_about(pose, rig, bone, pivot_bone, axis, degrees):
-    """`pose` with `bone` and everything below it turned about the world axis through the
-    position of `pivot_bone` (both lower-case names)."""
-    r = np.eye(4)
-    r[:3, :3] = quat_matrix(axis_quat(axis, degrees))
-    c = pose[pivot_bone][:3, 3]
-    t1, t2 = np.eye(4), np.eye(4)
-    t1[:3, 3], t2[:3, 3] = -c, c
-    m = t2 @ r @ t1
-    below = descendants(rig, bone)
-    return {k: (m @ w if k in below else w) for k, w in pose.items()}
-
-
-def descendants(rig, bone):
-    idx = rig.index[bone]
-    out = {bone}
-    for i, name in enumerate(rig.names):
-        j = i
-        while j >= 0:
-            if j == idx:
-                out.add(name.lower())
-                break
-            j = rig.parents[j]
-    return out
-
-
-def translate(pose, rig, bone, offset):
-    m = np.eye(4)
-    m[:3, 3] = offset
-    below = descendants(rig, bone)
-    return {k: (m @ w if k in below else w) for k, w in pose.items()}
-
-
-def blend(rig, a, b, u):
-    """Bone by bone between two poses (world frames): every local frame slerped, the root's
-    position interpolated; the result as world frames."""
-    la, lb = rig.localise(a), rig.localise(b)
-    locs = []
-    for (pa, qa), (pb, qb) in zip(la, lb):
-        locs.append((pa + u * (pb - pa), slerp(qa, qb, u)))
-    return rig.by_name(rig.worlds(locs))
-
-
 def loop_length(horse, rider, most=6, close=0.04):
     """(length, rider cycles): a whole number of horse cycles holding a whole number of rider
     cycles to within `close` (the rider's animation is stretched by that much), the fewest."""
@@ -322,11 +280,6 @@ def loop_length(horse, rider, most=6, close=0.04):
         if err <= close:
             break
     return best[1], best[2]
-
-
-def smooth(u):
-    u = min(max(u, 0.0), 1.0)
-    return u * u * (3 - 2 * u)
 
 
 # --------------------------------------------------------------------------------------------------

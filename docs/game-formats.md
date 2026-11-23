@@ -373,6 +373,33 @@ in game (test T0 in `docs/game-test.md`).
   `Heal` and `Build` (the four Build names the stock explorer has: Build, BuildLifting, BuildSaw,
   BuildStaking) the animations played. A copy of the Heal action under another name healed nothing.
 
+### Animations from key poses (`aoe3game/gr2_pose.py`, `tools/make_pray.py`)
+
+- **The villagers** (**measured**, Wars of Liberty 1.0.15c, 2026-11-23): the anim file
+  `art\WoL\units\villagers\settler\villager.xml` has 30 submodels (European, Mediterranean,
+  native, Aztec, Japanese, Indian and other villagers, male and female); the male ones play
+  `animation_library\villager\villager_male_*`, the female ones `villager_female_*`. The European
+  models `units\villagers\we_villager_male` (23 bones) and `we_villager_female` (25: two ponytail
+  bones more) are named `Bip01` and in the `ESPostExport` basis (0.615 units a metre); the female's
+  bones are 1.6 cm lower, the rest alike. Both meshes are low poly (366 and 279 vertices), a hand a
+  flat plate of 6 to 16 vertices on its bone; `Bip01 Head` hangs from `Bip01 Spine1`, as `Bip01 Neck`
+  does. Facing +z, the right side +x.
+- **Built from channels**: a pose is the idle's first frame changed by channels (the root's place
+  and pitch, the spine, neck and head bends, each foot's toe point, heel lift and heading, each
+  hand's palm centre, finger and palm directions and elbow pole, the hands in the idle's frame of
+  the chest), the legs and arms solved by two-bone IK (each bone keeps its twist about its length:
+  its hinge is the limb's plane normal, so the channels of the idle give the idle back exactly). A
+  kneeling key puts each knee on the ground in front of its foot (the shin from the ankle) and the
+  hips on the thigh's angle above it; the knee's height is measured on the skinned mesh. A foot
+  rising on its toes turns about its toe tip; a step lifts the toe before it travels.
+- **The female's skirt** (**measured**): its hem is a ring of radius 0.3 around each calf, bound to
+  the calf alone, and one front vertex is bound to `Bip01`; so on a kneeling female the hem goes up
+  to 0.64 under the ground and its inside shows behind her. The stock `jesuit_villagerFemale_idle*`
+  kneeling animations, drawn on her, do the same. Under the terrain it is hidden in game
+  (**inferred**, not yet seen).
+- Whether the game plays an entry and an exit clip around a gather loop is **not yet known**
+  (`pray-anims.xml` proposes `PrayIn`, `Pray`, `PrayOut`).
+
 ### A unit's animations on another model (`aoe3game/gr2_retarget.py`, `tools/retarget_anims.py`)
 
 - **An animation plays only on the model it is named for** (**measured** in the code of the
