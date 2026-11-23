@@ -6,6 +6,10 @@ three together).
 
 ## Unreleased
 
+- `tools/make_rings.py`: range rings without the white edges, the whole line in the owner's colour like a selection
+  circle, and thinner (0.5 m, +0.008 m per metre of radius). Their flat bump map had a shine of 128 in its red channel
+  and a normal tilted along the ring in its alpha: the sun's shine added white and the colour looked pale. It is now
+  flat with no shine (R 0, A 128, as the game's own flat bump).
 - `tools/make_rings.py`: range rings at their true size. The game draws a flat particle `<scale>` metres wide in all,
   not twice that, so every `range_<metres>` ring showed half its radius (measured in game: the 12 m ring at 6 m).
   `range_scale` writes twice the old scale (the textures are unchanged); after the fix the 4, 12 and 30 m rings pass

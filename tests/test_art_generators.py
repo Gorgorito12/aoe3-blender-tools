@@ -321,17 +321,19 @@ class Rings(unittest.TestCase):
     @unittest.skipIf(np is None, "numpy not available")
     def test_range_rings_are_meshes_in_player_colour(self):
         """By default a range ring is a flat annulus mesh whose outer edge is at its radius, on one texture whose
-        alpha marks player colour (alpha 0 in the core, 255 on the white edges), with the units' player-colour shader."""
+        alpha marks player colour (alpha 0 and white across the whole line: the owner's colour, no border), with the
+        units' player-colour shader and a flat bump with no shine."""
         from aoe3game import gr2
         tex = self.files["range_line.ddt"]
         hd = ddt.read_header(tex)
         self.assertEqual(tex[5], 1)  # alpha: player colour
         px = ddt.decode(tex)
-        self.assertEqual(px[32, 0, 3], 0)       # the core: the owner's colour
-        self.assertEqual(px[1, 0, 3], 255)      # an edge: white
-        self.assertEqual(px[62, 0, 3], 255)
-        self.assertGreater(px[1, 0, :3].min(), 240)
-        self.assertIn("range_line_bump.ddt", self.files)
+        self.assertEqual(int(px[..., 3].max()), 0)        # the whole line: the owner's colour
+        self.assertGreater(int(px[..., :3].min()), 245)   # white, so the colour is unchanged
+        bump = ddt.decode(self.files["range_line_bump.ddt"])
+        self.assertLess(int(bump[..., 0].max()), 8)       # red: the shine mask, none
+        self.assertTrue(120 <= int(bump[..., 3].min()) <= int(bump[..., 3].max()) <= 136)  # alpha: the normal's X, flat
+        self.assertGreater(int(bump[..., 2].min()), 245)  # blue: the normal's Z, up
         for radius in make_rings.RANGES:
             self.assertNotIn(f"range_{radius}.particle", self.files)
             text = self.files[f"range_{radius}.xml"].decode("utf-8")

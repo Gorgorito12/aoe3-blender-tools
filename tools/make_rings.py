@@ -32,7 +32,8 @@ more personality.
 - ring_<name>.ddt, the 64x64 DXT3 texture of a unit, a tree or a cavalryman;
 - ring_<name>_<size>.ddt, the texture of a building, with lines as thick in metres as those of a unit's ring;
 - range_<metres>.xml and range_<metres>.gr2: one line of that radius on the ground, to show a range, a flat annulus mesh
-  in the owner's colour with white edges (all on range_line.ddt and its flat bump map, range_line_bump.ddt); with
+  in the owner's colour, flat like a selection circle (all on range_line.ddt and its flat bump map with no shine,
+  range_line_bump.ddt); with
   --range-particles (or without numpy) a white flat particle and its texture, range_<metres>.particle and .ddt;
 - aura_<name>.xml, a marker: the ring and, floating over the unit, icon_<name>_<height>.particle with the picture of
   icon_<name>.ddt: for the resources (MARKERS) the cell of a drawn sheet (--icon-sheet) or a cartoon of the
@@ -704,16 +705,18 @@ RANGE_COLOURS = ((245, 245, 235), (255, 255, 255))
 # alpha free to mark player colour as on a unit (an alpha-1 DDT with the shader bumpspec_mask_pixelxform and
 # pixelxformColor = playerColor; measured in game, 2026-11-22: texels of alpha 0 took the owner's colour, blue on
 # player 1's units and red on player 2's, and the local player's on a building's placement ghost). One mesh per
-# radius, range_<metres>.gr2, all on one texture, range_line.ddt: across the line, a light grey core of alpha 0 (the
-# owner's colour) between two thin white edges (alpha 255), so it reads on any ground.
-RANGE_MESH_LINE = 0.8             # the line's width in metres, at least (thinner, the colour fades into the edges at a distance)
-RANGE_MESH_LINE_PER_METRE = 0.012  # and widening with the radius
+# radius, range_<metres>.gr2, all on one texture, range_line.ddt: white of alpha 0 across the whole line, so the line
+# is the owner's colour itself, flat and opaque like the game's selection decals (a white line the game tints with
+# the owner's colour), with no border.
+# The bump map, range_line_bump.ddt, is flat and has no shine. The shader reads the shine mask from the bump's red
+# channel and the normal's X from its alpha (a stock flat bump is R 0, G 128, B 255, A 128); a bump of R 128 and A 255
+# (until 2026-11-23) asked for half shine on a normal tilted along the ring, and the sun's shine then added white over
+# the colour: a pale lavender for blue, pink for red.
+RANGE_MESH_LINE = 0.5             # the line's width in metres, at least: about a selection circle's line on screen
+RANGE_MESH_LINE_PER_METRE = 0.008  # and widening with the radius
 RANGE_MESH_HEIGHT = 0.25          # metres over the unit's feet
-RANGE_MESH_EDGE = 0.14            # each white edge's share of the line's width
 RANGE_MESH_STEP = 2.0             # metres of circumference a segment, from 48 to 256 segments
-# The core's grey: the shader multiplies it by the owner's colour and the sun brightens it (a light grey, 210, gave
-# a pale pink for red in game), so a mid grey keeps the colour full.
-RANGE_MESH_CORE = 150
+RANGE_MESH_CORE = 255             # the line's grey: white, so the shader gives the owner's colour unchanged
 RANGE_PARTICLES = False           # set by --range-particles
 OPACITY = 0.70  # the ground shows through
 # A DXT3 block holds two colours and two mixes of them. By how much of the main colour: 1, 2/3, 1/3, 0.
@@ -982,19 +985,16 @@ def range_mesh(radius):
 
 
 def range_line_textures():
-    """range_line.ddt (alpha 1: a light grey core of alpha 0, the owner's colour, between white edges of alpha 255,
-    across v) and range_line_bump.ddt (a flat normal map), each 64 x 64 with mips (needs numpy)."""
+    """range_line.ddt (alpha 1: RANGE_MESH_CORE grey of alpha 0 everywhere, the owner's colour across the whole line)
+    and range_line_bump.ddt (a flat normal map with no shine), each 64 x 64 with mips (needs numpy)."""
     import numpy as np
     sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
     from aoe3game import ddt as ddtfile
     n = 64
-    v = (np.arange(n) + 0.5) / n
-    edge = (v < RANGE_MESH_EDGE) | (v > 1 - RANGE_MESH_EDGE)
     tex = np.zeros((n, n, 4), np.uint8)
-    tex[~edge] = (RANGE_MESH_CORE,) * 3 + (0,)
-    tex[edge] = (250, 250, 245, 255)
+    tex[...] = (RANGE_MESH_CORE,) * 3 + (0,)
     bump = np.zeros((n, n, 4), np.uint8)
-    bump[...] = (128, 128, 255, 255)
+    bump[...] = (0, 128, 255, 128)  # R shine 0, G the normal's Y, B its Z, A its X: flat, as the stock flat bump
     return ddtfile.write_dxt(tex, ddtfile.DXT3, alpha=1), ddtfile.write_normal_map(bump)
 
 
