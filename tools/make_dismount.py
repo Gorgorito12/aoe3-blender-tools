@@ -4,14 +4,16 @@ horse is the unit's model, the rider hangs on a horse bone with syncanims), and 
 animations on foot beside the horse, from the game's own infantry animations.
 
     venv\\Scripts\\python -I tools/make_dismount.py --game <game copy> --out <folder>
-        [--recipe <recipe.json>] [--granny-helper <exe>] [--horse keep|hide] [--test]
+        [--recipe <recipe.json>] [--granny-helper <exe>] [--horse keep|hide] [--melee] [--test]
         [--sheets] [--clips] [--overview] [--only NAME,...]
 
 What it writes below --out:
 - `art\\<recipe "folder">\\<name>.gr2`: one rider animation per entry of the recipe: the
   `foot` entries (an infantry animation on the rider, standing on the ground beside the horse,
   turned and timed to the horse animation the anim file pairs with it) and the two transitions
-  `dismount` and `mount` (from the rider's seat to that place and back); with --test, the
+  `dismount` and `mount` (from the rider's seat to that place and back); a `foot` entry marked
+  `"hand": true` (the melee with the musket) only with the recipe's `"melee": true` or --melee (by
+  default a ranged unit keeps its shot on foot and has no hand attack there); with --test, the
   `test_foot` entries too (actions the unit lacks, heal and build, for a test copy of it);
 - `anims-horse.xml`, `anims-rider.xml`: the `<anim>` blocks to add to the horse's and the rider's
   anim files (the horse's carry the tags; the rider follows through syncanims; an entry's
@@ -102,7 +104,10 @@ DEFAULT_RECIPE = {
                   {"type": "Particles", "particlename": "musketshot", "at": 0.46}]},
         {"name": "reload", "rider": LIB + "range\\volley\\volley_standing_reload",
          "horse": LIB + "cavalry\\horse_idle_A", "time": "rider"},
-        {"name": "melee", "rider": LIB + "range\\melee_rifleman_standing_A",
+        # the hand attack on foot: made only with "melee": true (below), for a unit that fights hand
+        # to hand on foot; the Chasseur keeps its shot on foot instead (that action fires at point
+        # blank, minrange 0)
+        {"name": "melee", "hand": True, "rider": LIB + "range\\melee_rifleman_standing_A",
          "horse": LIB + "cavalry\\horse_idle_A", "time": "rider",
          "tags": [{"type": "Attack", "at": 0.51},
                   {"type": "SpecificSoundSet", "checkvisible": "1", "set": "Swoosh", "at": 0.45}]},
@@ -141,6 +146,9 @@ DEFAULT_RECIPE = {
     # ground; the bone the rider hangs on stays, so the rider's animations are the same either way.
     "horse": "keep",
     "hidden_depth": 30.0,
+    # whether the `foot` entries marked "hand" (the melee on foot) are made; false: the unit keeps
+    # its ranged attack on foot and has no hand attack there (Wars of Liberty's request, 2026-11-23)
+    "melee": False,
 }
 HORSE_CHOICES = ("keep", "hide")
 FPS = 30
@@ -593,7 +601,10 @@ class Maker:
 
 
 def foot_entries(recipe, test=False):
-    return list(recipe["foot"]) + (list(recipe.get("test_foot") or []) if test else [])
+    """The animations on foot to make: the recipe's `foot` (an entry marked "hand" only with
+    "melee": true) and, with `test`, its `test_foot`."""
+    foot = [e for e in recipe["foot"] if not e.get("hand") or recipe.get("melee")]
+    return foot + (list(recipe.get("test_foot") or []) if test else [])
 
 
 def horse_clip_name(recipe, name):
@@ -948,6 +959,8 @@ def main(argv):
     ap.add_argument("--keys", action="store_true", help="draw the dismount's key poses only")
     ap.add_argument("--horse", choices=HORSE_CHOICES,
                     help="keep the horse beside the rider on foot, or hide it (default: the recipe's)")
+    ap.add_argument("--melee", action="store_true",
+                    help="also the hand attack on foot (the recipe's foot entries marked hand)")
     ap.add_argument("--test", action="store_true",
                     help="also the recipe's test_foot animations (heal, build), in their own blocks")
     ap.add_argument("--overview", action="store_true",
@@ -964,6 +977,8 @@ def main(argv):
             recipe.update(json.load(f))
     if args.horse:
         recipe["horse"] = args.horse
+    if args.melee:
+        recipe["melee"] = True
     if recipe.get("horse", "keep") not in HORSE_CHOICES:
         print(f"recipe: horse must be one of {', '.join(HORSE_CHOICES)}", file=sys.stderr)
         return 2
