@@ -1,21 +1,27 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Lists the damage templates whose parts name a bone that the model using them does not have.
+"""Lists the damage templates whose parts name a bone that the model using them does not have, or that
+its anim file does not define (<definebone>).
 
     python -I tools/dmg_bones.py <game folder> [--granny-install <game folder>] [--helper <exe>]
                                  [--only <text>] [--csv <out.csv>]
 
 An anim file's <assetreference type="GrannyModel" damagetemplate="X.dmg"> gives the model (its <file>)
-the parts of the template X: every <part bone="..."> under its <impactpoint>s. When the model's
-skeleton has no bone of that name, the legacy game writes "Invalid bone name ... in part declaration
-for model ..." when the damage template is applied (a building or tree dies, a ship is hit), and the
-first time that bone name is seen in a session it loads the model again while units still draw
-it: the old Granny file is freed under them and the game can crash in its next draw (granny2.dll, or
-a model draw in age3y.exe). The fix is in the data: a template made for the model, or no template.
+the parts of the template X: every <part bone="..."> under its <impactpoint>s; so does a building's
+<simskeleton> with its <model> and <damagetemplate>. The legacy game looks a part's bone up by its
+name, which an anim file must have defined with <definebone>. When no anim file loaded so far defined
+it, the game writes "Invalid bone name ... in part declaration for model ..., this probably means the
+bone was not defined in the unit's anim XML", adds the name and loads the model again while units
+still draw it: the old Granny file is freed under them and the game can crash in its next draw
+(granny2.dll, or a model draw in age3y.exe). Two cases are listed: "missing bones", a bone the model's
+skeleton lacks (the fix: a template made for the model, or no template), and "not defined", a bone the
+model has but the anim file does not define (the fix: a <definebone> line). Names are compared
+ignoring case. A bone another anim file defines is still listed: the game is safe only when that file
+was loaded first.
 
 Reads the game folder's art: loose files first, then the art\\*.bar archives (stored .xml and .xmb,
 damage templates as .dmg or .dmg.xmb). A compressed model is read by the game's granny2.dll through
 tools/recompress_models.py's helper (`--build-helper`; --granny-install defaults to the game folder).
-Nothing is written but --csv. Exit status 1 when a template names a missing bone.
+Nothing is written but --csv. Exit status 1 when a pair is listed.
 """
 import csv
 import os
@@ -84,7 +90,7 @@ class Art:
 
 def parse(text):
     try:
-        return ET.fromstring(re.sub(r"^\s*<\?xml[^>]*\?>", "", text.lstrip("﻿")))
+        return ET.fromstring(re.sub(r"^\s*<\?xml[^>]*\?>", "", text.lstrip("\ufeff")))
     except ET.ParseError:
         return None
 
@@ -97,7 +103,7 @@ class Bones:
         self.work = tempfile.mkdtemp(prefix="dmg_bones_")
 
     def of(self, art, model):
-        key = model.lower().replace("/", "\\")
+        key = model.lower().replace("/", "\\").lstrip("\\")
         key = key if key.endswith(".gr2") else key + ".gr2"
         if key in self.cache:
             return self.cache[key]
@@ -158,7 +164,7 @@ def main(argv):
     anims = sorted(k for k in art.keys() if k.endswith(".xml") or k.endswith(".xml.xmb"))
     if "--only" in opt:
         anims = [k for k in anims if opt["--only"].lower() in k]
-    rows, seen, templates = [], set(), {}
+    rows, seen, templates, done = [], set(), {}, set()
     for key in anims:
         base = key[:-4] if key.endswith(".xmb") else key
         if base in seen:
@@ -170,38 +176,53 @@ def main(argv):
         root = parse(text)
         if root is None:
             continue
+        defined = {(d.text or "").strip().lower() for d in root.iter() if d.tag.lower() == "definebone"}
         for ref in root.iter():
-            if ref.tag.lower() != "assetreference":
+            tag = ref.tag.lower()
+            if tag == "assetreference":  # <assetreference damagetemplate="X"><file>model</file>
+                dmg = next((v for k, v in ref.attrib.items() if k.lower() == "damagetemplate"), None)
+                files = [c.text.strip() for c in ref if c.tag.lower() == "file" and c.text]
+            elif tag == "simskeleton":  # a building's <simskeleton><model>m</model><damagetemplate>X</damagetemplate>
+                dmg = next((c.text.strip() for c in ref if c.tag.lower() == "damagetemplate" and c.text), None)
+                files = [c.text.strip() for c in ref if c.tag.lower() == "model" and c.text]
+            else:
                 continue
-            dmg = next((v for k, v in ref.attrib.items() if k.lower() == "damagetemplate"), None)
-            files = [c.text.strip() for c in ref if c.tag.lower() == "file" and c.text]
             if not dmg or not files:
                 continue
             if dmg.lower() not in templates:
                 templates[dmg.lower()] = template_bones(art, dmg)
             dmg_key, wanted = templates[dmg.lower()]
             for model in files:
+                if (base, model.lower(), dmg.lower()) in done:
+                    continue
+                done.add((base, model.lower(), dmg.lower()))
                 have = bones.of(art, model)
+                undefined = sorted(b for b in (wanted or {}) if b.lower() not in defined)
                 if wanted is None:
-                    rows.append((base, model, dmg, "template not found", ""))
+                    rows.append((base, model, dmg, "template not found", "", ""))
                 elif have is None:
-                    rows.append((base, model, dmg, "model not read", ""))
+                    rows.append((base, model, dmg, "model not read", "", "; ".join(undefined)))
                 else:
                     lower = {h.lower() for h in have}  # the game's bone names ignore case
                     missing = sorted(b for b in wanted if b.lower() not in lower)
                     if missing:
-                        rows.append((base, model, dmg, "missing bones", "; ".join(missing)))
-    bad = [r for r in rows if r[3] == "missing bones"]
+                        rows.append((base, model, dmg, "missing bones", "; ".join(missing), "; ".join(undefined)))
+                    elif undefined:
+                        rows.append((base, model, dmg, "not defined", "", "; ".join(undefined)))
+    missing_rows = [r for r in rows if r[3] == "missing bones"]
+    undefined_rows = [r for r in rows if r[3] == "not defined"]
     for r in rows:
         print("\t".join(r))
-    print(f"{len(seen)} anim files read; {len(templates)} damage templates; {len(bad)} model and template pairs "
-          f"with missing bones; {len(rows) - len(bad)} not checked (template or model not found or not read)")
+    print(f"{len(seen)} anim files read; {len(templates)} damage templates; {len(missing_rows)} model and template "
+          f"pairs with bones the model lacks; {len(undefined_rows)} more with bones the anim file does not define; "
+          f"{len(rows) - len(missing_rows) - len(undefined_rows)} not checked (template or model not found or not read)")
     if "--csv" in opt:
         with open(opt["--csv"], "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
-            w.writerow(["anim file", "model", "damage template", "result", "bones"])
+            w.writerow(["anim file", "model", "damage template", "result", "bones the model lacks",
+                        "bones the anim file does not define"])
             w.writerows(rows)
-    return 1 if bad else 0
+    return 1 if missing_rows or undefined_rows else 0
 
 
 if __name__ == "__main__":
