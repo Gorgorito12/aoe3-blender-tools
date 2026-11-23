@@ -18,6 +18,8 @@
                                                               texture x3, and its small levels on four grounds
     python -I tools/make_rings.py ... --range-particles       the range rings as white flat particles, as before
                                                               2026-11-22, instead of meshes in the owner's colour
+    python -I tools/make_rings.py ... --no-range-fills        no fill discs (rangefill_*) under the range rings
+    python -I tools/make_rings.py ... --no-ship-rings         no dashed rings for attacks on ships (range_*_ships)
 
 --out is where the files are written (default out/rings in the repository). --folder is the folder under
 art/effects/ of the game (or of a mod) the files are meant for, and goes into the paths the files name (default
@@ -35,6 +37,10 @@ more personality.
   in the owner's colour, flat like a selection circle (all on range_line.ddt and its flat bump map with no shine,
   range_line_bump.ddt); with
   --range-particles (or without numpy) a white flat particle and its texture, range_<metres>.particle and .ddt;
+- range_<metres>_ships.xml and .gr2: the same line in RANGE_DASHES dashes, for an attack that reaches only ships;
+- rangefill_<metres>_p<player>.xml and .gr2, on rangefill_p<player>.ddt: a transparent disc in the colour of player
+  0 to 8 under the ring of that radius, graded from clear at the centre to its RANGE_FILL_PLAYERS alpha at the edge
+  (the game's alphablend shader has no player colour, so the caller picks the owner's file);
 - aura_<name>.xml, a marker: the ring and, floating over the unit, icon_<name>_<height>.particle with the picture of
   icon_<name>.ddt: for the resources (MARKERS) the cell of a drawn sheet (--icon-sheet) or a cartoon of the
   gathering tool or of the food drawn by cartoon_icons.py (a pickaxe for gold, an axe for wood, a drumstick for food
@@ -718,6 +724,39 @@ RANGE_MESH_HEIGHT = 0.25          # metres over the unit's feet
 RANGE_MESH_STEP = 2.0             # metres of circumference a segment, from 48 to 256 segments
 RANGE_MESH_CORE = 255             # the line's grey: white, so the shader gives the owner's colour unchanged
 RANGE_PARTICLES = False           # set by --range-particles
+# A ring of an attack that reaches only ships: range_<metres>_ships, the same line cut into RANGE_DASHES dashes (by the
+# geometry, so the texture and the shader stay the line's). --no-ship-rings leaves them out.
+RANGE_DASHES = 48
+RANGE_DASH_SHARE = 0.55           # of each dash's period that is drawn
+RANGE_SHIP_RINGS = True           # set by --no-ship-rings
+# The fill of a ring, where the attack reaches: rangefill_<metres>_p<player>, a flat disc under the line on the game's
+# alphablend shader, whose texture's alpha is the transparency (that shader has no player colour, and the units'
+# player-colour shader draws opaque: measured in game, 2026-11-23), so there is one texture per player colour,
+# rangefill_p<player>.ddt, and the caller picks the disc of the unit's owner. The alpha is graded by the distance from
+# the centre, as AoE3 DE's own range decal: none up to RANGE_FILL_START of the radius, rising to the colour's alpha
+# in RANGE_FILL_PLAYERS at the edge (where several fills overlap, the inner zone shows the sum). Measured in game: that
+# shader blends by the texture's alpha and the sun about doubles the texture's colour, so the texture holds
+# RANGE_FILL_LIGHT of the owner's colour. The placement ghost of a building gets no fill from the caller: a ghost that
+# cannot be placed is tinted, and the shader's tint draws the disc opaque. --no-range-fills leaves them out.
+RANGE_FILLS = True                # set by --no-range-fills
+RANGE_FILL_HEIGHT = 0.22          # under the line (RANGE_MESH_HEIGHT)
+RANGE_FILL_START = 0.2
+RANGE_FILL_POWER = 1.2
+RANGE_FILL_LIGHT = 0.6
+RANGE_FILL_SEGMENTS = 64
+# The game's player colours (playercolors.xml, color1 of players 0 to 8), and the fill's alpha at the edge for each:
+# cold colours need more to read over yellow grass.
+RANGE_FILL_PLAYERS = {
+    0: ((130, 80, 0), 0.30),
+    1: ((45, 45, 245), 0.38),
+    2: ((210, 40, 40), 0.32),
+    3: ((215, 215, 30), 0.30),
+    4: ((150, 15, 250), 0.36),
+    5: ((15, 210, 80), 0.30),
+    6: ((255, 150, 5), 0.28),
+    7: ((150, 255, 240), 0.28),
+    8: ((255, 190, 255), 0.28),
+}
 OPACITY = 0.70  # the ground shows through
 # A DXT3 block holds two colours and two mixes of them. By how much of the main colour: 1, 2/3, 1/3, 0.
 SHADES = (0, 2, 3, 1)
@@ -946,8 +985,10 @@ def range_scale(radius):
     return 2 * radius / BANDS[0][1]
 
 
-def range_logic(radius, mesh=False):
+def range_logic(radius, mesh=False, model=None):
     kind, path = ("GrannyModel", f"range_{radius}") if mesh else ("ParticleSystem", f"range_{radius}.particle")
+    if model:
+        kind, path = "GrannyModel", model
     return f"""\t\t\t\t<none>
 \t\t\t\t\t<assetreference type="{kind}">
 \t\t\t\t\t\t<file>effects\\{FOLDER}\\{path}</file>
@@ -960,28 +1001,87 @@ def range_mesh_line(radius):
     return max(RANGE_MESH_LINE, RANGE_MESH_LINE_PER_METRE * radius)
 
 
-def range_mesh(radius):
+def range_mesh(radius, dashes=0):
     """The .gr2 of a range ring of `radius` metres: a flat annulus, its outer edge at the radius, RANGE_MESH_HEIGHT over
     the unit's feet, its UVs across the line (v from one edge to the other) on range_line.ddt, with the player-colour
-    shader. Written by aoe3game.gr2_write (pure Python); nothing comes from the game."""
+    shader. With `dashes`, the annulus is cut into that many dashes (RANGE_DASH_SHARE of each period drawn), the ring of
+    an attack that reaches only ships. Written by aoe3game.gr2_write (pure Python); nothing comes from the game."""
     sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
     from aoe3game import gr2_write
     width = range_mesh_line(radius)
-    segments = max(48, min(256, math.ceil(2 * math.pi * radius / RANGE_MESH_STEP)))
     pos, nor, uv, tris = [], [], [], []
-    for i in range(segments + 1):
-        t = i / segments
-        a = 2 * math.pi * t
-        for r, v in ((radius - width, 0.0), (radius, 1.0)):
-            pos.append((r * math.cos(a), r * math.sin(a), RANGE_MESH_HEIGHT))
-            nor.append((0.0, 0.0, 1.0))
-            uv.append((t, v))
-    for i in range(segments):
-        a, b, c, d = 2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3
-        tris += [(a, b, d), (a, d, c)]
+
+    def strip(t0, t1, steps):
+        first = len(pos)
+        for i in range(steps + 1):
+            t = t0 + (t1 - t0) * i / steps
+            a = 2 * math.pi * t
+            for r, v in ((radius - width, 0.0), (radius, 1.0)):
+                pos.append((r * math.cos(a), r * math.sin(a), RANGE_MESH_HEIGHT))
+                nor.append((0.0, 0.0, 1.0))
+                uv.append((t, v))
+        for i in range(steps):
+            a, b, c, d = first + 2 * i, first + 2 * i + 1, first + 2 * i + 2, first + 2 * i + 3
+            tris.extend([(a, b, d), (a, d, c)])
+
+    segments = max(48, min(256, math.ceil(2 * math.pi * radius / RANGE_MESH_STEP)))
+    if dashes:
+        steps = max(1, math.ceil(segments / dashes))
+        for k in range(dashes):
+            strip(k / dashes, (k + RANGE_DASH_SHARE) / dashes, steps)
+    else:
+        strip(0.0, 1.0, segments)
+    name = f"range_{radius}_ships" if dashes else f"range_{radius}"
     art = f"E:\\uhc\\Art\\effects\\{FOLDER}\\"
-    return gr2_write.static_model(f"range_{radius}", pos, nor, uv, tris, texture=art + "range_line.ddt",
+    return gr2_write.static_model(name, pos, nor, uv, tris, texture=art + "range_line.ddt",
                                   bump=art + "range_line_bump.ddt", player_colour=True)
+
+
+def range_fill_radius(radius):
+    """The fill disc reaches the middle of the line, so no ground shows between them."""
+    return radius - range_mesh_line(radius) / 2
+
+
+def range_fill_mesh(radius, player):
+    """rangefill_<radius>_p<player>.gr2: a flat disc of range_fill_radius(radius), RANGE_FILL_HEIGHT over the unit's
+    feet, its UVs planar over the disc (the texture's centre at the unit), on rangefill_p<player>.ddt with the game's
+    alphablend shader."""
+    sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+    from aoe3game import gr2_write
+    r = range_fill_radius(radius)
+    pos, nor, uv, tris = [(0.0, 0.0, RANGE_FILL_HEIGHT)], [(0.0, 0.0, 1.0)], [(0.5, 0.5)], []
+    n = RANGE_FILL_SEGMENTS
+    for i in range(n):
+        a = 2 * math.pi * i / n
+        pos.append((r * math.cos(a), r * math.sin(a), RANGE_FILL_HEIGHT))
+        nor.append((0.0, 0.0, 1.0))
+        uv.append((0.5 + 0.5 * math.cos(a), 0.5 + 0.5 * math.sin(a)))
+        tris.append((0, 1 + i, 1 + (i + 1) % n))
+    art = f"E:\\uhc\\Art\\effects\\{FOLDER}\\"
+    return gr2_write.static_model(f"rangefill_{radius}_p{player}", pos, nor, uv, tris,
+                                  texture=art + f"rangefill_p{player}.ddt", bump=art + "range_line_bump.ddt",
+                                  effect="alphablend")
+
+
+def range_fill_alpha(r, peak):
+    """The fill's alpha (0..1) at `r`, the distance from the centre as a share of the disc's radius."""
+    import numpy as np
+    t = np.clip((np.asarray(r, float) - RANGE_FILL_START) / (1.0 - RANGE_FILL_START), 0.0, 1.0)
+    return np.where(np.asarray(r) <= 1.0, peak * t ** RANGE_FILL_POWER, 0.0)
+
+
+def range_fill_texture(colour, peak, n=128):
+    """rangefill_p<player>.ddt: RANGE_FILL_LIGHT of the colour, its alpha graded from the centre (range_fill_alpha),
+    DXT5 (interpolated alpha, smooth at these low values), alpha type 4 (transparent), with mips (needs numpy)."""
+    import numpy as np
+    sys.path.insert(0, str(ROOT / "aoe3_blender_tools"))
+    from aoe3game import ddt as ddtfile
+    yy, xx = np.mgrid[0:n, 0:n]
+    r = np.hypot(xx + 0.5 - n / 2, yy + 0.5 - n / 2) / (n / 2)
+    tex = np.zeros((n, n, 4), np.uint8)
+    tex[..., :3] = [round(c * RANGE_FILL_LIGHT) for c in colour]
+    tex[..., 3] = np.round(range_fill_alpha(r, peak) * 255).astype(np.uint8)
+    return ddtfile.write_dxt(tex, ddtfile.DXT5, alpha=4)
 
 
 def range_line_textures():
@@ -1145,10 +1245,22 @@ def wanted_files(folder="rings"):
         except ImportError:  # the textures need numpy: the white particle rings instead
             print("make_rings: no numpy, so the range rings are the white particles (--range-particles)")
             meshes = False
+    if meshes and RANGE_FILLS:
+        for player, (colour, peak) in RANGE_FILL_PLAYERS.items():
+            wanted[f"rangefill_p{player}.ddt"] = range_fill_texture(colour, peak)
     for radius in RANGES:
         wanted[f"range_{radius}.xml"] = text(xml("", logic=range_logic(radius, meshes)))
         if meshes:
             wanted[f"range_{radius}.gr2"] = range_mesh(radius)
+            if RANGE_SHIP_RINGS:
+                name = f"range_{radius}_ships"
+                wanted[f"{name}.xml"] = text(xml("", logic=range_logic(radius, model=name)))
+                wanted[f"{name}.gr2"] = range_mesh(radius, dashes=RANGE_DASHES)
+            if RANGE_FILLS:
+                for player in RANGE_FILL_PLAYERS:
+                    name = f"rangefill_{radius}_p{player}"
+                    wanted[f"{name}.xml"] = text(xml("", logic=range_logic(radius, model=name)))
+                    wanted[f"{name}.gr2"] = range_fill_mesh(radius, player)
         else:
             side = 256 if radius <= 16 else 512
             wanted[f"range_{radius}.ddt"] = ddt(RANGE_COLOURS, side, *range_shape(radius))
@@ -1264,10 +1376,12 @@ def main(argv):
     check = "--check" in argv
     out = pathlib.Path(option(argv, "--out", OUT))
     folder = option(argv, "--folder", "rings")
-    global RANK_SHAPES, ICON_SHEET, RANGE_PARTICLES
+    global RANK_SHAPES, ICON_SHEET, RANGE_PARTICLES, RANGE_FILLS, RANGE_SHIP_RINGS
     RANK_SHAPES = option(argv, "--rank-shapes", None)
     ICON_SHEET = option(argv, "--icon-sheet", None)
     RANGE_PARTICLES = "--range-particles" in argv
+    RANGE_FILLS = "--no-range-fills" not in argv
+    RANGE_SHIP_RINGS = "--no-ship-rings" not in argv
     if not folder or any(c in folder for c in "\\/:."):
         sys.exit("make_rings: --folder is one folder name under art/effects/")
     wanted = wanted_files(folder)

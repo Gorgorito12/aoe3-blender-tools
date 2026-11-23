@@ -6,6 +6,12 @@ three together).
 
 ## Unreleased
 
+- `tools/make_rings.py`: range rings for attacks that reach only ships, `range_<metres>_ships` (the same line in 48
+  dashes), and fills, `rangefill_<metres>_p<player>`: a disc under the ring on the game's `alphablend` shader, clear at
+  the centre and rising to 30-38 % at the edge, one texture per player colour (that shader has no player colour).
+  `--no-range-fills` and `--no-ship-rings` leave them out.
+- `aoe3game.gr2_write.static_model`: `colour_effect`, the effect of a player-coloured material (the units' shader by
+  default).
 - `tools/make_rings.py`: range rings without the white edges, the whole line in the owner's colour like a selection
   circle, and thinner (0.5 m, +0.008 m per metre of radius). Their flat bump map had a shine of 128 in its red channel
   and a normal tilted along the ring in its alpha: the sun's shine added white and the colour looked pale. It is now

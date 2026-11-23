@@ -55,7 +55,12 @@ class Rings(unittest.TestCase):
             self.assertIn(f"icon_{marker}.ddt", names)
         for marker in set(make_rings.MARKERS) - set(drawn):  # only a drawn sheet has their icons
             self.assertNotIn(f"aura_{marker}.xml", names)
-        self.assertEqual(len(names), 298)
+        for radius in make_rings.RANGES:
+            self.assertIn(f"range_{radius}_ships.xml", names)
+            for player in make_rings.RANGE_FILL_PLAYERS:
+                self.assertIn(f"rangefill_{radius}_p{player}.xml", names)
+        fills = len(make_rings.RANGES) * len(make_rings.RANGE_FILL_PLAYERS) * 2 + len(make_rings.RANGE_FILL_PLAYERS)
+        self.assertEqual(len(names), 298 + 2 * len(make_rings.RANGES) + fills)
 
     def test_markers_show_their_ring_and_their_own_icon(self):
         for marker, (ring, _) in make_rings.MARKERS.items():
@@ -99,8 +104,9 @@ class Rings(unittest.TestCase):
 
     def test_textures_are_dxt3_with_mips(self):
         cartoons = {f"icon_{marker}.ddt" for marker in make_rings.MARKERS}
+        fills = {f"rangefill_p{player}.ddt" for player in make_rings.RANGE_FILL_PLAYERS}  # DXT5, tested below
         for name, data in self.files.items():
-            if name.endswith(".ddt") and name not in cartoons and not name.endswith("_bump.ddt"):
+            if name.endswith(".ddt") and name not in cartoons | fills and not name.endswith("_bump.ddt"):
                 hd = ddt.read_header(data)
                 self.assertEqual(hd.format, ddt.DXT3, name)
                 self.assertEqual(hd.width, hd.height, name)
@@ -266,7 +272,7 @@ class Rings(unittest.TestCase):
                     f.write(data)
             result = run_tool("make_rings.py", "--out", tmp, "--folder", "myrings", "--check")
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertIn("298 files, 0 differ", result.stdout)
+            self.assertIn(f"{len(self.files)} files, 0 differ", result.stdout)
 
     @unittest.skipIf(np is None, "numpy not available")
     def test_icons_from_a_drawn_sheet(self):
@@ -348,6 +354,63 @@ class Rings(unittest.TestCase):
             self.assertIn(b"pixelxformColor", data)
             self.assertIn(b"playerColor", data)
         self.assertNotIn("range_line.ddt", self.particles)
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_ship_rings_are_dashed_lines(self):
+        """range_<N>_ships: the line's texture and player-colour shader, cut into RANGE_DASHES dashes (fewer triangles
+        than the whole ring, the same outer radius)."""
+        from aoe3game import gr2
+        for radius in (6, 40, 100):
+            whole = gr2.load(self.files[f"range_{radius}.gr2"]).stats()
+            dashed_data = self.files[f"range_{radius}_ships.gr2"]
+            self.assertTrue(gr2.crc_ok(dashed_data))
+            dashed = gr2.load(dashed_data).stats()
+            (x0, _, _), (x1, _, _) = dashed["bbox_m"]
+            self.assertAlmostEqual((x1 - x0) / 2, radius, delta=0.02 * radius)
+            self.assertIn(b"playerColor", dashed_data)
+            self.assertTrue(any("myrings\\range_line.ddt" in t for t in dashed["textures"]))
+            self.assertLess(dashed["tris"], whole["tris"] + 2 * make_rings.RANGE_DASHES * 4)
+            text = self.files[f"range_{radius}_ships.xml"].decode("utf-8")
+            self.assertIn(f"effects\\myrings\\range_{radius}_ships</file>", text)
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_fills_are_graded_discs_per_player_colour(self):
+        """rangefill_<N>_p<k>: a disc inside the ring on the alphablend shader with rangefill_p<k>.ddt, whose colour is
+        the player's (scaled by RANGE_FILL_LIGHT) and whose alpha is 0 at the centre and the player's peak at the edge."""
+        from aoe3game import gr2
+        for player, (colour, peak) in make_rings.RANGE_FILL_PLAYERS.items():
+            tex = self.files[f"rangefill_p{player}.ddt"]
+            self.assertEqual(ddt.read_header(tex).format, ddt.DXT5)
+            px = ddt.decode(tex).astype(int)
+            n = px.shape[0]
+            self.assertLessEqual(px[n // 2, n // 2, 3], 2)                      # clear at the unit
+            edge = px[n // 2, n - 2, 3] / 255
+            self.assertAlmostEqual(edge, peak, delta=0.05)                       # the peak at the ring
+            self.assertLess(px[n // 2, n // 2 + n // 4, 3], px[n // 2, n - 2, 3])  # rising outward
+            want = [round(c * make_rings.RANGE_FILL_LIGHT) for c in colour]
+            for got, expected in zip(px[n // 2, n - 2, :3], want):
+                self.assertLessEqual(abs(int(got) - expected), 12)
+        data = self.files["rangefill_24_p2.gr2"]
+        self.assertTrue(gr2.crc_ok(data))
+        self.assertIn(b"alphablend", data)
+        self.assertNotIn(b"playerColor", data)
+        stats = gr2.load(data).stats()
+        (x0, _, _), (x1, _, _) = stats["bbox_m"]
+        self.assertAlmostEqual((x1 - x0) / 2, make_rings.range_fill_radius(24), delta=0.05)
+        self.assertLess((x1 - x0) / 2, 24)
+        self.assertTrue(any("myrings\\rangefill_p2.ddt" in t for t in stats["textures"]))
+
+    @unittest.skipIf(np is None, "numpy not available")
+    def test_fills_and_ship_rings_can_be_left_out(self):
+        make_rings.RANGE_FILLS = False
+        make_rings.RANGE_SHIP_RINGS = False
+        try:
+            names = set(make_rings.wanted_files("myrings"))
+        finally:
+            make_rings.RANGE_FILLS = True
+            make_rings.RANGE_SHIP_RINGS = True
+        self.assertFalse([n for n in names if n.startswith("rangefill_") or "_ships." in n])
+        self.assertEqual(len(names), 298)
 
 
 class AuraRings(unittest.TestCase):
