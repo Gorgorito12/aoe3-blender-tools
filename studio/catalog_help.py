@@ -17,6 +17,18 @@ HELP = {
         'overview': ("One sheet for review, a row per animation (sheets\\overview.png); with the horse hidden, the moments after the dismount and before the mount show it gone.",
                      "Una hoja para revisar, una fila por animación (sheets\\overview.png); con el caballo oculto, los momentos tras desmontar y antes de montar lo muestran ausente."),
     },
+    'make_gun_camel': {
+        'scales': ("The gun's sizes as seen in game, a share of the stock gun's, separated by commas; one gun model and its clips per size. Default 0.55,0.7.",
+                   "Los tamaños del arma tal como se ve en el juego, una fracción de la del juego, separados por comas; un modelo de arma y sus clips por tamaño. Por defecto 0.55,0.7."),
+        'variants': ("A: fired from the saddle. B: deployed, the camel lying down and the rider at the gun on foot (the gun mirrored, its crank outside). Separated by commas; default A,B.",
+                     "A: disparando desde la silla. B: desplegado, el camello tumbado y el jinete a pie junto al arma (el arma reflejada, con la manivela hacia fuera). Separadas por comas; por defecto A,B."),
+        'sheet': ("Also the model sheet: the new unit from four angles for each size, beside the stock zamburak and the mod's current gatling camel.",
+                  "Además la hoja del modelo: la unidad nueva desde cuatro ángulos para cada tamaño, junto al zamburak del juego y el camello Gatling actual del mod."),
+        'gifs': ("Also three GIFs at the first size: A (idle, fire, reload), B (deploy, fire, reload, undeploy) and the walk and jog.",
+                 "Además tres GIF en el primer tamaño: A (reposo, disparo, recarga), B (desplegar, disparo, recarga, replegar) y el paso y el trote."),
+        'no_verify': ("Skips the game's granny2.dll checks of every file (CRC, read, compressed); the read-back of the clips still runs.",
+                      "Omite las comprobaciones con granny2.dll del juego de cada archivo (CRC, lectura, compresión); la relectura de los clips se hace igual."),
+    },
     'make_pray': {
         'design': ("Which designs, separated by commas: 1 kneeling with joined hands, 2 standing with the sign of the cross, 3 bowing down to the ground.",
                    "Qué diseños, separados por comas: 1 de rodillas con las manos juntas, 2 de pie con la señal de la cruz, 3 inclinándose hasta el suelo."),

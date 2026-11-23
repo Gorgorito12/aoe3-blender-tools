@@ -68,6 +68,7 @@ python -I tests/test_hitpointbar_tags.py           # animation tag files and the
 python -I tests/test_dmg_bones.py                 # dmg_bones.py --fix: definebone lines, text and .xmb
 venv/bin/python -I tests/test_retarget_anims.py    # gr2_retarget and retarget_anims on synthetic rigs
 venv/bin/python -I tests/test_make_pray.py         # gr2_pose (IK, keys) and make_pray on synthetic rigs
+venv/bin/python -I tests/test_gun_camel.py         # gr2_parts (normals, components, cut, rigid parts) and make_gun_camel
 venv/bin/python -I tools/make_pray.py --game <copy> --out <dir> [--preview <png>] [--gifs <dir>]   # villager praying
 venv/bin/python -I tools/retarget_anims.py --game <copy> --out <dir> [--recipe skirmisher --recipe native] [--preview <png>]
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
@@ -128,7 +129,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   (a model's whole tree copied and written again: the start of a transplant), `gr2_fit.py` (a
   model fitted in place to a borrowed damage template or animation), `gr2_anim.py` (animations
   read, posed and written), `gr2_pose.py` (poses as world frames: branches turned, two-bone IK,
-  keys interpolated without overshoot), `gr2_retarget.py` (a model's animations put on another skeleton, with
+  keys interpolated without overshoot), `gr2_parts.py` (a model taken apart by bone, triangles cut out,
+  rigid parts written), `gr2_retarget.py` (a model's animations put on another skeleton, with
   their tag files), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and

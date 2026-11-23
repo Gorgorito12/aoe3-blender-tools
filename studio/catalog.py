@@ -1177,6 +1177,33 @@ TOOLS = [
           Arg("gifs", "--gifs", "folder", L("GIF folder", "Carpeta de GIF")),
           Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
          needs=("game",), outputs=("out",)),
+    Tool("make_gun_camel", "tools/make_gun_camel.py", "art",
+         L("Camel gun from two models", "Camello con arma a partir de dos modelos"),
+         L("A camel unit's body with its own swivel gun cut out and the barrels, casing and crank of a wheeled "
+           "gun put in its place (by default the zamburak's camel and the stock Gatling gun), at one or more "
+           "sizes, animated: A fired from the saddle, B deployed with the camel lying down and the rider at "
+           "the gun on foot. Granny files checked by the game's runtime, the anim file blocks, a report; "
+           "optional model sheet and GIFs.",
+           "El cuerpo de un camello sin su cañón giratorio y, en su lugar, los cañones, la caja y la manivela de "
+           "un arma con ruedas (por defecto el camello del zamburak y la ametralladora Gatling del juego), en "
+           "uno o más tamaños, animados: A disparando desde la silla, B desplegado con el camello tumbado y el "
+           "jinete a pie junto al arma. Archivos Granny comprobados por el runtime del juego, los bloques del "
+           "anim file y un informe; hoja del modelo y GIF opcionales."),
+         [game_dir(),
+          out_dir(help=L("Where the models, the animations, the anim file blocks and the report go. Never a Steam "
+                         "library.",
+                         "Dónde van los modelos, las animaciones, los bloques del anim file y el informe. Nunca "
+                         "una biblioteca de Steam.")),
+          Arg("recipe", "--recipe", "file", L("Recipe (JSON)", "Receta (JSON)"),
+              L("The models, the cut and the placement; empty: the zamburak's camel with the Gatling gun.",
+                "Los modelos, el corte y la colocación; vacío: el camello del zamburak con la Gatling."),
+              filters=JSON),
+          Arg("scales", "--scales", "text", L("Gun sizes", "Tamaños del arma"), default="0.55,0.7"),
+          Arg("variants", "--variants", "text", L("Variants", "Variantes"), default="A,B"),
+          Arg("sheet", "--sheet", "save", L("Model sheet", "Hoja del modelo"), filters=(("PNG", "*.png"),)),
+          Arg("gifs", "--gifs", "folder", L("GIF folder", "Carpeta de GIF")),
+          Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
+         needs=("game",), outputs=("out",)),
     Tool("recompress_models", "tools/recompress_models.py", "art",
          L("Compress models again", "Volver a comprimir modelos"),
          L("Compresses Granny models a tool wrote uncompressed (a bone scale fix, an own texture, a rebake) through "
