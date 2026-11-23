@@ -60,6 +60,8 @@ python -I tools/gr2_tree.py <model.gr2> [--stats|--types|--shape]
 python -I tools/recompress_models.py <folder> -o <out> --granny-install <game> [--like <originals>]   # --build-helper once
 python -I tests/test_recompress_models.py         # recompression with a fake runtime, plain Python
 python -I tools/gr2_check.py <model.gr2|folder> --granny-install <game> --rewrite   # the game's runtime as the judge
+python -I tools/fit_borrowed.py <model|folder> [--dmg <template>] [--rest-from <reference.gr2>] [--dry-run]   # fit to a borrowed .dmg or animation
+python -I tests/test_gr2_fit.py                  # fit_borrowed on synthetic models, plain Python
 python -I tests/test_gr2_edit.py                  # a model's whole tree written again; the runtime check (fake)
 python -I tests/test_hitpointbar_tags.py           # animation tag files and their fixer, plain Python
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
@@ -117,7 +119,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   (tools and tests import it with `sys.path.insert(0, "<repo>/aoe3_blender_tools")`): `gr2.py`
   (container, reader, tree dump in the format of the Granny runtime's dump), `gr2_skin.py` (a
   unit's skeleton with rotations followed, four weights a vertex, skinning to a pose), `gr2_edit.py`
-  (a model's whole tree copied and written again: the start of a transplant), `gr2_types.py`
+  (a model's whole tree copied and written again: the start of a transplant), `gr2_fit.py` (a
+  model fitted in place to a borrowed damage template or animation), `gr2_types.py`
   (the type definitions a static model needs), `gr2_write.py` (serializer, `static_model`),
   `ddt.py` (header, BGRA and DXT1/DXT3 writers, BGRA/DXT decoder; numpy), `icons.py` (icon and
   portrait framing; numpy), `animxml.py`, `precomp.py` (an animation's tag file,

@@ -635,6 +635,33 @@ if it comes back: a hollow building shows the ground through its holes, so it ne
 and a part that rests on another one stays in the air when the lower one goes. Check that every part a
 template names exists in its model: real mods ship templates whose models are empty, and nothing breaks.
 
+### Borrowed templates and animations (`tools/fit_borrowed.py`)
+
+A mod building often keeps a stock building's `.dmg` template and death animation (the anim file names
+them) on models rebuilt from the stock ones. Two things then fail without any message (**in game**,
+2026-11-20, on a mod's three factory buildings made from the stock Mediterranean arsenal):
+
+- **Debris meshes renamed on export.** A template part finds its mesh by name. Fourteen of the 35
+  debris meshes of each age 1-2 damage model were named `debris_1a.001` and the like (Blender's
+  duplicate suffix): those parts are not found and never break off. `--dmg <template>` gives such a mesh
+  the part's name when it is bound to the part's bone alone and no other mesh has the name; the suffix
+  is cut where the name is stored (a NUL over its dot), so the file keeps its size and layout.
+- **Other rest frames.** A Granny animation sets each bone's local transform by name, as made on its
+  model. The age 3 death model had the arsenal's bones at the same places but exported with other rest
+  orientations (180 degrees about (1, -1, 0) / sqrt(2), scale 1, against the arsenal's 180 degrees about X
+  with a mirroring scale/shear (1.109, -1.109, 1.109)). Its meshes, stored in model space and drawn
+  through world x inverse, were turned about their bones from the first frame of the collapse: pipes
+  lying sideways, crates and walls floating. `--rest-from <reference>` copies the reference's local
+  transform and inverse world transform onto each bone with the same name, parent and world position;
+  a bone left alone under a changed parent keeps its world frame (its local transform recomputed, the
+  orientation folded into its scale/shear matrix). At rest nothing moves (world x inverse stays the
+  identity). **In game**: with the fitted models the same animation brings the building down upright,
+  as the arsenal's.
+- The damage model of the same age had the same frames; it was given the arsenal damage model's
+  (the template's physics boxes are sized in each part bone's frame).
+- Measured on those models: the game's runtime reads every fitted model alike (`tools/gr2_check.py`),
+  and `tools/recompress_models.py --like` brings them back to the originals' size.
+
 ## Impact effects
 
 What a hit plays (particles, sounds) by the impact type of the surface it lands on. Measured on the

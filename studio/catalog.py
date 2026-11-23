@@ -894,6 +894,23 @@ TOOLS = [
           Arg("factor", "--factor", "float", L("Factor", "Factor"), default=10.0),
           Arg("verbose", "-v", "bool", L("Verbose", "Detallado"))] + granny_args(),
          writes="in_place", trial=["--dry-run"], outputs=("out",)),
+    Tool("fit_borrowed", "tools/fit_borrowed.py", "art",
+         L("Fit to a borrowed template or animation", "Ajustar a una plantilla o animación prestada"),
+         L("Fits models that borrow another model's damage template or death animation: debris meshes "
+           "renamed on export (debris_1a.001) get the template's names, so those pieces break off; bones "
+           "take the reference model's rest frames, so its animation places every piece right.",
+           "Ajusta modelos que toman prestada la plantilla de daños o la animación de muerte de otro modelo: "
+           "las mallas de escombros renombradas al exportar (debris_1a.001) reciben los nombres de la "
+           "plantilla, para que esas piezas se desprendan; los huesos toman los marcos de reposo del modelo "
+           "de referencia, para que su animación coloque bien cada pieza."),
+         [Arg("inputs", None, "folders", L("Models or folders", "Modelos o carpetas"), required=True),
+          Arg("out", "-o", "outdir", L("Output", "Salida"),
+              L("Empty: in place (a .bak copy is kept)", "Vacío: en el sitio (se guarda una copia .bak)")),
+          Arg("dmg", "--dmg", "file", L("Damage template", "Plantilla de daños"),
+              filters=(("Damage template", "*.dmg *.xmb"),)),
+          Arg("rest_from", "--rest-from", "file", L("Reference model", "Modelo de referencia"), filters=GR2),
+          Arg("verbose", "-v", "bool", L("Verbose", "Detallado"))] + granny_args(),
+         writes="in_place", trial=["--dry-run"], outputs=("out",)),
     Tool("uncompress_models", "tools/uncompress_models.py", "art",
          L("Uncompressed models (fewer stutters)", "Modelos sin comprimir (menos tirones)"),
          L("Uncompressed copies of the archived models as loose files of a game copy: fewer stutters when a new "
