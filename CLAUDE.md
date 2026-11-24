@@ -69,6 +69,8 @@ python -I tests/test_dmg_bones.py                 # dmg_bones.py --fix: definebo
 venv/bin/python -I tests/test_retarget_anims.py    # gr2_retarget and retarget_anims on synthetic rigs
 venv/bin/python -I tests/test_make_pray.py         # gr2_pose (IK, keys) and make_pray on synthetic rigs
 venv/bin/python -I tools/make_pray.py --game <copy> --out <dir> [--preview <png>] [--gifs <dir>]   # villager praying
+python -I tools/check_anim.py <job.json> [--baseline <old job.json>] --risk-sheet <png>   # before any animation preview (docs/animation-rules.md)
+venv/bin/python -I tests/test_check_anim.py      # the animation checks on synthetic rigs and clips
 venv/bin/python -I tools/retarget_anims.py --game <copy> --out <dir> [--recipe skirmisher --recipe native] [--preview <png>]
 venv/bin/python -I tests/test_extend_font.py       # extend_font.py; optional fontTools: pip install -r requirements-fonts.txt
 venv/bin/python -I -X utf8 tools/game_fonts.py stage --game <copy> --out <dir outside it> --suffix WoL   # a copy's fonts, extended
@@ -169,6 +171,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   cost and licences (to verify), and the order to try them.
 - `docs/game-formats.md`: the formats as measured, and how the writer was proven.
 - `docs/game-test.md`: the test copy, deployment, what to check in game, and the status.
+- `docs/animation-rules.md`: how a unit's animations are made and reviewed: the script (beat list)
+  first, `tools/check_anim.py` (`aoe3game/anim_check.py`) before any preview, the fixed preview format
+  and its checklist, the in-game frames after.
 - `docs/specs/`: the technical sheet of every building, generated, with an index.
 - `studio/`: AoE3 Mod Studio (`docs/studio.md`), a local web application: `server.py` (API on
   127.0.0.1 with a token, the page), `engine.py` (previews and sheets in process, no Blender),
@@ -260,6 +265,11 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   `tests/test_african_joints.py` covers every preset and random parameters; a new composed style
   gets the same test.
 - Look at the renders after a visual change (`scripts/generate.py`, then read the JPEGs).
+- **Animations follow `docs/animation-rules.md`** (the owner's rule, 2026-11-24): a beat list of every clip
+  approved before animating (where every object comes from and goes to; anything removed on its own
+  `REMOVED:` line), `tools/check_anim.py` passing before any preview is made (a failed check refuses the
+  preview), the fixed preview (4 sides x 2 heights, a close GIF, the risk frames) reviewed against the
+  checklist before it is sent, and the in-game frames of every state checked after.
 - Mark game facts as measured, engine limit, or to verify, as `docs/building-guidelines.md` does.
 - Regenerate `examples/` when the output of a preset changes, and keep the README gallery in step.
 - Never write into the game's Steam folder; deploy only to a test copy with `tools/game_deploy.py`.

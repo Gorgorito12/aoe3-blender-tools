@@ -6,6 +6,14 @@ three together).
 
 ## Unreleased
 
+- `docs/animation-rules.md`: how a unit's animations are made and reviewed: a beat list of every clip
+  approved first (where every object comes from and goes to, anything removed on its own line), automatic
+  checks before any preview, a fixed preview format (4 sides x 2 heights, a close GIF, the risk frames)
+  with a checklist, and the in-game frames after. `tools/check_anim.py` (`aoe3game/anim_check.py`, a form
+  in Art utilities) runs the checks: head and neck turns, reversed elbows and knees, snapping bones, feet
+  that slide or sink, grips, mounted parts, props that pop or end in the wrong place, interpenetration,
+  lengths, loop seams, floating parts at the end of a death, and clips or motions removed without saying
+  so; exits 1 when one fails. Test: `tests/test_check_anim.py`.
 - `tools/make_pray.py` (`aoe3game/gr2_pose.py`, a form in Art utilities): three praying animations for the
   villagers (kneeling with joined hands, standing with the sign of the cross, bowing down to the ground),
   each an entry from the idle, a seamless loop and an exit, for the male and the female villager, made
