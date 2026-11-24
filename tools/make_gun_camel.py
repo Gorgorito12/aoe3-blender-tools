@@ -277,6 +277,37 @@ class GunSource:
         m = self.parts["magazine"]["positions"]
         self.mag_top = np.array([m[:, 0].mean(), m[:, 1].max(), m[:, 2].mean()])
         self.mag_base = np.array([m[:, 0].mean(), m[:, 1].min(), m[:, 2].mean()])
+        self.iron_uv, self.iron_material = self._iron(game)
+
+    def _iron(self, game):
+        """(uv, material) of an even patch of the casing's dark iron: its largest triangle whose
+        texels (corners and middle) are mid-dark grey with no colour, for parts made here (the
+        long handles) to be one colour with the gun."""
+        part = self.parts["cannon"]
+        uv, tri = part["uvs"], part["triangles"]
+        area = np.array([abs((uv[b][0] - uv[a][0]) * (uv[c][1] - uv[a][1]) - (uv[b][1] - uv[a][1]) *
+                             (uv[c][0] - uv[a][0])) for a, b, c in tri])
+        img = None
+        for name in gr2_mesh.read(self.data)["textures"]:
+            if name and "_b." not in name.lower() and "bump" not in name.lower():
+                img = game.texture(name)
+                if img is not None:
+                    break
+        if img is not None:
+            hgt, wid = img.shape[:2]
+
+            def texel(q):
+                x = int(min(wid - 1, max(0, (q[0] % 1.0) * wid)))
+                y = int(min(hgt - 1, max(0, (q[1] % 1.0) * hgt)))
+                return np.asarray(img[y, x, :3], np.float64)
+            for i, (a, b, c) in enumerate(tri):
+                cols = np.array([texel(q) for q in (uv[a], uv[b], uv[c], (uv[a] + uv[b] + uv[c]) / 3.0)])
+                lum = cols.mean(1)
+                if not ((lum > 40).all() and (lum < 110).all() and np.ptp(cols, axis=0).max() < 25 and
+                        (cols.max(1) - cols.min(1) < 25).all()):
+                    area[i] = 0.0
+        k = int(np.argmax(area))
+        return uv[tri[k]].mean(0), part["materials"][k]
 
 
 def sub_part(part, sel):
@@ -305,7 +336,9 @@ class GunDesign:
     # reload (recipe "reload": "toss") while the empty one goes away. On the root, not the casing, so
     # the gun's yaw never swings it out of hiding: out of a reload it lies inside the camel's body
     # (`stash`, under the saddle), and the same mesh as `ammo`
-    BONES = ("root", "yaw", "cannon", "barrel", "crank", "ammo", "ammo2", "muzzle")
+    # `crank2`: B on foot's drop crank (Unit.long_handles), turned with the gun's crank, on its own
+    # axle below it; A has the bone with nothing on it
+    BONES = ("root", "yaw", "cannon", "barrel", "crank", "ammo", "ammo2", "muzzle", "crank2")
 
     def __init__(self, src, mount_bind, post, scale, mirror=False, forward=0.0):
         self.src, self.mirror = src, mirror
@@ -327,7 +360,9 @@ class GunDesign:
         self.mag_top = f(src.mag_top)
         self.mag_base = f(src.mag_base)
         self.parent = {"root": None, "yaw": "root", "cannon": "yaw", "barrel": "cannon", "crank": "cannon",
-                       "ammo": "cannon", "ammo2": "root", "muzzle": "cannon"}
+                       "ammo": "cannon", "ammo2": "root", "muzzle": "cannon", "crank2": "cannon"}
+        self.at["crank2"] = self.at["crank"].copy()
+        self.made = {}          # parts made here (design space): {name: (part tuple, bone)}
         self.stash = None       # the spare's design frame out of a reload (Unit.stash_spare)
         self.part_bone = {"cannon": "cannon", "barrel": "barrel", "crank": "crank", "magazine": "ammo",
                           "magazine2": "ammo2"}
@@ -351,6 +386,9 @@ class GunDesign:
                 tris = tris[:, ::-1].copy()
             out[key] = (pos, nrm, p["uvs"], tris, p["materials"], tan)
         out["magazine2"] = out["magazine"]                 # the spare: the same mesh on its own bone
+        for name, (part, bone) in self.made.items():       # the long handles (Unit.long_handles)
+            out[name] = part
+            self.part_bone[name] = bone
         return out
 
     def rest(self):
@@ -387,7 +425,8 @@ class GunDesign:
     @staticmethod
     def bone_name(b):
         return {"yaw": "bone_yaw", "cannon": "bone_cannon", "barrel": "bone_barrel", "crank": "bone_crank",
-                "ammo": "bone_ammo", "ammo2": "bone_ammo2", "muzzle": "bone_launchpoint"}[b]
+                "ammo": "bone_ammo", "ammo2": "bone_ammo2", "muzzle": "bone_launchpoint",
+                "crank2": "bone_crank2"}[b]
 
     def frames(self, state):
         """{bone: design frame} for a state: barrel and crank angles (degrees), the casing's recoil
@@ -400,6 +439,7 @@ class GunDesign:
         out = {"cannon": cannon,
                "barrel": rel @ tr(self.at["barrel"]) @ rot4(axis_matrix(Z, spin * state.get("barrel", 0.0))),
                "crank": rel @ tr(self.at["crank"]) @ rot4(axis_matrix(X, state.get("crank", 0.0))),
+               "crank2": rel @ tr(self.at["crank2"]) @ rot4(axis_matrix(X, state.get("crank", 0.0))),
                "muzzle": rel @ tr(self.at["muzzle"])}
         mag = state.get("magazine")
         out["ammo"] = rel @ tr(self.at["ammo"]) if mag is None else mag
@@ -952,6 +992,12 @@ AIM_LEAN = 18.0
 # the reload's reach to the pocket at his left hip: the chest turned toward it (share of the angle,
 # at most degrees) and leaned over to his left (degrees about the unit's forward axis)
 POCKET_TRUNK = (0.45, 28.0)
+# B on foot's long handles (round 4): the drop crank this far below the gun's crank (metres, in the
+# world at the lying camel's fire pose), the traverse bar's grip this far back and down from the
+# breech's top
+HANDLE_DROP = 0.25
+HANDLE_BAR = (0.25, 0.45)
+LONG_ARM = 0.50          # shoulder to palm on the long handles (metres): elbows bent
 POCKET_LEAN = 12.0
 # in a death where the camel rolls over: when the spare magazine leaves the camel's body for the
 # gun's hopper (seconds; the camel's body still hides it until about 0.6 s)
@@ -1082,6 +1128,11 @@ class Unit:
         # on foot)
         self.mag_grip = (g.mag_base - g.at["ammo"]) + np.array([0.0, 0.22 * (g.mag_top[1] - g.mag_base[1]), 0.0])
         self.stash_spare()
+        # B on foot: the long handles (round 4, the user's choice): his left hand on a drop crank,
+        # his right on a traverse bar, both at his chest
+        self.long = self.style == "B" and recipe.get("long_handles", True)
+        if self.long:
+            self.long_handles(recipe.get("handle_drop", HANDLE_DROP))
 
     # -- the gun in the world (camel space) at a camel pose
 
@@ -1125,7 +1176,121 @@ class Unit:
         if what == "magazine":
             return point(fr["ammo"], self.mag_grip) + np.array([side * 0.045, 0.0, 0.0]), \
                 (0.0, 0.2, 1.0), (-side, 0.0, 0.0)
+        if what == "dropcrank":             # the drop crank's handle in the left hand (B, long handles)
+            out = self.handles["out_d"]
+            palm = point(fr["crank2"], g.handle - g.at["crank"]) + point(fr["cannon"] @ tr(-g.pivot), out * 0.06) \
+                - point(fr["cannon"] @ tr(-g.pivot), np.zeros(3))
+            return palm, (0.0, -0.55, 1.0), (-out[0], -1.0, -0.35)
+        if what == "bar":                   # the traverse bar's grip in the right hand, from behind
+            palm = point(fr["cannon"] @ tr(-g.pivot), self.handles["grip_d"] - 0.03 * self.handles["fwd_d"])
+            return palm, (0.0, -1.0, 0.25), (0.0, -0.2, 1.0)
         raise KeyError(what)
+
+    def long_handles(self, drop):
+        """B on foot's long handles, made in design space at the lying camel's fire pose: a drop
+        crank (a copy of the gun's crank, `drop` metres lower and a little outboard, on the bone
+        crank2, which turns with the gun's crank), an iron shaft between two small gear boxes joining
+        the two axles, and a traverse bar from the middle of the breech's rear face back HANDLE_BAR[0]
+        and down HANDLE_BAR[1] metres to a crosswise grip. All but the drop crank hang on the casing."""
+        g, cam, src = self.gun, self.camel, self.gun.src
+        P = cam.fix_hang(cam.grounded(cam.anim(B_IDLE), [0.0])[0])
+        C = self.C(P)
+        inv = np.linalg.inv(C)
+        A = C[:3, :3]
+        down_w = np.array([0.0, -1.0, 0.0])
+        out_d = np.array([math.copysign(1.0, g.at["crank"][0] - g.pivot[0]), 0.0, 0.0])   # the crank's side
+        out_w = unit(A @ out_d)
+        fwd_w = unit(A @ Z)
+        fwd_w = unit(fwd_w - (fwd_w @ Y) * Y)
+        axle_w = point(C, g.at["crank"])
+        low_w = axle_w + drop * down_w + 0.03 * out_w
+        g.at["crank2"] = point(inv, low_w)
+        parts = g.parts()
+        cpos, cnrm, cuv, ctri, cmat, ctan = parts["crank"]
+        made = {"dropcrank": ((cpos + (g.at["crank2"] - g.at["crank"]), cnrm, cuv, ctri, cmat, ctan), "crank2")}
+        width = src.parts["cannon"]["tangents"].shape[1]
+
+        def mesh(pos_w, nrm_w, tris):
+            pos = apply(inv, np.asarray(pos_w))
+            nrm = np.array([unit(inv[:3, :3] @ n) for n in nrm_w])
+            tan = np.array([np.r_[unit(np.cross(n, Y) if abs(n @ Y) < 0.9 else np.cross(n, X)), 1.0] for n in nrm])
+            uvs = np.array([src.iron_uv] * len(pos))
+            return (pos, nrm, uvs, np.asarray(tris, np.int64), [src.iron_material] * len(tris), tan[:, :width])
+
+        def merge(*ms):
+            pos, nrm, tris = [], [], []
+            for p_, n_, t_ in ms:
+                base = len(pos)
+                pos += list(p_)
+                nrm += list(n_)
+                tris += [(a + base, b + base, c + base) for a, b, c in t_]
+            return pos, nrm, tris
+
+        def cylinder(a, b, r, n=10):
+            ax = unit(b - a)
+            u_ = unit(np.cross(ax, X if abs(ax @ X) < 0.9 else Z))
+            v_ = np.cross(ax, u_)
+            pos, nrm, tris = [], [], []
+            for k in range(n):
+                ang = 2 * math.pi * k / n
+                d = math.cos(ang) * u_ + math.sin(ang) * v_
+                pos += [a + r * d, b + r * d]
+                nrm += [d, d]
+            for k in range(n):
+                i0, i1, j0, j1 = 2 * k, 2 * k + 1, 2 * ((k + 1) % n), 2 * ((k + 1) % n) + 1
+                tris += [(i0, j0, i1), (i1, j0, j1)]
+            for end, sgn in ((a, -1.0), (b, 1.0)):         # caps
+                c0 = len(pos)
+                pos.append(end)
+                nrm.append(sgn * ax)
+                ring = []
+                for k in range(n):
+                    ang = 2 * math.pi * k / n
+                    pos.append(end + r * (math.cos(ang) * u_ + math.sin(ang) * v_))
+                    nrm.append(sgn * ax)
+                    ring.append(c0 + 1 + k)
+                for k in range(n):
+                    p0, p1 = ring[k], ring[(k + 1) % n]
+                    tris.append((c0, p1, p0) if sgn > 0 else (c0, p0, p1))
+            return pos, nrm, tris
+
+        def box(c, ax_x, ax_y, ax_z, h):
+            pos, nrm, tris = [], [], []
+            axes = [unit(ax_x), unit(ax_y), unit(ax_z)]
+            for i in range(3):
+                for sgn in (1.0, -1.0):
+                    n_ = sgn * axes[i]
+                    j, k = axes[(i + 1) % 3], axes[(i + 2) % 3]
+                    hj, hk = h[(i + 1) % 3], h[(i + 2) % 3]
+                    base = len(pos)
+                    f = c + n_ * h[i]
+                    for sj, sk in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+                        pos.append(f + sj * hj * j + sk * hk * k)
+                        nrm.append(n_)
+                    tris += [(base, base + 1, base + 2), (base, base + 2, base + 3)] if sgn > 0 else \
+                        [(base, base + 2, base + 1), (base, base + 3, base + 2)]
+            return pos, nrm, tris
+        # the shaft and its gear boxes, inboard of the two crank arms
+        inb = -0.035 * out_w
+        top_box = axle_w + inb + 0.01 * out_w
+        low_box = low_w + inb
+        shaft = cylinder(top_box + 0.03 * down_w, low_box - 0.03 * down_w, 0.012)
+        boxes = merge(box(top_box, out_w, Y, fwd_w, (0.022, 0.035, 0.035)),
+                      box(low_box, out_w, Y, fwd_w, (0.022, 0.035, 0.035)))
+        made["dropshaft"] = (mesh(*merge(shaft, boxes)), "cannon")
+        # the traverse bar
+        bt_w = point(C, g.breech_top)
+        back, down = HANDLE_BAR
+        start = bt_w - 0.02 * fwd_w + 0.04 * down_w
+        grip = bt_w - back * fwd_w + down * down_w
+        side_w = unit(np.cross(Y, fwd_w))
+        bar = merge(cylinder(start + 0.03 * fwd_w, grip, 0.012), cylinder(grip - 0.06 * side_w, grip + 0.06 * side_w, 0.016),
+                    box(start + 0.01 * fwd_w, side_w, Y, fwd_w, (0.03, 0.025, 0.012)))
+        made["traversebar"] = (mesh(*bar), "cannon")
+        g.made = made
+        self.handles = {"out_d": out_d, "grip_d": point(inv, grip), "fwd_d": unit(inv[:3, :3] @ fwd_w),
+                        "low_w": low_w, "grip_w": grip, "C": C, "P": P}
+        return made
 
     def poles(self):
         if self.style == "A":              # elbows out to the sides: a firm grip, not tucked in
@@ -1309,7 +1474,7 @@ class Unit:
             Rm = M[:3, :3]
             return (point(M, (g.mag_top - seat) + np.array([-0.01, 0.035, 0.0])), Rm @ np.array([0.0, -0.25, 1.0]),
                     Rm @ unit(np.array([0.35, -1.0, 0.0])))
-        rest = self.target("breech" if self.style == "A" else "casing", g.frames({}))
+        rest = self.target("breech" if self.style == "A" else "dropcrank" if self.long else "casing", g.frames({}))
 
         def mix(a, b, w):
             w = smooth(min(1.0, max(0.0, w)))
@@ -1576,10 +1741,14 @@ class Unit:
                 palm_d, fin, nor = self.target(w, fr) if isinstance(w, str) else w
                 goals[s] = (point(C, palm_d), self.world_dir(C, fin), self.world_dir(C, nor))
         base, rig = P, self.rider.rig
+        pole_w = {s: self.world_dir(C, v) for s, v in poles.items()}
+        if getattr(self, "long", False) and self.style == "B":
+            right, _up, fwd = self.body_axes(P)
+            pole_w = {"r": unit(0.8 * right - 0.6 * Y - 0.2 * fwd), "l": unit(-0.8 * right - 0.6 * Y - 0.2 * fwd)}
         for _k in range(tries):
             Q = base
             for s, (palm, fin, nor) in goals.items():
-                Q = self.rider.hand(Q, s, palm, fin, nor, self.world_dir(C, poles[s]))
+                Q = self.rider.hand(Q, s, palm, fin, nor, pole_w[s])
             miss = {s: float(np.linalg.norm(self.rider.palm_of(Q, s) - g[0])) for s, g in goals.items()}
             worst = max(miss.values(), default=0.0)
             if worst < 0.004:
@@ -1863,6 +2032,10 @@ class Unit:
             left = plan["hand"][i]
         else:
             left = self.reload_hand(u, fr) if do == "reload" else self.b_left_grip(fr)
+        if self.long:
+            if plan_at is None and do != "reload":
+                left = "dropcrank"
+            return self.hands(R, C, fr, {"r": "bar", "l": left}, b)
         return self.hands(R, C, fr, {"r": "crank", "l": left}, b)
 
     def b_left_grip(self, fr):
@@ -2471,6 +2644,9 @@ class Traverse:
 
     def grips(self, fr):
         u = self.u
+        if getattr(u, "long", False):
+            r, l_ = self.hand_goals(fr)
+            return 0.5 * (r + l_)
         left = u.b_left_grip(fr)
         left = u.target(left, fr) if isinstance(left, str) else left
         return 0.5 * (point(self.C, u.target("crank", fr)[0]) + point(self.C, left[0]))
@@ -2481,8 +2657,11 @@ class Traverse:
         return math.hypot(d[0], d[2])
 
     def hand_goals(self, fr):
-        """(the crank's handle, the left hand's grip) in the world."""
+        """(the right hand's grip, the left hand's) in the world: the crank's handle and the casing,
+        or with the long handles the traverse bar and the drop crank."""
         u = self.u
+        if getattr(u, "long", False):
+            return point(self.C, u.target("bar", fr)[0]), point(self.C, u.target("dropcrank", fr)[0])
         left = u.b_left_grip(fr)
         left = u.target(left, fr) if isinstance(left, str) else left
         return point(self.C, u.target("crank", fr)[0]), point(self.C, left[0])
@@ -2507,12 +2686,17 @@ class Traverse:
             r0, l0 = self.hand_goals(u.gun.frames({}))
             self._arm0 = {"r": float(np.linalg.norm(r0 - self.stand["bip01 r upperarm"][:3, 3])),
                           "l": float(np.linalg.norm(l0 - self.stand["bip01 l upperarm"][:3, 3]))}
+            if getattr(u, "long", False):             # elbows bent, at his chest: about half a metre
+                self._arm0 = {"r": LONG_ARM, "l": LONG_ARM}
         S, body_clear = self._grid
         n = len(S)
         hr, hl = self.hand_goals(fr)
         g = 0.5 * (hr + hl)
         # headings: facing the grips' middle (as at rest), then turned -30..30 degrees from it
         base = np.degrees(np.arctan2(g[0] - (S[:, 0]), g[2] - (S[:, 1]))) + self.hoff
+        if getattr(u, "long", False):                 # behind the breech: facing along the barrels
+            bd = point(self.C, fr["muzzle"][:3, 3]) - point(self.C, fr["cannon"][:3, 3])
+            base = np.full(n, math.degrees(math.atan2(bd[0], bd[2])) - 90.0 + self.h0)
         best = (np.inf, None)
         p0 = point(self.C, fr["cannon"][:3, 3])
         p1 = point(self.C, fr["muzzle"][:3, 3])
@@ -2544,12 +2728,14 @@ class Traverse:
             w = np.clip(((hx - p0[0]) * seg[0] + (hz - p0[2]) * seg[1]) / L2, 0.0, 1.0)
             dl = np.hypot(hx - (p0[0] + w * seg[0]), hz - (p0[2] + w * seg[1]))
             cost += 200.0 * np.maximum(0.0, self.HEAD_CLEAR - dl)
-            # stay near where he was (few steps), a little near his rest place
-            dturn = (h - prev[1] + 180.0) % 360.0 - 180.0
-            cost += 3.0 * ((S - prev[0]) ** 2).sum(1) + 0.0004 * dturn ** 2
-            # stations change little from one yaw step to the next (short steps, feet never crossed)
-            cost += 1e4 * ((np.sqrt(((S - prev[0]) ** 2).sum(1)) > 0.10) | (np.abs(dturn) > 9.0))
-            cost += 0.3 * ((S - self.s0) ** 2).sum(1)
+            if prev is not None:
+                # stay near where he was (few steps), a little near his rest place
+                dturn = (h - prev[1] + 180.0) % 360.0 - 180.0
+                cost += 3.0 * ((S - prev[0]) ** 2).sum(1) + 0.0004 * dturn ** 2
+                # stations change little from one yaw step to the next (short steps, feet never crossed)
+                cost += 1e4 * ((np.sqrt(((S - prev[0]) ** 2).sum(1)) > 0.10) | (np.abs(dturn) > 9.0))
+            if not getattr(u, "long", False):
+                cost += 0.3 * ((S - self.s0) ** 2).sum(1)
             i = int(np.argmin(cost))
             if cost[i] < best[0]:
                 best = (float(cost[i]), ((S[i].copy(), float(h[i])), {"reach": float(reach[i]), "line": float(dl[i])}))
@@ -2559,7 +2745,11 @@ class Traverse:
     def table(self, step=5):
         """{yaw: (station, cost, info)} from 0 out to +90 and to -90, each from its neighbour."""
         if not self._cache:
-            self._cache[0] = ((self.s0.copy(), self.h0), 0.0, {"reach": 0.0, "line": 9.0})
+            if getattr(self.u, "long", False):        # his station at 0 found like the others
+                st, c, info = self._search(0.0, None)
+                self._cache[0] = (st, c, info)
+            else:
+                self._cache[0] = ((self.s0.copy(), self.h0), 0.0, {"reach": 0.0, "line": 9.0})
             for sign in (1, -1):
                 prev = self._cache[0][0]
                 for y in range(step, 91, step):
@@ -2585,9 +2775,9 @@ class Traverse:
     # steps while the yaw crosses STAIR_LEAD of the next 30 degrees, the other while it crosses
     # STAIR_TRAIL; between those bands both feet stand still. A game keeps the shown yaw out of the
     # bands when the gun comes to rest (the aim file lists them), so no foot is left in the air.
-    STAIR_STEP = 30.0
-    STAIR_LEAD = (6.0, 14.0)
-    STAIR_TRAIL = (16.0, 24.0)
+    STAIR_STEP = 45.0
+    STAIR_LEAD = (1.0, 21.0)
+    STAIR_TRAIL = (24.0, 44.0)
 
     def stair_bands(self):
         """The yaw bands in which a foot is stepping, (from, to) degrees, for the aim file."""
@@ -2932,6 +3122,132 @@ def round4_preview(folder, pb, scene, label, fps=15):
         b = pb.clips[name][3]
         low = min(min(R[f"bip01 {s} foot"][1, 3] for s in ("l", "r")) for R in b.rider)
         lines.append(f"{name}: {b.length:.3f} s, the feet's lowest bone height {low:.3f} m")
+    return lines
+
+
+def round4_handles(folder, pb, scene, label):
+    """The long handles' picture (round 4, B on foot): the gun with the drop crank, its shaft and
+    gear boxes and the traverse bar from four sides at two heights (alone and on the lying camel);
+    the gunner holding both grips at -90, -45, 0, 45, 90; the tightest clearances (the drop crank's
+    circle over the hump). Returns report lines (clearances, the palms' gaps)."""
+    from PIL import Image
+    os.makedirs(folder, exist_ok=True)
+    u = pb.unit
+    g = u.gun
+    aim = Aim(scene, u, None)
+    trav = getattr(pb, "traverse", None) or Traverse(aim)
+    aim.traverse = trav
+    fig = pb.gun_fig
+    stem = os.path.join(folder, label)
+    lines = []
+    P = aim.camel_pose(0.0)
+    chest = rigid(P[u.camel.hang])
+    names = {i: (m_.get("name") or "") for i, (m_, _t) in enumerate(fig.meshes)}
+    made_idx = [i for i, n in names.items() if any(k in n for k in ("dropcrank", "dropshaft", "traversebar"))]
+
+    def gun_pose(yaw, crank=0.0):
+        fr = g.frames({"yaw": yaw, "crank": crank})
+        G = {f"bone_{u.gun_name}".lower(): chest}
+        for k in GunDesign.BONES[1:]:
+            G[GunDesign.bone_name(k).lower()] = chest @ g.to_model(fr[k])
+        return fr, G
+    # 1. the gun, four sides x two heights, alone and on the lying camel
+    w, h = 300, 280
+    pivot_w = point(u.C(P), g.pivot)
+    low = 0.5 * (pivot_w + u.handles["low_w"])
+    rows = [title(w * 8, f"{label.upper()}: B'S GUN WITH THE LONG HANDLES (DROP CRANK, SHAFT AND GEAR BOXES, "
+                         "TRAVERSE BAR); THE GUN AT 0, CRANK AT 0", back=(70, 40, 20))]
+    _fr, G = gun_pose(0.0)
+    for what, items_of, span in (("THE GUN ALONE", lambda: fig.items(G), 1.2),
+                                 ("ON THE LYING CAMEL", lambda: scene.camel_fig.items(P) + fig.items(G), 1.8)):
+        tiles = []
+        for el in (8.0, 45.0):
+            for az in (-90.0, 0.0, 90.0, 180.0):
+                side = {-90.0: "HIS SIDE (LEFT)", 0.0: "FRONT", 90.0: "RIGHT", 180.0: "BEHIND"}[az]
+                img = draw(items_of(), w, h, az, el, span, tuple(low), ground=what != "THE GUN ALONE")
+                tiles.append(caption(img, f"{side} EL {el:.0f}"))
+        rows.append(title(w * 8, what, scale=1))
+        rows.append(np.concatenate(tiles, 1))
+    Image.fromarray(np.concatenate(rows, 0)).save(stem + "-gun.png")
+    # 2. the gunner at the five angles
+    angles = (-90.0, -45.0, 0.0, 45.0, 90.0)
+    views = [("FROM ABOVE (CAMEL'S HEAD UP)", 180.0, 89.0, 3.0, (0.0, 1.0, 0.25)),
+             ("BEHIND HIM, LEFT", -150.0, 15.0, 2.4, None),
+             ("FRONT, LEFT", -40.0, 15.0, 2.4, None),
+             ("HIS RIGHT SIDE, LOW", 120.0, 5.0, 2.4, None)]
+    rows = [title(w * 5, f"{label.upper()}: B ON FOOT HOLDING BOTH GRIPS (LEFT HAND THE DROP CRANK, RIGHT THE "
+                         "TRAVERSE BAR) AT -90 -45 0 45 90", back=(70, 40, 20))]
+    t_fire = 0.0
+    for vname, az, el, span, cen in views:
+        tiles = []
+        for yaw in angles:
+            stand = trav.stair(yaw)
+            items, marks, reach = aim.items(fig, t_fire, yaw, stand)
+            c = cen
+            if c is None:
+                r0 = stand[trav.root][:3, 3]
+                c = (r0[0], 1.2, r0[2])
+            img = draw(items, w, h, az, el, span, c, marks=marks)
+            tiles.append(caption(img, f"{yaw:+.0f}" + (f" GAP {reach * 100:.1f}CM" if reach > 0.005 else "")))
+            if vname == views[0][0]:
+                _P, _G, R, _r = aim.poses(t_fire, yaw, stand)
+                sh = {s: float(np.linalg.norm(R[f"bip01 {s} hand"][:3, 3] - R[f"bip01 {s} upperarm"][:3, 3]))
+                      for s in ("l", "r")}
+                lines.append(f"gun {yaw:+.0f}: palms within {reach * 100:.1f} cm of the grips; shoulder to wrist "
+                             f"l {sh['l']:.2f} r {sh['r']:.2f} m")
+        rows.append(title(w * 5, vname, scale=1))
+        rows.append(np.concatenate(tiles, 1))
+    Image.fromarray(np.concatenate(rows, 0)).save(stem + "-gunner.png")
+    # 3. the clearances: the made parts above the camel's surface, every 15 degrees and every 30 of
+    # the crank; the gunner's body off the bar and the crank (his hands excluded)
+    cam = u.camel
+    worst = []
+    for yaw in range(-90, 91, 15):
+        for crank in range(0, 360, 30):
+            _fr, G = gun_pose(float(yaw), float(crank))
+            items = fig.items(G)
+            gap, part = 9.0, ""
+            for i in made_idx:
+                for q in np.asarray(items[i][0])[::2]:
+                    ys = cam.surface_heights(P, q[0], q[2])
+                    ys = ys[ys < q[1] + 0.5]
+                    if len(ys):
+                        top = ys.max()
+                        d = float(q[1] - top) if top <= q[1] else -float(top - q[1])
+                        if d < gap:
+                            gap, part = d, names[i].split("_")[-1]
+            worst.append((gap, yaw, crank, part))
+    worst.sort()
+    for lo, hi in ((-90, 90), (-30, 90)):
+        sel = [w_ for w_ in worst if lo <= w_[1] <= hi]
+        lines.append(f"handles above the camel's surface, gun {lo:+d}..{hi:+d} (worst): " +
+                     ", ".join(f"{gp * 100:.1f} cm ({pt}) at gun {y:+d} crank {c}" for gp, y, c, pt in sel[:4]))
+    worst = [w_[:3] for w_ in worst]
+    body = []
+    for yaw in range(-90, 91, 15):
+        stand = trav.stair(float(yaw))
+        _P, G, R, _r = aim.poses(0.0, float(yaw), stand)
+        rp = np.concatenate([np.asarray(it[0]) for it in scene.rider_fig.items(R)])
+        hands = np.r_[R["bip01 l hand"][:3, 3], R["bip01 r hand"][:3, 3]].reshape(2, 3)
+        far = rp[np.min(np.linalg.norm(rp[:, None, :] - hands[None, :, :], axis=2), axis=1) > 0.16]
+        items = fig.items(G)
+        pts = np.concatenate([np.asarray(items[i][0]) for i in made_idx])
+        d = float(np.min(np.linalg.norm(pts[::3, None, :] - far[None, ::4, :], axis=2)))
+        body.append((d, yaw))
+    body.sort()
+    lines.append("handles off his body away from his hands (worst): " +
+                 ", ".join(f"{d * 100:.1f} cm at gun {y:+d}" for d, y in body[:3]))
+    # the close-up of the tightest
+    tiles = []
+    for gp, yaw, crank in worst[:4]:
+        _fr, G = gun_pose(float(yaw), float(crank))
+        c = tuple(point(u.C(P), g.at["crank2"]) + np.array([0.0, -0.05, 0.0]))
+        for az, el in ((-90.0, 4.0), (-150.0, 20.0)):
+            img = draw(scene.camel_fig.items(P) + fig.items(G), 360, 320, az, el, 0.8, c)
+            tiles.append(caption(img, f"GUN {yaw:+d} CRANK {crank}: {gp * 100:.1f} CM ABOVE THE CAMEL"))
+    Image.fromarray(np.concatenate([title(360 * len(tiles), f"{label.upper()}: THE TIGHTEST CLEARANCES, THE DROP "
+                                          "CRANK'S CIRCLE OVER THE HUMP", back=(70, 40, 20)),
+                                    np.concatenate(tiles, 1)], 0)).save(stem + "-clearance.png")
     return lines
 
 
@@ -3308,12 +3624,15 @@ def main(argv):
                     help="the reload (seated gunner): keep (lift the magazine and seat it again) or toss (throw the "
                          "empty one aside, pull a full one from the pocket at his hip); default: the recipe's")
     ap.add_argument("--reload-preview", help="a folder for a close GIF and a contact sheet of each variant's reload")
+    ap.add_argument("--round4-handles", help="a folder for the picture of B's long handles (round 4)")
+    ap.add_argument("--handle-drop", type=float, help="the drop crank this many metres below the gun's crank "
+                                                      "(default %.2f)" % HANDLE_DROP)
     ap.add_argument("--round4-preview", help="a folder for B on foot with the turning gun: the angles, the stepping, "
                                              "the dismount and the remount (round 4)")
     args = ap.parse_args(argv)
     try:
         for p in (args.out, args.sheet, args.gifs, args.aim_sheet, args.aim_gifs, args.reload_preview,
-                  args.round4_preview):
+                  args.round4_preview, args.round4_handles):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -3325,6 +3644,8 @@ def main(argv):
             recipe.update(json.load(f))
     if args.reload:
         recipe["reload"] = None if args.reload == "keep" else args.reload
+    if args.handle_drop is not None:
+        recipe["handle_drop"] = args.handle_drop
     if args.scales:
         recipe["scales"] = [float(x) for x in args.scales.split(",")]
     if args.variants:
@@ -3481,6 +3802,14 @@ def main(argv):
                                                 f"{length:.2f} S, TWO VIEWS PER MOMENT", back=(70, 40, 20)), sheet],
                                                0)).save(stem + ".png")
                 print(stem + ".png")
+        if args.round4_handles:
+            scale = args.gif_scale if args.gif_scale else recipe["scales"][0]
+            pb = plays.get(("B", scale))
+            if pb is not None and getattr(pb.unit, "long", False):
+                drop = recipe.get("handle_drop", HANDLE_DROP)
+                for line in round4_handles(args.round4_handles, pb, scene,
+                                           f"{recipe['name'].replace('_', '-')}-round4-handles-drop{int(round(drop * 100))}"):
+                    print(line)
         if args.round4_preview:
             scale = args.gif_scale if args.gif_scale else recipe["scales"][0]
             pb = plays.get(("B", scale))
