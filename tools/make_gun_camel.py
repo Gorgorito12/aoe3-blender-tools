@@ -7,6 +7,12 @@ animated with a rider who cranks it. Recipe-driven like make_dismount.py.
     venv\\Scripts\\python -I tools/make_gun_camel.py --game <game copy> --out <folder>
         [--recipe <recipe.json>] [--scales 0.55,0.7] [--granny-helper <exe>] [--no-verify]
         [--sheet <png>] [--gifs <folder>] [--gif-fps 15] [--gaze <png>]
+        [--aim-sheet <png>] [--aim-gifs <folder>]
+
+`--aim-sheet` and `--aim-gifs` preview the gun turned on its trunnion (a yaw about the vertical,
+-90 to 90 degrees) with the camel still: A's rider turns his chest part of the way, looks along the
+barrels and keeps his hands on the gun (past AIM_SWAP the hands change over); B's gunner walks
+around the trunnion on his own flank. What a game key that aims the gun, not the camel, would show.
 
 What it writes below --out (`art\\<recipe "folder">\\`):
 - `<camel>_nogun.gr2`: the camel's body without the swivel gun's triangles (`cut`: the pieces bound to
@@ -357,7 +363,9 @@ class GunDesign:
 
     def frames(self, state):
         """{bone: design frame} for a state: barrel and crank angles (degrees), the casing's recoil
-        (design units along -z), and the magazine's frame (None: seated)."""
+        (design units along -z), the magazine's frame (None: seated) and `yaw`, the whole gun
+        turned about the vertical through its trunnion (degrees, positive toward the unit's right;
+        the turn a game would give the trunnion bone to aim the gun without turning the camel)."""
         cannon = tr(self.pivot + np.array([0.0, 0.0, -state.get("recoil", 0.0)]))
         rel = cannon @ tr(-self.pivot)
         spin = self.mx
@@ -367,7 +375,15 @@ class GunDesign:
                "muzzle": rel @ tr(self.at["muzzle"])}
         mag = state.get("magazine")
         out["ammo"] = rel @ tr(self.at["ammo"]) if mag is None else mag
+        yaw = state.get("yaw", 0.0)
+        if yaw:
+            turn = self.yaw_matrix(yaw)
+            out = {k: turn @ v for k, v in out.items()}
         return out
+
+    def yaw_matrix(self, yaw):
+        """The design-space turn of the gun by `yaw` degrees about the vertical through the trunnion."""
+        return tr(self.pivot) @ rot4(axis_matrix(Y, yaw)) @ tr(-self.pivot)
 
     def handle_at(self, frames):
         return point(frames["crank"], self.handle - self.at["crank"])
@@ -846,6 +862,20 @@ class Rider:
 
 
 SHOTS = 6                 # shots a firing clip (the stock gun's six Attack tags)
+# The gun turned on its trunnion (yaw): the share of the turn the gunner's chest follows and its
+# limit in degrees (A seated, B on foot); B walks around the trunnion but stays STEP_LIMIT metres
+# or more out on his own flank from where he stands at rest. AIM_ANGLES: the preview's yaws.
+AIM_TRUNK = {"A": (0.5, 45.0), "B": (0.4, 30.0)}
+# A: past AIM_SWAP degrees to the right the left hand cranks (the crank is beyond the right arm) and
+# the right takes the reins; to the left, the left hand leaves the breech for the reins. The hands
+# move over within AIM_BLEND degrees around it.
+AIM_SWAP = 60.0
+AIM_BLEND = 20.0
+# B: on the gunner's own side (left) the crank swings over the camel's back: beyond B_LEFT the camel
+# turns instead (the preview marks those yaws)
+B_LEFT = 45.0
+STEP_LIMIT = 0.0
+AIM_ANGLES = (-90.0, -45.0, 0.0, 45.0, 90.0)
 # Whole turns a firing clip (so repeated shots join); the crank turns a third as fast as the barrels,
 # as on the stock gun. The stock gun peaks near 7 turns a second, but its six barrels then step
 # 44 degrees a frame at 60 frames a second and seem to turn backward; at 3 a second they step 18
@@ -952,10 +982,20 @@ class Unit:
     # -- the hands' targets: (palm in design space, finger, normal), design directions
 
     def target(self, what, fr):
+        """(palm, finger, normal) in design space; the directions turn with the gun's yaw (the
+        casing's frame is the trunnion turned, unrotated at rest)."""
+        palm, fin, nor = self._target(what, fr)
+        turn = fr["cannon"][:3, :3]
+        return palm, turn @ np.asarray(fin, np.float64), turn @ np.asarray(nor, np.float64)
+
+    def _target(self, what, fr):
         g, side = self.gun, (1.0 if self.variant == "A" else -1.0)
         if what == "crank":
             palm = g.handle_at(fr) + np.array([side * 0.07 * g.s, 0.02, -0.02])
             return palm, (0.0, -0.55, 1.0), (0.0, -1.0, -0.35)
+        if what == "crank_l":                # the crank's handle in the left hand (the gun turned far right)
+            palm = g.handle_at(fr) + np.array([side * 0.07 * g.s, 0.02, 0.02])
+            return palm, (0.0, -0.55, -1.0), (0.0, -1.0, 0.35)
         if what == "breech":
             return point(fr["cannon"] @ tr(-g.pivot), g.breech_top) + np.array([0.0, 0.03, 0.02]), \
                 (0.0, -0.1, 1.0), (0.0, -1.0, 0.0)
@@ -1277,11 +1317,33 @@ class Unit:
                     R = rider.turn(R, "bip01 spine", Y, -6.0)
             if do == "fire":
                 R = rider.turn(R, "bip01 spine", X, 5.0 + 0.8 * math.sin(2 * math.pi * SHOTS * u))
+            if do in ("fire", "reload", None) and abs(self.yaw_of(fr)) > 0.5:
+                # the gun turned on its trunnion: his chest follows part of the way (AIM_TRUNK), the
+                # hands stay on it (two-bone IK below) and the head looks along the barrels
+                R = rider.turn_trunk_to(R, self.downrange(C, fr), *AIM_TRUNK["A"])
             if do == "reload":
                 w = math.sin(math.pi * min(1.0, max(0.0, (u - 0.2) / 0.6)))
                 R = rider.turn(R, "bip01 spine", Y, -16.0 * w)
                 R = rider.turn(R, "bip01 spine", X, 6.0 * w)
             want = dict(self.seated_hands(clip))
+            yaw = self.yaw_of(fr)
+            swap = None
+            if want.get("r") == "crank" and yaw > 0:
+                # the gun turned far to his right puts its crank (on its right side) beyond his
+                # right arm, left of the trunnion: the left hand cranks, the right takes the reins
+                swap = {"l": "crank_l", "r": "reins"}
+            elif want.get("l") == "breech" and yaw < 0:
+                # far to his left the breech swings in front of his chest: the left hand on the reins
+                swap = {"r": "crank", "l": "reins"}
+            w = smooth(min(1.0, max(0.0, (abs(yaw) - AIM_SWAP + 0.5 * AIM_BLEND) / AIM_BLEND))) if swap else 0.0
+            if w > 0.0:
+                # the hands move over between AIM_SWAP -+ AIM_BLEND/2 degrees (no jump in a sweep)
+                for side in ("l", "r"):
+                    if swap[side] != want.get(side):
+                        a = self.world_goal(want.get(side), R, C, fr, attach, side)
+                        z = self.world_goal(swap[side], R, C, fr, attach, side)
+                        palm = (1 - w) * a[0] + w * z[0] + np.array([0.0, 0.08, 0.0]) * math.sin(math.pi * w)
+                        want[side] = ("world", palm, unit((1 - w) * a[1] + w * z[1]), unit((1 - w) * a[2] + w * z[2]))
             if do == "reload":
                 want["l"] = self.reload_hand(u, fr)
             if want.get("r") == "thigh":
@@ -1296,7 +1358,10 @@ class Unit:
         if do == "fall":                     # the rider's own death clips play (anim file)
             return rider.seated(rider.idle, 0.0, attach)
         if do in ("stand", "fire", "reload"):
-            R = self.at_gun(stand, C, fr, do, u, b)
+            yaw = self.yaw_of(fr)
+            if abs(yaw) > 0.5:
+                stand = self.step_around(stand, C, fr, yaw)
+            R = self.at_gun(stand, C, fr, do, u, b, trunk=AIM_TRUNK["B"] if abs(yaw) > 0.5 else None)
             return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
         if do == "foot_death":
             anim = rider.anim(FOOT_DEATH)
@@ -1310,20 +1375,62 @@ class Unit:
         k = (t - t0) / max(t1 - t0, 1e-9)
         return self.climb(P, C, fr, attach, k if do == "dismount" else 1.0 - k)
 
-    def at_gun(self, stand, C, fr, do, u, b):
+    def at_gun(self, stand, C, fr, do, u, b, trunk=None):
         """The gunner on foot at the gun (B): leaning toward it, his chest turned partly toward
         where it fires, the right hand on the crank and the left on the casing or the magazine."""
         rider = self.rider
         lean = {"stand": -1.5 * math.sin(2 * math.pi * u), "fire": -3.0 - 0.8 * math.sin(2 * math.pi * SHOTS * u),
                 "reload": -6.0 * math.sin(math.pi * min(1.0, max(0.0, (u - 0.2) / 0.6)))}[do]
-        R = rider.turn(stand, "bip01 spine", Z, lean)
-        R = rider.turn_trunk_to(R, self.downrange(C, fr), 0.1 if do == "reload" else 0.35, 22.0)
+        fwd = unit(stand["bip01 pelvis"][:3, :3] @ (self.rider.body.base["bip01 pelvis"][:3, :3].T @ Z))
+        fwd[1] = 0.0
+        R = rider.turn(stand, "bip01 spine", unit(fwd) if trunk else Z, lean)
+        share, most = trunk if trunk else (0.1 if do == "reload" else 0.35, 22.0)
+        R = rider.turn_trunk_to(R, self.downrange(C, fr), share, most)
         left = self.reload_hand(u, fr) if do == "reload" else "casing"
         return self.hands(R, C, fr, {"r": "crank", "l": left}, b)
 
+    # -- the gun turned on its trunnion (a yaw the game would give it to aim without the camel)
+
+    def world_goal(self, w, R, C, fr, attach, side):
+        """A hand's target as (palm, finger, normal) in the world: a target name, "reins",
+        (palm, finger, normal) in design space, or ("world", palm, finger, normal)."""
+        if w == "reins":
+            w = self.reins(R, attach, side)
+        if isinstance(w, tuple) and len(w) == 4 and w[0] == "world":
+            return np.asarray(w[1], np.float64), unit(w[2]), unit(w[3])
+        palm, fin, nor = self.target(w, fr) if isinstance(w, str) else w
+        return point(C, palm), self.world_dir(C, fin), self.world_dir(C, nor)
+
+    @staticmethod
+    def yaw_of(fr):
+        """The gun's yaw in a set of frames (degrees, positive toward the unit's right)."""
+        z = fr["cannon"][:3, :3] @ Z
+        return math.degrees(math.atan2(z[0], z[2]))
+
+    def step_around(self, stand, C, fr, yaw):
+        """The gunner on foot when the gun is turned (B): he walks around the trunnion with the
+        crank (his rest place turned with the gun), but never nearer the camel's middle than at
+        rest (STEP_LIMIT: his own flank), and turns to face the crank again."""
+        from aoe3game.gr2_pose import about
+        rig = self.rider.rig
+        root = rig.names[0].lower()
+        pivot = point(C, self.gun.pivot)
+        up = self.world_dir(C, Y)
+        P = {k: about(pivot, axis_matrix(up, yaw)) @ v for k, v in stand.items()}
+        x0, x1 = stand[root][0, 3], P[root][0, 3]
+        if x1 > x0 - STEP_LIMIT:              # his flank: x below the rest place (he stands on the left)
+            P = {k: tr((x0 - STEP_LIMIT - x1, 0.0, 0.0)) @ v for k, v in P.items()}
+        # face the crank: his pelvis forward turned about his root toward the handle
+        handle = point(C, self.target("crank", fr)[0])
+        at = P[root][:3, 3]
+        f = unit(P["bip01 pelvis"][:3, :3] @ (self.rider.body.base["bip01 pelvis"][:3, :3].T @ Z))
+        d = handle - at
+        a = math.degrees(math.atan2(f[2] * d[0] - f[0] * d[2], f[0] * d[0] + f[2] * d[2]))
+        return {k: about(at, axis_matrix(Y, a)) @ v for k, v in P.items()}
+
     def downrange(self, C, fr):
-        """A point far along the barrels, where the gun fires."""
-        return point(C, fr["muzzle"][:3, 3]) + 12.0 * self.world_dir(C, Z)
+        """A point far along the barrels, where the gun fires (they turn with the gun's yaw)."""
+        return point(C, fr["muzzle"][:3, 3]) + 12.0 * self.world_dir(C, fr["muzzle"][:3, :3] @ Z)
 
     def gaze(self, do, clip, R, C, fr, attach):
         """Where the rider looks: along the barrels toward the target at the gun, at the magazine
@@ -1713,6 +1820,127 @@ def gaze_sheet(path, plays, scale):
 
 
 # --------------------------------------------------------------------------------------------------
+# The gun turned on its trunnion (aim preview): what a game key that turns the gun, not the camel,
+# would show, drawn from the poses (not from written clips)
+
+
+class Aim:
+    """One unit's firing pose at a gun yaw: the camel as its fire clip has it, the gun turned on
+    its trunnion, the rider or gunner following (chest, head, both hands on the gun)."""
+
+    def __init__(self, scene, unit, model_bytes):
+        self.scene, self.unit = scene, unit
+        self.model_bytes = model_bytes
+        self.clip = next(c for c in CLIPS[unit.variant] if c.get("do") == "fire")
+        cam = unit.camel
+        if "camel" in self.clip:
+            self.anim = cam.anim(self.clip["camel"])
+            self.length = self.anim.duration
+        else:
+            self.anim = cam.anim(self.clip["still"])
+            self.length = float(self.clip["length"])
+            self.still = cam.fix_hang(cam.grounded(self.anim, [0.0])[0])
+
+    def camel_pose(self, t):
+        cam, clip = self.unit.camel, self.clip
+        if "camel" in clip:
+            P = cam.pose(self.anim, t)
+            if clip.get("lower"):
+                P = cam.lower_head(P, clip["lower"] + clip.get("dip", 0.0) * math.sin(math.pi * t / self.length) ** 2)
+            return P
+        return self.still
+
+    def poses(self, t, yaw):
+        """(camel, gun, rider) world frames by bone name, and how far a palm stays from its target."""
+        u = self.unit
+        P = self.camel_pose(t)
+        state = u.fire_state(t, self.length)
+        state["yaw"] = yaw
+        fr = u.gun.frames(state)
+        C = u.C(P)
+        attach = rigid(P[u.camel.rider_bone])
+        b = Built(self.clip, [t])
+        base = u.rider.anim(self.clip["rider"]) if self.clip.get("rider") else u.rider.idle
+        R = u.rider_pose(self.clip, "fire", t, self.length, t / self.length, P, C, fr, base, attach, b)
+        chest = rigid(P[u.camel.hang])
+        G = {f"bone_{u.gun_name}".lower(): chest}
+        for k in GunDesign.BONES[1:]:
+            G[GunDesign.bone_name(k).lower()] = chest @ u.gun.to_model(fr[k])
+        return P, G, R, b.reach
+
+    def items(self, gun_fig, t, yaw):
+        P, G, R, reach = self.poses(t, yaw)
+        s = self.scene
+        out = s.camel_fig.items(P) + gun_fig.items(G) + s.rider_fig.items(R) + s.hat_items(R)
+        marks = []
+        if any(0.0 <= t - f < 0.045 for f in Unit.shots(self.length)):
+            mz = G["bone_launchpoint"][:3, 3]
+            marks.append((mz + 0.06 * unit(G["bone_launchpoint"][:3, :3] @ Z), (255, 200, 40), 9))
+        return out, marks, reach
+
+
+AIM_VIEWS = [("FROM ABOVE (CAMEL'S HEAD UP)", 180.0, 89.0, 3.4), ("BEHIND, LEFT", -150.0, 22.0, 2.6),
+             ("FRONT, RIGHT", 35.0, 14.0, 2.6)]
+
+
+def aim_sheet(path, game, aims, angles=AIM_ANGLES):
+    """For each unit, the gun turned on its trunnion at each yaw (columns), seen from above, from
+    behind on the left and from the front on the right: the camel keeps still, the rider follows."""
+    from PIL import Image
+    w, h = 250, 240
+    out = [title(w * len(angles), "GATLING CAMEL - THE GUN TURNS, NOT THE CAMEL (PREVIEW)", back=(70, 40, 20))]
+    notes = []
+    for (variant, scale), (aim, gun_fig) in sorted(aims.items()):
+        t = aim.length * (0.5 + 0.5 / SHOTS)                 # just after a shot: a flash shows
+        what = "A, FROM THE SADDLE" if variant == "A" else "B, DEPLOYED (GUNNER ON FOOT)"
+        for vname, az, el, span in AIM_VIEWS:
+            tiles = []
+            for yaw in angles:
+                items, marks, reach = aim.items(gun_fig, t, yaw)
+                P, G, R, _r = aim.poses(t, yaw)
+                head = R["bip01 head"][:3, 3]
+                if el > 80:
+                    centre = (0.0, 1.0, 0.2)
+                else:
+                    centre = (-0.1, 2.0, 0.1) if variant == "A" else (-0.15, 1.2, 0.55)
+                img = draw(items, w, h, az, el, span, centre, marks=marks)
+                side = "RIGHT" if yaw > 0 else "LEFT" if yaw < 0 else "AHEAD"
+                text = f"{variant} {yaw:+.0f} {side}"
+                if variant == "B" and yaw < -B_LEFT:
+                    text += " - CAMEL TURNS"
+                    img = img.copy()
+                    img[:, :, 0] = np.minimum(255, img[:, :, 0].astype(np.int32) + 40).astype(np.uint8)
+                tiles.append(caption(img, text + (f" GAP {reach * 100:.0f}CM" if reach > 0.02 else "")))
+                if vname == AIM_VIEWS[0][0]:
+                    notes.append(f"{variant} {scale:.2f} yaw {yaw:+.0f}: largest palm gap {reach * 100:.1f} cm, "
+                                 f"head at {np.round(head, 2).tolist()}")
+            out.append(title(w * len(angles), f"{what} {scale:.2f} - {vname}", scale=1))
+            out.append(np.concatenate(tiles, 1))
+    Image.fromarray(np.concatenate(out, 0)).save(path)
+    return notes
+
+
+def aim_gif(path, aim, gun_fig, label, fps=15, sweep=4.0, width=480, height=400, azimuth=180.0, elevation=40.0,
+            span=3.8, centre=(0.0, 1.2, 0.3), left=90.0, right=90.0):
+    """The gun swept from straight ahead to `right` degrees right, back across to `left` left and
+    ahead again while it fires (the barrels spin, the flashes show), the camel still."""
+    from PIL import Image
+    frames = []
+    n = int(round(sweep * fps))
+    for k in range(n):
+        s = math.sin(2 * math.pi * k / n)
+        yaw = s * (right if s > 0 else left)
+        t = (k / fps) % aim.length
+        items, marks, _r = aim.items(gun_fig, t, yaw)
+        img = draw(items, width, height, azimuth, elevation, span, centre, marks=marks)
+        frames.append(caption(img, f"{label}  GUN YAW {yaw:+.0f}", scale=1))
+    pics = [Image.fromarray(f).quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+            for f in frames]
+    pics[0].save(path, save_all=True, append_images=pics[1:], duration=int(round(1000 / fps)), loop=0, optimize=True)
+    return os.path.getsize(path), len(frames)
+
+
+# --------------------------------------------------------------------------------------------------
 # The anim file blocks
 
 
@@ -1920,9 +2148,12 @@ def main(argv):
     ap.add_argument("--gif-fps", type=int, default=15)
     ap.add_argument("--gif-scale", type=float, help="the gun scale the GIFs show (default: the first)")
     ap.add_argument("--gaze", help="a sheet of where the rider looks (PNG): front, left and right views")
+    ap.add_argument("--aim-sheet", help="a sheet of the gun turned on its trunnion (PNG): -90 to 90 degrees, the "
+                                        "rider following")
+    ap.add_argument("--aim-gifs", help="a folder for GIFs of the gun swept from 90 left to 90 right while it fires")
     args = ap.parse_args(argv)
     try:
-        for p in (args.out, args.sheet, args.gifs):
+        for p in (args.out, args.sheet, args.gifs, args.aim_sheet, args.aim_gifs):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -2050,6 +2281,29 @@ def main(argv):
                 size, n = gif(path, pb, SEQUENCES["move"], f"A {scale:.2f}", args.gif_fps, azimuth=-60.0,
                               in_place=True)
                 print(f"{path} {n} frames {size / 1e6:.1f} MB")
+        if args.aim_sheet or args.aim_gifs:
+            scale = args.gif_scale if args.gif_scale else recipe["scales"][0]
+            aims = {}
+            for (variant, sc), pb in plays.items():
+                if sc == scale:
+                    aims[(variant, sc)] = (Aim(scene, pb.unit, None), pb.gun_fig)
+            if args.aim_sheet:
+                for line in aim_sheet(args.aim_sheet, game, aims):
+                    print(line)
+                print(args.aim_sheet)
+            if args.aim_gifs:
+                os.makedirs(args.aim_gifs, exist_ok=True)
+                for (variant, sc), (aim, fig) in sorted(aims.items()):
+                    name = "A-saddle" if variant == "A" else "B-deployed"
+                    left = 90.0 if variant == "A" else B_LEFT
+                    for view, az, el, span, centre in (
+                            ("above", 180.0, 60.0, 3.4, (0.0, 1.3, 0.2)),
+                            ("close", -150.0 if variant == "A" else -130.0, 20.0, 2.6,
+                             (-0.1, 2.0, 0.1) if variant == "A" else (-0.15, 1.2, 0.55))):
+                        path = os.path.join(args.aim_gifs, f"{recipe['name'].replace('_', '-')}-aim-{name}-{view}.gif")
+                        size, n = aim_gif(path, aim, fig, f"{variant} {sc:.2f}", fps=args.gif_fps, azimuth=az,
+                                          elevation=el, span=span, centre=centre, left=left)
+                        print(f"{path} {n} frames {size / 1e6:.1f} MB")
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return 1 if failed else 0

@@ -1203,6 +1203,12 @@ TOOLS = [
           Arg("sheet", "--sheet", "save", L("Model sheet", "Hoja del modelo"), filters=(("PNG", "*.png"),)),
           Arg("gifs", "--gifs", "folder", L("GIF folder", "Carpeta de GIF")),
           Arg("gaze", "--gaze", "save", L("Gaze sheet", "Hoja de la mirada"), filters=(("PNG", "*.png"),)),
+          Arg("aim_sheet", "--aim-sheet", "save", L("Aim sheet (gun turned)", "Hoja de puntería (arma girada)"),
+              L("The gun turned on its trunnion from 90 degrees left to 90 right, the camel still and the rider "
+                "following with chest, head and hands.",
+                "El arma girada sobre su muñón de 90 grados a la izquierda a 90 a la derecha, el camello quieto y "
+                "el jinete acompañando con el pecho, la cabeza y las manos."), filters=(("PNG", "*.png"),)),
+          Arg("aim_gifs", "--aim-gifs", "folder", L("Aim GIF folder", "Carpeta de GIF de puntería")),
           Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
          needs=("game",), outputs=("out",)),
     Tool("recompress_models", "tools/recompress_models.py", "art",

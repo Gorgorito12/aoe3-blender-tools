@@ -28,6 +28,8 @@ HELP = {
                  "Además tres GIF en el primer tamaño: A (reposo, disparo, recarga), B (desplegar, disparo, recarga, replegar) y el paso, el trote y el galope."),
         'gaze': ("Also a sheet of where the rider looks (at the gun, firing, on the move, on foot), each from the front, the unit's left and its right.",
                  "Además una hoja de adónde mira el jinete (junto al arma, disparando, en marcha, a pie), cada una de frente, por la izquierda y por la derecha de la unidad."),
+        'aim_gifs': ("Also GIFs of the gun swept from straight ahead to 90 degrees right and back across to the left while it fires, the camel still: from above and close, for each variant at the first size.",
+                     "Además GIF del arma barriendo de frente a 90 grados a la derecha y de vuelta hacia la izquierda mientras dispara, con el camello quieto: desde arriba y de cerca, para cada variante en el primer tamaño."),
         'no_verify': ("Skips the game's granny2.dll checks of every file (CRC, read, compressed); the read-back of the clips still runs.",
                       "Omite las comprobaciones con granny2.dll del juego de cada archivo (CRC, lectura, compresión); la relectura de los clips se hace igual."),
     },
