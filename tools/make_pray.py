@@ -214,14 +214,15 @@ class Body:
                 P = set_frame(P, rig, m, self.base[m])
         return P
 
-    def place_hand(self, P, s, palm, finger, normal, pole):
+    def place_hand(self, P, s, palm, finger, normal, pole, bend_normal=None):
         """`P` with the arm of side `s` solved (two-bone IK) so that the hand's palm centre is at
         `palm` with its fingers toward `finger` and its palm facing `normal` (world terms), the
         elbow toward `pole`. tools/make_gun_camel.py uses it for a rider's hands on a gun."""
         up, fore, hand = ARM[s]
         rot = basis_of(finger, normal) @ basis_of(self.finger_local[s], self.normal_local[s]).T
         wrist = np.asarray(palm, np.float64) - rot @ self.palm_local[s]
-        return two_bone_ik(P, self.rig, up, fore, hand, wrist, pole, self.hinge[up], self.hinge[fore], end_frame=rot)
+        return two_bone_ik(P, self.rig, up, fore, hand, wrist, pole, self.hinge[up], self.hinge[fore], end_frame=rot,
+                           bend_normal=bend_normal)
 
     def foot_frame(self, s, c):
         """(world rotation, ankle position) of a foot: its idle frame turned about the vertical by

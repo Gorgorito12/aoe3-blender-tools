@@ -848,6 +848,13 @@ class Rider:
         rest = self.rig.by_name(self.rig.rest_worlds())
         self.face_local = rest["bip01 head"][:3, :3].T @ Z
         self.chest_local = rest["bip01 spine1"][:3, :3].T @ Z
+        # how each elbow bends: the normal of the arm's plane in the upper arm's frame, from the idle
+        # (both elbows bent, the fists on the reins)
+        self.elbow_normal = {}
+        for s in ("l", "r"):
+            up, fo, ha = (base[f"bip01 {s} {b}"] for b in ("upperarm", "forearm", "hand"))
+            n = np.cross(fo[:3, 3] - up[:3, 3], ha[:3, 3] - fo[:3, 3])
+            self.elbow_normal[s] = unit(up[:3, :3].T @ unit(n))
 
     def anim(self, rel):
         if rel not in self._anims:
@@ -895,7 +902,7 @@ class Rider:
         return unit(P["bip01 head"][:3, :3] @ self.face_local)
 
     # a man's head on his shoulders: how far it turns from where his chest carries it (degrees)
-    HEAD_YAW, HEAD_UP, HEAD_DOWN = 65.0, 25.0, 40.0
+    HEAD_YAW, HEAD_UP, HEAD_DOWN = 65.0, 25.0, 35.0
 
     def crown(self, P):
         return unit(P["bip01 head"][:3, :3] @ (self.body.base["bip01 head"][:3, :3].T @ Y))
@@ -961,7 +968,9 @@ class Rider:
         return rotate_about(P, self.rig, bone, bone, axis, degrees)
 
     def hand(self, P, side, palm, finger, normal, pole):
-        return self.body.place_hand(P, side, palm, finger, normal, pole)
+        """The arm solved to the palm, bending the way an elbow bends (Rider.elbow_normal): its
+        twist never flips between two frames and the elbow never bends backward."""
+        return self.body.place_hand(P, side, palm, finger, normal, pole, bend_normal=self.elbow_normal[side])
 
     def palm_of(self, P, side):
         hand = P[f"bip01 {side} hand"]
@@ -997,7 +1006,13 @@ POCKET_TRUNK = (0.45, 28.0)
 # breech's top
 HANDLE_DROP = 0.25
 HANDLE_BAR = (0.25, 0.45)
-LONG_ARM = 0.50          # shoulder to palm on the long handles (metres): elbows bent
+B_CARRY_END = 0.76        # B's carry to the hopper ends here (share of the reload); seated by B_SEAT
+B_SEAT = 0.84             # B: the new magazine seated (A: 0.82), pressed home by B_SEAT + 0.04
+B_HAND_ARC = 0.28         # B's hand swings this far in front of him on its way down to the pocket
+B_HAND_CLEAR = 0.50       # B's reloading hand stays this far from his shoulder
+B_CARRY_ARC = 0.45        # metres in front of his left shoulder B's hand passes on its way to the hopper
+B_RELOAD_LEAN_BACK = -24.0  # degrees B leans (- forward, in toward the hopper) to seat the new magazine
+LONG_ARM = 0.42          # shoulder to palm on the long handles (metres): elbows bent
 POCKET_LEAN = 12.0
 # in a death where the camel rolls over: when the spare magazine leaves the camel's body for the
 # gun's hopper (seconds; the camel's body still hides it until about 0.6 s)
@@ -1155,10 +1170,12 @@ class Unit:
     def _target(self, what, fr):
         g, side = self.gun, (1.0 if self.style == "A" else -1.0)
         if what == "crank":
-            palm = g.handle_at(fr) + np.array([side * 0.07 * g.s, 0.02, -0.02])
+            palm = g.handle_at(fr) + point(fr["cannon"] @ tr(-g.pivot), np.array([side * 0.07 * g.s, 0.0, 0.0])) \
+                - point(fr["cannon"] @ tr(-g.pivot), np.zeros(3))
             return palm, (0.0, -0.55, 1.0), (0.0, -1.0, -0.35)
         if what == "crank_l":                # the crank's handle in the left hand (the gun turned far right)
-            palm = g.handle_at(fr) + np.array([side * 0.07 * g.s, 0.02, 0.02])
+            palm = g.handle_at(fr) + point(fr["cannon"] @ tr(-g.pivot), np.array([side * 0.07 * g.s, 0.0, 0.0])) \
+                - point(fr["cannon"] @ tr(-g.pivot), np.zeros(3))
             return palm, (0.0, -0.55, -1.0), (0.0, -1.0, 0.35)
         if what == "breech":
             return point(fr["cannon"] @ tr(-g.pivot), g.breech_top) + np.array([0.0, 0.03, 0.02]), \
@@ -1396,13 +1413,14 @@ class Unit:
     # line, and it leans out that way as it comes
     POCKET_FOOT_OUT, POCKET_FOOT_TOP = 0.04, 0.10
     POCKET_FOOT_DRAW_OUT = 40.0
+    POCKET_FOOT_DRAW = 0.25          # standing, drawn this far: out of the pocket, at his waist
 
     def base_body(self, P):
         """The gunner's body a reload starts from, before his hands are placed: seated on the camel
         (A, and B mounted) or standing at the gun (B on foot)."""
         if self.style == "A":
             return self.rider.seated(self.rider.idle, 0.0, rigid(P[self.camel.rider_bone]))
-        return self.stand_pose()
+        return self.station_body()
 
     def body_axes(self, R):
         """His (right, up, forward) in the world, level: from his hips."""
@@ -1411,13 +1429,14 @@ class Unit:
         right = unit(right)
         return right, Y.copy(), unit(np.cross(right, Y))
 
-    def pocket(self, P):
-        """The full magazine in the pocket at the gunner's left hip, at the camel pose P: (design
-        frame, his (right, up, forward) in the world, the pocket's top in the world, the way it is
-        drawn out (world, along its length toward its top))."""
+    def pocket(self, P, R=None):
+        """The full magazine in the pocket at the gunner's left hip, at the camel pose P and his
+        body R (default: the body a reload starts from): (design frame, his (right, up, forward)
+        in the world, the pocket's top in the world, the way it is drawn out (world, along its
+        length toward its top))."""
         g = self.gun
         C = self.C(P)
-        R = self.base_body(P)
+        R = self.base_body(P) if R is None else R
         hip = R["bip01 l thigh"][:3, 3]
         right, up, fwd = self.body_axes(R)
         if self.style == "A":
@@ -1482,8 +1501,9 @@ class Unit:
                     unit((1 - w) * np.asarray(a[1]) + w * np.asarray(b[1])),
                     unit((1 - w) * np.asarray(a[2]) + w * np.asarray(b[2])))
 
-        def lerp_frame(A, B, w):
-            w = smooth(min(1.0, max(0.0, w)))
+        def lerp_frame(A, B, w, ease=True):
+            w = min(1.0, max(0.0, w))
+            w = smooth(w) if ease else w
             qa, qb = matrix_quat(A[:3, :3]), matrix_quat(B[:3, :3])
             if float(np.dot(qa, qb)) < 0:
                 qb = -np.asarray(qb)
@@ -1514,6 +1534,7 @@ class Unit:
         t_land = (-b_ - math.sqrt(b_ * b_ - 4 * a * c)) / (2 * a)
         flight = (times[i_rel], p0, v0, g_acc, t_land, Crel[:3, :3] @ throw[:3, :3])
         old, new, hand, turn, look = [], [], [], [], []
+        seat_at = B_SEAT if self.style == "B" else 0.82
         toward = None
         for t, P in zip(times, poses):
             u = t / length
@@ -1536,21 +1557,52 @@ class Unit:
                         e = float(np.linalg.norm(unit(T_[:3, :3] @ cur) - along))
                         if best is None or e < best[0]:
                             best = (e, T_)
-                    drawn = invC @ tr(self.POCKET_DRAW * along) @ best[1] @ Wp
+                    drawn = invC @ tr(self.POCKET_FOOT_DRAW * along) @ best[1] @ Wp
             toward = top_w
             # the new magazine: in the camel's body, in the pocket, drawn, carried over, seated
-            if u < 0.01 or u >= 0.95:
+            if self.style == "B" and (u < 0.52 or u >= 0.95):
+                N = inpocket                       # B: refined from his own body in build()
+            elif u < 0.01 or u >= 0.95:
                 N = stash
             elif u < 0.52:
                 N = inpocket
             elif u < 0.62:
                 N = lerp_frame(inpocket, drawn, seg(u, 0.52, 0.62))
+            elif u < B_CARRY_END and self.style == "B":
+                # standing, the straight way from his hip to the hopper passes his shoulder: he brings
+                # the magazine in front of his chest first, then up into the hopper
+                body = self.base_body(P)
+                lift_w = point(C, lifted[:3, 3])
+                # the hand passes well in front of his left shoulder (the grip point there)
+                way_w = body["bip01 l upperarm"][:3, 3] + B_CARRY_ARC * _axes[2] + (
+                    lift_w - point(C, point(lifted, hand_off)))
+                front = invC @ tr(way_w - lift_w) @ C @ lifted
+                d1 = float(np.linalg.norm(way_w - point(C, drawn[:3, 3])))
+                d2 = float(np.linalg.norm(lift_w - way_w))
+                # one even stroke through the waypoint, each part in time as long as it is
+                split = 0.62 + (B_CARRY_END - 0.62) * d1 / max(d1 + d2, 1e-6)
+                w_all = smooth(seg(u, 0.62, B_CARRY_END))
+                w_at = smooth(seg(split, 0.62, B_CARRY_END))
+                if w_all < w_at:
+                    N = lerp_frame(drawn, front, w_all / max(w_at, 1e-6), ease=False)
+                else:
+                    N = lerp_frame(front, lifted, (w_all - w_at) / max(1.0 - w_at, 1e-6), ease=False)
             elif u < 0.76:
                 N = lerp_frame(drawn, lifted, seg(u, 0.62, 0.76))
-            elif u < 0.82:
-                N = lerp_frame(lifted, seated, seg(u, 0.76, 0.82))
+            elif u < seat_at:
+                N = lerp_frame(lifted, seated, seg(u, B_CARRY_END if self.style == "B" else 0.76, seat_at))
             else:
                 N = seated
+            if self.style == "B" and 0.52 <= u < 0.76:
+                # his hand never comes within B_HAND_CLEAR of his own shoulder (the elbow folded flat
+                # turns over): the magazine is pushed out from it
+                sh_w = self.base_body(P)["bip01 l upperarm"][:3, 3]
+                gp = point(C, point(N, g.mag_top - seat))
+                dvec = gp - sh_w
+                dist_ = float(np.linalg.norm(dvec))
+                ramp = smooth(min(1.0, max(0.0, min((u - 0.52) / 0.06, (0.76 - u) / 0.06))))
+                if dist_ < B_HAND_CLEAR and ramp > 0.0:
+                    N = invC @ tr(ramp * (B_HAND_CLEAR - dist_) * unit(dvec)) @ C @ N
             # the old one
             if u < 0.10:
                 O = seated
@@ -1582,17 +1634,21 @@ class Unit:
                 H = grip(O)
             elif u < 0.48:
                 H = mix(grip(throw), top_grip(inpocket), seg(u, U_REL, 0.48))
+                if self.style == "B":
+                    # standing, his hand comes down to the thigh in front of him, clear of his shoulder
+                    bulge = B_HAND_ARC * math.sin(math.pi * smooth(seg(u, U_REL, 0.48)))
+                    H = (H[0] + invC[:3, :3] @ (bulge * _axes[2]), H[1], H[2])
             elif u < 0.62:
                 H = top_grip(N)
             elif u < 0.74:
                 H = mix(top_grip(N), grip(N), seg(u, 0.62, 0.74))
-            elif u < 0.82:
+            elif u < seat_at:
                 H = grip(N)
-            elif u < 0.86:                                        # pressed home
+            elif u < seat_at + 0.04:                                        # pressed home
                 p, f, n = grip(seated)
-                H = (p + np.array([0.0, -0.015 * math.sin(math.pi * seg(u, 0.82, 0.86)), 0.0]), f, n)
+                H = (p + np.array([0.0, -0.015 * math.sin(math.pi * seg(u, seat_at, seat_at + 0.04)), 0.0]), f, n)
             else:
-                H = mix(grip(seated), rest, seg(u, 0.86, 1.0))
+                H = mix(grip(seated), rest, seg(u, seat_at + 0.04, 1.0))
             # the chest turned a little toward the pocket while he reaches down to it
             w = 0.0 if u < 0.36 or u > 0.66 else math.sin(math.pi * seg(u, 0.36, 0.66))
             old.append(O)
@@ -1605,13 +1661,13 @@ class Unit:
         # and back (0.95, seated inside the old one), the old one back in the gun (0.95, inside the
         # new one): a key 1 ms before the first frame at or after each, holding the frame before
         # it (write())
-        extra = {"ammo2": (0.01, 0.95), "ammo": (0.95,)}
+        extra = {"ammo2": (0.01, 0.95), "ammo": (0.95,)} if self.style == "A" else {"ammo2": (0.95,), "ammo": (0.95,)}
         return {"old": old, "new": new, "hand": hand, "turn": turn, "look": look, "extra": extra,
                 "toward": toward, "times": np.asarray(times)}
 
     # how his head may turn from his body's forward while he watches his hands in a reload (degrees),
     # and how smooth the turns are (seconds, the gaze's Gaussian smoothing)
-    GAZE_YAW, GAZE_UP, GAZE_DOWN, GAZE_SMOOTH = 60.0, 15.0, 35.0, 0.22
+    GAZE_YAW, GAZE_UP, GAZE_DOWN, GAZE_SMOOTH = 60.0, 15.0, 30.0, 0.22
 
     def calm_gaze(self, poses, times, length, points):
         """Where he looks in a reload, frame by frame (world points): at his left hand (`points`)
@@ -1744,7 +1800,10 @@ class Unit:
         pole_w = {s: self.world_dir(C, v) for s, v in poles.items()}
         if getattr(self, "long", False) and self.style == "B":
             right, _up, fwd = self.body_axes(P)
-            pole_w = {"r": unit(0.8 * right - 0.6 * Y - 0.2 * fwd), "l": unit(-0.8 * right - 0.6 * Y - 0.2 * fwd)}
+            # elbows out to his sides, a little down and back: across every reach he makes (the grips
+            # in front of him, the thigh pocket down and out, the hopper up and across) the elbow has a
+            # clear side, so the arm never turns over between two frames
+            pole_w = {"r": unit(0.9 * right - 0.2 * Y - 0.3 * fwd), "l": unit(-0.9 * right - 0.2 * Y - 0.3 * fwd)}
         for _k in range(tries):
             Q = base
             for s, (palm, fin, nor) in goals.items():
@@ -1826,7 +1885,7 @@ class Unit:
             poses = [cam.pin_hang(P, poses[0]) for P in poses]
             scales = cam.hang_scale(poses[0], scales)
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
-        elif "camel" not in clip or clip.get("do") == "fall":   # the rider's bone kept on the chest
+        else:   # the rider's bone (the gun's attach bone) kept on the chest in every clip
             poses = [cam.fix_hang(P) for P in poses]
             scales = cam.hang_scale(poses[0], scales)
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
@@ -1873,6 +1932,11 @@ class Unit:
                 R = rider.seated(anim, min(t, anim.duration), stock_attach[k], square=False)
             else:
                 R = self.rider_pose(clip, do, t, length, u, P, C, fr, base, attach, b)
+            if self.style == "B" and self.r.get("reload") == "toss" and not rolls:
+                in_pocket = plan is None or u < 0.52 or u >= 0.95
+                if in_pocket:
+                    fr = dict(fr)
+                    fr["ammo2"] = self.pocket(P, R)[0]
             b.camel.append(P)
             b.gun.append(fr)
             b.rider.append(R)
@@ -1982,7 +2046,7 @@ class Unit:
                 return rider.look(R, plan_at[0]["look"][plan_at[1]])       # at what his left hand works
             return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
         # variant B on foot (facing +x: he leans toward the gun about the world's z)
-        stand = self.stand_pose()
+        stand = self.station_body()
         if do == "fall":                     # the rider's own death clips play (anim file)
             return rider.seated(rider.idle, 0.0, attach)
         if do in ("stand", "fire", "reload"):
@@ -1999,7 +2063,7 @@ class Unit:
             return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
         if do == "foot_death":
             anim = rider.anim(FOOT_DEATH)
-            return rider.standing(self.foot, anim, min(t, anim.duration), 90.0, self.stand_info["at"])
+            return self.at_station(rider.standing(self.foot, anim, min(t, anim.duration), 90.0, self.stand_info["at"]))
         # dismount / mount: seated while the camel moves, the climb (keys) while it is held down
         t0, t1 = getattr(b, "window", (0.0, length))
         if t < t0 - 1e-9 or t > t1 + 1e-9:
@@ -2029,14 +2093,54 @@ class Unit:
             if w > 0.0:
                 R = rider.turn_trunk_to(R, plan["toward"], POCKET_TRUNK[0] * w, POCKET_TRUNK[1] * w)
                 R = rider.turn(R, "bip01 spine", unit(np.cross(unit(fwd), Y)), -3.0 * w)
+            # standing, the hopper is at his shoulder's height and close: he turns his chest to it and
+            # leans back a little while he carries the new magazine over and seats it, so his hand comes
+            # to it from in front of him, not through his shoulder
+            hop = point(C, self.gun.at["ammo"])
+            w2 = math.sin(math.pi * min(1.0, max(0.0, (u - 0.62) / 0.33))) if 0.62 < u < 0.95 else 0.0
+            if w2 > 0.0:
+                R = rider.turn_trunk_to(R, hop, 0.8 * w2, 40.0 * w2)
+                R = rider.turn(R, "bip01 spine", unit(np.cross(unit(fwd), Y)), B_RELOAD_LEAN_BACK * w2)
             left = plan["hand"][i]
         else:
             left = self.reload_hand(u, fr) if do == "reload" else self.b_left_grip(fr)
+        R = self.plant(R, stand)
         if self.long:
             if plan_at is None and do != "reload":
                 left = "dropcrank"
             return self.hands(R, C, fr, {"r": "bar", "l": left}, b)
         return self.hands(R, C, fr, {"r": "crank", "l": left}, b)
+
+    def station_body(self):
+        """B on foot at the gun with the gun at 0: his station (Traverse, with the long handles), else
+        the rest place of stand_pose."""
+        trav = getattr(self, "traverse", None)
+        if getattr(self, "long", False) and trav is not None:
+            return trav.settled(0.0)
+        return self.stand_pose()
+
+    def at_station(self, P):
+        """A pose made at stand_pose's place carried to his station (station_body)."""
+        trav = getattr(self, "traverse", None)
+        if getattr(self, "long", False) and trav is not None:
+            M = trav.M(*trav.station(0.0))
+            return {k: M @ v for k, v in P.items()}
+        return P
+
+    def plant(self, R, stand):
+        """`R` with both legs solved back onto the feet of `stand` (a lean turns the spine, which
+        carries the thighs: the feet must not slide)."""
+        from aoe3game.gr2_pose import two_bone_ik
+        rig, hinge = self.rider.rig, self.rider.body.hinge
+        right, _up, fwd = self.body_axes(stand)
+        for s in ("l", "r"):
+            th, ca, fo = (f"bip01 {s} thigh", f"bip01 {s} calf", f"bip01 {s} foot")
+            knee = unit(stand[ca][:3, 3] - 0.5 * (stand[th][:3, 3] + stand[fo][:3, 3]))
+            if float(np.linalg.norm(knee)) < 1e-6 or float(knee @ fwd) < 0.05:
+                knee = fwd
+            R = two_bone_ik(R, rig, th, ca, fo, stand[fo][:3, 3], knee, hinge[th], hinge[ca],
+                            end_frame=stand[fo][:3, :3])
+        return R
 
     def b_left_grip(self, fr):
         """B's left hand: on the casing's top over the trunnion; with the gun turned to the right
@@ -2153,6 +2257,7 @@ class Unit:
         S = rider.standing(self.foot, rider.anim(STAND_CLIP), 0.0, 90.0, np.zeros(3))
         cur = S[root][:3, 3]
         k3 = translate(S, rig, root, seat_at + 0.40 * left - 0.50 * up - 0.05 * fwd - cur)
+        k3 = self.above_ground(k3)               # his feet hang down the flank, never under the ground
         on_saddle = {s: ("world", seat_at + 0.16 * left + 0.02 * up + (0.16 if s == "l" else -0.16) * fwd,
                          right, -up) for s in ("l", "r")}
         k3 = self.hands(k3, C, fr, on_saddle)
@@ -2160,10 +2265,10 @@ class Unit:
         k4 = translate(S, rig, root, np.array([seat_at[0] - 0.62 - cur[0], 0.0, seat_at[2] - 0.05 - cur[2]]))
         k4 = self.hands(k4, C, fr, {s: ("world", seat_at + 0.24 * left - 0.06 * up +
                                         (0.16 if s == "l" else -0.16) * fwd, right, -up) for s in ("l", "r")})
-        k4 = rider.look(k4, seat_at)
-        k3 = rider.look(k3, seat_at)
+        k4 = rider.look(k4, seat_at, max_pitch=25.0)
+        k3 = rider.look(k3, seat_at, max_pitch=25.0)
         # 5. a step forward along the flank (an infantry walk's mid-stride, facing forward)
-        stand = self.stand_pose()
+        stand = self.station_body()
         a, c = k4[root][:3, 3], stand[root][:3, 3]
         walk = rider.anim(LIB + "range\\march_rifleman")
         mid = 0.5 * (a + c)
@@ -2174,11 +2279,26 @@ class Unit:
         k6 = self.at_gun(stand, C, fr, "stand", 0.0, None)
         k6 = rider.look(k6, self.downrange(C, fr))
         k0 = rider.look(k0, k0["bip01 head"][:3, 3] + 12.0 * fwd)
-        k1 = rider.look(k1, seat_at + 0.6 * left - up * 0.6 + 0.4 * fwd)
-        k2 = rider.look(k2, seat_at + 1.0 * left - up * 1.2)
+        k1 = rider.look(k1, seat_at + 0.6 * left - up * 0.6 + 0.4 * fwd, max_pitch=25.0)
+        k2 = rider.look(k2, seat_at + 1.0 * left - up * 1.2, max_pitch=25.0)
         keys = [(0.0, k0), (0.14, k1), (0.30, k2), (0.48, k3), (0.64, k4), (0.82, k5), (1.0, k6)]
+        keys = [(s_, self.above_ground(k_)) for s_, k_ in keys]
         self._climb = (P, keys)
         return keys
+
+    def above_ground(self, R, clear=0.0):
+        """`R` lifted so that no foot (its sole: the foot and toe bones, less the sole's depth) is
+        under the ground."""
+        from aoe3game.gr2_pose import translate
+        low = min(float(R[b][1, 3]) for b in R if b.endswith(" foot") or b.endswith(" toe0"))
+        sole = getattr(self, "_sole", None)
+        if sole is None:
+            st = self.stand_pose()
+            sole = self._sole = min(float(st[b][1, 3]) for b in st if b.endswith(" foot") or b.endswith(" toe0"))
+        lift = (sole + clear) - low
+        if lift > 1e-4:
+            return translate(R, self.rider.rig, self.rider.rig.names[0].lower(), np.array([0.0, lift, 0.0]))
+        return R
 
     def climb(self, P, C, fr, attach, share):
         """The rider at `share` (0 seated, 1 at the gun) of getting off the couched camel."""
@@ -2771,21 +2891,29 @@ class Traverse:
         return sa + w * (sb - sa), ha + w * dh
 
     # stepping as a function of the gun's yaw (what a game can show from the yaw alone, Traverse.stair):
-    # both feet set at the stations every STAIR_STEP degrees; going out from 0, the leading foot
-    # steps while the yaw crosses STAIR_LEAD of the next 30 degrees, the other while it crosses
-    # STAIR_TRAIL; between those bands both feet stand still. A game keeps the shown yaw out of the
-    # bands when the gun comes to rest (the aim file lists them), so no foot is left in the air.
+    # both feet set at the stations every STAIR_STEP degrees (to his right: across the camel) and at
+    # the arc's end to his left (STAIR_LEFT: 0 and -30); going out from a station, the leading foot
+    # steps while the yaw crosses STAIR_LEAD of the segment (a share of it), the other while it
+    # crosses STAIR_TRAIL; between those bands both feet stand still. A game lets a step under way
+    # finish when the gun comes to rest (the aim file lists the bands), so no foot is left in the air.
     STAIR_STEP = 45.0
-    STAIR_LEAD = (1.0, 21.0)
-    STAIR_TRAIL = (24.0, 44.0)
+    STAIR_LEFT = 30.0           # B's arc toward his own side ends here (round 4: -30)
+    STAIR_LEAD = (1.0 / 45.0, 21.0 / 45.0)
+    STAIR_TRAIL = (24.0 / 45.0, 44.0 / 45.0)
+
+    def segments(self, sign):
+        """The segment length and count on one side (sign +1: right, -1: left)."""
+        return (self.STAIR_STEP, int(round(90.0 / self.STAIR_STEP))) if sign > 0 else (self.STAIR_LEFT, 1)
 
     def stair_bands(self):
         """The yaw bands in which a foot is stepping, (from, to) degrees, for the aim file."""
         out = []
-        for k in range(int(round(90.0 / self.STAIR_STEP))):
-            for lo, hi in (self.STAIR_LEAD, self.STAIR_TRAIL):
-                a, b = k * self.STAIR_STEP + lo, k * self.STAIR_STEP + hi
-                out += [(a, b), (-b, -a)]
+        for sign in (1.0, -1.0):
+            step, count = self.segments(sign)
+            for k in range(count):
+                for lo, hi in (self.STAIR_LEAD, self.STAIR_TRAIL):
+                    a, b = (k + lo) * step, (k + hi) * step
+                    out.append((a, b) if sign > 0 else (-b, -a))
         return sorted(out)
 
     def lead_foot(self, sign):
@@ -2794,7 +2922,7 @@ class Traverse:
         if not hasattr(self, "_lead"):
             self._lead = {}
         if sign not in self._lead:
-            M0, M1 = self.M(*self.station(0.0)), self.M(*self.station(sign * self.STAIR_STEP))
+            M0, M1 = self.M(*self.station(0.0)), self.M(*self.station(sign * self.segments(sign)[0]))
             way = (M1 @ np.r_[self.s0[0], 0.0, self.s0[1], 1.0])[:3] - (M0 @ np.r_[self.s0[0], 0.0, self.s0[1], 1.0])[:3]
             score = {s: float(point(M0, self.feet0[s][:3, 3]) @ way) for s in ("l", "r")}
             self._lead[sign] = max(score, key=score.get)
@@ -2805,12 +2933,13 @@ class Traverse:
         or, inside its band, lifted and carried to the next one; his body between his feet, the
         legs solved to them."""
         from aoe3game.gr2_pose import translate, two_bone_ik
-        yaw = max(-90.0, min(90.0, float(yaw)))
+        yaw = max(-self.STAIR_LEFT, min(90.0, float(yaw)))
         sign = 1.0 if yaw >= 0 else -1.0
+        step, count = self.segments(sign)
         a = abs(yaw)
-        k = min(int(a // self.STAIR_STEP), int(round(90.0 / self.STAIR_STEP)) - 1)
-        f = a - k * self.STAIR_STEP
-        y0, y1 = sign * k * self.STAIR_STEP, sign * (k + 1) * self.STAIR_STEP
+        k = min(int(a // step), count - 1)
+        f = (a - k * step) / step                      # the share of the segment crossed
+        y0, y1 = sign * k * step, sign * (k + 1) * step
         M0, M1 = self.M(*self.station(y0)), self.M(*self.station(y1))
         lead = self.lead_foot(sign)
         cur, lift = {}, 0.0
@@ -3002,7 +3131,7 @@ def aim_sheet(path, game, aims, angles=AIM_ANGLES):
 
 
 # B's gun turns at a walking man's pace (its tactics' <turret maxTurnAnglePerSecond>): he steps round
-B_TURN_RATE = 60.0
+B_TURN_RATE = 100.0
 
 
 def shown_yaws(targets, fps, rate, bands):
@@ -3045,9 +3174,9 @@ def round4_preview(folder, pb, scene, label, fps=15):
              ("BEHIND HIM, LEFT", -150.0, 18.0, 2.6, (-0.3, 1.1, 0.4)),
              ("FRONT, RIGHT", 35.0, 12.0, 2.8, (-0.3, 1.1, 0.4)),
              ("HIS FEET, LOW", -100.0, 6.0, 2.4, (-0.4, 0.6, 0.4))]
-    angles = (-90.0, -45.0, 0.0, 45.0, 90.0)
+    angles = (-30.0, 0.0, 30.0, 60.0, 90.0)
     w, h = 300, 280
-    rows = [title(w * len(angles), f"{label.upper()}: B ON FOOT, THE GUN AT -90 -45 0 45 90 (FIRING)", back=(70, 40, 20))]
+    rows = [title(w * len(angles), f"{label.upper()}: B ON FOOT, THE GUN AT -30 0 30 60 90 (FIRING; HIS ARC -30..+90)", back=(70, 40, 20))]
     for vname, az, el, span, cen in views:
         tiles = []
         for yaw in angles:
@@ -3063,32 +3192,35 @@ def round4_preview(folder, pb, scene, label, fps=15):
     # 2. the feet every 2 degrees from 0 to 60: planted outside the bands, a step inside
     bands = trav.stair_bands()
     feet = {}
-    for y in range(0, 61, 2):
+    for y in range(-30, 91, 1):
         S = trav.stair(float(y))
         feet[y] = {s: S[f"bip01 {s} foot"][:3, 3].copy() for s in ("l", "r")}
     slide = 0.0
-    for y in range(0, 60, 2):
+    for y in range(-30, 90, 1):
+        sign = 1.0 if y >= 0 else -1.0
+        step, _count = trav.segments(sign)
         for s in ("l", "r"):
-            lead = trav.lead_foot(1.0) == s
+            lead = trav.lead_foot(sign) == s
             lo, hi = trav.STAIR_LEAD if lead else trav.STAIR_TRAIL
-            f0, f1 = (y % 30), (y % 30) + 2
-            if f1 <= lo or f0 >= hi:                          # the foot is planted over this step
-                slide = max(slide, float(np.linalg.norm(feet[y + 2][s] - feet[y][s])))
-    lines.append(f"stepping: a planted foot moves at most {slide * 1000:.1f} mm between 2-degree samples "
-                 f"(bands {bands[len(bands) // 2:]})")
+            a0, a1 = sorted((abs(y), abs(y + 1)))
+            f0, f1 = (a0 % step) / step, (a1 % step) / step if a1 % step else 1.0
+            if f1 <= lo + 1e-9 or f0 >= hi - 1e-9:            # the foot is planted over this degree
+                slide = max(slide, float(np.linalg.norm(feet[y + 1][s] - feet[y][s])))
+    lines.append(f"stepping: a planted foot moves at most {slide * 1000:.1f} mm per degree of the gun "
+                 f"(bands {[(round(a, 1), round(b, 1)) for a, b in bands]})")
     tiles = []
-    for y in range(0, 61, 4):
+    for y in list(range(-30, 1, 6)) + list(range(6, 91, 6)):
         items, marks, _r = aim.items(fig, 0.0, float(y), trav.stair(float(y)))
         img = draw(items, 240, 220, -100.0, 6.0, 2.2, (-0.4, 0.55, 0.4))
         tiles.append(caption(img, f"GUN {y:+d}"))
     tiles += [np.zeros_like(tiles[0])] * ((-len(tiles)) % 8)
     sheet = grid(tiles, 8)
-    Image.fromarray(np.concatenate([title(sheet.shape[1], f"{label.upper()}: HIS FEET AS THE GUN TURNS 0 TO 60, "
-                                          "EVERY 4 DEGREES: ONE FOOT STEPS AT A TIME, THE OTHER STAYS PLANTED",
+    Image.fromarray(np.concatenate([title(sheet.shape[1], f"{label.upper()}: HIS FEET AS THE GUN TURNS -30 TO 90, "
+                                          "EVERY 6 DEGREES: ONE FOOT STEPS AT A TIME, THE OTHER STAYS PLANTED",
                                           back=(70, 40, 20)), sheet], 0)).save(stem + "-B-steps.png")
     # 3. the gun turned as a game turns it, he steps round (two views)
-    targets = [(0.0, 0.8), (45.0, 1.4), (90.0, 1.4), (45.0, 1.2), (0.0, 1.2), (-45.0, 1.4), (-90.0, 1.4),
-               (-45.0, 1.2), (0.0, 1.6)]
+    targets = [(0.0, 0.8), (45.0, 1.0), (90.0, 1.2), (45.0, 1.0), (0.0, 1.0), (-30.0, 1.2), (0.0, 1.0),
+               (90.0, 1.6), (0.0, 1.6)]
     yaws = shown_yaws(targets, fps, B_TURN_RATE, bands)
     for vname, az, el, span, cen in (("close", -125.0, 14.0, 3.0, (-0.3, 0.9, 0.4)),
                                      ("from-above", 180.0, 70.0, 3.4, (0.0, 1.0, 0.25))):
@@ -3170,13 +3302,13 @@ def round4_handles(folder, pb, scene, label):
         rows.append(np.concatenate(tiles, 1))
     Image.fromarray(np.concatenate(rows, 0)).save(stem + "-gun.png")
     # 2. the gunner at the five angles
-    angles = (-90.0, -45.0, 0.0, 45.0, 90.0)
+    angles = (-30.0, 0.0, 30.0, 60.0, 90.0)
     views = [("FROM ABOVE (CAMEL'S HEAD UP)", 180.0, 89.0, 3.0, (0.0, 1.0, 0.25)),
              ("BEHIND HIM, LEFT", -150.0, 15.0, 2.4, None),
              ("FRONT, LEFT", -40.0, 15.0, 2.4, None),
              ("HIS RIGHT SIDE, LOW", 120.0, 5.0, 2.4, None)]
     rows = [title(w * 5, f"{label.upper()}: B ON FOOT HOLDING BOTH GRIPS (LEFT HAND THE DROP CRANK, RIGHT THE "
-                         "TRAVERSE BAR) AT -90 -45 0 45 90", back=(70, 40, 20))]
+                         "TRAVERSE BAR) AT -30 0 30 60 90", back=(70, 40, 20))]
     t_fire = 0.0
     for vname, az, el, span, cen in views:
         tiles = []
@@ -3297,7 +3429,7 @@ AIM_TABLE_FPS = 15.0
 AIM_TABLE_CLIPS = ("idle", "deployed", "fire", "reload")
 # B on foot steps round the post: his feet change within a few degrees (Traverse.STAIR_*), so his
 # table is sampled finer, and only for the clips he works the gun in on foot
-AIM_TABLE_YAWS_FOOT = tuple(float(y) for y in range(-90, 91, 2))
+AIM_TABLE_YAWS_FOOT = tuple(float(y) for y in range(-30, 91, 2))      # B's arc: -30 .. +90
 AIM_TABLE_CLIPS_FOOT = ("deployed", "fire", "reload")
 
 
@@ -3683,6 +3815,8 @@ def main(argv):
         for variant in recipe["variants"]:
             for scale in recipe["scales"]:
                 unit = Unit(recipe, camel, rider, src, variant, scale, foot)
+                if unit.style == "B" and unit.long:        # his stations round the gun, before the clips
+                    unit.traverse = Traverse(Aim(scene, unit, None))
                 model = unit.gun.model_bytes(unit.gun_name)
                 files[unit.gun_name] = model
                 files[f"{recipe['name']}_camel_dead_{unit.tag}"] = dead_model(
