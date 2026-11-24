@@ -89,6 +89,7 @@ the first actor (set `ground` to `null` for a lone rider whose space has no grou
 | `plant` | A foot point (heel and toe, from the skinned mesh) near the ground (3 cm) and slow (0.3 m/s) is planted; how far it slides while planted, the ground moving under a walk at its `ground_speed` | 4 cm |
 | `sink` | A foot point below the ground | 5 cm |
 | `grip` | A hand point from its grip during the frames given | 3 cm |
+| `ahead` | A point (a palm) in front of another (a shoulder) along an actor's facing, its chest's forward made level: a hand behind the chest's plane reads as an arm pulled back | the job's `min` (no default rule) |
 | `mount` | The point of a part that sat on its mount at the first frame, against the mount, every frame | 2 cm |
 | `prop` | A prop that jumps (faster than 20 m/s, 0.67 m a frame at 30) or scales to nothing in sight; out of sight is inside a hiding capsule, under the ground by its size, or scaled away; twin props trading places in one frame are not seen | none allowed |
 | `route` | Each object of the script starts and ends where it says (`hidden`, `ground` or a named place), followed through swaps | as the script |
@@ -132,6 +133,8 @@ A JSON file beside the outputs (paths relative to it). Only `actors` and `clips`
               "mount": {"bone": "camel:hs bone chest", "at": "gun:bone_yaw"}}],
   "grips": [{"name": "right hand on the crank", "clips": ["fire"], "hand": "rider:bip01 r hand",
              "grip": {"bone": "gun:bone_crank", "offset": [0.0, 0.12, 0.0]}, "frames": [[0.0, 1.0]]}],
+  "ahead": [{"name": "right palm in front of his chest", "clips": ["fire"], "point": "rider:bip01 r hand",
+             "of": "rider:bip01 r upperarm", "min": 0.15}],
   "capsules": [{"name": "camel body", "a": "camel:hs bone pelvis", "b": "camel:hs bone chest", "radius": 0.45}],
   "props": {"magazine": {"bone": "gun:bone_ammo", "size": 0.12},
             "spare": {"bone": "gun:bone_ammo2", "size": 0.12, "hide_in": ["camel body"], "twin": "magazine"}},
@@ -156,6 +159,10 @@ A JSON file beside the outputs (paths relative to it). Only `actors` and `clips`
 - **Mounts.** `part` is the bone that sits on the mount; its seat is the mount point at the first
   frame, carried by the part (or `seat`, in the part's frame). Choose the pivot the real thing
   turns on: a gun turns on its turntable and tips on its trunnion; one mount each.
+- **Ahead.** `point` must stay at least `min` metres in front of `of`, measured along the facing
+  of `actor` (default: the actor of `of`): its chest's forward at rest, carried by the chest and
+  made level. `clips` and `frames` narrow it as for grips. Use it where a hand must work in front
+  of the body (a gunner's hands on his handles), with the reason in the script.
 - **Props and places.** `size` is how far below the ground a prop must go to be out of sight;
   `hide_in` the capsules it may hide in; `twin` the prop it may trade places with in one frame
   (the same object drawn twice). A place is a point with a `radius`. Routes take `start`, `end`

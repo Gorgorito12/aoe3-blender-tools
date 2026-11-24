@@ -371,7 +371,7 @@ class Job:
     `spec` keys: "actors" {name: {"model": path or Model, "rig": "human" | {...}, "attach":
     {"to", "bone", "from_bone"}}}, "clips" {name: {"anims": {actor: path or Clip}, "duration",
     "loop", "death", "ground_speed", "routes", "allow_jumps"}}, "fps", "ground" (None: no ground),
-    "limits", "points", "grips", "mounts", "capsules", "props", "places", "penetration_points",
+    "limits", "points", "grips", "ahead", "mounts", "capsules", "props", "places", "penetration_points",
     "removed", "speed_exempt"."""
 
     def __init__(self, spec, base_dir="."):
@@ -923,6 +923,44 @@ def check_grips(job, s):
     return out
 
 
+def check_ahead(job, s):
+    """A point (a palm) at least `min` metres in front of another (a shoulder) along an actor's
+    facing: the chest's forward at rest carried by the chest, made level. A hand behind the plane of
+    its chest reads as an arm pulled back (job `ahead`)."""
+    out = []
+    for g in job.spec.get("ahead") or []:
+        if g.get("clips") and s.name not in g["clips"]:
+            continue
+        name = g.get("name", f"{g['point']} ahead of {g['of']}")
+        p, o = s.point(g["point"]), s.point(g["of"])
+        actor = g.get("actor") or job.point(g["of"])[0]
+        if actor not in job.actors:
+            raise JobError(f"ahead {name}: unknown actor {actor}")
+        a = job.actors[actor]
+        chest = a.chest()
+        if chest is None:
+            raise JobError(f"ahead {name}: {actor} has no chest bone")
+        ci = a.model.index[chest]
+        fwd_l = rotation(s.rests[actor][ci]).T @ FORWARD
+        vals = np.zeros(len(s.times))
+        for k in range(len(s.times)):
+            f = rotation(s.worlds[actor][k, ci]) @ fwd_l
+            f = f - (f @ UP) * UP
+            f = f / max(float(np.linalg.norm(f)), 1e-9)
+            vals[k] = float((p[k] - o[k]) @ f)
+        ranges = g.get("frames")
+        if ranges:
+            on = np.zeros(len(vals), bool)
+            for lo, hi in ranges:
+                on |= (s.times >= lo - 1e-9) & (s.times <= hi + 1e-9)
+            vals = np.where(on, vals, np.nan)
+        lim = float(g.get("min", 0.0))
+        det = [f"{v * 100:+.1f} cm in front" if np.isfinite(v) else "" for v in vals]
+        out.append(_result(s, "ahead", name, vals, lim, " m", det, [[p[k], o[k]] for k in range(len(vals))],
+                           fail_above=False, n=int(s.limits["risk_frames"])))
+    return out
+
+
 def check_mounts(job, s):
     out = []
     for m in job.spec.get("mounts") or []:
@@ -1387,7 +1425,9 @@ def check_inventory(job, baseline, samples, base_samples):
 # Running
 
 
-CHECKS = (check_lengths, check_look, check_hinges, check_speed, check_feet, check_grips, check_mounts,
+LOWER_LIMITS = ("ahead",)      # checks whose limit is a least value (fail below it)
+
+CHECKS = (check_lengths, check_look, check_hinges, check_speed, check_feet, check_grips, check_ahead, check_mounts,
           check_props, check_routes, check_penetration, check_death)
 
 
@@ -1440,7 +1480,8 @@ class Report:
             for r in self.results:
                 if r.status != status:
                     continue
-                if status == PASS and (r.value is None or r.limit in (None, 0) or r.value < 0.5 * r.limit):
+                if status == PASS and (r.value is None or r.limit in (None, 0) or
+                                       (r.value > 2.0 * r.limit if r.check in LOWER_LIMITS else r.value < 0.5 * r.limit)):
                     continue                                 # passed far from its limit: no risk
                 for f, t, v, d, pts in r.risks[:n]:
                     out.append({"clip": r.clip, "frame": f, "time": t, "check": r.check, "item": r.item,
