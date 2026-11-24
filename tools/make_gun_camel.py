@@ -510,6 +510,11 @@ class Camel:
         from aoe3game.gr2_pose import set_frame
         return set_frame(pose, self.rig, self.hang, rigid(pose[self.mount]) @ self.hang_local)
 
+    def pin_hang(self, pose, first):
+        """The pose with the hang bone (and the rider on it) kept at its world frame in `first`."""
+        from aoe3game.gr2_pose import set_frame
+        return set_frame(pose, self.rig, self.hang, first[self.hang])
+
     def anim(self, rel):
         if rel not in self._anims:
             data = self.game.granny(rel)
@@ -878,8 +883,6 @@ CLIPS = {
          "lower": 22.0, "dip": 6.0},
         {"name": "reload", "anim": "Attack_ranged_reload", "camel": ZAMB + "zamburak_camel_reload",
          "do": "reload", "lower": 22.0},
-        # one death for every death anim name (the camel's and the gun's must be the same clip)
-        {"name": "fall", "anim": "Death", "camel": CAMEL_DEATH, "do": "fall"},
     ],
     "B": [
         {"name": "idle", "anim": "Idle", "camel": ZAMB + "zamburak_camel_idle00",
@@ -898,7 +901,6 @@ CLIPS = {
         {"name": "undeploy", "anim": "Bombard_limber", "borrow": B_UP, "do": "mount", "hold_before": 2.0},
         # killed while deployed: the lying camel rolls onto its right side, the gunner falls at the gun
         {"name": "death", "anim": "Bombard_death", "still": B_IDLE, "length": 3.0, "do": "foot_death"},
-        {"name": "fall", "anim": "Death", "camel": CAMEL_DEATH, "do": "fall"},
     ],
 }
 # the reload: (share of the clip, where the magazine is) - the left hand leaves the casing for the
@@ -1185,7 +1187,11 @@ class Unit:
         stock_attach = None
         if clip.get("do") == "fall":
             stock_attach = [rigid(P[cam.rider_bone]) for P in poses]
-        if "camel" not in clip or clip.get("do") == "fall":   # the rider's bone kept on the chest
+        if clip.get("do") == "foot_death":
+            poses = [cam.pin_hang(P, poses[0]) for P in poses]
+            scales = cam.hang_scale(poses[0], scales)
+            b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
+        elif "camel" not in clip or clip.get("do") == "fall":   # the rider's bone kept on the chest
             poses = [cam.fix_hang(P) for P in poses]
             scales = cam.hang_scale(poses[0], scales)
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
@@ -1844,6 +1850,55 @@ def camel_precomp(camel, template, length, pose_at):
     return pre.encode()
 
 
+def dead_model(camel_bytes, gun_bytes, hang_bind, bone):
+    """The camel model with the gun's parts added as rigid meshes bound to the camel's `bone` (its
+    chest), at rest: the model of the dead unit, which plays the stock camel deaths. Seen in game
+    (2026-11-23): a gun attached to the rider's bone turned in the air during the corpse's last
+    half second of fading out, whatever clips, tag files or held anims it was given (inferred: the
+    game places attachments differently while a corpse fades); a gun inside the camel's own model
+    falls and fades with it. The stock death clips give the chest no scale, so a gun vertex q
+    (gun model space) goes to hang_bind @ q in the camel's bind space."""
+    from aoe3game import gr2_edit
+    from aoe3game.gr2_write import Flat, W, serialize
+    cdoc = gr2.load(camel_bytes)
+    croot = gr2_edit.copy_tree(cdoc)
+    groot = gr2_edit.copy_tree(gr2.load(gun_bytes))
+    R = hang_bind[:3, :3] / np.cbrt(abs(np.linalg.det(hang_bind[:3, :3])))
+    camel_binding = croot.values["Models"][0].values["MeshBindings"][0]
+    bind_world = None
+    for bw in croot.values["Skeletons"][0].values["Bones"]:
+        if bw.values.get("Name") == bone:
+            iwt = np.array(bw.values["InverseWorldTransform"], np.float64).reshape(4, 4)
+            bind_world = np.linalg.inv(iwt).T
+    if bind_world is None:
+        raise KeyError(bone)
+    for gm in groot.values["Meshes"]:
+        vd = gm.values["PrimaryVertexData"]
+        flat = vd.values["Vertices"]
+        n = flat.count
+        width = len(flat.raw) // (4 * n)
+        a = np.frombuffer(flat.raw, "<f4").reshape(n, width).astype(np.float64).copy()
+        a[:, 0:3] = (np.c_[a[:, 0:3], np.ones(n)] @ hang_bind.T)[:, :3]
+        a[:, 3:6] = a[:, 3:6] @ R.T
+        if width >= 11:
+            a[:, 6:9] = a[:, 6:9] @ R.T
+        vd.values["Vertices"] = Flat(flat.spec, a.astype("<f4").tobytes(), n)
+        local = (np.c_[a[:, 0:3], np.ones(n)] @ np.linalg.inv(bind_world).T)[:, :3]
+        bb = gm.values["BoneBindings"][0]
+        bb.values["BoneName"] = bone
+        bb.values["OBBMin"] = tuple(float(v) for v in local.min(0))
+        bb.values["OBBMax"] = tuple(float(v) for v in local.max(0))
+        croot.values["Meshes"].append(gm)
+        croot.values["VertexDatas"].append(vd)
+        croot.values["TriTopologies"].append(gm.values["PrimaryTopology"])
+        mb = W(camel_binding.spec, **dict(camel_binding.values))
+        mb.values["Mesh"] = gm
+        croot.values["Models"][0].values["MeshBindings"].append(mb)
+    croot.values["Textures"] = list(croot.values.get("Textures") or []) + list(groot.values.get("Textures") or [])
+    croot.values["Materials"] = list(croot.values.get("Materials") or []) + list(groot.values.get("Materials") or [])
+    return serialize(croot, type_tag=cdoc.c.type_tag)
+
+
 def runtime_check(data, runtime, tag):
     import make_pray as mp
     return mp.runtime_check(data, runtime, tag)
@@ -1916,6 +1971,8 @@ def main(argv):
                 unit = Unit(recipe, camel, rider, src, variant, scale, foot)
                 model = unit.gun.model_bytes(unit.gun_name)
                 files[unit.gun_name] = model
+                files[f"{recipe['name']}_camel_dead_{unit.tag}"] = dead_model(
+                    camel.cut, model, camel.hang_bind, recipe["camel"]["mount_bone"])
                 built = {}
                 for clip in CLIPS[variant]:
                     b = unit.write(unit.build(clip))
