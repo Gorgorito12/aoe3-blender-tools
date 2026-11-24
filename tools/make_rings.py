@@ -701,7 +701,8 @@ def rank_ddt(rank):
 # Range rings, by radius in metres, a thin line of RANGE_LINE metres in a neutral colour. Up to 100 m, the longest
 # range of a mod's unit (a monitor in Wars of Liberty): a radius shows on the ring nearest to it. A texture of 256
 # texels up to 16 m, 512 above; the line widens with the radius so it stays about 1.5 texels wide on the largest.
-RANGES = (4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 45, 50, 60, 70, 80, 100)
+# Every metre from 4 to 50, so that a ring drawn at the nearest size is at most half a metre off; then by 5 and 10 m.
+RANGES = tuple(range(4, 51)) + (55, 60, 65, 70, 80, 90, 100)
 RANGE_LINE = 0.30
 RANGE_LINE_PER_METRE = 0.006
 RANGE_COLOURS = ((245, 245, 235), (255, 255, 255))
