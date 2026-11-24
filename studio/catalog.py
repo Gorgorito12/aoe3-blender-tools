@@ -1209,7 +1209,7 @@ TOOLS = [
                 "El arma girada sobre su muñón de 90 grados a la izquierda a 90 a la derecha, el camello quieto y "
                 "el jinete acompañando con el pecho, la cabeza y las manos."), filters=(("PNG", "*.png"),)),
           Arg("aim_gifs", "--aim-gifs", "folder", L("Aim GIF folder", "Carpeta de GIF de puntería")),
-          Arg("reload", "--reload", "choice", L("Reload", "Recarga"), choices=("keep", "toss", "stow")),
+          Arg("reload", "--reload", "choice", L("Reload", "Recarga"), choices=("keep", "toss")),
           Arg("reload_preview", "--reload-preview", "folder", L("Reload preview folder",
                                                                  "Carpeta de la vista previa de la recarga")),
           Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
