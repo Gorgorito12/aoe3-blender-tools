@@ -283,7 +283,7 @@ class Rhythm(unittest.TestCase):
         self.assertEqual(gc.RELOAD[0], (0.0, "rest"))
         self.assertEqual(gc.RELOAD[-1], (1.0, "rest"))
         u = gc.Unit.__new__(gc.Unit)
-        u.variant = "A"
+        u.variant = u.style = "A"
         u.gun = gc.GunDesign(FakeSource(), np.eye(4), np.zeros(3), 0.55)
         keys = u.magazine_keys(np.array([-0.5, 1.0, 0.0]))
         for share in (0.0, 1.0):

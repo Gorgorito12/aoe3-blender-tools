@@ -43,11 +43,13 @@ The variants (`variants` of the recipe):
   and a small recoil; on reload the left hand lifts the magazine out, puts it down at the saddle
   and seats a full one. A hand whose target is out of reach leans the trunk toward it.
 - B, deployed: the camel lies down (the game's own lying-down clips of the same rig, turned back
-  to the camel's heading, upright, and laid on the ground) and is held down 2 s while the rider gets
-  off step by step (`Unit.climb_keys`: up on his hands, the right leg over, down the flank, a step
-  forward, at the gun; the mount plays them backward before the camel rises); on foot he cranks
-  with the right hand, the left on the casing, looking downrange (mounted, both fists on the
-  reins); the gun stays on its post on the camel's back, so its aim follows the unit.
+  to the camel's heading, upright, and laid on the ground) and the gunner stays in the saddle,
+  both fists on the reins while it lies down and rises, and works the gun as A does (the default
+  since 2026-11-24, recipe "b_mounted"; with it false, the older B: held down 2 s while he gets
+  off step by step, `Unit.climb_keys`, and cranks on foot, the gun mirrored, its crank outside).
+- The gun's `bone_yaw` (on the post's top, the casing's parent) and the camel's `bone_turret`
+  (the launch bones' parent, same place) let a game turn the gun on its post; `<name>_<A|B><scale>
+  .aim` (aim_table) holds the gunner's bones at every yaw for the clips he works the gun in.
 
 Compressed game files are expanded by the game's own Granny runtime (`--granny-helper`, default
 tools\\granny_recompress.exe; `python -I tools/recompress_models.py --build-helper` makes it);
@@ -266,6 +268,39 @@ class GunSource:
         m = self.parts["magazine"]["positions"]
         self.mag_top = np.array([m[:, 0].mean(), m[:, 1].max(), m[:, 2].mean()])
         self.mag_base = np.array([m[:, 0].mean(), m[:, 1].min(), m[:, 2].mean()])
+        # a patch of the gun's own dark iron (the casing, its largest even dark-grey triangle in the
+        # texture): the ammo box a seated gunner keeps his magazines in (Unit.ammo_box), one colour
+        wood = sub_part(gun, np.array([(b or "").lower() == spec["cannon"].lower() for b in bones]))
+        uv = wood["uvs"]
+        tri = wood["triangles"]
+        area = np.array([abs((uv[b][0] - uv[a][0]) * (uv[c][1] - uv[a][1]) - (uv[b][1] - uv[a][1]) *
+                             (uv[c][0] - uv[a][0])) for a, b, c in tri])
+        # of those whose texels are brown wood (red over blue, mid bright, sampled at its corners and middle)
+        img = None
+        read = gr2_mesh.read(self.data)
+        for name in read["textures"]:
+            if name and "_b." not in name.lower() and "bump" not in name.lower():
+                img = game.texture(name)
+                if img is not None:
+                    break
+        if img is not None:
+            hgt, wid = img.shape[:2]
+
+            def texel(p):
+                x = int(min(wid - 1, max(0, (p[0] % 1.0) * wid)))
+                y = int(min(hgt - 1, max(0, (p[1] % 1.0) * hgt)))
+                return np.asarray(img[y, x, :3], np.float64)
+            for i, (a, b, c) in enumerate(tri):
+                pts = [uv[a], uv[b], uv[c], (uv[a] + uv[b] + uv[c]) / 3.0]
+                cols = np.array([texel(p) for p in pts])
+                lum = cols.mean(1)
+                if not ((lum > 45).all() and (lum < 100).all() and np.ptp(cols, axis=0).max() < 25 and
+                        (cols.max(1) - cols.min(1) < 25).all()):
+                    area[i] = 0.0
+        k = int(np.argmax(area))
+        centre_uv = uv[tri[k]].mean(0)
+        self.wood_uv = np.array([centre_uv] * 3)                         # one even colour
+        self.wood_material = wood["materials"][k]
 
 
 def sub_part(part, sel):
@@ -288,7 +323,11 @@ class GunDesign:
     design scale is scale x s. `mirror` turns the gun about its own middle plane (the crank on the
     other side)."""
 
-    BONES = ("root", "cannon", "barrel", "crank", "ammo", "muzzle")
+    # `yaw`: on the post's top, the casing's parent: a game turns it about its own y (the post's
+    # vertical axis) to aim the gun without the camel (the DLL key turretArc); still in our clips
+    # `ammo2`: a second magazine, seated with the first (the same mesh in the same place) but in a
+    # reload: the new one the gunner takes from the saddle's box while the old one goes away
+    BONES = ("root", "yaw", "cannon", "barrel", "crank", "ammo", "ammo2", "muzzle")
 
     def __init__(self, src, mount_bind, post, scale, mirror=False, forward=0.0):
         self.src, self.mirror = src, mirror
@@ -309,9 +348,10 @@ class GunDesign:
         self.breech_top = f(src.breech_top)
         self.mag_top = f(src.mag_top)
         self.mag_base = f(src.mag_base)
-        self.parent = {"root": None, "cannon": "root", "barrel": "cannon", "crank": "cannon", "ammo": "cannon",
-                       "muzzle": "cannon"}
-        self.part_bone = {"cannon": "cannon", "barrel": "barrel", "crank": "crank", "magazine": "ammo"}
+        self.parent = {"root": None, "yaw": "root", "cannon": "yaw", "barrel": "cannon", "crank": "cannon",
+                       "ammo": "cannon", "ammo2": "cannon", "muzzle": "cannon"}
+        self.part_bone = {"cannon": "cannon", "barrel": "barrel", "crank": "crank", "magazine": "ammo",
+                          "magazine2": "ammo2"}
 
     def design_point(self, p):
         d = (np.asarray(p, np.float64) - self.src.trunnion) * self.s
@@ -331,6 +371,9 @@ class GunDesign:
                 tan[:, 0] *= -1.0
                 tris = tris[:, ::-1].copy()
             out[key] = (pos, nrm, p["uvs"], tris, p["materials"], tan)
+        out["magazine2"] = out["magazine"]                 # the spare: the same mesh on its own bone
+        if getattr(self, "box_part", None) is not None:   # the ammo box (Unit.ammo_box), on the root
+            out["box"] = self.box_part
         return out
 
     def rest(self):
@@ -339,6 +382,8 @@ class GunDesign:
         out["root"][:3, 3] = self.bind[:3, 3]
         for k, v in self.at.items():
             out[k] = tr(v)
+        out["yaw"] = tr(self.post)
+        out["ammo2"] = tr(self.at["ammo"])
         return out
 
     def to_model(self, frame):
@@ -356,15 +401,16 @@ class GunDesign:
                  for b in self.BONES]
         parts = []
         for key, (pos, nrm, uvs, tris, mats, tan) in self.parts().items():
-            parts.append({"name": f"{name}_{key}", "bone": self.bone_name(self.part_bone[key]),
+            bone = bones[0][0] if key == "box" else self.bone_name(self.part_bone[key])
+            parts.append({"name": f"{name}_{key}", "bone": bone,
                           "positions": apply(self.S, pos), "normals": nrm @ self.R, "tangents": tan @ self.R,
                           "uvs": uvs, "triangles": tris, "materials": mats})
         return gr2_parts.rigid_model(self.src.data, bones[0][0], bones, parts, source_name=name)
 
     @staticmethod
     def bone_name(b):
-        return {"cannon": "bone_cannon", "barrel": "bone_barrel", "crank": "bone_crank", "ammo": "bone_ammo",
-                "muzzle": "bone_launchpoint"}[b]
+        return {"yaw": "bone_yaw", "cannon": "bone_cannon", "barrel": "bone_barrel", "crank": "bone_crank",
+                "ammo": "bone_ammo", "ammo2": "bone_ammo2", "muzzle": "bone_launchpoint"}[b]
 
     def frames(self, state):
         """{bone: design frame} for a state: barrel and crank angles (degrees), the casing's recoil
@@ -380,6 +426,9 @@ class GunDesign:
                "muzzle": rel @ tr(self.at["muzzle"])}
         mag = state.get("magazine")
         out["ammo"] = rel @ tr(self.at["ammo"]) if mag is None else mag
+        mag2 = state.get("magazine2")
+        out["ammo2"] = rel @ tr(self.at["ammo"]) if mag2 is None else mag2
+        out["yaw"] = tr(self.post)
         yaw = state.get("yaw", 0.0)
         if yaw:
             turn = self.yaw_matrix(yaw)
@@ -600,6 +649,17 @@ class Camel:
             par = self.rig.parents[i]
             out.append(out[par] @ m if par >= 0 else m)
         return self.rig.by_name(out)
+
+    def mesh_points(self, P):
+        """The cut camel's vertices posed at P (world frames by bone name), one array."""
+        if getattr(self, "_mesh", None) is None:
+            read = gr2_mesh.read(self.cut)
+            self._mesh = (read["meshes"], read["skeletons"][0])
+        meshes, skel = self._mesh
+        names = [b["name"] for b in skel["bones"]]
+        exact = {n: P[n.lower()] for n in names if n.lower() in P}
+        return np.concatenate([gr2_skin.deform(m["file_positions"], m["vertex_bones4"], m["vertex_weights4"],
+                                               m["skin_names"], skel, exact) for m in meshes])
 
     def pose(self, anim, t, scales=None):
         """World frames by name at t as the runtime draws them (scales included)."""
@@ -940,6 +1000,25 @@ CLIPS = {
 # magazine, lifts it out, puts it down at the bag, takes it up again, seats it and goes back
 RELOAD = [(0.00, "rest"), (0.12, "seated"), (0.28, "lifted"), (0.45, "bag"), (0.50, "bag low"), (0.55, "bag"),
           (0.72, "lifted"), (0.85, "seated"), (1.00, "rest")]
+# B when the gunner stays mounted (the default since 2026-11-24, the user's choice): mounted it is A
+# (A's clips), deployed the camel lies down and he fires from the saddle, as A does, the gun turning
+# on its post a full 90 degrees each way; to lie down and to rise he holds the reins.
+CLIPS["B_mounted"] = [dict(c) for c in CLIPS["A"] if c["name"] in ("idle", "walk", "jog", "run")] + [
+    {"name": "deploy", "anim": "Bombard_unlimber", "borrow": B_DOWN, "reins": True},
+    {"name": "deployed", "anim": "Bombard_ranged_idle", "borrow": B_IDLE, "at_gun": True},
+    {"name": "fire", "anim": "Bombard_ranged_attack", "still": B_IDLE, "length": 1.0, "do": "fire"},
+    {"name": "reload", "anim": "Bombard_reload", "still": B_IDLE, "length": 3.0, "do": "reload"},
+    {"name": "undeploy", "anim": "Bombard_limber", "borrow": B_UP, "reins": True},
+    # killed while deployed: the lying camel rolls onto its right side, the gunner falls off the saddle
+    {"name": "death", "anim": "Bombard_death", "still": B_IDLE, "length": 3.0, "do": "fall", "roll": True},
+]
+
+
+def clips_of(variant, recipe):
+    """The clips a variant is made of (B: mounted by default, on foot with recipe "b_mounted" false)."""
+    if variant == "B" and recipe.get("b_mounted", True):
+        return CLIPS["B_mounted"]
+    return CLIPS[variant]
 
 
 class Built:
@@ -955,7 +1034,12 @@ class Unit:
 
     def __init__(self, recipe, camel, rider, src, variant, scale, foot=None):
         self.r, self.camel, self.rider, self.variant = recipe, camel, rider, variant
-        self.gun = GunDesign(src, camel.hang_bind, recipe["_post"], scale, mirror=(variant == "B"),
+        # how the gunner works the gun: "A" seated behind it (A, and B when it stays mounted: the
+        # camel lies down and he fires from the saddle, recipe "b_mounted"), "B" on foot beside it
+        # (the gun mirrored, its crank outside)
+        self.style = "A" if variant == "A" or recipe.get("b_mounted", True) else "B"
+        self.clips = clips_of(variant, recipe)
+        self.gun = GunDesign(src, camel.hang_bind, recipe["_post"], scale, mirror=(self.style == "B"),
                              forward=recipe.get("forward", 0.0))
         self.scale = scale
         self.tag = f"{variant}{int(round(scale * 100)):02d}"
@@ -965,16 +1049,19 @@ class Unit:
         c = src.parts["cannon"]["positions"]
         rear = c[c[:, 2] < src.trunnion[2] + 0.3]                     # the casing, not the front ring
         back = rear[rear[:, 2] < rear[:, 2].min() + 0.35]               # its rear box, by the breech
-        inner = back[:, 0].max() if variant == "A" else back[:, 0].min()   # the rider's side
+        inner = back[:, 0].max() if self.style == "A" else back[:, 0].min()   # the rider's side
         self.casing_side = g.design_point(np.array([inner, 0.5 * (back[:, 1].min() + back[:, 1].max()),
                                                     back[:, 2].mean()]))
-        outer = back[:, 0].min() if variant == "A" else back[:, 0].max()      # the other side of the box
+        outer = back[:, 0].min() if self.style == "A" else back[:, 0].max()   # the other side of the box
         self.casing_outer = g.design_point(np.array([outer, 0.5 * (back[:, 1].min() + back[:, 1].max()),
                                                      back[:, 2].mean()]))
         self.casing_top = g.design_point(np.array([src.trunnion[0], rear[:, 1].max(), src.trunnion[2]]))
         # the hand takes the magazine low, just above the hopper (its top is out of a man's reach
         # on foot)
         self.mag_grip = (g.mag_base - g.at["ammo"]) + np.array([0.0, 0.22 * (g.mag_top[1] - g.mag_base[1]), 0.0])
+        self.box_slots = None
+        if recipe.get("reload") in ("toss", "stow") and self.style == "A":
+            self.ammo_box()
 
     # -- the gun in the world (camel space) at a camel pose
 
@@ -995,7 +1082,7 @@ class Unit:
         return palm, turn @ np.asarray(fin, np.float64), turn @ np.asarray(nor, np.float64)
 
     def _target(self, what, fr):
-        g, side = self.gun, (1.0 if self.variant == "A" else -1.0)
+        g, side = self.gun, (1.0 if self.style == "A" else -1.0)
         if what == "crank":
             palm = g.handle_at(fr) + np.array([side * 0.07 * g.s, 0.02, -0.02])
             return palm, (0.0, -0.55, 1.0), (0.0, -1.0, -0.35)
@@ -1021,7 +1108,7 @@ class Unit:
         raise KeyError(what)
 
     def poles(self):
-        if self.variant == "A":              # elbows out to the sides: a firm grip, not tucked in
+        if self.style == "A":              # elbows out to the sides: a firm grip, not tucked in
             return {"r": np.array([1.0, -0.6, -0.4]), "l": np.array([-1.0, -0.6, -0.4])}
         return {"r": np.array([-0.4, -1.0, -1.0]), "l": np.array([-0.4, -1.0, 1.0])}
 
@@ -1056,7 +1143,7 @@ class Unit:
     def magazine_keys(self, bag_design):
         g = self.gun
         seat = g.at["ammo"]
-        share = 0.40 if self.variant == "A" else 0.10         # on foot the gunner reaches less high
+        share = 0.40 if self.style == "A" else 0.10         # on foot the gunner reaches less high
         lift = seat + np.array([0.0, share * (g.mag_top[1] - g.mag_base[1]), 0.0])
         where = {"rest": (seat, 0.0), "seated": (seat, 0.0), "lifted": (lift, 0.0), "bag": (bag_design, 35.0),
                  "bag low": (bag_design + np.array([0.0, -0.03, 0.0]), 35.0)}
@@ -1064,13 +1151,13 @@ class Unit:
 
     def magazine_frame(self, keys, u):
         c = keys.at(u)
-        side = 1.0 if self.variant == "A" else -1.0
+        side = 1.0 if self.style == "A" else -1.0
         # tipped outward (away from the rider) about the forward axis while it is away
         return tr(c["p"]) @ rot4(axis_matrix(Z, -side * c["tilt"]))
 
     def reload_hand(self, u, fr):
         """The left hand during a reload: at its rest place, on the magazine, or between the two."""
-        rest = "breech" if self.variant == "A" else "casing"
+        rest = "breech" if self.style == "A" else "casing"
         if RELOAD[1][0] < u < RELOAD[-2][0]:
             return "magazine"
         if u <= RELOAD[1][0]:
@@ -1083,6 +1170,224 @@ class Unit:
         arc = np.array([0.0, 0.06, 0.0]) * math.sin(math.pi * w)
         return (pa + w * (pb - pa) + arc, unit((1 - w) * np.array(fa) + w * np.array(fb)),
                 unit((1 - w) * np.array(na) + w * np.array(nb)))
+
+    # -- the reload with a new magazine (recipe "reload": "toss" or "stow"; seated gunner)
+
+    BOX = (0.13, 0.50, 0.24)          # the ammo box's width (across), height, depth (along), metres
+
+    def ammo_box(self):
+        """A wooden ammo box hung on the left of the saddle's front, ahead of the gunner's left knee
+        (in his left hand's reach), its top a little above his seat: two magazines stand in it, the
+        full one at the front, its top 2 cm under the box's. Made on the gun model's root (the
+        saddle's bone, so it does not turn with the gun), double sided, planked with the gun's own
+        carriage wood. Returns the design-space part and sets the slots (design frames)."""
+        cam = self.camel
+        P0 = cam.pose(cam.anim(CLIPS["A"][0]["camel"]), 0.0)
+        C0 = self.C(P0)
+        inv0 = np.linalg.inv(C0)
+        R = self.rider.seated(self.rider.idle, 0.0, rigid(P0[cam.rider_bone]))
+        pel = R["bip01 pelvis"][:3, 3]
+        w, h, d = self.BOX
+        centre = np.array([pel[0] - 0.37, pel[1] + 0.28 - 0.5 * h, pel[2] + 0.30])
+        box_top = centre[1] + 0.5 * h
+        corners = np.array([[sx * 0.5 * w, sy * 0.5 * h, sz * 0.5 * d] for sy in (-1, 1) for sz in (-1, 1)
+                            for sx in (-1, 1)]) + centre
+        # faces as corner indices (x fastest, then z, then y): bottom, the four sides; the top open
+        quads = [(0, 1, 3, 2), (0, 1, 5, 4), (2, 3, 7, 6), (0, 2, 6, 4), (1, 3, 7, 5)]
+        normals_w = [(0, -1, 0), (0, 0, -1), (0, 0, 1), (-1, 0, 0), (1, 0, 0)]
+        src = self.gun.src
+        pos, nrm, uvs, tris, tan = [], [], [], [], []
+        for q, n in zip(quads, normals_w):
+            for sign in (1.0, -1.0):                       # both sides: seen from outside and in
+                base = len(pos)
+                for k, ci in enumerate(q):
+                    pos.append(point(inv0, corners[ci]))
+                    nrm.append(inv0[:3, :3] @ (sign * np.asarray(n, np.float64)))
+                    uvs.append(src.wood_uv[[0, 1, 2, 1][k]])
+                    tan.append(np.r_[unit(inv0[:3, :3] @ np.array([n[1], n[2], n[0]], np.float64)), 1.0])
+                a, b, c, e = base, base + 1, base + 2, base + 3
+                tris += [(a, b, c), (a, c, e)] if sign > 0 else [(a, c, b), (a, e, c)]
+        nrm = np.array([unit(v) for v in nrm])
+        tan_arr = np.array(tan)
+        width = self.gun.src.parts["cannon"]["tangents"].shape[1]
+        self.gun.box_part = (np.array(pos), nrm, np.array(uvs), np.array(tris, np.int64),
+                             [src.wood_material] * len(tris), tan_arr[:, :width])
+        seat = self.gun.at["ammo"]
+
+        def slot(dz):
+            w_ = np.array([centre[0], box_top, centre[2] + dz])
+            F = inv0 @ tr(w_) @ rot4(C0[:3, :3])
+            top_w = point(C0 @ F @ tr(-seat), self.gun.mag_top)
+            return inv0 @ tr(w_ + np.array([0.0, box_top - 0.02 - top_w[1], 0.0])) @ rot4(C0[:3, :3])
+        self.box_slots = {"full": slot(0.055), "empty": slot(-0.055),
+                          "grab": point(inv0, np.array([centre[0], box_top + 0.03, centre[2]])),
+                          "world": np.array([centre[0], box_top, centre[2]])}
+        return self.gun.box_part
+
+    def box_of(self, P):
+        """The saddle's box behind the gunner (the camel's own mesh: what lies more than 0.3 behind
+        his pelvis, past the saddle's back, above its height less 0.25 and within 0.3 of it
+        sideways) at the camel pose P: (centre, top) in the world."""
+        pts = self.camel.mesh_points(P)
+        R = self.rider.seated(self.rider.idle, 0.0, rigid(P[self.camel.rider_bone]))
+        pel = R["bip01 pelvis"][:3, 3]
+        sel = pts[(pts[:, 2] < pel[2] - 0.30) & (pts[:, 1] > pel[1] - 0.25) & (np.abs(pts[:, 0] - pel[0]) < 0.3)]
+        lo, hi = sel.min(0), sel.max(0)
+        # the slots at its front edge, nearest him, on his left (his left hand's side): within reach
+        centre = 0.5 * (lo + hi)
+        near = np.array([centre[0] - 0.03, centre[1], hi[2] - 0.06])
+        return near, float(hi[1])
+
+    def reload_plan(self, poses, times, length):
+        """The reload, frame by frame: (the old magazine's frames, the new one's, the left hand's
+        targets ((palm, finger, normal) in design space), how much the chest turns to the box (0..1),
+        where he looks (world)), and the magazines' instant moves (out of sight) as extra keys.
+        toss: he lifts the empty magazine out, throws it aside (it falls, lies, sinks out of sight),
+        reaches back to the saddle's box and takes a full one; stow: he puts the empty one in the box
+        and takes a full one out. Either way he seats it, presses it home and goes back to the gun."""
+        mode = self.r.get("reload")
+        g = self.gun
+        seat = g.at["ammo"]
+        height = float(g.mag_top[1] - g.mag_base[1])
+        lift = seat + np.array([0.0, 0.32 * height, 0.0])           # clear of the hopper
+        C0 = self.C(poses[0])
+        inv0 = np.linalg.inv(C0)
+        # the ammo box (ammo_box): the magazines stand upright in it, out of sight but their tops
+        slots = self.box_slots
+        box_in, box_old, box_grab = slots["full"], slots["empty"], slots["grab"]
+        box_c = point(C0, box_grab)
+        above_box = inv0 @ tr((0.0, 0.50, 0.0)) @ C0 @ box_in      # drawn up out of it
+        above_old = inv0 @ tr((0.0, 0.50, 0.0)) @ C0 @ box_old
+        seated = tr(seat)
+        lifted = tr(lift)
+        # held near its top (what shows of it in the box; over the gun, the end he pulls up and pushes down)
+        hand_off = (g.mag_top - seat) + np.array([0.045, -0.06, 0.0])
+
+        def grip(M):
+            Rm = M[:3, :3]
+            return point(M, hand_off), Rm @ np.array([0.0, 0.2, 1.0]), Rm @ np.array([-1.0, 0.0, 0.0])
+        rest = self.target("breech", g.frames({}))
+        box_hand = (box_grab, np.array([0.0, -0.3, -1.0]), np.array([0.0, -1.0, 0.0]))
+
+        def mix(a, b, w):
+            w = smooth(min(1.0, max(0.0, w)))
+            return (np.asarray(a[0]) + w * (np.asarray(b[0]) - np.asarray(a[0])),
+                    unit((1 - w) * np.asarray(a[1]) + w * np.asarray(b[1])),
+                    unit((1 - w) * np.asarray(a[2]) + w * np.asarray(b[2])))
+
+        def lerp_frame(A, B, w):
+            w = smooth(min(1.0, max(0.0, w)))
+            qa, qb = matrix_quat(A[:3, :3]), matrix_quat(B[:3, :3])
+            if float(np.dot(qa, qb)) < 0:
+                qb = -np.asarray(qb)
+            q = unit((1 - w) * np.asarray(qa) + w * np.asarray(qb))
+            from aoe3game.gr2_skin import quat_matrix
+            out = rot4(quat_matrix(q))
+            out[:3, 3] = (1 - w) * A[:3, 3] + w * B[:3, 3]
+            return out
+
+        def seg(u, a, b):
+            return (u - a) / (b - a)
+        # the toss: released at U_REL from the hand, a throw to his left and up, in the world
+        U_REL = 0.34
+        throw = tr(lift + np.array([-0.17, -0.10, 0.04])) @ rot4(axis_matrix(Z, 35.0))
+        flight = None
+        if mode == "toss":
+            i_rel = int(np.argmin(np.abs(np.asarray(times) / length - U_REL)))
+            Crel = self.C(poses[i_rel])
+            p0 = point(Crel, throw[:3, 3])
+            v0 = Crel[:3, :3] @ np.array([-1.3, 0.8, 0.2])
+            g_acc = 9.8
+            ground = 0.06
+            # landing time: p0.y + v0.y t - g t^2 / 2 = ground
+            a, b_, c = -0.5 * g_acc, v0[1], p0[1] - ground
+            t_land = (-b_ - math.sqrt(b_ * b_ - 4 * a * c)) / (2 * a)
+            flight = (times[i_rel], p0, v0, g_acc, t_land, Crel[:3, :3] @ throw[:3, :3])
+        old, new, hand, turn, look = [], [], [], [], []
+        for t, P in zip(times, poses):
+            u = t / length
+            C = self.C(P)
+            invC = np.linalg.inv(C)
+            # the new magazine: seated with the old one at the very start, in the box, taken, seated
+            if u < 0.01:
+                N = seated
+            elif u < 0.52:
+                N = box_in
+            elif u < 0.58:
+                N = lerp_frame(box_in, above_box, seg(u, 0.52, 0.58))
+            elif u < 0.74:
+                N = lerp_frame(above_box, lifted, seg(u, 0.58, 0.74))
+            elif u < 0.82:
+                N = lerp_frame(lifted, seated, seg(u, 0.74, 0.82))
+            else:
+                N = seated
+            # the old one
+            if u < 0.10:
+                O = seated
+            elif u < 0.22:
+                O = lerp_frame(seated, lifted, seg(u, 0.10, 0.22))
+            elif mode == "toss":
+                if u < U_REL:
+                    O = lerp_frame(lifted, throw, seg(u, 0.22, U_REL))
+                elif u < 0.95:
+                    t0, p0, v0, g_acc, t_land, R0 = flight
+                    dt = min(t - t0, t_land)
+                    pos = p0 + v0 * dt + np.array([0.0, -0.5 * g_acc * dt * dt, 0.0])
+                    # it turns over once in the air and lands on its side (lying along the camel's
+                    # side), then sinks out of sight
+                    s = min(1.0, max(0.0, dt / t_land))
+                    lying_w = rot4(axis_matrix(np.array([0.0, 0.0, 1.0]), 90.0))
+                    W = lerp_frame(rot4(R0), lying_w, s)
+                    W = rot4(axis_matrix(np.array([0.0, 0.0, 1.0]), -360.0 * smooth(s)) @ W[:3, :3])
+                    if t - t0 >= t_land:
+                        sink = min(1.0, max(0.0, seg(u, 0.80, 0.90)))
+                        pos = pos + np.array([0.0, -0.6 * smooth(sink), 0.0])
+                    W[:3, 3] = pos
+                    O = invC @ W
+                    O = rigid(O)
+                else:
+                    O = seated
+            else:                                                 # stow
+                if u < 0.38:
+                    O = lerp_frame(lifted, above_old, seg(u, 0.22, 0.38))
+                elif u < 0.46:
+                    O = lerp_frame(above_old, box_old, seg(u, 0.38, 0.46))
+                elif u < 0.95:
+                    O = box_old
+                else:
+                    O = seated
+            # the left hand
+            if u < 0.10:
+                H = mix(rest, grip(seated), seg(u, 0.0, 0.10))
+            elif mode == "toss" and u < U_REL:
+                H = grip(O)
+            elif mode == "toss" and u < 0.46:
+                H = mix(grip(throw), box_hand, seg(u, U_REL, 0.46))
+            elif mode != "toss" and u < 0.46:
+                H = grip(O)
+            elif u < 0.52:
+                H = mix(grip(box_old) if mode != "toss" else box_hand, grip(box_in), seg(u, 0.46, 0.52))
+            elif u < 0.82:
+                H = grip(N)
+            elif u < 0.86:                                        # pressed home
+                p, f, n = grip(seated)
+                H = (p + np.array([0.0, -0.015 * math.sin(math.pi * seg(u, 0.82, 0.86)), 0.0]), f, n)
+            else:
+                H = mix(grip(seated), rest, seg(u, 0.86, 1.0))
+            # the chest turned toward the box while he works at it
+            lo, hi = (0.36, 0.62) if mode == "toss" else (0.28, 0.62)
+            w = 0.0 if u < lo or u > hi else math.sin(math.pi * seg(u, lo, hi))
+            old.append(O)
+            new.append(N)
+            hand.append(H)
+            turn.append(w)
+            look.append(point(C, H[0]) if 0.08 < u < 0.86 else None)
+        # the instant moves, out of sight (u 0.01: the new one into the box; 0.95: the old one back in
+        # the gun, inside the new one): a key 1 ms before the first frame at or after each, holding
+        # the frame before it (write())
+        extra = {"ammo2": 0.01, "ammo": 0.95}
+        return {"old": old, "new": new, "hand": hand, "turn": turn, "look": look, "extra": extra,
+                "box": box_c, "times": np.asarray(times)}
 
     # -- the rider on foot (variant B)
 
@@ -1226,7 +1531,7 @@ class Unit:
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
             # the rider climbs while the camel is held down: after it lies down, or before it gets up
             b.window = (0.0, before) if before else (anim.duration, length)
-        elif clip.get("do") == "foot_death":
+        elif clip.get("do") == "foot_death" or clip.get("roll"):
             still = cam.grounded(anim, [0.0])[0]
             poses = [cam.roll_over(still, t) for t in times]
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
@@ -1237,7 +1542,7 @@ class Unit:
         stock_attach = None
         if clip.get("do") == "fall":
             stock_attach = [rigid(P[cam.rider_bone]) for P in poses]
-        if clip.get("do") == "foot_death":
+        if clip.get("do") == "foot_death" or clip.get("roll"):
             poses = [cam.pin_hang(P, poses[0]) for P in poses]
             scales = cam.hang_scale(poses[0], scales)
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
@@ -1249,10 +1554,14 @@ class Unit:
         do = clip.get("do")
         base = rider.anim(clip["rider"]) if clip.get("rider") else rider.idle
         bag = None
-        if do == "reload":
+        plan = None
+        if do == "reload" and self.r.get("reload") in ("toss", "stow") and self.style == "A":
+            plan = self.reload_plan(poses, times, length)
+        elif do == "reload":
             bag = self.bag_point(poses[0])
             keys = self.magazine_keys(bag)
-        for t, P in zip(times, poses):
+        b.plan = plan
+        for i, (t, P) in enumerate(zip(times, poses)):
             u = t / length
             state = {}
             if do == "fire":
@@ -1260,7 +1569,10 @@ class Unit:
                 for s in self.shots(length):
                     if 0.0 <= t - s < 0.045:
                         b.flash.append(t)
-            if do == "reload":
+            if plan is not None:
+                state["magazine"], state["magazine2"] = plan["old"][i], plan["new"][i]
+                self._plan_at = (plan, i)
+            elif do == "reload":
                 state["magazine"] = self.magazine_frame(keys, u)
             fr = g.frames(state)
             C = self.C(P)
@@ -1275,13 +1587,14 @@ class Unit:
             b.camel.append(P)
             b.gun.append(fr)
             b.rider.append(R)
+        self._plan_at = None
         b.length = length
         return b
 
     def bag_point(self, P):
         """Where the magazine is put down, in design space: A, at the saddle beside the rider's left
         knee; B, beside the gunner's left hip."""
-        if self.variant == "A":
+        if self.style == "A":
             S = self.rider.seated(self.rider.idle, 0.0, rigid(P[self.camel.rider_bone]))
             knee = 0.4 * S["bip01 l thigh"][:3, 3] + 0.6 * S["bip01 l calf"][:3, 3]
             out = 0.14 * unit(S["bip01 l thigh"][:3, 3] - S["bip01 r thigh"][:3, 3])
@@ -1300,7 +1613,7 @@ class Unit:
         left on the breech."""
         if clip.get("gait"):
             return {"r": "reins", "l": "reins" if clip.get("reins_only") else "casing_side"}
-        if self.variant == "B":
+        if self.style == "B" or clip.get("reins"):      # B on foot's mounted rest; lying down, rising
             return {"r": "reins", "l": "reins"}
         return {"r": "crank", "l": "breech"}
 
@@ -1316,7 +1629,7 @@ class Unit:
         rider = self.rider
         if do == "fall":
             return rider.seated(rider.idle, 0.0, attach)
-        if do in (None, "fire", "reload") and self.variant == "A" or do is None:
+        if do in (None, "fire", "reload") and self.style == "A" or do is None:
             tb = t * base.duration / length if do is None and clip.get("rider") else 0.0
             R = rider.seated(base, tb, attach)
             if clip.get("gait"):
@@ -1334,7 +1647,15 @@ class Unit:
                 R = self.square_to_grips(R, C, fr, *AIM_TRUNK["A"])
                 # the gun across his front is farther away: he leans in toward it
                 R = rider.turn(R, "bip01 spine", X, AIM_LEAN * (abs(self.yaw_of(fr)) / 90.0) ** 1.5)
-            if do == "reload":
+            plan_at = getattr(self, "_plan_at", None) if do == "reload" else None
+            if plan_at is not None:
+                # the new reload: the chest turns back toward the saddle's box while he works at it
+                plan, i = plan_at
+                w = plan["turn"][i]
+                if w > 0.0:
+                    R = rider.turn_trunk_to(R, plan["box"], 0.75 * w, 55.0 * w)
+                    R = rider.turn(R, "bip01 spine", X, 6.0 * w)
+            elif do == "reload":
                 w = math.sin(math.pi * min(1.0, max(0.0, (u - 0.2) / 0.6)))
                 R = rider.turn(R, "bip01 spine", Y, -16.0 * w)
                 R = rider.turn(R, "bip01 spine", X, 6.0 * w)
@@ -1356,7 +1677,9 @@ class Unit:
                         z = self.world_goal(swap[side], R, C, fr, attach, side)
                         palm = (1 - w) * a[0] + w * z[0] + np.array([0.0, 0.08, 0.0]) * math.sin(math.pi * w)
                         want[side] = ("world", palm, unit((1 - w) * a[1] + w * z[1]), unit((1 - w) * a[2] + w * z[2]))
-            if do == "reload":
+            if plan_at is not None:
+                want["l"] = plan_at[0]["hand"][plan_at[1]]
+            elif do == "reload":
                 want["l"] = self.reload_hand(u, fr)
             if want.get("r") == "thigh":
                 want["r"] = self.thigh_rest(R)
@@ -1364,6 +1687,8 @@ class Unit:
                 if want.get(side) == "reins":
                     want[side] = self.reins(R, attach, side)
             R = self.hands(R, C, fr, want, b)
+            if plan_at is not None and plan_at[0]["look"][plan_at[1]] is not None:
+                return rider.look(R, plan_at[0]["look"][plan_at[1]])       # at what his left hand works
             return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
         # variant B on foot (facing +x: he leans toward the gun about the world's z)
         stand = self.stand_pose()
@@ -1481,8 +1806,8 @@ class Unit:
         while he swaps it, and ahead along the camel's way when mounted at rest or on the move."""
         if do == "reload":
             return point(C, fr["ammo"][:3, 3])
-        if do in ("fire", "stand") or (self.variant == "A" and not clip.get("gait") and do is None
-                                        and clip.get("name") == "idle"):
+        if do in ("fire", "stand") or (self.style == "A" and not clip.get("gait") and do is None
+                                        and (clip.get("name") == "idle" or clip.get("at_gun"))):
             return self.downrange(C, fr)
         return R["bip01 head"][:3, 3] + 12.0 * unit(attach[:3, :3] @ Z)
 
@@ -1576,8 +1901,21 @@ class Unit:
                 loc.append(split(m))
             locs.append(loc)
         names = [f"bone_{self.gun_name}" if k == "root" else GunDesign.bone_name(k) for k in bones]
-        tracks = [(nm, b.times, np.array([f[i][0] for f in locs]), np.array([f[i][1] for f in locs]))
-                  for i, nm in enumerate(names)]
+        tracks = []
+        extra = (getattr(b, "plan", None) or {}).get("extra", {})
+        for i, nm in enumerate(names):
+            times = np.asarray(b.times, np.float64)
+            pos = np.array([f[i][0] for f in locs])
+            rot = np.array([f[i][1] for f in locs])
+            if bones[i] in extra:
+                # an instant move (out of sight): a key 1 ms before the first frame at or after it,
+                # holding the frame before, so the move takes 1 ms, not a frame's time
+                j = int(np.searchsorted(times, extra[bones[i]] * b.length - 1e-9))
+                if 0 < j < len(times):
+                    times = np.insert(times, j, times[j] - 1e-3)
+                    pos = np.insert(pos, j, pos[j - 1], axis=0)
+                    rot = np.insert(rot, j, rot[j - 1], axis=0)
+            tracks.append((nm, times, pos, rot))
         like = self.rider.idle
         b.gun_bytes = animation_file(self.clip_name("gun", b), float(b.times[-1]), names[0], tracks,
                                      basis=self.rider.rig.basis, accumulation=like.accumulation,
@@ -1784,7 +2122,7 @@ def model_sheet(path, game, recipe, camel, rider, scene, plays, cache=None):
             tiles += [tile(items, az, el, f"B {scale:.2f} DEPLOYED {name}") for name, az, el in
                       (VIEWS[0], ("LEFT 3/4 BACK", -120.0, 16.0))]
     if tiles:
-        rows.append(("NEW - B, DEPLOYED (CAMEL LYING, GUN MIRRORED: CRANK OUTSIDE, GUNNER ON FOOT)", tiles[:4]))
+        rows.append(("NEW - B, DEPLOYED (THE CAMEL LYING, THE GUNNER IN THE SADDLE)", tiles[:4]))
     width = 4 * w
     out = [title(width, f"{recipe['name'].upper().replace('_', ' ')} - PREVIEW", back=(70, 40, 20))]
     for text, tl in rows:
@@ -1878,7 +2216,7 @@ class Aim:
         self.scene, self.unit = scene, unit
         self.model_bytes = model_bytes
         self.couched = couched
-        self.clip = next(c for c in CLIPS[unit.variant] if c.get("do") == "fire")
+        self.clip = next(c for c in unit.clips if c.get("do") == "fire")
         cam = unit.camel
         if "camel" in self.clip:
             self.anim = cam.anim(self.clip["camel"])
@@ -1914,7 +2252,7 @@ class Aim:
         attach = rigid(P[u.camel.rider_bone])
         b = Built(self.clip, [t])
         base = u.rider.anim(self.clip["rider"]) if self.clip.get("rider") else u.rider.idle
-        if u.variant == "B":
+        if u.style == "B":
             if getattr(self, "traverse", None) is None:
                 self.traverse = Traverse(self)
             u._stand_at = stand if stand is not None else self.traverse.settled(yaw)
@@ -2284,7 +2622,7 @@ def aim_gif(path, aim, gun_fig, label, fps=15, sweep=4.0, width=480, height=400,
             full_y += [y] * int(hold * fps)
     full_t = [k / fps for k in range(len(full_y))]
     stands = [None] * len(full_t)
-    if aim.unit.variant == "B" and not aim.couched:
+    if aim.unit.style == "B" and not aim.couched:
         if getattr(aim, "traverse", None) is None:
             aim.traverse = Traverse(aim)
         stands, _steps = aim.traverse.sweep(full_t, full_y)
@@ -2296,6 +2634,98 @@ def aim_gif(path, aim, gun_fig, label, fps=15, sweep=4.0, width=480, height=400,
             for f in frames]
     pics[0].save(path, save_all=True, append_images=pics[1:], duration=int(round(1000 / fps)), loop=0, optimize=True)
     return os.path.getsize(path), len(frames)
+
+
+# --------------------------------------------------------------------------------------------------
+# The aim table: what a game key that turns the gun on its post (turretArc in the UHC DLL) needs to
+# keep the gunner on the gun: his bones at every gun yaw, frame by frame, for the clips he works
+# the gun in (the gun's own turn is one bone, bone_yaw, which the key turns itself)
+
+
+AIM_TABLE_YAWS = tuple(float(y) for y in range(-90, 91, 15))
+AIM_TABLE_FPS = 15.0
+AIM_TABLE_CLIPS = ("idle", "deployed", "fire", "reload")
+
+
+def aim_table(unit, built):
+    """The bytes of a unit's aim table (little endian):
+    "UHCA", version 1, the gun's yaw bone (32 B, zero padded), the camel's turret bone (32 B), the
+    pivot (3 floats: the post's top in the camel's model space), the muzzle at yaw 0 (3 floats, same
+    space: where the shots leave), the yaws (count, floats, degrees,
+    positive toward the unit's right), the rider's bones (count, 32 B names), then the clips (count;
+    each: the rider clip's animation name (64 B), its length (float, seconds), frame count (evenly
+    from 0 to the length, both ends), then for
+    each frame, each yaw, each bone: position (3 floats) and rotation (x, y, z, w) local to its
+    parent, as the clip's own tracks hold them). At yaw 0 the values are the clip's own, so a game
+    blending the two nearest yaws and frames starts from what it plays. Only bones that move with
+    the yaw are listed."""
+    import struct as st
+    cam, rider, g = unit.camel, unit.rider, unit.gun
+    names = rider.rig.names
+    tables = []
+    length_of = {}
+    for b in built.values():
+        clip = b.clip
+        if clip["name"] not in AIM_TABLE_CLIPS:
+            continue
+        do = clip.get("do")
+        length = b.length
+        count = max(2, int(round(length * AIM_TABLE_FPS)) + 1)     # evenly over the clip, both ends
+        idx = [int(round(k * (len(b.times) - 1) / (count - 1))) for k in range(count)]
+        base = rider.anim(clip["rider"]) if clip.get("rider") else rider.idle
+        plan = getattr(b, "plan", None)
+        keys = unit.magazine_keys(unit.bag_point(b.camel[0])) if do == "reload" and plan is None else None
+        frames = []
+        for i in idx:
+            t, P = float(b.times[i]), b.camel[i]
+            u = t / length
+            row = []
+            for yaw in AIM_TABLE_YAWS:
+                state = unit.fire_state(t, length) if do == "fire" else {}
+                if keys is not None:
+                    state["magazine"] = unit.magazine_frame(keys, u)
+                if plan is not None:
+                    state["magazine"], state["magazine2"] = plan["old"][i], plan["new"][i]
+                    unit._plan_at = (plan, i)
+                state["yaw"] = yaw
+                fr = g.frames(state)
+                attach = rigid(P[cam.rider_bone])
+                R = unit.rider_pose(clip, do, t, length, u, P, unit.C(P), fr, base, attach, Built(clip, [t]))
+                unit._plan_at = None
+                row.append(rider.to_local(R, attach))
+            frames.append(row)
+        tables.append((unit.clip_name("rider", b), frames, len(idx)))
+        length_of[unit.clip_name("rider", b)] = float(length)
+    # the bones that move with the yaw
+    zero = AIM_TABLE_YAWS.index(0.0)
+    moving = set()
+    for _n, frames, _c in tables:
+        for row in frames:
+            for y, loc in enumerate(row):
+                for k, (p, q) in enumerate(loc):
+                    p0, q0 = row[zero][k]
+                    if np.abs(np.asarray(p) - np.asarray(p0)).max() > 1e-5 or \
+                            min(np.abs(np.asarray(q) - np.asarray(q0)).max(), np.abs(np.asarray(q) + np.asarray(q0)).max()) > 1e-5:
+                        moving.add(k)
+    bones = sorted(moving)
+
+    def name32(s, n=32):
+        b = s.encode("ascii")[: n - 1]
+        return b + b"\0" * (n - len(b))
+    out = [b"UHCA", st.pack("<I", 1), name32(GunDesign.bone_name("yaw")), name32("bone_turret"),
+           st.pack("<3f", *[float(v) for v in g.post]), st.pack("<3f", *[float(v) for v in g.at["muzzle"]]),
+           st.pack("<I", len(AIM_TABLE_YAWS)),
+           st.pack(f"<{len(AIM_TABLE_YAWS)}f", *AIM_TABLE_YAWS), st.pack("<I", len(bones))]
+    out += [name32(names[k]) for k in bones]
+    out.append(st.pack("<I", len(tables)))
+    for name, frames, count in tables:
+        out += [name32(name, 64), st.pack("<fI", length_of[name], count)]
+        for row in frames:
+            for loc in row:
+                for k in bones:
+                    p, q = loc[k]
+                    out.append(st.pack("<7f", *[float(v) for v in p], *[float(v) for v in q]))
+    return b"".join(out), len(bones), [(n, c) for n, _f, c in tables]
 
 
 # --------------------------------------------------------------------------------------------------
@@ -2374,12 +2804,20 @@ def launch_bones(cut, camel, src, recipe):
     the muzzle flashes (the stock Gatling's own names: the anim files define them)."""
     g = GunDesign(src, camel.hang_bind, recipe["_post"], recipe["scales"][0])
     R = camel.bind[:3, :3] / g.bind_scale
-    local = np.eye(4)
-    local[:3, :3] = R.T                              # facing the camel's way
-    local[:3, 3] = point(np.linalg.inv(camel.bind), g.at["muzzle"])
-    world = camel.bind @ local
     chest = recipe["camel"]["mount_bone"]
-    return gr2_parts.add_bones(cut, [("bone_launchpoint", chest, local, world), ("bone_muzzle", chest, local, world)])
+    # `bone_turret` on the post's top, axis-aligned with the camel: the two launch bones hang on it,
+    # so a game that turns it about its own y (the post's axis, as the gun's bone_yaw) carries the
+    # muzzle flash and the launch point round with the gun (the DLL key turretArc)
+    turret = np.eye(4)
+    turret[:3, :3] = R.T
+    turret[:3, 3] = point(np.linalg.inv(camel.bind), g.post)
+    turret_world = camel.bind @ turret
+    local = np.eye(4)                                # facing the camel's way, in the turret's frame
+    local[:3, 3] = point(np.linalg.inv(turret_world), g.at["muzzle"])
+    world = turret_world @ local
+    return gr2_parts.add_bones(cut, [("bone_turret", chest, turret, turret_world),
+                                     ("bone_launchpoint", "bone_turret", local, world),
+                                     ("bone_muzzle", "bone_turret", local, world)])
 
 
 LEG_WORDS = ("hip", "leg", "shin", "hoof", "arm", "clavicle", "shoulder", "pelvis", "stomach")
@@ -2509,9 +2947,14 @@ def main(argv):
     ap.add_argument("--aim-sheet", help="a sheet of the gun turned on its trunnion (PNG): -90 to 90 degrees, the "
                                         "rider following")
     ap.add_argument("--aim-gifs", help="a folder for GIFs of the gun swept from 90 left to 90 right while it fires")
+    ap.add_argument("--reload", choices=("keep", "toss", "stow"),
+                    help="the reload (seated gunner): keep (lift the magazine and seat it again), toss (throw the "
+                         "empty one aside, take a full one from the saddle's box) or stow (put the empty one in the "
+                         "box, take a full one); default: the recipe's")
+    ap.add_argument("--reload-preview", help="a folder for a close GIF and a contact sheet of each variant's reload")
     args = ap.parse_args(argv)
     try:
-        for p in (args.out, args.sheet, args.gifs, args.aim_sheet, args.aim_gifs):
+        for p in (args.out, args.sheet, args.gifs, args.aim_sheet, args.aim_gifs, args.reload_preview):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -2521,6 +2964,8 @@ def main(argv):
     if args.recipe:
         with open(args.recipe, encoding="utf-8") as f:
             recipe.update(json.load(f))
+    if args.reload:
+        recipe["reload"] = None if args.reload == "keep" else args.reload
     if args.scales:
         recipe["scales"] = [float(x) for x in args.scales.split(",")]
     if args.variants:
@@ -2563,7 +3008,7 @@ def main(argv):
                 files[f"{recipe['name']}_camel_dead_{unit.tag}"] = dead_model(
                     camel.cut, model, camel.hang_bind, recipe["camel"]["mount_bone"])
                 built = {}
-                for clip in CLIPS[variant]:
+                for clip in unit.clips:
                     b = unit.write(unit.build(clip))
                     built[clip["name"]] = b
                     files[unit.clip_name("gun", b)] = b.gun_bytes
@@ -2580,7 +3025,7 @@ def main(argv):
                 report.append(f"variant {variant} scale {scale:.2f}: gun {unit.gun_name}, design scale {g.s:.3f} "
                               f"(mount bind scale {g.bind_scale:.3f}), trunnion at {np.round(g.pivot, 3).tolist()}"
                               + (", mirrored (crank outside)" if g.mirror else ""))
-                if variant == "B":
+                if unit.style == "B":
                     si = unit.stand_info
                     report.append(f"  gunner on foot: crank at {si['handle height']:.2f}, his shoulders at "
                                   f"{si['shoulder height']:.2f}, crouch {si['crouch']:.2f}")
@@ -2597,6 +3042,14 @@ def main(argv):
                 with open(os.path.join(args.out, f"{recipe['name']}-anims-{unit.tag}.xml"), "w", encoding="utf-8",
                           newline="\r\n") as f:
                     f.write(anim_blocks(recipe, unit, built))
+                if unit.style == "A":                        # the gunner seated behind the gun: it turns
+                    data, nb, clips = aim_table(unit, built)
+                    aim_path = os.path.join(folder, f"{recipe['name']}_{unit.tag}.aim")
+                    with open(aim_path, "wb") as f:
+                        f.write(data)
+                    report.append(f"  aim table {os.path.basename(aim_path)}: {len(data)} B, {nb} rider bones, "
+                                  f"yaws {AIM_TABLE_YAWS[0]:.0f}..{AIM_TABLE_YAWS[-1]:.0f}, clips "
+                                  + ", ".join(f"{n} ({c} frames)" for n, c in clips))
         for fname, data in files.items():
             with open(os.path.join(folder, fname + ".gr2"), "wb") as f:
                 f.write(data)
@@ -2639,6 +3092,33 @@ def main(argv):
                 size, n = gif(path, pb, SEQUENCES["move"], f"A {scale:.2f}", args.gif_fps, azimuth=-60.0,
                               in_place=True)
                 print(f"{path} {n} frames {size / 1e6:.1f} MB")
+        if args.reload_preview:
+            os.makedirs(args.reload_preview, exist_ok=True)
+            scale = args.gif_scale if args.gif_scale else recipe["scales"][0]
+            mode = recipe.get("reload") or "keep"
+            for (variant, sc), pb in sorted(plays.items()):
+                if sc != scale or "reload" not in pb.clips:
+                    continue
+                stem = os.path.join(args.reload_preview, f"{recipe['name'].replace('_', '-')}-reload-{mode}-{variant}")
+                P0, _G0, R0 = pb.poses("reload", 0.0)
+                chest = R0["bip01 spine1"][:3, 3]
+                centre = (chest[0] - 0.25, chest[1] - 0.55, chest[2] - 0.1)
+                size, n = gif(stem + ".gif", pb, [("reload", None, None)], f"{variant} {sc:.2f} RELOAD ({mode.upper()})",
+                              args.gif_fps, width=440, height=380, azimuth=-125.0, span=2.6, centre=centre)
+                print(f"{stem}.gif {n} frames {size / 1e6:.1f} MB")
+                length = pb.clips["reload"][3].length
+                from PIL import Image
+                tiles = []
+                for t in np.linspace(0.0, length, 16):
+                    items, marks = pb.items("reload", min(t, length - 1e-3))
+                    for az in (-125.0, -60.0):
+                        img = draw(items, 230, 210, az, 16.0, 2.6 if az < -100 else 3.4, centre, marks=marks)
+                        tiles.append(caption(img, f"{t:.2f} S  {'BEHIND' if az < -100 else 'LEFT FRONT'}"))
+                sheet = grid(tiles, 8)
+                Image.fromarray(np.concatenate([title(sheet.shape[1], f"{variant} {sc:.2f} RELOAD ({mode.upper()}): "
+                                                f"{length:.2f} S, TWO VIEWS PER MOMENT", back=(70, 40, 20)), sheet],
+                                               0)).save(stem + ".png")
+                print(stem + ".png")
         if args.aim_sheet or args.aim_gifs:
             scale = args.gif_scale if args.gif_scale else recipe["scales"][0]
             aims = {}
