@@ -6,6 +6,10 @@ three together).
 
 ## Unreleased
 
+- `tools/make_rings.py`: the range ring and fill meshes are written with one unit a metre. The game reads a model's
+  vertices as its own metres and does not apply the file's UnitsPerMeter, so the rings written in the stock basis
+  (0.615) showed 0.615 of their radius (measured in game with markers at known distances); the line's width and
+  height keep what was seen until then.
 - `tools/make_rings.py`: range rings every metre from 4 to 50 m (then 55, 60, 65, 70, 80, 90 and 100), so that a
   ring drawn at the nearest size is at most half a metre off; it was every 2 m up to 32, then 36, 40, 45 and 50.
 - `tools/make_pray.py` (`aoe3game/gr2_pose.py`, a form in Art utilities): three praying animations for the
