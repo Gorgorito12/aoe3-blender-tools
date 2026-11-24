@@ -9,10 +9,13 @@ animated with a rider who cranks it. Recipe-driven like make_dismount.py.
         [--sheet <png>] [--gifs <folder>] [--gif-fps 15] [--gaze <png>]
         [--aim-sheet <png>] [--aim-gifs <folder>]
 
-`--aim-sheet` and `--aim-gifs` preview the gun turned on its trunnion (a yaw about the vertical,
--90 to 90 degrees) with the camel still: A's rider turns his chest part of the way, looks along the
-barrels and keeps his hands on the gun (past AIM_SWAP the hands change over); B's gunner walks
-around the trunnion on his own flank. What a game key that aims the gun, not the camel, would show.
+`--aim-sheet` and `--aim-gifs` preview the gun turned on its mount (a yaw about the post's axis, so
+the casing stays seated on the post, -90 to 90 degrees) with the camel still: A's rider keeps his
+chest square behind the grips, leans in, looks along the barrels and keeps both hands on the gun
+(past AIM_SWAP his left hand moves to the breech box's side, or to the reins); B is shown two
+ways: the gunner staying in the saddle of the lying camel (A's rider), and the gunner on foot
+stepping round the mount (Traverse: a station per yaw, feet planted, one foot stepping at a time).
+What a game key that aims the gun, not the camel, would show.
 
 What it writes below --out (`art\\<recipe "folder">\\`):
 - `<camel>_nogun.gr2`: the camel's body without the swivel gun's triangles (`cut`: the pieces bound to
@@ -297,6 +300,8 @@ class GunDesign:
         self.s = scale * self.bind_scale
         self.mx = -1.0 if mirror else 1.0
         self.pivot = np.asarray(post, np.float64) + np.array([0.0, self.s * src.seat, self.s * forward])
+        self.post = np.asarray(post, np.float64)      # the post's top: the gun turns about its axis
+        self.post_axis = Y.copy()
         f = self.design_point
         self.at = {"cannon": self.pivot.copy(), "barrel": f(src.barrel_at), "crank": f(src.crank_at),
                    "ammo": f(src.ammo_rest[:3, 3]), "muzzle": f(src.muzzle_at)}
@@ -382,8 +387,9 @@ class GunDesign:
         return out
 
     def yaw_matrix(self, yaw):
-        """The design-space turn of the gun by `yaw` degrees about the vertical through the trunnion."""
-        return tr(self.pivot) @ rot4(axis_matrix(Y, yaw)) @ tr(-self.pivot)
+        """The design-space turn of the gun by `yaw` degrees about its mount's vertical axis: the
+        post's axis (`post_axis`, through the post's top), so the casing stays seated on the post."""
+        return tr(self.post) @ rot4(axis_matrix(self.post_axis, yaw)) @ tr(-self.post)
 
     def handle_at(self, frames):
         return point(frames["crank"], self.handle - self.at["crank"])
@@ -862,18 +868,15 @@ class Rider:
 
 
 SHOTS = 6                 # shots a firing clip (the stock gun's six Attack tags)
-# The gun turned on its trunnion (yaw): the share of the turn the gunner's chest follows and its
-# limit in degrees (A seated, B on foot); B walks around the trunnion but stays STEP_LIMIT metres
-# or more out on his own flank from where he stands at rest. AIM_ANGLES: the preview's yaws.
-AIM_TRUNK = {"A": (0.5, 45.0), "B": (0.4, 30.0)}
-# A: past AIM_SWAP degrees to the right the left hand cranks (the crank is beyond the right arm) and
-# the right takes the reins; to the left, the left hand leaves the breech for the reins. The hands
-# move over within AIM_BLEND degrees around it.
-AIM_SWAP = 60.0
-AIM_BLEND = 20.0
-# B: on the gunner's own side (left) the crank swings over the camel's back: beyond B_LEFT the camel
-# turns instead (the preview marks those yaws)
-B_LEFT = 45.0
+# The gun turned on its mount (yaw about the post's axis): A's chest turns by AIM_TRUNK's share of
+# how far the grips moved about his spine (at most its limit, degrees) and he leans in up to
+# AIM_LEAN degrees at 90; past AIM_SWAP (within AIM_BLEND) his left hand moves from the breech's
+# top down to the breech box's near side. AIM_ANGLES: the preview's yaws.
+AIM_TRUNK = {"A": (1.6, 45.0), "B": (0.4, 30.0)}
+AIM_LEAN = 18.0
+AIM_SWAP = 45.0
+AIM_BLEND = 30.0
+B_LEFT = 90.0
 STEP_LIMIT = 0.0
 AIM_ANGLES = (-90.0, -45.0, 0.0, 45.0, 90.0)
 # Whole turns a firing clip (so repeated shots join); the crank turns a third as fast as the barrels,
@@ -965,6 +968,9 @@ class Unit:
         inner = back[:, 0].max() if variant == "A" else back[:, 0].min()   # the rider's side
         self.casing_side = g.design_point(np.array([inner, 0.5 * (back[:, 1].min() + back[:, 1].max()),
                                                     back[:, 2].mean()]))
+        outer = back[:, 0].min() if variant == "A" else back[:, 0].max()      # the other side of the box
+        self.casing_outer = g.design_point(np.array([outer, 0.5 * (back[:, 1].min() + back[:, 1].max()),
+                                                     back[:, 2].mean()]))
         self.casing_top = g.design_point(np.array([src.trunnion[0], rear[:, 1].max(), src.trunnion[2]]))
         # the hand takes the magazine low, just above the hopper (its top is out of a man's reach
         # on foot)
@@ -1003,8 +1009,12 @@ class Unit:
             return point(fr["cannon"] @ tr(-g.pivot), self.casing_top) + np.array([0.0, 0.03, 0.0]), \
                 (1.0, -0.2, 0.3), (0.0, -1.0, 0.0)
         if what == "casing_side":           # the palm flat on the breech box's inner side
-            return point(fr["cannon"] @ tr(-g.pivot), self.casing_side) + np.array([0.035, 0.0, 0.0]), \
+            # (the offset turns with the gun: the casing's frame is rigid)
+            return point(fr["cannon"] @ tr(-g.pivot), self.casing_side + np.array([0.035, 0.0, 0.0])), \
                 (0.0, -0.25, 1.0), (-1.0, 0.0, 0.0)
+        if what == "casing_outer":          # the palm flat on the breech box's outer side
+            return point(fr["cannon"] @ tr(-g.pivot), self.casing_outer + np.array([-0.035, 0.0, 0.0])), \
+                (0.0, -0.25, 1.0), (1.0, 0.0, 0.0)
         if what == "magazine":
             return point(fr["ammo"], self.mag_grip) + np.array([side * 0.045, 0.0, 0.0]), \
                 (0.0, 0.2, 1.0), (-side, 0.0, 0.0)
@@ -1318,9 +1328,12 @@ class Unit:
             if do == "fire":
                 R = rider.turn(R, "bip01 spine", X, 5.0 + 0.8 * math.sin(2 * math.pi * SHOTS * u))
             if do in ("fire", "reload", None) and abs(self.yaw_of(fr)) > 0.5:
-                # the gun turned on its trunnion: his chest follows part of the way (AIM_TRUNK), the
-                # hands stay on it (two-bone IK below) and the head looks along the barrels
-                R = rider.turn_trunk_to(R, self.downrange(C, fr), *AIM_TRUNK["A"])
+                # the gun turned on its mount: his chest stays square behind the grips (it turns by
+                # AIM_TRUNK's share of how far their middle moved about his spine), the hands stay on
+                # them (two-bone IK below) and the head looks along the barrels
+                R = self.square_to_grips(R, C, fr, *AIM_TRUNK["A"])
+                # the gun across his front is farther away: he leans in toward it
+                R = rider.turn(R, "bip01 spine", X, AIM_LEAN * (abs(self.yaw_of(fr)) / 90.0) ** 1.5)
             if do == "reload":
                 w = math.sin(math.pi * min(1.0, max(0.0, (u - 0.2) / 0.6)))
                 R = rider.turn(R, "bip01 spine", Y, -16.0 * w)
@@ -1328,13 +1341,12 @@ class Unit:
             want = dict(self.seated_hands(clip))
             yaw = self.yaw_of(fr)
             swap = None
-            if want.get("r") == "crank" and yaw > 0:
-                # the gun turned far to his right puts its crank (on its right side) beyond his
-                # right arm, left of the trunnion: the left hand cranks, the right takes the reins
-                swap = {"l": "crank_l", "r": "reins"}
-            elif want.get("l") == "breech" and yaw < 0:
-                # far to his left the breech swings in front of his chest: the left hand on the reins
-                swap = {"r": "crank", "l": "reins"}
+            if want.get("l") == "breech":
+                # turned far, the breech's top moves off from his left shoulder: the left hand
+                # moves down to the breech box's near side (AIM_SWAP -+ AIM_BLEND/2 degrees)
+                # (turned left, its outer side faces him); turned right, the box is beyond his left
+                # arm once his chest turns to the crank: the left hand takes the reins
+                swap = {"r": "crank", "l": "reins" if yaw > 0 else "casing_outer"}
             w = smooth(min(1.0, max(0.0, (abs(yaw) - AIM_SWAP + 0.5 * AIM_BLEND) / AIM_BLEND))) if swap else 0.0
             if w > 0.0:
                 # the hands move over between AIM_SWAP -+ AIM_BLEND/2 degrees (no jump in a sweep)
@@ -1359,9 +1371,12 @@ class Unit:
             return rider.seated(rider.idle, 0.0, attach)
         if do in ("stand", "fire", "reload"):
             yaw = self.yaw_of(fr)
-            if abs(yaw) > 0.5:
+            if getattr(self, "_stand_at", None) is not None:
+                stand = self._stand_at                 # placed on his feet by a Traverse (preview)
+            elif abs(yaw) > 0.5:
                 stand = self.step_around(stand, C, fr, yaw)
-            R = self.at_gun(stand, C, fr, do, u, b, trunk=AIM_TRUNK["B"] if abs(yaw) > 0.5 else None)
+            R = self.at_gun(stand, C, fr, do, u, b, trunk=(0.1 if do == "reload" else 0.35, 22.0)
+                            if getattr(self, "_stand_at", None) is not None else None)
             return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
         if do == "foot_death":
             anim = rider.anim(FOOT_DEATH)
@@ -1383,11 +1398,22 @@ class Unit:
                 "reload": -6.0 * math.sin(math.pi * min(1.0, max(0.0, (u - 0.2) / 0.6)))}[do]
         fwd = unit(stand["bip01 pelvis"][:3, :3] @ (self.rider.body.base["bip01 pelvis"][:3, :3].T @ Z))
         fwd[1] = 0.0
-        R = rider.turn(stand, "bip01 spine", unit(fwd) if trunk else Z, lean)
+        # lean toward the gun: about his side axis (Z at rest, facing +x)
+        R = rider.turn(stand, "bip01 spine", unit(np.cross(unit(fwd), Y)) if trunk else Z, lean)
         share, most = trunk if trunk else (0.1 if do == "reload" else 0.35, 22.0)
         R = rider.turn_trunk_to(R, self.downrange(C, fr), share, most)
-        left = self.reload_hand(u, fr) if do == "reload" else "casing"
+        left = self.reload_hand(u, fr) if do == "reload" else self.b_left_grip(fr)
         return self.hands(R, C, fr, {"r": "crank", "l": left}, b)
+
+    def b_left_grip(self, fr):
+        """B's left hand: on the casing's top over the trunnion; with the gun turned to the right
+        that point swings off over the camel's back, so it moves to the breech's top (nearer the
+        post, by him) by 45 degrees: (palm, finger, normal) in design space, "casing" at rest."""
+        w = smooth(min(1.0, max(0.0, self.yaw_of(fr) / 45.0)))
+        if w <= 0.0:
+            return "casing"
+        a, z = self.target("casing", fr), self.target("breech", fr)
+        return tuple((1 - w) * np.asarray(a[i]) + w * np.asarray(z[i]) for i in range(3))
 
     # -- the gun turned on its trunnion (a yaw the game would give it to aim without the camel)
 
@@ -1400,6 +1426,24 @@ class Unit:
             return np.asarray(w[1], np.float64), unit(w[2]), unit(w[3])
         palm, fin, nor = self.target(w, fr) if isinstance(w, str) else w
         return point(C, palm), self.world_dir(C, fin), self.world_dir(C, nor)
+
+    def grips_mid(self, C, fr):
+        """The middle of the crank's handle and the breech's top in the world."""
+        return 0.5 * (point(C, self.target("crank", fr)[0]) + point(C, self.target("breech", fr)[0]))
+
+    def square_to_grips(self, R, C, fr, share, most):
+        """The chest turned about the vertical at the spine's base by `share` of the angle the
+        grips' middle moved about it from the gun's rest (so nothing changes at yaw 0)."""
+        from aoe3game.gr2_pose import rotate_about
+        base = R["bip01 spine"][:3, 3]
+
+        def heading(p):
+            d = p - base
+            return math.degrees(math.atan2(d[0], d[2]))
+        rest = self.gun.frames({})
+        a = heading(self.grips_mid(C, fr)) - heading(self.grips_mid(C, rest))
+        a = (a + 180.0) % 360.0 - 180.0
+        return rotate_about(R, self.rider.rig, "bip01 spine1", "bip01 spine", Y, max(-most, min(most, share * a)))
 
     @staticmethod
     def yaw_of(fr):
@@ -1828,9 +1872,12 @@ class Aim:
     """One unit's firing pose at a gun yaw: the camel as its fire clip has it, the gun turned on
     its trunnion, the rider or gunner following (chest, head, both hands on the gun)."""
 
-    def __init__(self, scene, unit, model_bytes):
+    def __init__(self, scene, unit, model_bytes, couched=False):
+        """`couched`: A's gun and seated rider on the camel lying down (B's lying pose): the gunner
+        stays in the saddle and fires from there (an alternative to B on foot)."""
         self.scene, self.unit = scene, unit
         self.model_bytes = model_bytes
+        self.couched = couched
         self.clip = next(c for c in CLIPS[unit.variant] if c.get("do") == "fire")
         cam = unit.camel
         if "camel" in self.clip:
@@ -1840,9 +1887,13 @@ class Aim:
             self.anim = cam.anim(self.clip["still"])
             self.length = float(self.clip["length"])
             self.still = cam.fix_hang(cam.grounded(self.anim, [0.0])[0])
+        if couched:
+            self.still = cam.fix_hang(cam.grounded(cam.anim(B_IDLE), [0.0])[0])
 
     def camel_pose(self, t):
         cam, clip = self.unit.camel, self.clip
+        if self.couched:
+            return self.still
         if "camel" in clip:
             P = cam.pose(self.anim, t)
             if clip.get("lower"):
@@ -1850,90 +1901,397 @@ class Aim:
             return P
         return self.still
 
-    def poses(self, t, yaw):
-        """(camel, gun, rider) world frames by bone name, and how far a palm stays from its target."""
+    def poses(self, t, yaw, stand=None):
+        """(camel, gun, rider) world frames by bone name, and how far a palm stays from its target.
+        B: `stand` is the gunner's body on his feet (a Traverse pose); None: settled at the yaw's
+        station."""
         u = self.unit
         P = self.camel_pose(t)
-        state = u.fire_state(t, self.length)
+        state = u.fire_state(t % self.length, self.length)
         state["yaw"] = yaw
         fr = u.gun.frames(state)
         C = u.C(P)
         attach = rigid(P[u.camel.rider_bone])
         b = Built(self.clip, [t])
         base = u.rider.anim(self.clip["rider"]) if self.clip.get("rider") else u.rider.idle
-        R = u.rider_pose(self.clip, "fire", t, self.length, t / self.length, P, C, fr, base, attach, b)
+        if u.variant == "B":
+            if getattr(self, "traverse", None) is None:
+                self.traverse = Traverse(self)
+            u._stand_at = stand if stand is not None else self.traverse.settled(yaw)
+        try:
+            R = u.rider_pose(self.clip, "fire", t % self.length, self.length, (t % self.length) / self.length, P, C,
+                             fr, base, attach, b)
+        finally:
+            u._stand_at = None
         chest = rigid(P[u.camel.hang])
         G = {f"bone_{u.gun_name}".lower(): chest}
         for k in GunDesign.BONES[1:]:
             G[GunDesign.bone_name(k).lower()] = chest @ u.gun.to_model(fr[k])
         return P, G, R, b.reach
 
-    def items(self, gun_fig, t, yaw):
-        P, G, R, reach = self.poses(t, yaw)
+    @staticmethod
+    def stretch(R):
+        """{side: shoulder-to-wrist distance / the arm's length}: 1.0 is a locked straight arm."""
+        out = {}
+        for s in ("l", "r"):
+            a, b, c = (R[f"bip01 {s} {k}"][:3, 3] for k in ("upperarm", "forearm", "hand"))
+            out[s] = float(np.linalg.norm(c - a) / (np.linalg.norm(b - a) + np.linalg.norm(c - b)))
+        return out
+
+    def items(self, gun_fig, t, yaw, stand=None):
+        P, G, R, reach = self.poses(t, yaw, stand)
         s = self.scene
         out = s.camel_fig.items(P) + gun_fig.items(G) + s.rider_fig.items(R) + s.hat_items(R)
         marks = []
-        if any(0.0 <= t - f < 0.045 for f in Unit.shots(self.length)):
+        if any(0.0 <= (t % self.length) - f < 0.045 for f in Unit.shots(self.length)):
             mz = G["bone_launchpoint"][:3, 3]
             marks.append((mz + 0.06 * unit(G["bone_launchpoint"][:3, :3] @ Z), (255, 200, 40), 9))
         return out, marks, reach
 
 
-AIM_VIEWS = [("FROM ABOVE (CAMEL'S HEAD UP)", 180.0, 89.0, 3.4), ("BEHIND, LEFT", -150.0, 22.0, 2.6),
-             ("FRONT, RIGHT", 35.0, 14.0, 2.6)]
+class Traverse:
+    """B's gunner traversing the gun on foot, as a man walks a pintle gun round: for each yaw a
+    station (where his feet stand on the ground, which way he faces) chosen so that his hands reach
+    the crank and the casing as they do at rest, his body and feet stay clear of the lying camel
+    and his head out of the barrels' line, near the last station; between stations he steps, one
+    foot lifted and set down at a time while the other stays planted, his body carried between his
+    feet (no sliding)."""
+
+    STEP_TIME = 0.30          # seconds a step takes
+    STEP_LIFT = 0.10          # how high the foot rises
+    STEP_DIST = 0.08          # a foot steps when its place is this far (metres) ...
+    STEP_TURN = 12.0          # ... or this many degrees from where it should be
+    BODY_R = 0.24             # the gunner's body seen from above (metres) kept off the camel
+    FOOT_R = 0.09
+    HEAD_CLEAR = 0.40         # his head this far at least from the barrels' line
+
+    def __init__(self, aim):
+        u = self.u = aim.unit
+        self.rig = u.rider.rig
+        self.root = self.rig.names[0].lower()
+        self.P0 = aim.camel_pose(0.0)
+        self.C = u.C(self.P0)
+        self.stand = u.stand_pose()
+        r = self.stand[self.root][:3, 3]
+        self.s0 = np.array([r[0], r[2]])
+        self.h0 = 90.0
+        sh = 0.5 * (self.stand["bip01 r upperarm"][:3, 3] + self.stand["bip01 l upperarm"][:3, 3])
+        self.sh0 = sh
+        pts = np.concatenate([np.asarray(it[0]) for it in aim.scene.camel_fig.items(self.P0)])
+        self.body_pts = pts[pts[:, 1] < 1.55][:, [0, 2]]
+        self.low_pts = pts[pts[:, 1] < 0.45][:, [0, 2]]
+        self.feet0 = {s: self.stand[f"bip01 {s} foot"] for s in ("l", "r")}
+        self.d0 = self._reach(self.s0, self.h0, u.gun.frames({}))
+        # at rest he does not face the grips' middle exactly: keep that offset
+        g0 = self.grips(u.gun.frames({}))
+        self.hoff = self.h0 - math.degrees(math.atan2(g0[0] - self.sh0[0], g0[2] - self.sh0[2]))
+        # as close to the camel as he stands at rest (the approved pose), no closer
+        self.body_r = min(self.BODY_R, float(np.sqrt(((self.body_pts - self.s0) ** 2).sum(1)).min()) - 0.01)
+        fr0 = [self.feet0[s][:3, 3][[0, 2]] for s in ("l", "r")]
+        self.foot_r = min(self.FOOT_R, min(float(np.sqrt(((self.low_pts - f) ** 2).sum(1)).min()) for f in fr0) - 0.01)
+        self._cache = {}
+
+    # a station: (x, z) of his root on the ground and his heading (degrees about +y, 90: facing +x)
+    def M(self, s, h):
+        return tr((s[0], 0.0, s[1])) @ rot4(axis_matrix(Y, h - self.h0)) @ tr((-self.s0[0], 0.0, -self.s0[1]))
+
+    def grips(self, fr):
+        u = self.u
+        left = u.b_left_grip(fr)
+        left = u.target(left, fr) if isinstance(left, str) else left
+        return 0.5 * (point(self.C, u.target("crank", fr)[0]) + point(self.C, left[0]))
+
+    def _reach(self, s, h, fr):
+        sh = point(self.M(s, h), self.sh0)
+        d = self.grips(fr) - sh
+        return math.hypot(d[0], d[2])
+
+    def hand_goals(self, fr):
+        """(the crank's handle, the left hand's grip) in the world."""
+        u = self.u
+        left = u.b_left_grip(fr)
+        left = u.target(left, fr) if isinstance(left, str) else left
+        return point(self.C, u.target("crank", fr)[0]), point(self.C, left[0])
+
+    def _search(self, yaw, prev):
+        u = self.u
+        fr = u.gun.frames({"yaw": yaw})
+        if not hasattr(self, "_grid"):
+            xs = np.arange(-1.3, 0.5, 0.03)
+            zs = np.arange(-1.0, 1.9, 0.03)
+            X_, Z_ = np.meshgrid(xs, zs)
+            S = np.c_[X_.ravel(), Z_.ravel()]
+
+            def mind(P, Q):
+                best = np.full(len(P), 9.0)
+                for i in range(0, len(Q), 400):
+                    q = Q[i:i + 400]
+                    best = np.minimum(best, np.sqrt(((P[:, None, :] - q[None, :, :]) ** 2).sum(-1)).min(1))
+                return best
+            self._mind = mind
+            self._grid = (S, mind(S, self.body_pts))
+            r0, l0 = self.hand_goals(u.gun.frames({}))
+            self._arm0 = {"r": float(np.linalg.norm(r0 - self.stand["bip01 r upperarm"][:3, 3])),
+                          "l": float(np.linalg.norm(l0 - self.stand["bip01 l upperarm"][:3, 3]))}
+        S, body_clear = self._grid
+        n = len(S)
+        hr, hl = self.hand_goals(fr)
+        g = 0.5 * (hr + hl)
+        # headings: facing the grips' middle (as at rest), then turned -30..30 degrees from it
+        base = np.degrees(np.arctan2(g[0] - (S[:, 0]), g[2] - (S[:, 1]))) + self.hoff
+        best = (np.inf, None)
+        p0 = point(self.C, fr["cannon"][:3, 3])
+        p1 = point(self.C, fr["muzzle"][:3, 3])
+        p1 = p1 + 1.5 * (p1 - p0) / max(np.linalg.norm(p1 - p0), 1e-6)
+        seg = np.array([p1[0] - p0[0], p1[2] - p0[2]])
+        L2 = max(seg @ seg, 1e-9)
+        camel = 400.0 * np.maximum(0.0, self.body_r - body_clear)
+        for dh in np.arange(-30.0, 30.1, 6.0):
+            h = base + dh
+            a = np.radians(h - self.h0)
+            cos, sin = np.cos(a), np.sin(a)
+
+            def place(p):            # a rest-pose point carried to each candidate station (x, y, z)
+                x0, z0 = p[0] - self.s0[0], p[2] - self.s0[1]
+                return S[:, 0] + x0 * cos + z0 * sin, np.full(n, p[1]), S[:, 1] - x0 * sin + z0 * cos
+            cost = camel.copy()
+            reach = np.zeros(n)
+            for s, goal in (("r", hr), ("l", hl)):
+                x, y, z = place(self.stand[f"bip01 {s} upperarm"][:3, 3])
+                d = np.sqrt((goal[0] - x) ** 2 + (goal[1] - y) ** 2 + (goal[2] - z) ** 2)
+                # as far from the grip as at rest; farther (a straighter arm) costs much more
+                cost += 40.0 * (d - self._arm0[s]) ** 2 + 800.0 * np.maximum(0.0, d - self._arm0[s]) ** 2
+                reach = np.maximum(reach, d - self._arm0[s])
+            for s in ("l", "r"):
+                fx, _fy, fz = place(self.feet0[s][:3, 3])
+                cost += 400.0 * np.maximum(0.0, self.foot_r - self._mind(np.c_[fx, fz], self.low_pts))
+            # his head out of the barrels' line (pivot to well past the muzzle, near his head's height)
+            hx, _hy, hz = place(self.stand["bip01 head"][:3, 3])
+            w = np.clip(((hx - p0[0]) * seg[0] + (hz - p0[2]) * seg[1]) / L2, 0.0, 1.0)
+            dl = np.hypot(hx - (p0[0] + w * seg[0]), hz - (p0[2] + w * seg[1]))
+            cost += 200.0 * np.maximum(0.0, self.HEAD_CLEAR - dl)
+            # stay near where he was (few steps), a little near his rest place
+            dturn = (h - prev[1] + 180.0) % 360.0 - 180.0
+            cost += 3.0 * ((S - prev[0]) ** 2).sum(1) + 0.0004 * dturn ** 2
+            # stations change little from one yaw step to the next (short steps, feet never crossed)
+            cost += 1e4 * ((np.sqrt(((S - prev[0]) ** 2).sum(1)) > 0.10) | (np.abs(dturn) > 9.0))
+            cost += 0.3 * ((S - self.s0) ** 2).sum(1)
+            i = int(np.argmin(cost))
+            if cost[i] < best[0]:
+                best = (float(cost[i]), ((S[i].copy(), float(h[i])), {"reach": float(reach[i]), "line": float(dl[i])}))
+        c, (st, info) = best
+        return st, c, info
+
+    def table(self, step=5):
+        """{yaw: (station, cost, info)} from 0 out to +90 and to -90, each from its neighbour."""
+        if not self._cache:
+            self._cache[0] = ((self.s0.copy(), self.h0), 0.0, {"reach": 0.0, "line": 9.0})
+            for sign in (1, -1):
+                prev = self._cache[0][0]
+                for y in range(step, 91, step):
+                    st, c, info = self._search(sign * y, prev)
+                    self._cache[sign * y] = (st, c, info)
+                    prev = st
+        return self._cache
+
+    def station(self, yaw):
+        tab = self.table()
+        keys = sorted(tab)
+        yaw = max(keys[0], min(keys[-1], yaw))
+        lo = max(k for k in keys if k <= yaw)
+        hi = min(k for k in keys if k >= yaw)
+        (sa, ha), _c, _i = tab[lo]
+        (sb, hb), _c, _i = tab[hi]
+        w = 0.0 if hi == lo else (yaw - lo) / (hi - lo)
+        dh = (hb - ha + 180.0) % 360.0 - 180.0
+        return sa + w * (sb - sa), ha + w * dh
+
+    def settled(self, yaw):
+        """His body standing at the yaw's station, both feet set."""
+        s, h = self.station(yaw)
+        M = self.M(s, h)
+        return {k: M @ v for k, v in self.stand.items()}
+
+    def sweep(self, times, yaws):
+        """His body (on his feet, legs solved to them) at each time while the gun follows `yaws`:
+        a foot steps when its place has moved off, one foot at a time."""
+        from aoe3game.gr2_pose import translate, two_bone_ik
+        body_h = self.u.rider.body.hinge
+        M = self.M(*self.station(yaws[0]))
+        feet = {s: M @ self.feet0[s] for s in ("l", "r")}
+        step, last, out, steps = None, "l", [], []
+        for t, yaw in zip(times, yaws):
+            M = self.M(*self.station(yaw))
+            ideal = {s: M @ self.feet0[s] for s in ("l", "r")}
+            if step is None:
+                err = {}
+                for s in ("l", "r"):
+                    dp = np.linalg.norm((ideal[s][:3, 3] - feet[s][:3, 3])[[0, 2]])
+                    fa, fb = feet[s][:3, :3] @ Z, ideal[s][:3, :3] @ Z
+                    dang = abs(math.degrees(math.atan2(fa[0] * fb[2] - fa[2] * fb[0], fa[0] * fb[0] + fa[2] * fb[2])))
+                    err[s] = (dp / self.STEP_DIST, dang / self.STEP_TURN)
+                due = [s for s in ("l", "r") if max(err[s]) > 1.0]
+                if due:
+                    # the foot that keeps them apart: stepping it to its place must leave the right
+                    # foot on the right of the left one (no crossed feet); else the other one first
+                    lr = self.feet0["r"][:3, 3] - self.feet0["l"][:3, 3]
+                    lr[1] = 0.0
+                    lr = unit(lr)
+
+                    def apart(s):
+                        """How far his right foot is on his right of the left one once `s` has stepped,
+                        in the frame of his body then (no crossed feet: well above 0)."""
+                        after = {s: ideal[s], ("l" if s == "r" else "r"): feet["l" if s == "r" else "r"]}
+                        yaws_ = []
+                        for k in ("l", "r"):
+                            z = (after[k] @ np.linalg.inv(self.feet0[k]))[:3, :3] @ Z
+                            yaws_.append(math.degrees(math.atan2(z[0], z[2])))
+                        yb_ = yaws_[0] + 0.5 * ((yaws_[1] - yaws_[0] + 180.0) % 360.0 - 180.0)
+                        side = axis_matrix(Y, yb_) @ lr
+                        return float((after["r"][:3, 3] - after["l"][:3, 3]) @ side)
+                    cand = [s for s in ("l", "r")]
+                    ok = [s for s in due if apart(s) > 0.08]
+                    if ok:
+                        s = max(ok, key=lambda k: max(err[k]))
+                    else:                                     # the foot that leaves them most apart
+                        s = max(cand, key=apart)
+                    step = (s, t, feet[s].copy())
+                    steps.append((t, s))
+            cur = dict(feet)
+            lift = 0.0
+            if step is not None:
+                s, t0, frm = step
+                k = (t - t0) / self.STEP_TIME
+                if k >= 1.0:
+                    feet[s] = ideal[s]
+                    cur[s] = ideal[s]
+                    last, step = s, None
+                else:
+                    kk = smooth(k)
+                    f = np.eye(4)
+                    f[:3, :3] = rigid(rot4((1 - kk) * frm[:3, :3] + kk * ideal[s][:3, :3]))[:3, :3]
+                    f[:3, 3] = (1 - kk) * frm[:3, 3] + kk * ideal[s][:3, 3] + np.array([0.0, self.STEP_LIFT * math.sin(math.pi * k), 0.0])
+                    cur[s] = f
+                    lift = math.sin(math.pi * k)
+            # his body between his feet: each foot says where the body would be; the mean of the two
+            ang, pos = [], []
+            for s in ("l", "r"):
+                Mf = cur[s] @ np.linalg.inv(self.feet0[s])
+                z = Mf[:3, :3] @ Z
+                ang.append(math.degrees(math.atan2(z[0], z[2])))
+                pos.append(Mf[:3, 3])
+            da = (ang[1] - ang[0] + 180.0) % 360.0 - 180.0
+            yb = ang[0] + 0.5 * da
+            pb = 0.5 * (pos[0] + pos[1])
+            Mb = tr((pb[0], 0.0, pb[2])) @ rot4(axis_matrix(Y, yb))
+            body = {k: Mb @ v for k, v in self.stand.items()}
+            if lift:
+                body = translate(body, self.rig, self.root, np.array([0.0, -0.02 * lift, 0.0]))
+            fwd = unit(Mb[:3, :3] @ np.array([1.0, 0.0, 0.0]))     # he faces +x at rest
+            for s in ("l", "r"):
+                th, ca, fo = (f"bip01 {s} thigh", f"bip01 {s} calf", f"bip01 {s} foot")
+                body = two_bone_ik(body, self.rig, th, ca, fo, cur[s][:3, 3], fwd, body_h[th], body_h[ca],
+                                   end_frame=cur[s][:3, :3])
+            out.append(body)
+        return out, steps
+
+
+# The aim preview's units: (key, title, the arc it can serve naturally (left, right), where to look)
+AIM_UNITS = {
+    "A": ("A, FROM THE SADDLE", (90.0, 90.0), (-0.1, 2.05, 0.05)),
+    "C": ("B, OPTION 1 (RECOMMENDED): THE CAMEL LIES DOWN, THE GUNNER STAYS IN THE SADDLE", (90.0, 90.0),
+          (0.2, 1.75, 0.3)),
+    "B": ("B, OPTION 2: THE CAMEL LIES DOWN, THE GUNNER ON FOOT STEPS ROUND", (75.0, 75.0), (-0.2, 1.25, 0.45)),
+}
+AIM_VIEWS = [("FROM ABOVE (CAMEL'S HEAD UP)", 180.0, 89.0, 3.2), ("BEHIND, LEFT", -150.0, 18.0, 2.3),
+             ("FRONT, RIGHT", 35.0, 12.0, 2.3)]
+
+
+def _tint(img):
+    img = img.copy()
+    img[:, :, 0] = np.minimum(255, img[:, :, 0].astype(np.int32) + 45).astype(np.uint8)
+    return img
 
 
 def aim_sheet(path, game, aims, angles=AIM_ANGLES):
-    """For each unit, the gun turned on its trunnion at each yaw (columns), seen from above, from
-    behind on the left and from the front on the right: the camel keeps still, the rider follows."""
+    """The gun turned on its mount at each yaw (columns): first the mount alone, close (the gun
+    stays seated on its post), then each unit from above, from behind on the left and from the
+    front on the right: the camel keeps still, the rider or gunner follows. A yaw the unit cannot
+    serve naturally is tinted red (there the camel turns instead)."""
     from PIL import Image
     w, h = 250, 240
-    out = [title(w * len(angles), "GATLING CAMEL - THE GUN TURNS, NOT THE CAMEL (PREVIEW)", back=(70, 40, 20))]
+    width = w * len(angles)
+    out = [title(width, "GATLING CAMEL - THE GUN TURNS ON ITS MOUNT, NOT THE CAMEL (PREVIEW 2)", back=(70, 40, 20))]
     notes = []
-    for (variant, scale), (aim, gun_fig) in sorted(aims.items()):
+    first = aims.get("A") or next(iter(aims.values()))
+    aim, fig = first
+    for vname, az, el in (("THE MOUNT, CLOSE, FROM THE LEFT (NO RIDER)", -90.0, 4.0),
+                          ("THE MOUNT, CLOSE, FROM ABOVE (NO RIDER)", 180.0, 85.0)):
+        tiles = []
+        for yaw in angles:
+            P, G, _R, _r = aim.poses(aim.length * 0.5, yaw)
+            pw = point(aim.unit.C(P), aim.unit.gun.post)
+            img = draw(aim.scene.camel_fig.items(P) + fig.items(G), w, h, az, el, 1.1, tuple(pw), ground=False)
+            tiles.append(caption(img, f"MOUNT {yaw:+.0f}"))
+        out.append(title(width, vname + ": THE GUN TURNS ABOUT THE POST'S AXIS AND STAYS SEATED ON IT", scale=1))
+        out.append(np.concatenate(tiles, 1))
+    for key in ("A", "C", "B"):
+        if key not in aims:
+            continue
+        aim, gun_fig = aims[key]
+        what, (left, right), centre = AIM_UNITS[key]
         t = aim.length * (0.5 + 0.5 / SHOTS)                 # just after a shot: a flash shows
-        what = "A, FROM THE SADDLE" if variant == "A" else "B, DEPLOYED (GUNNER ON FOOT)"
         for vname, az, el, span in AIM_VIEWS:
             tiles = []
             for yaw in angles:
                 items, marks, reach = aim.items(gun_fig, t, yaw)
                 P, G, R, _r = aim.poses(t, yaw)
-                head = R["bip01 head"][:3, 3]
-                if el > 80:
-                    centre = (0.0, 1.0, 0.2)
-                else:
-                    centre = (-0.1, 2.0, 0.1) if variant == "A" else (-0.15, 1.2, 0.55)
-                img = draw(items, w, h, az, el, span, centre, marks=marks)
+                st = Aim.stretch(R)
+                img = draw(items, w, h, az, el, span, (0.0, 1.0, 0.25) if el > 80 else centre, marks=marks)
                 side = "RIGHT" if yaw > 0 else "LEFT" if yaw < 0 else "AHEAD"
-                text = f"{variant} {yaw:+.0f} {side}"
-                if variant == "B" and yaw < -B_LEFT:
+                text = f"{yaw:+.0f} {side}"
+                if yaw < -left or yaw > right:
                     text += " - CAMEL TURNS"
-                    img = img.copy()
-                    img[:, :, 0] = np.minimum(255, img[:, :, 0].astype(np.int32) + 40).astype(np.uint8)
+                    img = _tint(img)
                 tiles.append(caption(img, text + (f" GAP {reach * 100:.0f}CM" if reach > 0.02 else "")))
                 if vname == AIM_VIEWS[0][0]:
-                    notes.append(f"{variant} {scale:.2f} yaw {yaw:+.0f}: largest palm gap {reach * 100:.1f} cm, "
-                                 f"head at {np.round(head, 2).tolist()}")
-            out.append(title(w * len(angles), f"{what} {scale:.2f} - {vname}", scale=1))
+                    notes.append(f"{key} yaw {yaw:+.0f}: palm gap {reach * 100:.1f} cm, arms (shoulder to wrist / "
+                                 f"length) l {st['l']:.2f} r {st['r']:.2f}")
+            out.append(title(width, f"{what} - {vname}", scale=1))
             out.append(np.concatenate(tiles, 1))
     Image.fromarray(np.concatenate(out, 0)).save(path)
     return notes
 
 
 def aim_gif(path, aim, gun_fig, label, fps=15, sweep=4.0, width=480, height=400, azimuth=180.0, elevation=40.0,
-            span=3.8, centre=(0.0, 1.2, 0.3), left=90.0, right=90.0):
+            span=3.8, centre=(0.0, 1.2, 0.3), left=90.0, right=90.0, hold=0.6):
     """The gun swept from straight ahead to `right` degrees right, back across to `left` left and
-    ahead again while it fires (the barrels spin, the flashes show), the camel still."""
+    ahead again while it fires (the barrels spin, the flashes show), the camel still; it rests
+    `hold` seconds at each end. B on foot steps round with it (Traverse.sweep)."""
     from PIL import Image
     frames = []
     n = int(round(sweep * fps))
+    times, yaws = [], []
     for k in range(n):
         s = math.sin(2 * math.pi * k / n)
-        yaw = s * (right if s > 0 else left)
-        t = (k / fps) % aim.length
-        items, marks, _r = aim.items(gun_fig, t, yaw)
+        times.append(k / fps)
+        yaws.append(s * (right if s > 0 else left))
+    # rests at the ends: repeat the extreme frames' yaw
+    full_t, full_y = [], []
+    for k, (t, y) in enumerate(zip(times, yaws)):
+        full_y.append(y)
+        if k in (n // 4, 3 * n // 4):
+            full_y += [y] * int(hold * fps)
+    full_t = [k / fps for k in range(len(full_y))]
+    stands = [None] * len(full_t)
+    if aim.unit.variant == "B" and not aim.couched:
+        if getattr(aim, "traverse", None) is None:
+            aim.traverse = Traverse(aim)
+        stands, _steps = aim.traverse.sweep(full_t, full_y)
+    for t, yaw, stand in zip(full_t, full_y, stands):
+        items, marks, _r = aim.items(gun_fig, t, yaw, stand)
         img = draw(items, width, height, azimuth, elevation, span, centre, marks=marks)
-        frames.append(caption(img, f"{label}  GUN YAW {yaw:+.0f}", scale=1))
+        frames.append(caption(img, f"{label}  GUN YAW {yaw:+.0f}  {t:.2f} S", scale=1))
     pics = [Image.fromarray(f).quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
             for f in frames]
     pics[0].save(path, save_all=True, append_images=pics[1:], duration=int(round(1000 / fps)), loop=0, optimize=True)
@@ -2286,23 +2644,28 @@ def main(argv):
             aims = {}
             for (variant, sc), pb in plays.items():
                 if sc == scale:
-                    aims[(variant, sc)] = (Aim(scene, pb.unit, None), pb.gun_fig)
+                    aims[variant] = (Aim(scene, pb.unit, None), pb.gun_fig)
+                    if variant == "A":           # B, option 1: A's gun and rider on the camel lying down
+                        aims["C"] = (Aim(scene, pb.unit, None, couched=True), pb.gun_fig)
             if args.aim_sheet:
                 for line in aim_sheet(args.aim_sheet, game, aims):
                     print(line)
                 print(args.aim_sheet)
             if args.aim_gifs:
                 os.makedirs(args.aim_gifs, exist_ok=True)
-                for (variant, sc), (aim, fig) in sorted(aims.items()):
-                    name = "A-saddle" if variant == "A" else "B-deployed"
-                    left = 90.0 if variant == "A" else B_LEFT
-                    for view, az, el, span, centre in (
-                            ("above", 180.0, 60.0, 3.4, (0.0, 1.3, 0.2)),
-                            ("close", -150.0 if variant == "A" else -130.0, 20.0, 2.6,
-                             (-0.1, 2.0, 0.1) if variant == "A" else (-0.15, 1.2, 0.55))):
-                        path = os.path.join(args.aim_gifs, f"{recipe['name'].replace('_', '-')}-aim-{name}-{view}.gif")
-                        size, n = aim_gif(path, aim, fig, f"{variant} {sc:.2f}", fps=args.gif_fps, azimuth=az,
-                                          elevation=el, span=span, centre=centre, left=left)
+                names = {"A": "A-saddle", "C": "B1-couched-saddle", "B": "B2-on-foot"}
+                for key, (aim, fig) in sorted(aims.items()):
+                    _what, (left, right), centre = AIM_UNITS[key]
+                    views = [("close", -150.0 if key != "B" else -125.0, 16.0, 2.3, centre),
+                             # about as the game's camera sees a unit (from high, the whole unit)
+                             ("game-camera", -45.0, 50.0, 4.6, (0.0, 1.0, 0.2))]
+                    if key == "B":
+                        views.append(("feet", -100.0, 10.0, 2.0, (-0.3, 0.55, 0.45)))
+                    for view, az, el, span, cen in views:
+                        path = os.path.join(args.aim_gifs, f"{recipe['name'].replace('_', '-')}-aim-{names[key]}-{view}.gif")
+                        size, n = aim_gif(path, aim, fig, f"{names[key]} {sc:.2f}", fps=args.gif_fps, sweep=6.0,
+                                          azimuth=az, elevation=el, span=span, centre=cen, left=left, right=right,
+                                          width=440, height=380)
                         print(f"{path} {n} frames {size / 1e6:.1f} MB")
     finally:
         shutil.rmtree(work, ignore_errors=True)
