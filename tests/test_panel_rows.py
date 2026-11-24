@@ -109,6 +109,45 @@ class PanelRows(unittest.TestCase):
                 rows = json.load(f)
             self.assertEqual(rows["T"]["order"][1], "faith")
 
+    def test_dropped_row_keeps_bars_and_caps_the_icon(self):
+        img, tops = synthetic_panel()
+        panel = {"id": "T", "x": [440, 688], "bottom": 1018, "blank_from": "gold", "keep_bars": True,
+                 "icon_scale_max": 1.1,
+                 "rows": [["oil", 784, 830], ["food", 830, 876], ["wood", 876, 922], ["gold", 922, 968],
+                          ["vill", 968, 1018]],
+                 "order": ["food", "wood", "gold", "vill"]}
+        out, new_tops = pr.build_panel(img.astype(np.float32), panel, {}, ".")
+        self.assertEqual(new_tops, [784, 842, 901, 960, 1018])          # four rows share the oil row's space
+        # the bar on top of the gold row is still BAR texels of rope, then the body
+        gold = out[901:960, 440:688]
+        self.assertTrue((np.abs(gold[:pr.BAR, 20, :3] - (90, 90, 100)).max(-1) < 2).all())
+        self.assertGreater(np.abs(gold[pr.BAR + 1, 20, :3] - (90, 90, 100)).max(), 20)
+        # the icon grew by at most 1.1: the gold square (25 texels high) is at most ~28 high
+        ys = np.nonzero((np.abs(gold[..., :3] - (230, 190, 40)).sum(-1) < 60).any(1))[0]
+        self.assertLessEqual(ys.max() - ys.min() + 1, 29)
+        self.assertGreater(ys.max() - ys.min() + 1, 22)
+
+    def test_out_path_writes_beside_the_original(self):
+        img, _ = synthetic_panel()
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "in", "art"))
+            with open(os.path.join(tmp, "in", "art", "t.ddt"), "wb") as f:
+                f.write(ddt.write(img, ddt.DXT3, alpha=4, mips=False))
+            spec = {"textures": [{"file": "art/t.ddt", "out": "art/t_b.ddt", "panels": [
+                {"id": "T", "x": [440, 688], "bottom": 1018, "blank_from": "gold", "keep_bars": True,
+                 "rows": [["oil", 784, 830], ["food", 830, 876], ["wood", 876, 922], ["gold", 922, 968],
+                          ["vill", 968, 1018]],
+                 "order": ["food", "wood", "gold", "vill"]}]}]}
+            with open(os.path.join(tmp, "spec.json"), "w", encoding="utf-8") as f:
+                json.dump(spec, f)
+            sys.argv = ["panel_rows", "--spec", os.path.join(tmp, "spec.json"), "--in", os.path.join(tmp, "in"),
+                        "--out", os.path.join(tmp, "out"), "--positions", os.path.join(tmp, "rows.json")]
+            pr.main()
+            self.assertTrue(os.path.exists(os.path.join(tmp, "out", "art", "t_b.ddt")))
+            self.assertFalse(os.path.exists(os.path.join(tmp, "out", "art", "t.ddt")))
+            with open(os.path.join(tmp, "rows.json"), encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["T"]["texture"], "art/t_b.ddt")
+
     def test_praying_hands_is_an_rgba_icon(self):
         im = draw_praying_hands.draw(64)
         self.assertEqual(im.size, (64, 64))
