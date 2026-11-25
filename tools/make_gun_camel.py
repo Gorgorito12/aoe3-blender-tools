@@ -2376,11 +2376,52 @@ class Unit:
             return translate(R, self.rider.rig, self.rider.rig.names[0].lower(), np.array([0.0, lift, 0.0]))
         return R
 
+    SIDESTEP = 0.45     # v5: the longest side step (metres) from the saddle back to his station
+    TO_STATION_TURN = 0.5   # share of the way from the saddle to the station spent turning to the gun
+
+    def to_station(self, keys, share):
+        """v5 (the station behind the turret): from standing at the saddle (the climb's key 4) he
+        side-steps back along the flank, still facing the saddle, in as many pairs of steps as keep
+        each step under SIDESTEP, then turns on the spot to face along the barrels while his hands go
+        to the grips (key 6). Played backward for the mount."""
+        from aoe3game.gr2_pose import blend
+        trav, rig = self.traverse, self.rider.rig
+        root = rig.names[0].lower()
+        (s4, k4), (_s6, k6) = keys[4], keys[6]
+        a = k4[root][:3, 3] - trav.stand[root][:3, 3]
+        sa = trav.s0 + a[[0, 2]]
+        sb, hb = trav.station(0.0)
+        n = max(1, int(math.ceil(float(np.linalg.norm(sb - sa)) / self.SIDESTEP)))
+        mid = s4 + (1.0 - s4) * (1.0 - self.TO_STATION_TURN)
+
+        def lead_of(M0, M1):
+            way = point(M1, trav.stand[root][:3, 3]) - point(M0, trav.stand[root][:3, 3])
+            if float(np.linalg.norm(way)) < 1e-6:           # turning on the spot: the foot that moves more
+                d = {s: float(np.linalg.norm(point(M1, trav.feet0[s][:3, 3]) - point(M0, trav.feet0[s][:3, 3])))
+                     for s in ("l", "r")}
+                return max(d, key=d.get)
+            return max(("l", "r"), key=lambda s: float(point(M0, trav.feet0[s][:3, 3]) @ way))
+        if share <= mid:
+            g = (share - s4) / (mid - s4) * n
+            i = min(int(g), n - 1)
+            M0 = trav.M(sa + (sb - sa) * i / n, trav.h0)
+            M1 = trav.M(sa + (sb - sa) * (i + 1) / n, trav.h0)
+            body = trav.walk(M0, M1, g - i, lead_of(M0, M1), (0.0, 0.5), (0.5, 1.0))
+            w = smooth(min(1.0, 2.0 * g / n))                 # his hands leave the saddle (first half)
+            return self.above_ground(blend(rig, k4, body, w))
+        f = (share - mid) / (1.0 - mid)
+        M0, M1 = trav.M(sb, trav.h0), trav.M(sb, hb)
+        body = trav.walk(M0, M1, f, lead_of(M0, M1), (0.0, 0.5), (0.5, 1.0))
+        w = smooth(min(1.0, max(0.0, (f - 0.3) / 0.7)))       # his hands go to the grips
+        return self.above_ground(blend(rig, body, k6, w))
+
     def climb(self, P, C, fr, attach, share):
         """The rider at `share` (0 seated, 1 at the gun) of getting off the couched camel."""
         from aoe3game.gr2_pose import blend
         keys = self.climb_keys(P, C, fr)
         share = min(max(share, 0.0), 1.0)
+        if self.steps_in() and share > keys[4][0]:
+            return self.to_station(keys, share)
         i = max(j for j, (k, _p) in enumerate(keys) if k <= share + 1e-9)
         i = min(i, len(keys) - 2)
         (s0, p0), (s1, p1) = keys[i], keys[i + 1]
