@@ -404,6 +404,22 @@ class Ordinary(unittest.TestCase):
         by = {r.clip: r.status for r in results(rep, "grip")}
         self.assertEqual(by, {"hold": ac.PASS, "drift": ac.FAIL})
 
+    def test_hands_ahead_of_the_chest(self):
+        # arms raised forward to a grip pass; an arm swung back behind the chest's plane fails, and
+        # a frame range leaves out the beat where the hand goes back on purpose
+        fwd = clip(1.0, {"Bip01 R UpperArm": (None, turn(X, -80.0))})
+        back = clip(1.0, {"Bip01 R UpperArm": (None, turn(X, lambda t: 60.0 * ease(t, 0.4, 0.6)))})
+        rule = {"name": "right hand in front", "point": "man:bip01 r hand", "of": "man:bip01 r upperarm", "min": 0.15}
+        rep = ac.check(human_job({"fwd": {"anims": {"man": fwd}}, "back": {"anims": {"man": back}}}, ahead=[rule]))
+        by = {r.clip: r.status for r in results(rep, "ahead")}
+        self.assertEqual(by, {"fwd": ac.PASS, "back": ac.FAIL})
+        early = dict(rule, clips=["back"], frames=[[0.0, 0.3]])
+        rep = ac.check(human_job({"back": {"anims": {"man": back}}}, ahead=[early]))
+        self.assertEqual(status(rep, "ahead"), ac.FAIL)          # the arm hangs: 0 cm ahead, under 15
+        hang = dict(rule, min=-0.01, frames=[[0.0, 0.3]])
+        rep = ac.check(human_job({"back": {"anims": {"man": back}}}, ahead=[hang]))
+        self.assertEqual(status(rep, "ahead"), ac.PASS)
+
     def test_a_hand_inside_the_torso_fails(self):
         into = clip(1.0, {"Bip01 L UpperArm": (None, turn(Z, lambda t: 60.0 * ease(t, 0, 1)))})
         rep = ac.check(human_job({"into": {"anims": {"man": into}}}))
