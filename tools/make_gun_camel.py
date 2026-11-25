@@ -50,7 +50,9 @@ The variants (`variants` of the recipe):
   to the camel's heading, upright, and laid on the ground), is held down 2 s while the gunner
   gets off step by step (`Unit.climb_keys`) and he cranks the gun on foot (the gun mirrored, its
   crank outside); as the gun turns on its post he steps round it (`Traverse.stair`: his feet
-  planted, one foot stepping at a time), and he reloads on foot from the pocket on his thigh. To
+  planted, one foot stepping at a time), and he reloads on foot from the pocket on his thigh. With
+  the long handles "v5" (recipe "handles", the default) he stands behind the turret with both hands
+  in front of his chest, and walks in to the hopper to reload and back (`Traverse.reload_body`). To
   undeploy he gets back on and the camel rises (the default again since round 4, 2026-11-24;
   recipe "b_mounted" true: the gunner stays in the saddle and works the gun as A does).
 - The gun's `bone_yaw` (on the post's top, the casing's parent) and the camel's `bone_turret`
@@ -1006,6 +1008,20 @@ POCKET_TRUNK = (0.45, 28.0)
 # breech's top
 HANDLE_DROP = 0.25
 HANDLE_BAR = (0.25, 0.45)
+# the handles' versions (recipe "handles"): v4, the drop crank's axle straight under the gun's crank
+# and the bar 25 cm back, his stations beside the gun (his right palm ended 31-40 cm behind his
+# shoulder); v5, the drop crank's axle also HANDLE_SETS["v5"]["crank_back"] back and "crank_out"
+# outboard (a slanted shaft, a gear box at each end) and the bar 15 cm back, so both grips sit side
+# by side behind the breech, like handlebars, and he stands behind the turret with both hands in front
+# of his chest (Traverse, "palms_ahead")
+HANDLE_SETS = {"v4": {"crank_back": 0.0, "crank_out": 0.0, "bar": (0.25, 0.45)},
+               "v5": {"crank_back": 0.30, "crank_out": 0.18, "bar": (0.15, 0.45), "bar_side": 0.18}}
+HANDLES = "v5"
+# v5 stations: each palm at least PALM_AHEAD metres in front of its shoulder along his facing, the
+# elbows bent ELBOW_BEND degrees (from straight), preferably the middle
+PALM_AHEAD = 0.15
+ELBOW_BEND = (20.0, 60.0)
+ELBOW_SEARCH = (15.0, 60.0)     # the band the station search aims for: room for his lean and chest turn
 B_CARRY_END = 0.76        # B's carry to the hopper ends here (share of the reload); seated by B_SEAT
 B_SEAT = 0.84             # B: the new magazine seated (A: 0.82), pressed home by B_SEAT + 0.04
 B_HAND_ARC = 0.28         # B's hand swings this far in front of him on its way down to the pocket
@@ -1146,6 +1162,7 @@ class Unit:
         # B on foot: the long handles (round 4, the user's choice): his left hand on a drop crank,
         # his right on a traverse bar, both at his chest
         self.long = self.style == "B" and recipe.get("long_handles", True)
+        self.handle_set = recipe.get("handles", HANDLES)
         if self.long:
             self.long_handles(recipe.get("handle_drop", HANDLE_DROP))
 
@@ -1220,7 +1237,8 @@ class Unit:
         fwd_w = unit(A @ Z)
         fwd_w = unit(fwd_w - (fwd_w @ Y) * Y)
         axle_w = point(C, g.at["crank"])
-        low_w = axle_w + drop * down_w + 0.03 * out_w
+        hs = HANDLE_SETS[self.handle_set]
+        low_w = axle_w + drop * down_w + (0.03 + hs["crank_out"]) * out_w - hs["crank_back"] * fwd_w
         g.at["crank2"] = point(inv, low_w)
         parts = g.parts()
         cpos, cnrm, cuv, ctri, cmat, ctan = parts["crank"]
@@ -1297,9 +1315,9 @@ class Unit:
         made["dropshaft"] = (mesh(*merge(shaft, boxes)), "cannon")
         # the traverse bar
         bt_w = point(C, g.breech_top)
-        back, down = HANDLE_BAR
+        back, down = hs["bar"]
         start = bt_w - 0.02 * fwd_w + 0.04 * down_w
-        grip = bt_w - back * fwd_w + down * down_w
+        grip = bt_w - back * fwd_w + down * down_w + hs.get("bar_side", 0.0) * out_w
         side_w = unit(np.cross(Y, fwd_w))
         bar = merge(cylinder(start + 0.03 * fwd_w, grip, 0.012), cylinder(grip - 0.06 * side_w, grip + 0.06 * side_w, 0.016),
                     box(start + 0.01 * fwd_w, side_w, Y, fwd_w, (0.03, 0.025, 0.012)))
@@ -1420,6 +1438,8 @@ class Unit:
         (A, and B mounted) or standing at the gun (B on foot)."""
         if self.style == "A":
             return self.rider.seated(self.rider.idle, 0.0, rigid(P[self.camel.rider_bone]))
+        if getattr(self, "_reload_t", None) is not None and self.steps_in():
+            return self.traverse.reload_body(self._reload_t)     # v5: stepped in to the hopper
         return self.station_body()
 
     def body_axes(self, R):
@@ -1460,6 +1480,27 @@ class Unit:
         o = top - Rw @ (g.mag_top - seat)
         W = tr(o) @ rot4(Rw)
         return np.linalg.inv(C) @ W, (right, up, fwd), top, unit(Rw @ Y)
+
+    def reload_times(self):
+        """The reload's beats as shares of its 3.00 s: the left hand takes the empty magazine (take),
+        it is lifted (lifted) and let go (rel), the hand is at the pocket (pocket) and closed on the
+        full one (closed), drawn (drawn), changes its grip on the way (regrip), the carry ends over the
+        hopper (carry_end), seated (seat), pressed home (press, a share of its own), the hand back on
+        its grip (back); the chest turned to the pocket (turn) and leaning in to the hopper (hop).
+        B with the v5 handles walks in to the hopper first and back at the end (Traverse.RELOAD_*):
+        the beats between are the same, closer together."""
+        if self.style == "A":
+            return {"take": 0.10, "lifted": 0.22, "rel": 0.34, "pocket": 0.48, "closed": 0.52, "drawn": 0.62,
+                    "regrip": 0.74, "carry_end": 0.76, "seat": 0.82, "press": 0.04, "back": 1.0,
+                    "turn": (0.36, 0.66), "hop": (0.62, 0.95)}
+        if not self.steps_in():
+            return {"take": 0.10, "lifted": 0.22, "rel": 0.34, "pocket": 0.48, "closed": 0.52, "drawn": 0.62,
+                    "regrip": 0.74, "carry_end": B_CARRY_END, "seat": B_SEAT, "press": 0.04, "back": 1.0,
+                    "turn": (0.36, 0.66), "hop": (0.62, 0.95)}
+        s = lambda t: t / 3.0
+        return {"take": s(0.45), "lifted": s(0.66), "rel": s(1.02), "pocket": s(1.42), "closed": s(1.52),
+                "drawn": s(1.80), "regrip": s(2.22), "carry_end": s(2.22), "seat": s(2.36), "press": s(0.10),
+                "back": 1.0, "turn": (s(1.05), s(1.86)), "hop": (s(1.80), s(2.50))}
 
     def reload_plan(self, poses, times, length):
         """The reload, frame by frame: (the old magazine's frames, the new one's, the left hand's
@@ -1515,11 +1556,14 @@ class Unit:
 
         def seg(u, a, b):
             return (u - a) / (b - a)
-        # the toss: released at U_REL from the hand, a throw to his left and up, in the world
-        U_REL = 0.34
+        # the beats (shares of the clip, Unit.reload_times); the toss: released at U_REL from the hand,
+        # a throw to his left and up, in the world
+        T = self.reload_times()
+        U_REL = T["rel"]
         i_rel = int(np.argmin(np.abs(np.asarray(times) / length - U_REL)))
         Crel = self.C(poses[i_rel])
         # his left and his forward in design space (A: the camel's left and forward)
+        self._reload_t = times[i_rel]
         b_right, _b_up, b_fwd = self.body_axes(self.base_body(poses[i_rel]))
         inv_rel = np.linalg.inv(Crel)[:3, :3]
         left_d, fwd_d = unit(inv_rel @ -b_right), unit(inv_rel @ b_fwd)
@@ -1534,10 +1578,11 @@ class Unit:
         t_land = (-b_ - math.sqrt(b_ * b_ - 4 * a * c)) / (2 * a)
         flight = (times[i_rel], p0, v0, g_acc, t_land, Crel[:3, :3] @ throw[:3, :3])
         old, new, hand, turn, look = [], [], [], [], []
-        seat_at = B_SEAT if self.style == "B" else 0.82
+        seat_at = T["seat"]
         toward = None
         for t, P in zip(times, poses):
             u = t / length
+            self._reload_t = t                     # base_body: where he stands at t (v5 steps in)
             C = self.C(P)
             invC = np.linalg.inv(C)
             inpocket, _axes, top_w, along = self.pocket(P)
@@ -1560,15 +1605,15 @@ class Unit:
                     drawn = invC @ tr(self.POCKET_FOOT_DRAW * along) @ best[1] @ Wp
             toward = top_w
             # the new magazine: in the camel's body, in the pocket, drawn, carried over, seated
-            if self.style == "B" and (u < 0.52 or u >= 0.95):
+            if self.style == "B" and (u < T["closed"] or u >= 0.95):
                 N = inpocket                       # B: refined from his own body in build()
             elif u < 0.01 or u >= 0.95:
                 N = stash
-            elif u < 0.52:
+            elif u < T["closed"]:
                 N = inpocket
-            elif u < 0.62:
-                N = lerp_frame(inpocket, drawn, seg(u, 0.52, 0.62))
-            elif u < B_CARRY_END and self.style == "B":
+            elif u < T["drawn"]:
+                N = lerp_frame(inpocket, drawn, seg(u, T["closed"], T["drawn"]))
+            elif u < T["carry_end"] and self.style == "B":
                 # standing, the straight way from his hip to the hopper passes his shoulder: he brings
                 # the magazine in front of his chest first, then up into the hopper
                 body = self.base_body(P)
@@ -1580,36 +1625,40 @@ class Unit:
                 d1 = float(np.linalg.norm(way_w - point(C, drawn[:3, 3])))
                 d2 = float(np.linalg.norm(lift_w - way_w))
                 # one even stroke through the waypoint, each part in time as long as it is
-                split = 0.62 + (B_CARRY_END - 0.62) * d1 / max(d1 + d2, 1e-6)
-                w_all = smooth(seg(u, 0.62, B_CARRY_END))
-                w_at = smooth(seg(split, 0.62, B_CARRY_END))
+                split = T["drawn"] + (T["carry_end"] - T["drawn"]) * d1 / max(d1 + d2, 1e-6)
+                w_all = smooth(seg(u, T["drawn"], T["carry_end"]))
+                w_at = smooth(seg(split, T["drawn"], T["carry_end"]))
                 if w_all < w_at:
                     N = lerp_frame(drawn, front, w_all / max(w_at, 1e-6), ease=False)
                 else:
                     N = lerp_frame(front, lifted, (w_all - w_at) / max(1.0 - w_at, 1e-6), ease=False)
-            elif u < 0.76:
-                N = lerp_frame(drawn, lifted, seg(u, 0.62, 0.76))
+                # it turns upright over the whole carry, not only on the way to the waypoint (a
+                # waypoint near the draw's end would turn it, and the hand on it, in a few frames)
+                N = N.copy()
+                N[:3, :3] = lerp_frame(drawn, lifted, w_all, ease=False)[:3, :3]
+            elif u < T["carry_end"]:
+                N = lerp_frame(drawn, lifted, seg(u, T["drawn"], T["carry_end"]))
             elif u < seat_at:
-                N = lerp_frame(lifted, seated, seg(u, B_CARRY_END if self.style == "B" else 0.76, seat_at))
+                N = lerp_frame(lifted, seated, seg(u, T["carry_end"], seat_at))
             else:
                 N = seated
-            if self.style == "B" and 0.52 <= u < 0.76:
+            if self.style == "B" and T["closed"] <= u < T["carry_end"]:
                 # his hand never comes within B_HAND_CLEAR of his own shoulder (the elbow folded flat
                 # turns over): the magazine is pushed out from it
                 sh_w = self.base_body(P)["bip01 l upperarm"][:3, 3]
                 gp = point(C, point(N, g.mag_top - seat))
                 dvec = gp - sh_w
                 dist_ = float(np.linalg.norm(dvec))
-                ramp = smooth(min(1.0, max(0.0, min((u - 0.52) / 0.06, (0.76 - u) / 0.06))))
+                ramp = smooth(min(1.0, max(0.0, min((u - T["closed"]) / 0.06, (T["carry_end"] - u) / 0.06))))
                 if dist_ < B_HAND_CLEAR and ramp > 0.0:
                     N = invC @ tr(ramp * (B_HAND_CLEAR - dist_) * unit(dvec)) @ C @ N
             # the old one
-            if u < 0.10:
+            if u < T["take"]:
                 O = seated
-            elif u < 0.22:
-                O = lerp_frame(seated, lifted, seg(u, 0.10, 0.22))
+            elif u < T["lifted"]:
+                O = lerp_frame(seated, lifted, seg(u, T["take"], T["lifted"]))
             elif u < U_REL:
-                O = lerp_frame(lifted, throw, seg(u, 0.22, U_REL))
+                O = lerp_frame(lifted, throw, seg(u, T["lifted"], U_REL))
             elif u < 0.95:
                 t0, p0, v0, g_acc, t_land, R0 = flight
                 dt = min(t - t0, t_land)
@@ -1628,34 +1677,36 @@ class Unit:
             else:
                 O = seated
             # the left hand
-            if u < 0.10:
-                H = mix(rest, grip(seated), seg(u, 0.0, 0.10))
+            if u < T["take"]:
+                H = mix(rest, grip(seated), seg(u, 0.0, T["take"]))
             elif u < U_REL:
                 H = grip(O)
-            elif u < 0.48:
-                H = mix(grip(throw), top_grip(inpocket), seg(u, U_REL, 0.48))
+            elif u < T["pocket"]:
+                H = mix(grip(throw), top_grip(inpocket), seg(u, U_REL, T["pocket"]))
                 if self.style == "B":
                     # standing, his hand comes down to the thigh in front of him, clear of his shoulder
-                    bulge = B_HAND_ARC * math.sin(math.pi * smooth(seg(u, U_REL, 0.48)))
+                    bulge = B_HAND_ARC * math.sin(math.pi * smooth(seg(u, U_REL, T["pocket"])))
                     H = (H[0] + invC[:3, :3] @ (bulge * _axes[2]), H[1], H[2])
-            elif u < 0.62:
+            elif u < T["drawn"]:
                 H = top_grip(N)
-            elif u < 0.74:
-                H = mix(top_grip(N), grip(N), seg(u, 0.62, 0.74))
+            elif u < T["regrip"]:
+                H = mix(top_grip(N), grip(N), seg(u, T["drawn"], T["regrip"]))
             elif u < seat_at:
                 H = grip(N)
-            elif u < seat_at + 0.04:                                        # pressed home
+            elif u < seat_at + T["press"]:                                  # pressed home
                 p, f, n = grip(seated)
-                H = (p + np.array([0.0, -0.015 * math.sin(math.pi * seg(u, seat_at, seat_at + 0.04)), 0.0]), f, n)
+                H = (p + np.array([0.0, -0.015 * math.sin(math.pi * seg(u, seat_at, seat_at + T["press"])), 0.0]), f, n)
             else:
-                H = mix(grip(seated), rest, seg(u, seat_at + 0.04, 1.0))
+                H = mix(grip(seated), rest, seg(u, seat_at + T["press"], T["back"]))
             # the chest turned a little toward the pocket while he reaches down to it
-            w = 0.0 if u < 0.36 or u > 0.66 else math.sin(math.pi * seg(u, 0.36, 0.66))
+            a_, b_ = T["turn"]
+            w = 0.0 if u < a_ or u > b_ else math.sin(math.pi * seg(u, a_, b_))
             old.append(O)
             new.append(N)
             hand.append(H)
             turn.append(w)
             look.append(point(C, H[0]))
+        self._reload_t = None
         look = self.calm_gaze(poses, times, length, look)
         # the instant moves, out of sight: the new one from the camel's body to the pocket (u 0.01)
         # and back (0.95, seated inside the old one), the old one back in the gun (0.95, inside the
@@ -1933,7 +1984,7 @@ class Unit:
             else:
                 R = self.rider_pose(clip, do, t, length, u, P, C, fr, base, attach, b)
             if self.style == "B" and self.r.get("reload") == "toss" and not rolls:
-                in_pocket = plan is None or u < 0.52 or u >= 0.95
+                in_pocket = plan is None or u < self.reload_times()["closed"] or u >= 0.95
                 if in_pocket:
                     fr = dict(fr)
                     fr["ammo2"] = self.pocket(P, R)[0]
@@ -2051,12 +2102,14 @@ class Unit:
             return rider.seated(rider.idle, 0.0, attach)
         if do in ("stand", "fire", "reload"):
             yaw = self.yaw_of(fr)
-            if getattr(self, "_stand_at", None) is not None:
+            if do == "reload" and self.steps_in():
+                stand = self.traverse.reload_body(t)   # v5: he steps in to the hopper and back
+            elif getattr(self, "_stand_at", None) is not None:
                 stand = self._stand_at                 # placed on his feet by a Traverse (preview)
             elif abs(yaw) > 0.5:
                 stand = self.step_around(stand, C, fr, yaw)
             R = self.at_gun(stand, C, fr, do, u, b, trunk=(0.1 if do == "reload" else 0.35, 22.0)
-                            if getattr(self, "_stand_at", None) is not None else None)
+                            if getattr(self, "_stand_at", None) is not None else None, t=t)
             plan_at = getattr(self, "_plan_at", None) if do == "reload" else None
             if plan_at is not None:
                 return rider.look(R, plan_at[0]["look"][plan_at[1]])
@@ -2073,7 +2126,28 @@ class Unit:
         k = (t - t0) / max(t1 - t0, 1e-9)
         return self.climb(P, C, fr, attach, k if do == "dismount" else 1.0 - k)
 
-    def at_gun(self, stand, C, fr, do, u, b, trunk=None):
+    def steps_in(self):
+        """B on foot with the v5 handles: he reloads from a spot nearer the hopper (Traverse.reload_spot)."""
+        return (self.style == "B" and getattr(self, "long", False) and self.handle_set != "v4"
+                and getattr(self, "traverse", None) is not None)
+
+    def right_reload_goal(self, C, fr, t):
+        """v5 reload: the right hand from the traverse bar to the flat of the breech box's near side
+        while he steps in, and back while he steps out (a small arc up between)."""
+        w = self.traverse.reload_share(t)
+        if w <= 0.0:
+            return "bar"
+        if w >= 1.0:
+            return "casing_side"
+        goals = []
+        for name in ("bar", "casing_side"):
+            palm_d, fin, nor = self.target(name, fr)
+            goals.append((point(C, palm_d), self.world_dir(C, fin), self.world_dir(C, nor)))
+        (pa, fa, na), (pb, fb, nb) = goals
+        return ("world", pa + w * (pb - pa) + np.array([0.0, 0.06 * math.sin(math.pi * w), 0.0]),
+                unit((1 - w) * fa + w * fb), unit((1 - w) * na + w * nb))
+
+    def at_gun(self, stand, C, fr, do, u, b, trunk=None, t=None):
         """The gunner on foot at the gun (B): leaning toward it, his chest turned partly toward
         where it fires, the right hand on the crank and the left on the casing or the magazine."""
         rider = self.rider
@@ -2097,7 +2171,8 @@ class Unit:
             # leans back a little while he carries the new magazine over and seats it, so his hand comes
             # to it from in front of him, not through his shoulder
             hop = point(C, self.gun.at["ammo"])
-            w2 = math.sin(math.pi * min(1.0, max(0.0, (u - 0.62) / 0.33))) if 0.62 < u < 0.95 else 0.0
+            a_, b_ = self.reload_times()["hop"]
+            w2 = math.sin(math.pi * min(1.0, max(0.0, (u - a_) / (b_ - a_)))) if a_ < u < b_ else 0.0
             if w2 > 0.0:
                 R = rider.turn_trunk_to(R, hop, 0.8 * w2, 40.0 * w2)
                 R = rider.turn(R, "bip01 spine", unit(np.cross(unit(fwd), Y)), B_RELOAD_LEAN_BACK * w2)
@@ -2108,7 +2183,8 @@ class Unit:
         if self.long:
             if plan_at is None and do != "reload":
                 left = "dropcrank"
-            return self.hands(R, C, fr, {"r": "bar", "l": left}, b)
+            right = self.right_reload_goal(C, fr, t) if do == "reload" and t is not None and self.steps_in() else "bar"
+            return self.hands(R, C, fr, {"r": right, "l": left}, b)
         return self.hands(R, C, fr, {"r": "crank", "l": left}, b)
 
     def station_body(self):
@@ -2756,6 +2832,11 @@ class Traverse:
         self.body_r = min(self.BODY_R, float(np.sqrt(((self.body_pts - self.s0) ** 2).sum(1)).min()) - 0.01)
         fr0 = [self.feet0[s][:3, 3][[0, 2]] for s in ("l", "r")]
         self.foot_r = min(self.FOOT_R, min(float(np.sqrt(((self.low_pts - f) ** 2).sum(1)).min()) for f in fr0) - 0.01)
+        # upper arm, and elbow to palm (metres)
+        st = self.stand
+        self.arm_len = {s: (float(np.linalg.norm(st[f"bip01 {s} forearm"][:3, 3] - st[f"bip01 {s} upperarm"][:3, 3])),
+                            float(np.linalg.norm(st[f"bip01 {s} hand"][:3, 3] - st[f"bip01 {s} forearm"][:3, 3])))
+                        for s in ("l", "r")}
         self._cache = {}
 
     # a station: (x, z) of his root on the ground and his heading (degrees about +y, 90: facing +x)
@@ -2786,6 +2867,21 @@ class Traverse:
         left = u.target(left, fr) if isinstance(left, str) else left
         return point(self.C, u.target("crank", fr)[0]), point(self.C, left[0])
 
+    def wrist_goals(self, fr):
+        """{side: wrist} in the world for the long handles' grips: the wrist where the hand holds
+        its grip (palm on it, fingers and palm turned as the grip asks), so a reach is measured to
+        what the arm's two bones must reach."""
+        from aoe3game.gr2_pose import basis_of
+        u, body = self.u, self.u.rider.body
+        out = {}
+        for s, name in (("r", "bar"), ("l", "dropcrank")):
+            palm_d, fin, nor = u.target(name, fr)
+            palm = point(self.C, palm_d)
+            rot = basis_of(u.world_dir(self.C, fin), u.world_dir(self.C, nor)) @ \
+                basis_of(body.finger_local[s], body.normal_local[s]).T
+            out[s] = palm - rot @ body.palm_local[s]
+        return out
+
     def _search(self, yaw, prev):
         u = self.u
         fr = u.gun.frames({"yaw": yaw})
@@ -2811,6 +2907,7 @@ class Traverse:
         S, body_clear = self._grid
         n = len(S)
         hr, hl = self.hand_goals(fr)
+        wrists = self.wrist_goals(fr) if getattr(u, "long", False) else None
         g = 0.5 * (hr + hl)
         # headings: facing the grips' middle (as at rest), then turned -30..30 degrees from it
         base = np.degrees(np.arctan2(g[0] - (S[:, 0]), g[2] - (S[:, 1]))) + self.hoff
@@ -2823,8 +2920,10 @@ class Traverse:
         p1 = p1 + 1.5 * (p1 - p0) / max(np.linalg.norm(p1 - p0), 1e-6)
         seg = np.array([p1[0] - p0[0], p1[2] - p0[2]])
         L2 = max(seg @ seg, 1e-9)
-        camel = 400.0 * np.maximum(0.0, self.body_r - body_clear)
-        for dh in np.arange(-30.0, 30.1, 6.0):
+        hard = 8000.0 if getattr(u, "long", False) and u.handle_set != "v4" else 400.0   # v5: clearances first
+        camel = hard * np.maximum(0.0, self.body_r - body_clear)
+        wide = 42.0 if getattr(u, "long", False) and u.handle_set != "v4" else 30.0
+        for dh in np.arange(-wide, wide + 0.1, 6.0):
             h = base + dh
             a = np.radians(h - self.h0)
             cos, sin = np.cos(a), np.sin(a)
@@ -2834,15 +2933,41 @@ class Traverse:
                 return S[:, 0] + x0 * cos + z0 * sin, np.full(n, p[1]), S[:, 1] - x0 * sin + z0 * cos
             cost = camel.copy()
             reach = np.zeros(n)
+            ahead_v5 = getattr(u, "long", False) and u.handle_set != "v4"
             for s, goal in (("r", hr), ("l", hl)):
                 x, y, z = place(self.stand[f"bip01 {s} upperarm"][:3, 3])
                 d = np.sqrt((goal[0] - x) ** 2 + (goal[1] - y) ** 2 + (goal[2] - z) ** 2)
+                if ahead_v5:
+                    # v5: the palm in front of his chest (PALM_AHEAD along his facing), the elbow bent
+                    # ELBOW_BEND (the middle preferred): hard limits, then the preference
+                    La, Lb = self.arm_len[s]
+                    wr = wrists[s]
+                    d = np.sqrt((wr[0] - x) ** 2 + (wr[1] - y) ** 2 + (wr[2] - z) ** 2)
+                    bend = np.degrees(np.arccos(np.clip((d * d - La * La - Lb * Lb) / (2 * La * Lb), -1.0, 1.0)))
+                    hr_ = np.radians(h)
+                    ahead = (goal[0] - x) * np.sin(hr_) + (goal[2] - z) * np.cos(hr_)
+                    lo, hi = ELBOW_SEARCH
+                    cost += 2.0 * np.maximum(0.0, lo - bend) ** 2 + 2.0 * np.maximum(0.0, bend - hi) ** 2
+                    cost += 1e3 * (d > La + Lb)
+                    cost += 400.0 * np.maximum(0.0, PALM_AHEAD - ahead)
+                    cost += 0.002 * (bend - 0.5 * (lo + hi)) ** 2
+                    reach = np.maximum(reach, d - (La + Lb))
+                    continue
                 # as far from the grip as at rest; farther (a straighter arm) costs much more
                 cost += 40.0 * (d - self._arm0[s]) ** 2 + 800.0 * np.maximum(0.0, d - self._arm0[s]) ** 2
                 reach = np.maximum(reach, d - self._arm0[s])
+            if ahead_v5:
+                # facing the barrels, and behind the turret (on the side away from the muzzle) as far
+                # as the camel lets him
+                cost += 0.002 * dh ** 2
+                cx, _cy, cz = place(self.sh0)
+                rx, rz = cx - p0[0], cz - p0[2]
+                bx, bz = -seg[0] / math.sqrt(L2), -seg[1] / math.sqrt(L2)
+                behind = np.degrees(np.arccos(np.clip((rx * bx + rz * bz) / np.maximum(np.hypot(rx, rz), 1e-6), -1, 1)))
+                cost += 0.0003 * behind ** 2
             for s in ("l", "r"):
                 fx, _fy, fz = place(self.feet0[s][:3, 3])
-                cost += 400.0 * np.maximum(0.0, self.foot_r - self._mind(np.c_[fx, fz], self.low_pts))
+                cost += hard * np.maximum(0.0, self.foot_r - self._mind(np.c_[fx, fz], self.low_pts))
             # his head out of the barrels' line (pivot to well past the muzzle, near his head's height)
             hx, _hy, hz = place(self.stand["bip01 head"][:3, 3])
             w = np.clip(((hx - p0[0]) * seg[0] + (hz - p0[2]) * seg[1]) / L2, 0.0, 1.0)
@@ -2853,7 +2978,8 @@ class Traverse:
                 dturn = (h - prev[1] + 180.0) % 360.0 - 180.0
                 cost += 3.0 * ((S - prev[0]) ** 2).sum(1) + 0.0004 * dturn ** 2
                 # stations change little from one yaw step to the next (short steps, feet never crossed)
-                cost += 1e4 * ((np.sqrt(((S - prev[0]) ** 2).sum(1)) > 0.10) | (np.abs(dturn) > 9.0))
+                far, turn = prev[2] if len(prev) > 2 else (0.10, 9.0)
+                cost += 1e4 * ((np.sqrt(((S - prev[0]) ** 2).sum(1)) > far) | (np.abs(dturn) > turn))
             if not getattr(u, "long", False):
                 cost += 0.3 * ((S - self.s0) ** 2).sum(1)
             i = int(np.argmin(cost))
@@ -2863,8 +2989,24 @@ class Traverse:
         return st, c, info
 
     def table(self, step=5):
-        """{yaw: (station, cost, info)} from 0 out to +90 and to -90, each from its neighbour."""
+        """{yaw: (station, cost, info)} from 0 out to +90 and to -90, each from its neighbour. v5
+        (long handles, handles "v5"): only the stations the steps go between (Traverse.stair: 0, the
+        ends of the 45-degree segments to his right and the arc's end to his left), each from the one
+        before it within two steps' reach (STATION_STEP metres, STATION_TURN degrees); the stations
+        between are not stood at."""
         if not self._cache:
+            u = self.u
+            if getattr(u, "long", False) and u.handle_set != "v4":
+                self._cache[0] = self._search(0.0, None)
+                for sign in (1, -1):
+                    step_, count = self.segments(sign)
+                    prev = self._cache[0][0]
+                    for k in range(1, count + 1):
+                        y = sign * k * step_
+                        st, c, info = self._search(y, (prev[0], prev[1], (self.STATION_STEP, self.STATION_TURN)))
+                        self._cache[y] = (st, c, info)
+                        prev = st
+                return self._cache
             if getattr(self.u, "long", False):        # his station at 0 found like the others
                 st, c, info = self._search(0.0, None)
                 self._cache[0] = (st, c, info)
@@ -2898,6 +3040,8 @@ class Traverse:
     # finish when the gun comes to rest (the aim file lists the bands), so no foot is left in the air.
     STAIR_STEP = 45.0
     STAIR_LEFT = 30.0           # B's arc toward his own side ends here (round 4: -30)
+    STATION_STEP = 0.55         # v5: a station at most this far (metres) from the one before (two steps)
+    STATION_TURN = 50.0         # ... and turned at most this much (degrees)
     STAIR_LEAD = (1.0 / 45.0, 21.0 / 45.0)
     STAIR_TRAIL = (24.0 / 45.0, 44.0 / 45.0)
 
@@ -2941,10 +3085,16 @@ class Traverse:
         f = (a - k * step) / step                      # the share of the segment crossed
         y0, y1 = sign * k * step, sign * (k + 1) * step
         M0, M1 = self.M(*self.station(y0)), self.M(*self.station(y1))
-        lead = self.lead_foot(sign)
+        return self.walk(M0, M1, f, self.lead_foot(sign), self.STAIR_LEAD, self.STAIR_TRAIL)
+
+    def walk(self, M0, M1, f, lead, lead_band, trail_band):
+        """His body on his feet going from the place M0 to M1 (Traverse.M), `f` (0..1) of the way:
+        the leading foot lifted and carried while f crosses `lead_band`, the other in `trail_band`,
+        planted otherwise; his body between his feet, the legs solved to them."""
+        from aoe3game.gr2_pose import translate, two_bone_ik
         cur, lift = {}, 0.0
         for s in ("l", "r"):
-            lo, hi = self.STAIR_LEAD if s == lead else self.STAIR_TRAIL
+            lo, hi = lead_band if s == lead else trail_band
             r = min(1.0, max(0.0, (f - lo) / (hi - lo)))
             A, Bm = M0 @ self.feet0[s], M1 @ self.feet0[s]
             kk = smooth(r)
@@ -2972,6 +3122,78 @@ class Traverse:
             body = two_bone_ik(body, self.rig, th, ca, fo, cur[s][:3, 3], fwd, body_h[th], body_h[ca],
                                end_frame=cur[s][:3, :3])
         return body
+
+    # v5 reload: from his station behind the turret the hopper is out of reach, so he steps in to
+    # RELOAD_SPOT (two steps, RELOAD_STEP_IN of the clip) and back (RELOAD_STEP_OUT)
+    RELOAD_STEP_IN = (0.0, 0.50)      # seconds: two steps of 0.25 s (about 0.8 m, a brisk walk)
+    RELOAD_STEP_OUT = (2.50, 3.00)
+
+    def reload_spot(self):
+        """(x, z), heading: where he stands to reload with the gun at 0 (v5): his left hand as near
+        the magazine in the hopper as the lying camel lets him stand, his right hand reaching the
+        breech box's near side, few steps from his station, facing within 40 degrees of the hopper."""
+        if getattr(self, "_reload_spot", None) is not None:
+            return self._reload_spot
+        u = self.u
+        self.table()
+        fr = u.gun.frames({})
+        S, body_clear = self._grid
+        n = len(S)
+        mag = point(self.C, u.target("magazine", fr)[0])
+        box = point(self.C, u.target("casing_side", fr)[0])
+        s0_, _h0 = self.station(0.0)
+        camel = 400.0 * np.maximum(0.0, self.body_r - body_clear)
+        base = np.degrees(np.arctan2(mag[0] - S[:, 0], mag[2] - S[:, 1]))
+        best = (np.inf, None)
+        for dh in np.arange(-40.0, 40.1, 5.0):
+            h = base + dh
+            a = np.radians(h - self.h0)
+            cos, sin = np.cos(a), np.sin(a)
+
+            def place(p):
+                x0, z0 = p[0] - self.s0[0], p[2] - self.s0[1]
+                return np.c_[S[:, 0] + x0 * cos + z0 * sin, np.full(n, p[1]), S[:, 1] - x0 * sin + z0 * cos]
+            cost = camel.copy()
+            dl = np.linalg.norm(mag - place(self.stand["bip01 l upperarm"][:3, 3]), axis=1)
+            dr = np.linalg.norm(box - place(self.stand["bip01 r upperarm"][:3, 3]), axis=1)
+            cost += 40.0 * dl ** 2 + 400.0 * np.maximum(0.0, dr - sum(self.arm_len["r"]) - 0.12)
+            for s in ("l", "r"):
+                f_ = place(self.feet0[s][:3, 3])
+                cost += 400.0 * np.maximum(0.0, self.foot_r - self._mind(f_[:, [0, 2]], self.low_pts))
+            cost += 0.5 * ((S - s0_) ** 2).sum(1) + 0.0005 * dh ** 2
+            i = int(np.argmin(cost))
+            if cost[i] < best[0]:
+                best = (float(cost[i]), (S[i].copy(), float(h[i])))
+        self._reload_spot = best[1]
+        return self._reload_spot
+
+    def reload_body(self, t):
+        """His body at time t of the reload (v5): at his station 0, stepping in to the reload spot,
+        there, stepping back."""
+        (a, b), (c, d) = self.RELOAD_STEP_IN, self.RELOAD_STEP_OUT
+        M0, M1 = self.M(*self.station(0.0)), self.M(*self.reload_spot())
+        if t <= a or t >= d:
+            return {k: M0 @ v for k, v in self.stand.items()}
+        if b <= t <= c:
+            return {k: M1 @ v for k, v in self.stand.items()}
+        if not hasattr(self, "_reload_lead"):
+            way = (M1 @ np.r_[self.s0[0], 0.0, self.s0[1], 1.0])[:3] - (M0 @ np.r_[self.s0[0], 0.0, self.s0[1], 1.0])[:3]
+            score = {s: float(point(M0, self.feet0[s][:3, 3]) @ way) for s in ("l", "r")}
+            self._reload_lead = max(score, key=score.get)
+        lead = self._reload_lead
+        if t < b:                                   # in: the leading foot first
+            return self.walk(M0, M1, (t - a) / (b - a), lead, (0.0, 0.5), (0.5, 1.0))
+        back = "l" if lead == "r" else "r"          # out: the foot nearer home first
+        return self.walk(M1, M0, (t - c) / (d - c), back, (0.0, 0.5), (0.5, 1.0))
+
+    def reload_share(self, t):
+        """How far he is from his station toward the reload spot at time t (0..1)."""
+        (a, b), (c, d) = self.RELOAD_STEP_IN, self.RELOAD_STEP_OUT
+        if t <= a or t >= d:
+            return 0.0
+        if b <= t <= c:
+            return 1.0
+        return smooth((t - a) / (b - a)) if t < b else 1.0 - smooth((t - c) / (d - c))
 
     def settled(self, yaw):
         """His body standing at the yaw's station, both feet set."""
@@ -3151,6 +3373,80 @@ def shown_yaws(targets, fps, rate, bands):
             cur = tgt if abs(tgt - cur) <= step else cur + math.copysign(step, tgt - cur)
             out.append(cur)
     return out
+
+
+def palms_ahead(rider, R):
+    """{side: metres} each palm in front of its shoulder along his facing (his chest's forward, level)."""
+    f = unit(R["bip01 spine1"][:3, :3] @ rider.chest_local)
+    f[1] = 0.0
+    f = unit(f)
+    return {s: float((rider.palm_of(R, s) - R[f"bip01 {s} upperarm"][:3, 3]) @ f) for s in ("l", "r")}
+
+
+STILL_ANGLES = (-30.0, 0.0, 30.0, 60.0, 90.0)
+STILL_RELOAD = (0.0, 0.25, 0.50, 0.66, 1.02, 1.42, 1.80, 2.22, 2.36, 2.46, 2.75, 3.0)
+
+
+def stills(folder, pb, scene, label):
+    """Stills of B on foot (no clip rendering): the gun at STILL_ANGLES while it fires, from behind him
+    on the left, from above and from his side, each captioned with how far each palm is in front of
+    its shoulder; and the reload at STILL_RELOAD seconds from two views. Returns report lines."""
+    from PIL import Image
+    os.makedirs(folder, exist_ok=True)
+    u = pb.unit
+    aim = Aim(scene, u, None)
+    trav = getattr(pb, "traverse", None) or Traverse(aim)
+    aim.traverse = trav
+    fig = pb.gun_fig
+    stem = os.path.join(folder, label)
+    t_fire = aim.length * (0.5 + 0.5 / SHOTS)
+    lines = []
+    views = [("BEHIND HIM, LEFT", -150.0, 15.0, 2.6, (-0.3, 1.1, 0.2)),
+             ("FROM ABOVE (CAMEL'S HEAD UP)", 180.0, 89.0, 3.2, (-0.1, 1.0, 0.2)),
+             ("FROM HIS SIDE (THE CAMEL'S LEFT)", -90.0, 8.0, 2.8, (-0.3, 1.0, 0.2))]
+    w, h = 300, 280
+    rows = [title(w * len(STILL_ANGLES), f"{label.upper()}: B ON FOOT FIRING, THE GUN AT -30 0 30 60 90, "
+                                         "L/R: EACH PALM IN FRONT OF ITS SHOULDER", back=(70, 40, 20))]
+    for vname, az, el, span, cen in views:
+        tiles = []
+        for yaw in STILL_ANGLES:
+            stand = trav.stair(yaw)
+            items, marks, reach = aim.items(fig, t_fire, yaw, stand)
+            _P, _G, R, _r = aim.poses(t_fire, yaw, stand)
+            ah = palms_ahead(u.rider, R)
+            img = draw(items, w, h, az, el, span, cen, marks=marks)
+            tiles.append(caption(img, f"{yaw:+.0f}  L {ah['l'] * 100:+.0f} R {ah['r'] * 100:+.0f} CM"))
+            if vname == views[0][0]:
+                lines.append(f"gun {yaw:+.0f}: palms in front of the shoulders l {ah['l'] * 100:+.0f} cm, "
+                             f"r {ah['r'] * 100:+.0f} cm; grips missed by {reach * 100:.1f} cm")
+        rows.append(title(w * len(STILL_ANGLES), vname, scale=1))
+        rows.append(np.concatenate(tiles, 1))
+    Image.fromarray(np.concatenate(rows, 0)).save(stem + "-angles.png")
+    os.makedirs(os.path.join(folder, "parts"), exist_ok=True)
+    for k in range(len(views)):                 # each view's row alone, to set two versions side by side
+        Image.fromarray(rows[2 + 2 * k]).save(os.path.join(folder, "parts", f"{label}-angles-{k}.png"))
+    if "reload" in pb.clips:
+        length = pb.clips["reload"][3].length
+        P0, _G0, R0 = pb.poses("reload", 0.0)
+        chest = R0["bip01 spine1"][:3, 3]
+        Pm, _Gm, Rm = pb.poses("reload", 0.5 * length)
+        chest = 0.5 * (chest + Rm["bip01 spine1"][:3, 3])
+        centre = (chest[0] + 0.1, chest[1] - 0.1, chest[2] + 0.2)
+        tiles = []
+        for t in STILL_RELOAD:
+            t = min(t, length - 1e-3)
+            items, marks = pb.items("reload", t)
+            _P, _G, R = pb.poses("reload", t)
+            ah = palms_ahead(u.rider, R)
+            for az, el, name in ((-150.0, 15.0, "BEHIND LEFT"), (-40.0, 15.0, "FRONT LEFT")):
+                img = draw(items, 250, 230, az, el, 2.8, centre, marks=marks)
+                tiles.append(caption(img, f"{t:.2f} S {name} L {ah['l'] * 100:+.0f} R {ah['r'] * 100:+.0f}"))
+        sheet = grid(tiles, 6)
+        Image.fromarray(sheet).save(os.path.join(folder, "parts", f"{label}-reload.png"))
+        Image.fromarray(np.concatenate([title(sheet.shape[1], f"{label.upper()}: THE RELOAD'S KEY POSES "
+                                              f"({length:.2f} S), TWO VIEWS EACH, L/R: PALMS IN FRONT OF THE "
+                                              "SHOULDERS (CM)", back=(70, 40, 20)), sheet], 0)).save(stem + "-reload.png")
+    return lines
 
 
 def round4_preview(folder, pb, scene, label, fps=15):
@@ -3761,10 +4057,13 @@ def main(argv):
                                                       "(default %.2f)" % HANDLE_DROP)
     ap.add_argument("--round4-preview", help="a folder for B on foot with the turning gun: the angles, the stepping, "
                                              "the dismount and the remount (round 4)")
+    ap.add_argument("--handles", choices=sorted(HANDLE_SETS), help="B's long handles (default %s)" % HANDLES)
+    ap.add_argument("--stills", help="a folder for stills of B on foot: the five angles from three views, the "
+                                     "reload's key poses")
     args = ap.parse_args(argv)
     try:
         for p in (args.out, args.sheet, args.gifs, args.aim_sheet, args.aim_gifs, args.reload_preview,
-                  args.round4_preview, args.round4_handles):
+                  args.round4_preview, args.round4_handles, args.stills):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -3778,6 +4077,8 @@ def main(argv):
         recipe["reload"] = None if args.reload == "keep" else args.reload
     if args.handle_drop is not None:
         recipe["handle_drop"] = args.handle_drop
+    if args.handles:
+        recipe["handles"] = args.handles
     if args.scales:
         recipe["scales"] = [float(x) for x in args.scales.split(",")]
     if args.variants:
@@ -3943,6 +4244,13 @@ def main(argv):
                 drop = recipe.get("handle_drop", HANDLE_DROP)
                 for line in round4_handles(args.round4_handles, pb, scene,
                                            f"{recipe['name'].replace('_', '-')}-round4-handles-drop{int(round(drop * 100))}"):
+                    print(line)
+        if args.stills:
+            scale = args.gif_scale if args.gif_scale else recipe["scales"][0]
+            pb = plays.get(("B", scale))
+            if pb is not None and pb.unit.style == "B":
+                hs = recipe.get("handles", HANDLES)
+                for line in stills(args.stills, pb, scene, f"{recipe['name'].replace('_', '-')}-handles-{hs}"):
                     print(line)
         if args.round4_preview:
             scale = args.gif_scale if args.gif_scale else recipe["scales"][0]
