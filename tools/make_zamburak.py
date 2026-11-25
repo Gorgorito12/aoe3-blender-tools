@@ -22,6 +22,13 @@ What it writes below --out (`art\\<recipe "folder">\\`):
   `bone_launchpoint` (the muzzle) and `bone_linstock` (the staff, in its holder on the post
   when limbered, in the artillerist's hand when he fires).
 - `<name>-report.txt`: what was cut and made, and the runtime's checks.
+- with `--clips <folder>`: every clip of the approved beat-list script (ZUnit: limbered idle, walk,
+  jog, run, bored, cheer; unlimber and limber; unlimbered idle, fire, reload, death), the camel's,
+  the gun's and the rider's (`<name>_camel_<clip>`, `_gun_<clip>`, `_rider_<clip>`), the limbered
+  dead model (`<name>_camel_dead`: the cannon in its limber pose and the linstock built in, playing
+  the camel's own deaths), and in the folder the check_anim jobs: the new clips with today's as
+  their baseline (every removal named), the limbered deaths, the unlimbered death. `--textured`
+  draws every clip, textured, at eight moments from both sides.
 
 The barrel (`barrel` of the recipe): the triangles of one bone of the source model, its axis from
 the centre of its breech ring to the centre of its muzzle ring; `length` shortens it (2/3: the chase
