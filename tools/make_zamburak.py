@@ -534,7 +534,9 @@ class CannonDesign:
             m[:3, :3] = axis_matrix(Z, 10.0) @ axis_matrix(X, -18.0)
         return m
 
-    RAMMER_AT = (-0.34, -0.34, 0.08, 6.0)     # on the saddle: x, below the saddle's top, z of its head, slope
+    # on the saddle's left side, strapped low along the blanket's edge behind his left leg (x, below the
+    # saddle's top, z of its head, slope): within reach of a man standing by the lying camel's flank
+    RAMMER_AT = (-0.42, -0.20, -0.15, 0.0)
 
     def rammer_rest(self):
         """Strapped along the left side of the saddle, behind the rider's left leg, its head forward
@@ -1078,6 +1080,8 @@ class ZUnit:
         else:
             sh = R[f"bip01 {s} upperarm"][:3, 3]
             to = sh - p
+            if normal_hint is None and np.linalg.norm(to - (to @ ax) * ax) < 0.08:
+                to = to + 0.10 * Y        # the staff points at his shoulder: his palm on its top side
             to = unit(to - (to @ ax) * ax) if normal_hint is None else unit(normal_hint - (normal_hint @ ax) * ax)
             fin = np.cross(ax, -to)
             if fin @ self.facing(R) < 0:
@@ -1127,12 +1131,32 @@ class ZUnit:
                 self._locks = {k: v for k, v in self._locks.items() if k[0] != s}
         self._used = set()
         poles = self.poles(R, seated)
-        Q = R
-        for s, g in goals.items():
-            if g is None:
-                continue
-            palm, fin, nor = g
-            Q = self.rider.hand(Q, s, palm, unit(fin), unit(nor), poles[s])
+        base = R
+        from aoe3game.gr2_pose import about, descendants
+        if getattr(self, "_chest_set", None) is None:
+            self._chest_set = descendants(self.rider.rig, "bip01 spine1")
+        for _k in range(4):
+            Q = base
+            for s, g in goals.items():
+                if g is None:
+                    continue
+                palm, fin, nor = g
+                Q = self.rider.hand(Q, s, palm, unit(fin), unit(nor), poles[s])
+            miss = {s: float(np.linalg.norm(self.rider.palm_of(Q, s) - g[0])) for s, g in goals.items() if g is not None}
+            worst = max(miss.values(), default=0.0)
+            if worst < 0.008 or not getattr(self, "lean_to_reach", True):
+                break
+            # out of reach: the chest leans toward that hand's goal (about the spine's top), as a man
+            # reaches; the legs stay
+            s = max(miss, key=miss.get)
+            pivot = base["bip01 spine1"][:3, 3]
+            a_, g_ = base[f"bip01 {s} upperarm"][:3, 3] - pivot, goals[s][0] - pivot
+            axis = np.cross(a_, g_)
+            if np.linalg.norm(axis) < 1e-9:
+                break
+            ang = math.degrees(math.asin(min(0.45, 1.15 * worst / max(float(np.linalg.norm(g_)), 1e-6))))
+            turn = about(pivot, axis_matrix(unit(axis), ang))
+            base = {k: (turn @ v if k in self._chest_set else v) for k, v in base.items()}
         for s, g in goals.items():
             if g is not None:
                 b.reach = max(b.reach, float(np.linalg.norm(self.rider.palm_of(Q, s) - g[0])))
@@ -1976,6 +2000,28 @@ class ZUnit:
         return out, most
 
     def build_all(self):
+        """Round 2 (script v2, approved 2026-11-26): the limbered clips as before, the unlimbered unit
+        as the gatling camel's round 6 (V2)."""
+        out = self.build_v1_limbered()
+        v2 = V2(self)
+        out["unlimber"] = v2.unlimber()
+        out["limber"] = v2.limber()
+        out["deployed"] = v2.deployed()
+        out["fire"] = v2.fire()
+        out["reload"] = v2.reload()
+        out["death"] = v2.death()
+        return out
+
+    def build_v1_limbered(self):
+        out = {}
+        for name, anim_name, rel, _r, gait, reins_only in LIMBERED:
+            look = {"idle": (1.5, 3.0, 25.0), "bored_b": (1.0, 3.0, -35.0)}.get(name)
+            out[name] = self.limbered(name, anim_name, rel, gait, reins_only, look)
+        for name, camel_rel, rel in CHEERS:
+            out[name] = self.cheer(name, camel_rel, rel)
+        return out
+
+    def build_all_v1(self):
         out = {}
         for name, anim_name, rel, _r, gait, reins_only in LIMBERED:
             look = {"idle": (1.5, 3.0, 25.0), "bored_b": (1.0, 3.0, -35.0)}.get(name)
@@ -2002,6 +2048,8 @@ class ZUnit:
         bones = d.BONES
         locs = []
         for fr in b.gun:
+            # the match burns at the linstock's tip, wherever a clip put the linstock
+            fr = dict(fr, match=fr["linstock"] @ tr((0.0, d.src.linstock_length * d.ls, 0.0)))
             worlds = {"root": np.eye(4)}
             for k in bones[1:]:
                 worlds[k] = d.to_model(fr[k])
@@ -2136,18 +2184,21 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
             c["limits"] = {"look_yaw": 85.0, "penetration": 0.10}
         if name == "death":
             c["limits"] = {"look_yaw": 115.0, "look_pitch_down": 80.0, "look_pitch_up": 80.0,
-                           "angular_speed": 2000.0, "sink": 0.25, "slide": 0.30, "penetration": 0.30}
-        routes = {"unlimber": ("ring", "ground"), "limber": ("ground", "ring"), "deployed": ("ground", "ground"),
-                  "fire": ("ground", "ground"), "reload": ("ground", "ground"), "death": ("ground", "ground")}
-        r0 = routes.get(name, ("ring", "ring"))
-        c["routes"] = {"linstock": {"start": r0[0], "end": r0[1]}}
+                           "angular_speed": 2000.0, "sink": 0.30, "slide": 0.30, "penetration": 0.30}
+        if name not in ("unlimber", "limber", "deployed", "fire", "reload", "death"):
+            c["routes"] = {"linstock": {"start": "ring", "end": "ring"}}
+        if name == "reload":
+            c["routes"] = {"charge": {"start": "hidden", "end": "hidden"}, "ball": {"start": "hidden", "end": "hidden"},
+                           "rammer": {"start": "saddle", "end": "saddle"}}
         clips[name] = c
-        for gname, s, t0, t1 in b.grips:
+        for g in b.grips:
+            gname, s, t0, t1 = g[:4]
+            bone = g[4] if len(g) > 4 else "linstock"
             k0 = int(round(t0 * FPS))
             grips.append({"name": gname, "clips": [name], "hand": hand[s], "frames": [[t0, t1]],
-                          "grip": {"bone": "gun:bone_linstock", "at": hand[s], "frame": k0}})
+                          "grip": {"bone": f"gun:bone_{bone}", "at": hand[s], "frame": k0}})
     casc = {"idle": (0.0, None), "walk": (0.0, None), "jog": (0.0, None), "bored_a": (0.0, None),
-            "bored_b": (0.0, None), "bored_c": (0.0, None), "unlimber": (3.93, 4.43), "limber": (2.08, 2.40)}
+            "bored_b": (0.0, None), "bored_c": (0.0, None)}
     for name, (t0, t1) in casc.items():
         g = {"name": "left palm on the cascabel", "clips": [name], "hand": hand["l"],
              "grip": {"bone": "gun:bone_cannon", "at": hand["l"], "frame": int(round(t0 * FPS))}}
@@ -2155,7 +2206,8 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
             g["frames"] = [[t0, t1]]
         grips.append(g)
     grips.append({"name": "the match on the vent", "clips": ["fire"], "frames": [[0.80, 0.95]], "max": 0.03,
-                  "hand": {"bone": "gun:bone_linstock", "offset": [0.0, staff_m, 0.0]}, "grip": "gun:bone_fuse"})
+                  "hand": "gun:bone_match", "grip": "gun:bone_fuse"})
+    del staff_m
     # the ring: where the staff's foot sits on the camel's chest (metres, in the chest's frame)
     P = unit.camel.fix_hang(unit.camel.pose(unit.camel.base, 0.0))
     ring = unit.ring(P)
@@ -2163,18 +2215,32 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
     chest = P[unit.camel.mount].copy()
     chest[:3, 3] /= upm_c
     off = (np.linalg.inv(chest) @ np.r_[ring[:3, 3] / upm_c, 1.0])[:3]
+    # the rammer's straps on the saddle (its butt), the same way
+    C = unit.C(P)
+    butt = point(C, unit.d.rest()["rammer"][:3, 3])
+    off_r = (np.linalg.inv(chest) @ np.r_[butt / upm_c, 1.0])[:3]
+    # the bore: from the breech to the muzzle in the cannon bone's frame (metres)
+    d = unit.d
+    upm_g = gr2_mesh.read(unit.src.data)["units_per_meter"]
+    bore = [((d.bpoint(q) - d.trunnion) / d.bind_scale / upm_g).tolist() for q in (d.src.breech, d.src.muzzle)]
     job = {"fps": FPS, "ground": 0.0, "actors": actors, "clips": clips,
            "mounts": [{"name": "the fork in its socket", "part": "gun:bone_yaw",
                        "mount": {"bone": "camel:hs bone chest", "at": "gun:bone_yaw"}},
                       {"name": "the trunnions in the fork", "part": "gun:bone_cannon",
                        "mount": {"bone": "gun:bone_yaw", "at": "gun:bone_cannon"}}],
            "grips": grips,
-           "ahead": [{"name": f"{s} palm in front of his chest", "clips": ["fire"], "frames": [[0.5, 1.4]],
-                      "point": hand[s], "of": f"rider:bip01 {s} upperarm", "min": 0.15} for s in ("l", "r")],
-           "capsules": [{"name": "camel body", "a": "camel:hs bone pelvis", "b": "camel:hs bone chest", "radius": 0.45}],
-           "props": {"linstock": {"bone": "gun:bone_linstock", "size": 0.08}},
+           "ahead": [{"name": "right palm in front of his chest", "clips": ["fire"], "frames": [[0.5, 1.4]],
+                      "point": hand["r"], "of": "rider:bip01 r upperarm", "min": 0.15}],
+           "capsules": [{"name": "camel body", "a": "camel:hs bone pelvis", "b": "camel:hs bone chest", "radius": 0.45},
+                        {"name": "bore", "a": {"bone": "gun:bone_cannon", "offset": bore[0]},
+                         "b": {"bone": "gun:bone_cannon", "offset": bore[1]}, "radius": 0.10}],
+           "props": {"linstock": {"bone": "gun:bone_linstock", "size": 0.08},
+                     "charge": {"bone": "gun:bone_charge", "size": 0.06, "hide_in": ["rider torso", "bore"]},
+                     "ball": {"bone": "gun:bone_ball", "size": 0.05, "hide_in": ["rider torso", "bore"]},
+                     "rammer": {"bone": "gun:bone_rammer", "size": 0.05}},
            "speed_exempt": ["rider:bip01 prop1", "rider:bip01 prop2"],
-           "places": {"ring": {"point": {"bone": "camel:hs bone chest", "offset": off.tolist()}, "radius": 0.05}},
+           "places": {"ring": {"point": {"bone": "camel:hs bone chest", "offset": off.tolist()}, "radius": 0.08},
+                      "saddle": {"point": {"bone": "camel:hs bone chest", "offset": off_r.tolist()}, "radius": 0.05}},
            "speed_limits": {f"camel:{h['bone'].lower()}": 2000.0 for h in HOOVES} |
                            {"camel:hs bone tail_01": 2000.0, "camel:hs bone ear left": 2100.0,
                             "camel:hs bone ear right": 2100.0},
@@ -2188,11 +2254,11 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
                        "cheer look 85, penetration 0.10": "today's rider cheers, unchanged: they turn his head 84 deg "
                                                            "and swing a heel 9 cm into the crude capsule round the "
                                                            "camel's body as the stock rider does",
-                       "death look/speed/sink/slide/penetration": "the artillerist's death is the game's standing "
-                                                                  "rifleman death B, unchanged: it throws the head back "
-                                                                  "75 deg at 1410 deg/s, its feet go through the ground "
-                                                                  "as the body drops, and it flings the arms forward "
-                                                                  "into the crude capsule round the lying camel"},
+                       "death look/speed/sink/slide/penetration": "the artillerist's death is the game's "
+                                                                  "defend_death (the gatling camel's deployed gunner's), "
+                                                                  "unchanged: it throws the head back fast and its toes go "
+                                                                  "through the ground (26 cm at 0.13 s, 23 cm at 1.40 s) as "
+                                                                  "the body drops"},
            "removed": dict(REMOVED)}
     base_actors = {"camel": {"model": expand(recipe["camel"]["model"]), "rig": {"preset": "bare", "feet": HOOVES}},
                    "rider": actors["rider"]}
@@ -2243,11 +2309,12 @@ class Round2:
     """The key poses of round 2 on the lying camel: his station at a gun yaw, the fire, and the
     reload's walk round the camel's front to the muzzle on its right."""
 
-    GRIP = 0.30           # his hand this far up the short linstock from its foot (the match 0.55 above)
+    GRIP = 0.50           # his hand this far up the short linstock from its foot (the match 0.35 above)
+    OUT = 0.15            # his station this far outside the camel's left side (in reach of the breech)
 
     def __init__(self, unit):
         self.u = unit
-        self.P = unit.lie()
+        self.P = neck_turned(unit, unit.lie(), 1.0)
         self.walk_anim = unit.rider.anim(WALK)
         pts = unit.camel.mesh_points(self.P)[used_vertices(unit.camel)]
         self.body = pts
@@ -2277,14 +2344,14 @@ class Round2:
         return float(band[:, 0].min()) if len(band) else float(self.body[:, 0].min())
 
     def station(self, yaw):
-        """(at, heading): behind the breech along the barrel, never nearer the camel than 0.30 outside
+        """(at, heading): behind the breech along the barrel, never nearer the camel than OUT outside
         its left side, facing the vent."""
         fr = self.frames(yaw)
         b, m = self.barrel_points(fr)
         ax = unit(np.array([m[0] - b[0], 0.0, m[2] - b[2]]))
         at = b - 0.55 * ax
         at[1] = 0.0
-        at[0] = min(at[0], self.flank_x(at[2]) - 0.30)
+        at[0] = min(at[0], self.flank_x(at[2]) - self.OUT)
         vent = self.world(fr, "fuse")
         dvec = vent - at
         return at, math.degrees(math.atan2(dvec[0], dvec[2])), vent
@@ -2323,7 +2390,7 @@ class Round2:
         at, h, _v = self.station(yaw)
         S = self.u.standing(at, h)
         foot = S["bip01 r foot"][:3, 3]
-        return self.u.staff(np.array([foot[0], -0.06, foot[2]]) + 0.25 * self.u.right_of(S), Y)
+        return self.u.staff(np.array([foot[0], -0.06, foot[2]]) + 0.15 * self.u.right_of(S) + 0.18 * self.u.facing(S), Y)
 
     def reload_path(self, yaw=REST_YAW):
         """His way to the muzzle and back: from the station along the left side, round the camel's
@@ -2390,12 +2457,718 @@ class Round2:
         return R, st, b.reach
 
 
+NECK_TURN = 60.0          # the lying camel turns its neck this far to its right (the gatling camel's round 6)
+
+
+def neck_turned(unit, P, share):
+    """The pose with the camel's neck turned `share` of NECK_TURN to its right about the vertical."""
+    from aoe3game.gr2_pose import rotate_about
+    if share <= 0.0:
+        return P
+    return rotate_about(P, unit.camel.rig, "hs bone neck lower", "hs bone neck lower", Y, NECK_TURN * share)
+
+
 def rot_y_to_z(W):
     """A staff frame (+y along it) as a rammer frame (+z along it), the same point and direction."""
     out = W.copy()
     out[:3, 2] = W[:3, 1]
     out[:3, 1] = -W[:3, 2]
     return out
+
+
+# The unlimbered clips of script v2 (approved 2026-11-26), at the gun's rest yaw (+90); a game key
+# (turretArc, aim file version 2) turns the gun from there. Times are the script's.
+UNLIMBER2, LIMBER2, RELOAD2 = 6.6667, 5.5, 4.5
+LOAD_YAW = 200.0          # the reload swings the gun round through its back until its muzzle is by him
+
+
+class V2:
+    """The unlimbered clips of script v2: the unlimber and the limber, the idle, the one-handed shot,
+    the reload with the gun swung round to him, and the death (the camel slumps)."""
+
+    G = Round2.GRIP
+
+    def __init__(self, unit):
+        self.u = unit
+        self.r2 = Round2(unit)
+        self.P = self.r2.P                                   # lying, the neck turned
+        at, h, vent = self.r2.station(REST_YAW)
+        self.at, self.h, self.vent = at, h, vent
+        self.S0 = unit.standing(at, h)
+        self.W0 = unit._carry(self.S0, self.G)
+
+    # -- small pieces
+
+    def keep(self, b, t0, t1, side, bone="linstock", name=None):
+        b.grips.append((name or f"{'right' if side == 'r' else 'left'} palm on the {bone}", side, t0, t1, bone))
+
+    def planted(self):
+        return self.r2.planted(REST_YAW)
+
+    def held_high(self, R):
+        """The linstock upright in his right hand held up by his shoulder, clear of the camel."""
+        u = self.u
+        p = R["bip01 r upperarm"][:3, 3] - 0.25 * Y + 0.22 * u.right_of(R) + 0.12 * u.facing(R)
+        return u.staff(p - self.G * Y - STAFF_R * u.right_of(R), Y, side=u.facing(R))
+
+    def drawn(self, ring, lift):
+        return self.u.staff(ring[:3, 3] + lift * ring[:3, 1], ring[:3, 1], side=ring[:3, 2])
+
+    def left_saddle(self, P, R):
+        """His left palm flat on the saddle's front left as he gets off or on."""
+        attach = rigid(P[self.u.camel.rider_bone])
+        A = attach[:3, :3]
+        p = attach[:3, 3] + A @ np.array([-0.16, 0.05, 0.10])
+        return p, A @ Z, A @ np.array([0.0, -1.0, 0.0])
+
+    def barrel_at(self, P, fr, from_muzzle):
+        """(palm, finger, normal): a palm on top of the barrel `from_muzzle` back from the muzzle."""
+        u = self.u
+        a, m = self.r2.barrel_points(fr) if P is self.P else self.points(P, fr)
+        ax = unit(m - a)
+        upv = unit(Y - (Y @ ax) * ax)
+        rad = u.d.radius / u.d.bind_scale
+        return m - from_muzzle * ax + (rad + 0.03) * upv, ax, -upv
+
+    def points(self, P, fr):
+        d = self.u.d
+        to_w = self.u.C(P) @ fr["cannon"] @ tr(-d.trunnion)
+        return point(to_w, d.bpoint(d.src.breech)), point(to_w, d.bpoint(d.src.muzzle))
+
+    def cascabel2(self, P, fr, side_off=0.0):
+        palm, fin, nor = self.u.cascabel(P, fr)
+        a, m = self.points(P, fr)
+        ax = unit(m - a)
+        across = unit(np.cross(Y, ax))
+        return palm + side_off * across, fin, nor
+
+    def lean_seated(self, R, t, t0):
+        """The lean as the camel lies down (from t0) or rises: back 15 as the front drops, forward 10."""
+        if t < t0 or t > t0 + 3.33:
+            return R
+        k = t - t0
+        return self.u.fwd_lean(R, -15.0 * span(k, 0.3, 1.6) + 25.0 * span(k, 1.6, 3.0) - 10.0 * span(k, 3.0, 3.33))
+
+    # -- the unlimber (6.67 s) and the limber (5.5 s)
+
+    def unlimber(self):
+        u, cam = self.u, self.u.camel
+        times = u.times(UNLIMBER2)
+        b = Built("unlimber", "Bombard_unlimber", times)
+        poses, anim, scales = u.camel_borrow(mgc.B_DOWN, times, 0.0)
+        poses = [neck_turned(u, P, span(t, 3.33, 4.73)) for t, P in zip(times, poses)]
+        P_lie = poses[-1]
+        keys = u.climb_keys(P_lie)
+        S_beside = keys[-1][1]
+        lim = u.limber
+        for t, P in zip(times, poses):
+            # he pushes it from pose B to 60 (3.83-4.25), it swings on to its rest at +90 (4.25-4.63)
+            yaw = lim["yaw"] + (60.0 - lim["yaw"]) * span(t, 3.83, 4.25) + (REST_YAW - 60.0) * span(t, 4.25, 4.63)
+            fr = u.gun_frames({"yaw": yaw, "pitch": lim["pitch"] * (1 - span(t, 3.83, 4.40))})
+            ring = u.ring(P)
+            if t < 4.73:
+                R = self.lean_seated(u.seated(P), t, 0.0)
+            elif t < 5.63:
+                R = u.climb(keys, (t - 4.73) / 0.90)
+            else:
+                R = u.walk(S_beside, self.S0, (t - 5.63) / 1.04, "l")
+            # the linstock: in its holster, drawn up 0.30 and held by his thigh, held high as he gets off,
+            # then at his side
+            if t < 3.43:
+                W = ring
+            elif t < 4.73:
+                W = self.drawn(ring, 0.30 * span(t, 3.43, 3.73))
+            elif t < 5.63:
+                W = u.staff_mix(self.drawn(ring, 0.30), self.held_high(R), span(t, 4.73, 4.95))
+            else:
+                W = u.staff_mix(self.held_high(R), u._carry(R, self.G), span(t, 5.63, 5.95))
+            reins_r, reins_l = u.reins(R, P, "r"), u.reins(R, P, "l")
+            goals = {}
+            goals["r"] = reins_r if t < 3.33 else u.blend_goal(reins_r, u.grip_on(R, W, self.G, "r"), span(t, 3.33, 3.43), 0.04)
+            if t < 3.73:
+                goals["l"] = reins_l
+            elif t < 4.25:
+                goals["l"] = u.blend_goal(reins_l, u.cascabel(P, fr), span(t, 3.73, 3.83), 0.04)
+            elif t < 4.83:
+                let_go = u.cascabel(P, u.gun_frames({"yaw": 60.0, "pitch": lim["pitch"] * (1 - span(4.25, 3.83, 4.40))}))
+                goals["l"] = u.blend_goal(let_go, self.left_saddle(P, R), span(t, 4.25, 4.50), 0.04)
+            elif t < 5.40:
+                goals["l"] = self.left_saddle(P, R)
+            else:
+                goals["l"] = u.blend_goal(self.left_saddle(P, R), u.hang_hand(R, "l"), span(t, 5.40, 5.70))
+            R = u.hands(R, goals, b, seated=t < 5.0)
+            A = rigid(P[cam.rider_bone])[:3, :3]
+            if t < 3.33:
+                look = R["bip01 head"][:3, 3] + 12.0 * (A @ Z)
+            elif t < 3.73:
+                look = point(ring, (0.0, 0.3, 0.0))
+            elif t < 4.73:
+                look = u.cascabel(P, fr)[0]
+            elif t < 5.40:
+                look = R["bip01 head"][:3, 3] + 2.0 * (-(A @ X)) + 1.0 * (A @ Z) - 2.0 * Y
+            elif t < 5.63:
+                look = rigid(P[cam.rider_bone])[:3, 3]
+            else:
+                look = self.vent
+            R = u.look(R, look, max_yaw=45.0, max_pitch=30.0)
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=u.staff_design(P, W)))
+            b.rider.append(R)
+        self.keep(b, 3.43, UNLIMBER2, "r")
+        self.keep(b, 3.85, 4.25, "l", "cannon", "left palm on the cascabel")
+        b.camel_src = (anim, scales)
+        return b
+
+    def limber(self):
+        u, cam = self.u, self.u.camel
+        times = u.times(LIMBER2)
+        b = Built("limber", "Bombard_limber", times)
+        poses, anim, scales = u.camel_borrow(mgc.B_UP, times, 3.33)
+        poses = [neck_turned(u, P, 1.0 - span(t, 3.10, 3.33)) for t, P in zip(times, poses)]
+        P_lie = poses[0]
+        keys = u.climb_keys(P_lie)
+        S_beside = keys[-1][1]
+        lim = u.limber
+        for t, P in zip(times, poses):
+            # at his station he pulls the gun round from its rest to 60 (0.10-0.40); seated, he sets it to
+            # pose B (1.90-2.60)
+            w = span(t, 1.90, 2.60)
+            yaw = REST_YAW + (60.0 - REST_YAW) * span(t, 0.22, 0.42) + (lim["yaw"] - 60.0) * w
+            fr = u.gun_frames({"yaw": yaw, "pitch": lim["pitch"] * w})
+            ring = u.ring(P)
+            if t < 0.40:
+                R = self.S0
+            elif t < 0.90:
+                R = u.walk(self.S0, S_beside, (t - 0.40) / 0.50, "r")
+            elif t < 1.80:
+                R = u.climb(keys, 1.0 - (t - 0.90) / 0.90)
+            else:
+                R = self.lean_seated(u.seated(P), t, 3.33)
+            if t < 0.90:
+                W = u.staff_mix(u._carry(R, self.G), self.held_high(R), span(t, 0.70, 0.90))
+            elif t < 1.80:
+                W = self.held_high(R)
+            elif t < 2.80:
+                W = u.staff_mix(self.held_high(R), self.drawn(ring, 0.30), span(t, 1.80, 2.10))
+            else:
+                W = self.drawn(ring, 0.30 * (1.0 - span(t, 2.80, 3.05)))
+            reins_r, reins_l = u.reins(R, P, "r"), u.reins(R, P, "l")
+            goals = {"r": u.grip_on(R, W, self.G, "r") if t < 3.05 else
+                     u.blend_goal(u.grip_on(R, ring, self.G, "r"), reins_r, span(t, 3.05, 3.25), 0.04)}
+            if t < 0.22:
+                goals["l"] = u.blend_goal(u.hang_hand(R, "l"), u.cascabel(P, fr), span(t, 0.0, 0.22))
+            elif t < 0.42:
+                goals["l"] = u.cascabel(P, fr)
+            elif t < 0.90:
+                goals["l"] = u.blend_goal(u.cascabel(P, u.gun_frames({"yaw": 60.0})), u.hang_hand(R, "l"),
+                                          span(t, 0.42, 0.74))
+            elif t < 1.60:
+                goals["l"] = u.blend_goal(u.hang_hand(R, "l"), self.left_saddle(P, R), span(t, 0.90, 1.05))
+            elif t < 1.90:
+                goals["l"] = u.blend_goal(self.left_saddle(P, R), u.cascabel(P, fr), span(t, 1.60, 1.90), 0.04)
+            elif t < 2.60:
+                goals["l"] = u.cascabel(P, fr)
+            else:
+                goals["l"] = u.blend_goal(u.cascabel(P, fr), reins_l, span(t, 2.60, 2.75))
+            R = u.hands(R, goals, b, seated=t >= 1.40)
+            A = rigid(P[cam.rider_bone])[:3, :3]
+            if t < 0.90:
+                look = R["bip01 head"][:3, 3] + 6.0 * (A @ Z)
+            elif t < 1.80:
+                look = point(rigid(P[cam.rider_bone]), (-0.45, -0.20, 0.60))
+            elif t < 2.70:
+                look = u.cascabel(P, fr)[0]
+            elif t < 3.10:
+                look = point(ring, (0.0, 0.3, 0.0))
+            else:
+                look = R["bip01 head"][:3, 3] + 12.0 * (A @ Z)
+            R = u.look(R, look, max_yaw=45.0, max_pitch=30.0)
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=u.staff_design(P, W)))
+            b.rider.append(R)
+        self.keep(b, 0.0, 3.05, "r")
+        self.keep(b, 0.24, 0.42, "l", "cannon", "left palm on the cascabel (at his station)")
+        self.keep(b, 1.92, 2.60, "l", "cannon", "left palm on the cascabel")
+        b.camel_src = (anim, scales)
+        return b
+
+    # -- at the gun
+
+    def lying(self, times, borrow=True):
+        u = self.u
+        if borrow:
+            poses, anim, scales = u.camel_borrow(mgc.B_IDLE, times, 0.0)
+            return [neck_turned(u, P, 1.0) for P in poses], anim, scales
+        anim = u.camel.anim(mgc.B_IDLE)
+        return [self.P] * len(times), anim, u.camel.hang_scale(self.P, u.camel.borrowed_scales(anim))
+
+    def stand(self, t=0.0, lean=0.0):
+        u = self.u
+        R = u.standing(self.at, self.h, t)
+        if lean:
+            R = u.fwd_lean(R, lean)
+        return u.plant(R, {s: self.S0[f"bip01 {s} foot"] for s in ("l", "r")})
+
+    def downrange(self, P, fr):
+        return self.u.downrange(P, fr)
+
+    def deployed(self):
+        u = self.u
+        times = u.times(DEPLOYED)
+        b = Built("deployed", "Bombard_ranged_idle", times)
+        poses, anim, scales = self.lying(times)
+        fr = u.gun_frames({"yaw": REST_YAW})
+        for t, P in zip(times, poses):
+            R = self.stand(t / DEPLOYED * u.stand_anim.duration)
+            R = u.hands(R, {"r": u.grip_on(R, self.W0, self.G, "r"), "l": u.hang_hand(R, "l")}, b, False)
+            w = math.sin(math.pi * min(1.0, max(0.0, (t - 0.8) / 0.6))) if 0.8 < t < 1.4 else 0.0
+            look = lerp(self.downrange(P, fr), point(self.W0, (0.0, u.src.linstock_length, 0.0)), w)
+            R = u.look(R, look, max_pitch=30.0)
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=u.staff_design(P, self.W0)))
+            b.rider.append(R)
+        self.keep(b, 0.0, DEPLOYED, "r")
+        b.camel_src = (anim, scales)
+        return b
+
+    def fire(self):
+        u = self.u
+        times = u.times(FIRE)
+        b = Built("fire", "Bombard_ranged_attack", times)
+        poses, anim, scales = self.lying(times, borrow=False)
+        P = self.P
+        _Rt, W_touch, _m = self.r2.touch(REST_YAW)
+        d = W_touch[:3, 1]
+        W_near = u.staff(W_touch[:3, 3] - 0.08 * d + 0.06 * Y, d, side=W_touch[:3, 2])
+        W_up = u.staff(self.W0[:3, 3] + 0.08 * Y + 0.10 * u.facing(self.S0), self.W0[:3, 1], side=self.W0[:3, 2])
+        for t in times:
+            if t <= 0.50:
+                W = u.staff_mix(self.W0, W_near, span(t, 0.0, 0.50))
+            elif t <= 0.95:
+                W = u.staff_mix(W_near, W_touch, span(t, 0.50, 0.80))
+            elif t <= 1.40:
+                W = u.staff_mix(W_touch, W_up, span(t, 0.95, 1.40))
+            else:
+                W = u.staff_mix(W_up, self.W0, span(t, 1.40, 1.80))
+            kick = 6.0 * (span(t, SHOT, 1.00) - span(t, 1.00, 1.50))
+            fr = u.gun_frames({"yaw": REST_YAW, "pitch": -kick})
+            R = self.stand(0.0, lean=-4.0 * span(t, 0.0, 0.5) * (1.0 - span(t, 1.4, 2.0)))
+            R = u.hands(R, {"r": u.grip_on(R, W, self.G, "r"), "l": u.hang_hand(R, "l")}, b, False)
+            away = math.sin(math.pi * min(1.0, max(0.0, (t - 0.92) / 0.48))) if 0.92 < t < 1.40 else 0.0
+            look = self.vent if t < 1.40 else self.downrange(P, fr)
+            if away > 0:
+                hpos = R["bip01 head"][:3, 3]
+                look = hpos + axis_matrix(Y, -45.0 * away) @ (look - hpos)
+            R = u.look(R, look, max_yaw=60.0, max_pitch=35.0)
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=u.staff_design(P, W)))
+            b.rider.append(R)
+        self.keep(b, 0.0, FIRE, "r")
+        b.camel_src = (anim, scales)
+        b.flash = [SHOT]
+        return b
+
+    # the reload (4.5 s): the gun swung round to him through its back, loaded at the muzzle, swung back
+    # (script v2's alternative, chosen by the user on 2026-11-26). LOAD_YAW puts the muzzle over the
+    # camel's left shoulder: from one place by the saddle he loads it, and the rammer lifts from its
+    # straps at his right straight into the muzzle.
+    PUSH, CATCH = 105.0, 190.0        # he pushes the gun to PUSH; it swings on to CATCH, where he takes it
+    OUT, OFF = 0.80, 0.28             # his place: this far out along the barrel's line from the muzzle,
+                                      # the line this far to his right
+    STROKE = 0.42                     # each push (and pull) of the rammer, hand over hand (home: 0.84)
+    LEAD, SPACE = 0.48, 0.13          # his left hand this far out from the muzzle as a push starts; his
+                                      # right hand this far behind it on the shaft
+    TAKE = (0.85, 1.00)               # his hands on the rammer (right, left, from its butt) to lift it
+    LEAN = 30.0                       # he leans into a push as his hands near the muzzle
+    PUSHES = ((2.40, 2.54), (2.64, 2.78))
+    PULLS = ((2.78, 2.92), (3.02, 3.16))
+    # the beats: (start, end) of each
+    B_PLANT = (0.00, 0.30)            # crouch, the linstock stuck in the ground (planted by 0.15), up
+    B_PUSH = (0.24, 0.55)             # hands to the cascabel (0.24-0.40), the push to PUSH (0.40-0.55)
+    B_SWING = (0.55, 1.10)            # it swings on to CATCH while he walks to the muzzle (0.55-1.08)
+    B_CATCH = (1.10, 1.22)            # he catches the chase and pulls the muzzle to him (LOAD_YAW)
+    B_CHARGE = (1.22, 1.52)           # pouch (1.32), at the muzzle (1.44), down the bore (1.52)
+    B_BALL = (1.52, 1.82)             # pouch (1.62), at the muzzle (1.74), down the bore (1.82)
+    B_TAKE = (1.82, 2.40)             # a step back (1.82-1.96), he bends, hands on the rammer (2.06), lifts
+                                      # it out of its straps and its head into the muzzle (2.06-2.30),
+                                      # his hands slide back along it (2.30-2.40)
+    B_RAM = (2.40, 2.78)              # two pushes hand over hand (the hands slide back between, 2.54-2.64)
+    B_DRAW = (2.78, 3.16)             # two pulls (the hands slide forward between, 2.92-3.02)
+    B_STOW = (3.16, 3.46)             # hands forward on it (3.16-3.24), back into its straps bending (3.24-3.44)
+    B_BACK = (3.46, 4.18)             # a step in, hands to the barrel (3.44-3.58), pushed off (3.58-3.66), it
+                                      # swings to PUSH (3.66-3.98) as he walks back (3.60-4.10), caught
+                                      # (3.96-4.08) and settled at the rest (4.08-4.18)
+    B_PICK = (4.18, 4.50)             # crouch (4.20-4.36), the linstock pulled up as he rises (4.36-4.50)
+
+    def spots(self):
+        """His places in the reload (S_work, where he rams, facing the muzzle along the barrel's line,
+        the line at his right; S_load a step nearer the muzzle) and the muzzle and the barrel's axis."""
+        u = self.u
+        fr = u.gun_frames({"yaw": LOAD_YAW})
+        b_, m = self.r2.barrel_points(fr)
+        ax = unit(np.array([m[0] - b_[0], 0.0, m[2] - b_[2]]))
+        heading = math.degrees(math.atan2(-ax[0], -ax[2]))
+        rt = u.right_of(u.standing(np.zeros(3), heading))
+        rt = unit(rt - (rt @ Y) * Y)
+        at = m + self.OUT * ax - self.OFF * rt
+        S_work = u.standing(np.array([at[0], 0.0, at[2]]), heading)
+        at = m + 0.38 * ax - 0.22 * rt                     # a step nearer, to load the charge and the ball
+        S_load = u.standing(np.array([at[0], 0.0, at[2]]), heading)
+        return S_work, S_load, m, ax
+
+    def reload(self):
+        u = self.u
+        times = u.times(RELOAD2)
+        b = Built("reload", "Bombard_reload", times)
+        P = self.P
+        anim = u.camel.anim(mgc.B_IDLE)
+        scales = u.camel.hang_scale(P, u.camel.borrowed_scales(anim))
+        S_work, S_load, _m, _ax = self.spots()
+        S_sq = mgc.Unit.crouch(u, self.S0, 0.45, 35.0)
+        S_bend = mgc.Unit.crouch(u, S_work, 0.22, 25.0)
+        feet0 = {s: self.S0[f"bip01 {s} foot"] for s in ("l", "r")}
+        feet1 = {s: S_work[f"bip01 {s} foot"] for s in ("l", "r")}
+        Wp = self.planted()
+        L_r = CannonDesign.RAMMER[0]
+        C = u.C(P)
+        W_saddle = self.saddle_rammer(C)
+        PU, CA = self.PUSH, self.CATCH
+        ST, LEAD, SPACE = self.STROKE, self.LEAD, self.SPACE
+        RAM_IN = self.TAKE                                  # (right, left) on the shaft from its butt
+
+        def bar(frx, from_muzzle):
+            """His palm on top of the chase, the fingers away from him along it (toward the breech)."""
+            p, fin, nor = self.barrel_at(P, frx, from_muzzle)
+            return p, -fin, nor
+
+        def ram_grip(Wr, g, lift=0.0):
+            return point(Wr, (0, 0, g)) + lift * Y, unit(Wr[:3, 2]), -Y
+
+        def yaw_at(t):
+            if t < 0.40:
+                return REST_YAW
+            if t < 0.55:
+                return REST_YAW + (PU - REST_YAW) * span(t, 0.40, 0.55)
+            if t < 1.10:
+                return PU + (CA - PU) * span(t, 0.55, 1.10)
+            if t < 3.58:
+                return CA + (LOAD_YAW - CA) * span(t, 1.10, 1.22)
+            if t < 3.66:
+                return LOAD_YAW - (LOAD_YAW - CA) * span(t, 3.58, 3.66)
+            if t < 4.08:
+                return CA - (CA - PU) * span(t, 3.66, 3.98)
+            return PU - (PU - REST_YAW) * span(t, 4.08, 4.18)
+
+        def depth_at(t):
+            d = 0.0
+            for t0, t1 in self.PUSHES:
+                d += ST * span(t, t0, t1)
+            for t0, t1 in self.PULLS:
+                d -= ST * span(t, t0, t1)
+            return d
+
+        # the left hand's grip on the shaft (from its butt) through each stroke: a push starts with it
+        # LEAD out from the muzzle, a pull with it LEAD - STROKE out; between two strokes the hands slide
+        # along the shaft; before the first and after the last they hold it where they lift it
+        seq = [(0.0, 2.30, self.TAKE[1])]
+        seq += [(t0, t1, L_r - ST * k - LEAD) for k, (t0, t1) in enumerate(self.PUSHES)]
+        seq += [(t0, t1, L_r - ST * (len(self.PULLS) - k) - (LEAD - ST)) for k, (t0, t1) in enumerate(self.PULLS)]
+        seq += [(3.24, 9.0, self.TAKE[1])]
+
+        def hands_on(t):
+            for i, (t0, t1, g) in enumerate(seq):
+                if t0 <= t < t1:
+                    return (g - SPACE, g), 0.0
+                if i + 1 < len(seq) and t1 <= t < seq[i + 1][0]:
+                    w = span(t, t1, seq[i + 1][0])
+                    gg = g + (seq[i + 1][2] - g) * w
+                    return (gg - SPACE, gg), 0.03 * math.sin(math.pi * w)
+            return RAM_IN, 0.0
+
+        def lean_at(t):
+            """His lean into the rammer: none with his left hand 0.40 out from the muzzle or more, LEAN
+            with it at the muzzle."""
+            if not 2.30 <= t < 3.24:
+                return 0.0
+            g, _lift = hands_on(t)
+            x = L_r - depth_at(t) - g[1]
+            return self.LEAN * min(1.0, max(0.0, (0.40 - x) / 0.34))
+
+        def crouched(A, S, feet, w):
+            return u.plant(blend_pose(u, A, S, w), feet)
+
+        def body(t):
+            if t < 0.15:
+                return crouched(self.S0, S_sq, feet0, span(t, 0.0, 0.15))
+            if t < 0.30:
+                return crouched(self.S0, S_sq, feet0, 1.0 - span(t, 0.15, 0.30))
+            if t < 0.55:
+                return self.S0
+            if t < 1.08:
+                return u.walk(self.S0, S_load, (t - 0.55) / 0.53, "l")
+            if t < 1.82:
+                return S_load
+            if t < 1.96:
+                return u.walk(S_load, S_work, (t - 1.82) / 0.14, "r")
+            if t < 2.30:                                   # bent to the saddle 1.96-2.06, up by 2.30
+                return crouched(S_work, S_bend, feet1, span(t, 1.96, 2.06) * (1.0 - span(t, 2.12, 2.30)))
+            if t < 3.24:                                   # ramming, leaning into it
+                lean = lean_at(t)
+                return u.plant(u.fwd_lean(S_work, lean), feet1) if lean > 0.0 else S_work
+            if t < 3.46:                                   # bent to the saddle 3.24-3.36, up by 3.46
+                return crouched(S_work, S_bend, feet1, span(t, 3.24, 3.36) * (1.0 - span(t, 3.38, 3.46)))
+            if t < 3.56:
+                return u.walk(S_work, S_load, (t - 3.46) / 0.10, "l")
+            if t < 3.60:
+                return S_load
+            if t < 4.10:
+                return u.walk(S_load, self.S0, (t - 3.60) / 0.50, "r")
+            if t < 4.20:
+                return self.S0
+            if t < 4.36:
+                return crouched(self.S0, S_sq, feet0, span(t, 4.20, 4.36))
+            return crouched(self.S0, S_sq, feet0, 1.0 - span(t, 4.36, 4.50))
+
+        def out_frame(w, m, ax):
+            """The rammer on its way from its straps (w 0) to its head in the muzzle (w 1)."""
+            inserted = ram_frame(u, m + ax * L_r, -ax)
+            head = lerp(point(W_saddle, (0, 0, L_r)), m, w) + 0.06 * math.sin(math.pi * w) * Y
+            dvec = vslerp(W_saddle[:3, 2], inserted[:3, 2], w)
+            return ram_frame(u, head - L_r * dvec, dvec)
+
+        for t in times:
+            yaw = yaw_at(t)
+            fr0 = u.gun_frames({"yaw": yaw})
+            a, m = self.r2.barrel_points(fr0)
+            ax = unit(m - a)
+            st = {"yaw": yaw}
+            R = body(t)
+            # the linstock: from his hand to the ground (0.0-0.15), stuck there, back in his hand (4.36-4.50)
+            if t < 0.15:
+                W = u.staff_mix(self.W0, Wp, span(t, 0.0, 0.15))
+            elif t < 4.36:
+                W = Wp
+            else:
+                W = u.staff_mix(Wp, self.W0, span(t, 4.36, 4.50))
+            st["linstock"] = u.staff_design(P, W)
+            # the rammer: lifted from its straps into the muzzle, rammed, drawn, back into its straps
+            Wr = None
+            if 2.06 <= t < 3.46:
+                if t < 2.30:
+                    Wr = out_frame(span(t, 2.06, 2.30), m, ax)
+                elif t < 3.24:
+                    Wr = ram_frame(u, m + ax * (L_r - depth_at(t)), -ax)
+                else:
+                    Wr = out_frame(1.0 - span(t, 3.24, 3.44), m, ax)
+                st["rammer"] = u.staff_design(P, Wr)
+            fr = u.gun_frames(st)
+            # his hands
+            rt = u.right_of(R)
+            hang_l, hang_r = u.hang_hand(R, "l"), u.hang_hand(R, "r")
+            goals = {"l": hang_l}
+            mouth = (m + 0.10 * ax, -ax, -Y)
+            if t < 0.15:
+                goals["r"] = u.grip_on(R, W, self.G, "r")
+            elif t < 0.24:
+                goals["r"] = u.blend_goal(u.grip_on(R, Wp, self.G, "r"), hang_r, span(t, 0.15, 0.24))
+            elif t < 0.55:
+                rel = u.blend_goal(u.grip_on(R, Wp, self.G, "r"), hang_r, 1.0)
+                goals["r"] = u.blend_goal(rel, self.cascabel2(P, fr, 0.04), span(t, 0.24, 0.40))
+                goals["l"] = u.blend_goal(hang_l, self.cascabel2(P, fr, -0.04), span(t, 0.24, 0.40))
+            elif t < 0.95:                                 # he lets go and walks
+                push = u.gun_frames({"yaw": PU})
+                goals["r"] = u.blend_goal(self.cascabel2(P, push, 0.04), hang_r, span(t, 0.55, 0.70))
+                goals["l"] = u.blend_goal(self.cascabel2(P, push, -0.04), hang_l, span(t, 0.55, 0.70))
+            elif t < 1.10:                                 # and reaches for the chase coming to him
+                catch = u.gun_frames({"yaw": CA})
+                goals["r"] = u.blend_goal(hang_r, bar(catch, 0.04), span(t, 0.95, 1.10))
+                goals["l"] = u.blend_goal(hang_l, bar(catch, 0.15), span(t, 0.95, 1.10))
+            elif t < 1.22:
+                goals["r"], goals["l"] = bar(fr, 0.04), bar(fr, 0.15)
+            elif t < 1.82:
+                goals["l"] = u.blend_goal(bar(fr, 0.15), hang_l, span(t, 1.22, 1.42),
+                                          arc=0.05 * u.facing(R) - 0.16 * rt)
+                f_ = u.facing(R)
+                pel = R["bip01 pelvis"][:3, 3]
+                pouch = (pel - 0.13 * rt + 0.12 * f_ - 0.02 * Y, f_, -Y)
+                front = (pel + 0.32 * f_ + 0.18 * Y + 0.04 * rt, f_, -Y)     # his hand passes in front of him
+                goals["r"] = keyed([(1.22, bar(fr, 0.04)), (1.27, front), (1.32, pouch), (1.34, pouch),
+                                    (1.44, mouth), (1.52, mouth), (1.57, front), (1.62, pouch), (1.64, pouch),
+                                    (1.74, mouth), (1.82, mouth)], t, u)
+            elif t < 2.06:
+                gr, gl = ram_grip(W_saddle, RAM_IN[0]), ram_grip(W_saddle, RAM_IN[1])
+                goals["r"] = u.blend_goal(mouth, gr, span(t, 1.82, 2.06), arc=0.08 * rt)
+                goals["l"] = u.blend_goal(hang_l, gl, span(t, 1.84, 2.06), arc=-0.10 * rt)
+            elif Wr is not None:
+                g, lift = hands_on(t)
+                goals["r"], goals["l"] = ram_grip(Wr, g[0], lift), ram_grip(Wr, g[1], lift)
+            elif t < 3.66:
+                gr, gl = ram_grip(W_saddle, RAM_IN[0]), ram_grip(W_saddle, RAM_IN[1])
+                goals["r"] = u.blend_goal(gr, bar(fr, 0.04), span(t, 3.44, 3.58), arc=0.08 * rt)
+                goals["l"] = u.blend_goal(gl, bar(fr, 0.15), span(t, 3.44, 3.58), arc=0.10 * Y)
+            elif t < 3.94:                                 # he lets it go and walks back
+                at_ca = u.gun_frames({"yaw": CA})
+                goals["r"] = u.blend_goal(bar(at_ca, 0.04), hang_r, span(t, 3.66, 3.80))
+                goals["l"] = u.blend_goal(bar(at_ca, 0.15), hang_l, span(t, 3.66, 3.80), arc=0.05 * u.facing(R) - 0.16 * rt)
+            elif t < 4.08:                                 # and reaches for the cascabel coming back
+                at_pu = u.gun_frames({"yaw": PU})
+                goals["r"] = u.blend_goal(hang_r, self.cascabel2(P, at_pu, 0.04), span(t, 3.94, 4.08))
+                goals["l"] = u.blend_goal(hang_l, self.cascabel2(P, at_pu, -0.04), span(t, 3.94, 4.08))
+            elif t < 4.18:
+                goals["r"], goals["l"] = self.cascabel2(P, fr, 0.04), self.cascabel2(P, fr, -0.04)
+            else:
+                goals["r"] = u.blend_goal(self.cascabel2(P, fr, 0.04), u.grip_on(R, W, self.G, "r"), span(t, 4.18, 4.36))
+                goals["l"] = u.blend_goal(self.cascabel2(P, fr, -0.04), hang_l, span(t, 4.18, 4.42))
+            R = u.hands(R, goals, b, False)
+            # the charge and the ball: hidden inside him (the pouch at his left hip), in his right hand,
+            # into the muzzle and down the bore (out of sight there)
+            inside = R["bip01 pelvis"][:3, 3] + 0.12 * Y - 0.03 * u.right_of(R)
+            palm = u.rider.palm_of(R, "r")
+            for prop, (t_draw, t_in, t_gone) in (("charge", (1.32, 1.44, 1.52)), ("ball", (1.62, 1.74, 1.82))):
+                if t < t_draw:
+                    pos = inside
+                elif t < t_in:
+                    pos = lerp(inside, palm, span(t, t_draw, t_draw + 0.03))
+                elif t < t_gone:
+                    pos = lerp(palm, m - 0.25 * ax, span(t, t_in, t_gone))
+                else:
+                    pos = None
+                if pos is not None:
+                    st[prop] = u.staff_design(P, tr(pos))
+            fr = u.gun_frames(st)
+            if t < 0.24 or t >= 4.18:
+                look = point(Wp, (0, 0.8, 0))
+            elif 0.55 <= t < 0.95 or 3.66 <= t < 3.94:
+                look = R["bip01 head"][:3, 3] + 4.0 * u.facing(R)
+            elif t < 1.22 or 3.94 <= t < 4.18:
+                look = point(C, fr["cannon"][:3, 3])
+            elif 1.82 <= t < 2.10 or 3.24 <= t < 3.46:
+                look = point(W_saddle, (0, 0, RAM_IN[1]))
+            else:
+                look = m
+            R = u.look(R, look, max_yaw=60.0, max_pitch=28.0)
+            b.camel.append(P)
+            b.gun.append(fr)
+            b.rider.append(R)
+        self.keep(b, 0.0, 0.10, "r")
+        self.keep(b, 0.42, 0.55, "r", "cannon", "right palm on the cascabel (push)")
+        self.keep(b, 1.14, 1.22, "r", "cannon", "right palm on the chase (catch)")
+        self.keep(b, 2.08, 2.30, "r", "rammer", "right palm on the rammer (out of its straps)")
+        self.keep(b, 2.08, 2.30, "l", "rammer", "left palm on the rammer (out of its straps)")
+        for k, (t0, t1) in enumerate(self.PUSHES + self.PULLS):
+            self.keep(b, t0 + 0.07, t1, "r", "rammer", f"right palm on the rammer (stroke {k + 1})")
+            self.keep(b, t0 + 0.07, t1, "l", "rammer", f"left palm on the rammer (stroke {k + 1})")
+        self.keep(b, 3.26, 3.38, "r", "rammer", "right palm on the rammer (into its straps)")
+        self.keep(b, 4.10, 4.18, "r", "cannon", "right palm on the cascabel (settle)")
+        self.keep(b, 4.43, RELOAD2, "r")
+        b.rider = limit_arm_rates(u.rider.rig, b.rider)
+        b.rider = limit_arm_rates(u.rider.rig, b.rider, 720.0, bones=("bip01 neck", "bip01 head"))
+        b.camel_src = (anim, scales)
+        return b
+
+    def saddle_rammer(self, C):
+        """The rammer's world frame on its saddle straps (its +z from the butt to the head)."""
+        f = self.u.d.rest()["rammer"]
+        s = np.cbrt(abs(np.linalg.det(C[:3, :3])))
+        W = np.eye(4)
+        W[:3, :3] = (C[:3, :3] / s) @ f[:3, :3]
+        W[:3, 3] = point(C, f[:3, 3])
+        return W
+
+    def death(self):
+        u, cam = self.u, self.u.camel
+        times = u.times(DEATH_B)
+        b = Built("death", "Bombard_death", times)
+        still = self.P
+        poses = [cam.fix_hang(cam.slump(still, float(t))) for t in times]
+        anim = cam.anim(mgc.B_IDLE)
+        scales = cam.hang_scale(poses[0], cam.borrowed_scales(anim))
+        fr = u.gun_frames({"yaw": REST_YAW})
+        dies = u.rider.anim(mgc.FOOT_DEATH_BACK)
+        R0 = u.rider.standing(u.foot, dies, 0.0, self.h, self.at)
+        palm0 = u.rider.palm_of(R0, "r")
+        W_hand0 = u._carry(R0, self.G)
+        off = palm0 - point(W_hand0, (0.0, self.G, 0.0))
+        out = unit(-u.right_of(self.S0) - 0.3 * u.facing(self.S0))
+        released = None
+        for t, P in zip(times, poses):
+            R = u.rider.standing(u.foot, dies, min(float(t), dies.duration), self.h, self.at)
+            if t < RELEASE:
+                palm = u.rider.palm_of(R, "r")
+                W = u.staff(W_hand0[:3, 3] + (palm - palm0), W_hand0[:3, 1], side=W_hand0[:3, 2])
+                released = W
+            else:
+                foot = released[:3, 3].copy()
+                foot[1] = max(STAFF_R, foot[1] - 0.6 * (t - RELEASE))
+                lying = u.staff(np.array([foot[0], STAFF_R, foot[2]]), out)
+                w = min(1.0, (t - RELEASE) / 0.40) ** 1.3
+                W = u.staff_mix(u.staff(foot, released[:3, 1], side=released[:3, 2]), lying, w)
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=u.staff_design(P, W)))
+            b.rider.append(R)
+        del off
+        b.camel_src = (anim, scales)
+        b.death = True
+        return b
+
+
+ARM_BONES = ("bip01 l clavicle", "bip01 l upperarm", "bip01 l forearm", "bip01 l hand",
+             "bip01 r clavicle", "bip01 r upperarm", "bip01 r forearm", "bip01 r hand")
+
+
+def limit_arm_rates(rig, poses, limit=1350.0, fps=30.0, bones=ARM_BONES):
+    """The poses with each arm bone's turn against its parent held to `limit` degrees a second (a hand
+    that would whip round between two frames eases there instead); the rest of the body untouched."""
+    names = [n.lower() for n in rig.names]
+    step = math.radians(limit / fps)
+
+    def angle(A, B):
+        return math.acos(max(-1.0, min(1.0, (np.trace(A.T @ B) - 1.0) / 2.0)))
+
+    out, prev = [], None
+    for R in poses:
+        W = dict(R)
+        loc = {}
+        for i, n in enumerate(names):
+            p = rig.parents[i]
+            if n not in R or p is None or p < 0 or names[p] not in R:
+                continue
+            Lc = np.linalg.inv(R[names[p]]) @ R[n]
+            if n in bones and prev is not None and n in prev:
+                s = np.cbrt(abs(np.linalg.det(Lc[:3, :3])))
+                A, B = prev[n][:3, :3] / s, Lc[:3, :3] / s
+                if angle(A, B) > step:
+                    rel = A.T @ B
+                    axis = np.array([rel[2, 1] - rel[1, 2], rel[0, 2] - rel[2, 0], rel[1, 0] - rel[0, 1]])
+                    if np.linalg.norm(axis) > 1e-9:
+                        cands = [A @ axis_matrix(unit(axis), sgn * math.degrees(step)) for sgn in (1.0, -1.0)]
+                        Lc = Lc.copy()
+                        Lc[:3, :3] = s * min(cands, key=lambda M: angle(M, B))
+            loc[n] = Lc
+            W[n] = W[names[p]] @ Lc
+        out.append(W)
+        prev = loc
+    return out
+
+
+def ram_frame(u, butt, direction):
+    """A rammer frame: its butt at `butt`, its +z (butt to head) along `direction`."""
+    return rot_y_to_z(u.staff(np.asarray(butt, np.float64), unit(direction), side=Y))
+
+
+def keyed(keys, t, u):
+    """A hand goal between timed keys [(time, goal)], eased."""
+    if t <= keys[0][0]:
+        return keys[0][1]
+    for (t0, g0), (t1, g1) in zip(keys, keys[1:]):
+        if t <= t1:
+            return u.blend_goal(g0, g1, span(t, t0, t1))
+    return keys[-1][1]
+
+
+def blend_pose(u, A, B, w):
+    from aoe3game.gr2_pose import blend
+    return blend(u.rider.rig, A, B, ease(w))
 
 
 def round2_stills(folder, game, recipe, unit, gun_bytes):
