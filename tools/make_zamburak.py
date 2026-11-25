@@ -78,7 +78,7 @@ DEFAULT_RECIPE = {
                "trunnion": 0.30},
     # the artillerist's linstock: a mesh of the same model (the field gun's own staff)
     # (short: the user's choice, 2026-11-26: about a forearm and an arm, held in one hand)
-    "linstock": {"model": MIDFA + "Midfa_stripped", "mesh": "screw_pole", "length": 0.85},
+    "linstock": {"plain": True, "length": 0.85, "radius": 0.018, "hot": 0.08},
     # the artillerist on foot as the previews show him (a mesh of the field gun's model)
     "gunner": {"model": MIDFA + "Midfa_stripped", "meshes": ["gunner"]},
     # the swivel: its pivot on the camel's centre line (x = 0) this far along the body (design
@@ -227,6 +227,23 @@ def merge(parts):
 # The source: the barrel and the linstock
 
 
+def red_texel(img, material):
+    """(uv, material): the reddest opaque texel of `img` whose four neighbours are red too, or None."""
+    im = np.asarray(img, np.float64)
+    hh, ww = im.shape[:2]
+    r, g, b = im[..., 0], im[..., 1], im[..., 2]
+    ok = (r > 140) & (r > g + 60) & (r > b + 60)
+    if im.shape[-1] > 3:
+        ok &= im[..., 3] > 250
+    core = np.zeros_like(ok)
+    core[1:-1, 1:-1] = ok[1:-1, 1:-1] & ok[:-2, 1:-1] & ok[2:, 1:-1] & ok[1:-1, :-2] & ok[1:-1, 2:]
+    if not core.any():
+        return None
+    ys, xs = np.nonzero(core)
+    k = int(np.argmax((r - 0.5 * g - 0.5 * b)[ys, xs]))
+    return np.array([(xs[k] + 0.5) / ww, (ys[k] + 0.5) / hh]), material
+
+
 def texel_patch(img, part, want, pick="largest"):
     """(uv, triangle index) of the largest triangle of `part` whose texels (corners and middle) all
     pass `want(rgba)`: a flat patch of one colour for the solids made here."""
@@ -369,27 +386,42 @@ class Source:
             self.patches["iron"] = self.patches["iron2"]
         for key in ("bronze", "iron", "wood"):
             self.patches.setdefault(key, (raw["uvs"][raw["triangles"][0]].mean(0), self.material))
-        # the ember's colour: the most orange texel of the barrel's texture whose neighbours are orange too
-        # (the source has no brighter one; in game the fuse fire on bone_match is the glow)
-        self.ember = None
-        if self.img is not None:
-            im = np.asarray(self.img, np.float64)
-            hh, ww = im.shape[:2]
-            org = (im[..., 0] > 170) & (im[..., 2] < 90) & (im[..., 1] < im[..., 0] - 40)
-            if im.shape[-1] > 3:
-                org &= im[..., 3] > 200
-            core = org.copy()
-            core[1:-1, 1:-1] = (org[:-2, :-2] & org[:-2, 1:-1] & org[:-2, 2:] & org[1:-1, :-2] & org[1:-1, 1:-1]
-                                & org[1:-1, 2:] & org[2:, :-2] & org[2:, 1:-1] & org[2:, 2:])
-            core[0, :] = core[-1, :] = False
-            core[:, 0] = core[:, -1] = False
-            if core.any():
-                ys, xs = np.nonzero(core)
-                score = im[ys, xs, 0] - im[ys, xs, 2] + 0.5 * im[ys, xs, 0]
-                k = int(np.argmax(score))
-                self.ember = (np.array([(xs[k] + 0.5) / ww, (ys[k] + 0.5) / hh]), self.patches["bronze"][1])
+        # a patch of the field gun's gunner's white cloth (for the powder charge's bag), and of the red
+        # on his texture (the linstock's hot tip)
+        self.cloth = self.hot = None
+        gpart = next((p for p in gr2_parts.mesh_parts(self.data) if p["name"] in recipe["gunner"]["meshes"]), None)
+        if gpart is not None:
+            gtex = next((n for n in gr2_mesh.read(self.data)["textures"] if n and "gunner" in n.lower()
+                         and "_b." not in n.lower()), None)
+            gimg = game.texture(gtex) if gtex else None
+            if gimg is not None:
+                # the material that draws the gunner's texture (not his cap's): both patches are read on it
+                names = [str(m.get("Name") if hasattr(m, "get") else getattr(m, "Name", "")) for m in gpart["materials"]]
+                gi = next((i for i, n in enumerate(names) if "gunner" in n.lower() and "cap" not in n.lower()), 0)
+                body_tris = [k for k, t in enumerate(gpart["tri_material"]) if t == gi]
+                gsub = dict(gpart, triangles=np.asarray(gpart["triangles"])[body_tris])
+                hit = texel_patch(gimg, gsub, lambda c: opaque(c) and c[:3].mean() > 170 and np.ptp(c[:3]) < 30)
+                if hit is not None:
+                    self.cloth = (hit[0], gpart["materials"][gi])
+                self.hot = red_texel(gimg, gpart["materials"][gi])
         # the linstock
         lspec = recipe["linstock"]
+        if lspec.get("plain"):
+            # a plain short wooden stick (the user, 2026-11-26): a round shaft, its last `hot` glowing red
+            # (in game the fuse fire burns on bone_match at its very tip); its own frame: foot at the
+            # origin, +y up the stick
+            L, r, hot = lspec["length"], lspec.get("radius", 0.018), lspec.get("hot", 0.08)
+            wood = self.patches["wood"]
+            red = self.hot or self.patches["bronze"]
+            shaft = cylinder((0.0, 0.0, 0.0), (0.0, L - hot, 0.0), r, sides=8, uv=wood[0])
+            tip = cylinder((0.0, L - hot, 0.0), (0.0, L, 0.0), r, sides=8, uv=red[0])
+            # two meshes of one material each (the tip on the gunner's texture, the shaft on the gun's)
+            self.linstock = dict(shaft, materials=[wood[1]] * len(shaft["triangles"]))
+            self.linstock_tip = dict(tip, materials=[red[1]] * len(tip["triangles"]))
+            self.linstock_length = self.linstock_source_length = float(L)
+            self.linstock_in_source = np.eye(4)
+            self.linstock_data = self.data
+            return
         ldata = game.granny(lspec["model"]) if lspec["model"] != spec["model"] else self.data
         lpart = next(p for p in gr2_parts.mesh_parts(ldata) if p["name"] == lspec["mesh"])
         lp = lpart["positions"]
@@ -411,17 +443,6 @@ class Source:
                          "tangents": lpart["tangents"] @ Rl.T, "uvs": lpart["uvs"], "triangles": lpart["triangles"],
                          "materials": [lpart["materials"][i] for i in lpart["tri_material"]]}
         self.linstock_length = float(lq[:, 1].max())
-        # a patch of the field gun's gunner's white cloth (for the powder charge's bag)
-        self.cloth = None
-        gpart = next((p for p in gr2_parts.mesh_parts(self.data) if p["name"] in recipe["gunner"]["meshes"]), None)
-        if gpart is not None:
-            gtex = next((n for n in gr2_mesh.read(self.data)["textures"] if n and "gunner" in n.lower()
-                         and "_b." not in n.lower()), None)
-            gimg = game.texture(gtex) if gtex else None
-            if gimg is not None:
-                hit = texel_patch(gimg, gpart, lambda c: opaque(c) and c[:3].mean() > 170 and np.ptp(c[:3]) < 30)
-                if hit is not None:
-                    self.cloth = (hit[0], gpart["materials"][gpart["tri_material"][hit[1]]])
         # where the staff stands in the source model (its own frame -> the source's space): beside
         # the source's gunner at rest, as the pictures put it in his hand
         self.linstock_in_source = rot4(Rl.T)
@@ -440,7 +461,7 @@ class CannonDesign:
     bone draws its triangles 1/s bigger than its bind (s, the bind's scale), so the design scale is
     scale x s."""
 
-    # `match`: the linstock's burning tip, a glowing ember on it (a game attaches the fuse fire there);
+    # `match`: the linstock's hot tip (a game attaches the fuse fire there);
     # `ball` and `charge`: the next round, inside the bore (out of sight) but while he loads it by hand
     # (from the pouch at his left hip). No rammer (the user, 2026-11-26: he loads with his hands only).
     BONES = ("root", "post", "yaw", "cannon", "fuse", "muzzle", "linstock", "match", "ball", "charge")
@@ -449,7 +470,7 @@ class CannonDesign:
     NAMES = {"post": "bone_post", "yaw": "bone_yaw", "cannon": "bone_cannon", "fuse": "bone_fuse",
              "muzzle": "bone_launchpoint", "linstock": "bone_linstock", "match": "bone_match",
              "ball": "bone_ball", "charge": "bone_charge"}
-    EMBER = (0.035, 0.10, 0.024)           # world units: the glowing match's ball radius, its flame's length and radius
+    FLAME = (0.10, 0.024)                   # world units: the game's fuse fire at the tip, as the pictures draw it
     BALL = 0.040                            # the ball's radius (the bore at the muzzle: about 0.05)
     CHARGE = (0.042, 0.10)                  # the powder bag: radius, length
 
@@ -505,19 +526,9 @@ class CannonDesign:
                          uv=P["bronze"][0]) for sx in (-1.0, 1.0)]
         self.made["pins"] = (merge(pins), P["bronze"][1], "cannon")
         # the loading gear, each made in its own frame (design units: world x bind scale) and placed at
-        # its rest frame: the ball and the bag round their centres; the ember on the match, a glowing
-        # ball with a small flame along the linstock (its +y)
+        # its rest frame: the ball and the bag round their centres
         bs = self.bind_scale
         rest = self.rest()
-        er, el, fr_ = (v * bs for v in self.EMBER)
-        glow = src.ember or P["bronze"]
-        flame = sphere(fr_)                                 # a drop along +y: the sphere stretched on its z
-        Rf = axis_matrix(X, -90.0)
-        if (Rf @ Z)[1] < 0:
-            Rf = axis_matrix(X, 90.0)
-        flame = dict(flame, positions=(flame["positions"] * np.array([1.0, 1.0, el / (2.0 * fr_)])) @ Rf.T
-                     + np.array([0.0, 0.5 * el, 0.0]), normals=flame["normals"] @ Rf.T, tangents=flame["tangents"] @ Rf.T)
-        self.made["ember"] = (apply_part(merge([sphere(er), flame]), rest["match"], glow[0]), glow[1], "match")
         self.made["ball"] = (apply_part(sphere(self.BALL * bs), rest["ball"], P["iron"][0]), P["iron"][1], "ball")
         cr, cl = (v * bs for v in self.CHARGE)
         cloth = src.cloth or P["wood"]
@@ -539,6 +550,11 @@ class CannonDesign:
         out["linstock"] = ({"positions": apply(holder, ls["positions"] * self.ls), "normals": ls["normals"] @ holder[:3, :3].T,
                             "tangents": ls["tangents"] @ holder[:3, :3].T, "uvs": ls["uvs"],
                             "triangles": ls["triangles"], "materials": ls["materials"]}, "linstock")
+        tp = getattr(src, "linstock_tip", None)
+        if tp is not None:
+            out["linstock_tip"] = ({"positions": apply(holder, tp["positions"] * self.ls),
+                                    "normals": tp["normals"] @ holder[:3, :3].T, "tangents": tp["tangents"] @ holder[:3, :3].T,
+                                    "uvs": tp["uvs"], "triangles": tp["triangles"], "materials": tp["materials"]}, "linstock")
         return out
 
     def linstock_rest(self):
@@ -3071,7 +3087,8 @@ def round2_stills(folder, game, recipe, unit, gun_bytes):
                    marks=[(G["bone_match"][:3, 3], (255, 120, 40), 7)])]
     # the long staff of preview v1 beside the short one, to scale
     long_len = u.src.linstock_source_length
-    tiles += [linstock_compare(game, u, R0, long_len)]
+    if not u.r["linstock"].get("plain"):
+        tiles += [linstock_compare(game, u, R0, long_len)]
     sheet1 = np.concatenate([mgc.title(4 * 330, f"SHORT LINSTOCK: {u.src.linstock_length:.2f} LONG (THE MIDFA STAFF "
                                                  f"{long_len:.2f}), MATCH (STAR) AT ITS TIP", back=(70, 40, 20)),
                              mgc.grid(tiles, 4)], 0)
@@ -3188,9 +3205,10 @@ def textured_sheets(folder, game, recipe, unit, built, gun_bytes, moments=8):
     return out
 
 
-def round3_stills(folder, game, recipe, unit, gun_bytes):
-    """Stop 0 of the no-rammer reload (the user, 2026-11-26): its key poses as built, the swing from
-    above, the linstock's burning tip (holster, hand, on the vent) and the props' sizes against him."""
+def round3_stills(folder, game, recipe, unit, gun_bytes, reload=True):
+    """Stop 0 of the no-rammer reload (the user, 2026-11-26): its key poses as built and the swing from
+    above (unless not `reload`); the plain linstock with its hot tip (holster, hand, on the vent, beside
+    him for scale) and the props' sizes against him."""
     from PIL import Image
     os.makedirs(folder, exist_ok=True)
     u = unit
@@ -3209,31 +3227,77 @@ def round3_stills(folder, game, recipe, unit, gun_bytes):
         out = pic.gun_fig.items(G) + scene.camel_fig.items(P)
         if R is not None:
             out += scene.rider_fig.items(R) + scene.hat_items(R)
-        out += glow(G)
         return out, G
 
-    def glow(G):
-        """The burning match drawn bright (the game's fuse fire there): an ember and a small flame
-        rising from it, flat orange and yellow."""
-        from aoe3game.gr2_pose import unit as _unit
-        tipw, axw = G["bone_match"][:3, 3], _unit(G["bone_linstock"][:3, 1])
-        er, el, fr_ = CannonDesign.EMBER
-        ball = sphere(er)
+    def flame(G):
+        """The game's small fuse fire on bone_match as these pictures draw it: a yellow drop rising from
+        the stick's tip (flat colour; a particle in game, not part of the model)."""
+        el, fr_ = CannonDesign.FLAME
         drop = sphere(fr_)
-        Rf = np.array([X, -Z, Y]).T                         # the flame rises: its long axis up
-        dp = (drop["positions"] * np.array([1.0, 1.0, el / (2.0 * fr_)])) @ Rf.T + tipw + 0.5 * el * Y
-        return [(ball["positions"] + tipw, ball["triangles"], None, None, (255, 110, 20)),
-                (dp, drop["triangles"], None, None, (255, 200, 40))]
+        Rf = np.array([X, -Z, Y]).T                         # its long axis up
+        dp = (drop["positions"] * np.array([1.0, 1.0, el / (2.0 * fr_)])) @ Rf.T + G["bone_match"][:3, 3] + 0.5 * el * Y
+        return [(dp, drop["triangles"], None, None, (255, 200, 40))]
 
     def tile(it, az, el, text, span=3.0, centre=(0.0, 1.2, 0.6), marks=None, w=330, h=300):
         return mgc.caption(mgc.draw(it, w, h, az, el, span=span, centre=tuple(centre), marks=marks), text)
 
-    b = v2.reload()
-    report.append(f"reload {RELOAD2:.2f} s: hands off their goals at most {b.reach:.3f}")
-
     def at(bb, t):
         k = min(len(bb.times) - 1, int(round(t * FPS)))
         return bb.camel[k], bb.rider[k], bb.gun[k]
+
+    sheets = reload_sheets(v2, items, tile, at, report) if reload else []
+    tiles = []
+    Pm = u.camel.fix_hang(u.camel.pose(u.camel.base, 0.0))
+    Rm = u.seated(Pm)
+    Rm = u.hands(Rm, {"r": u.reins(Rm, Pm, "r"), "l": u.cascabel(Pm, u.gun_frames(u.limber))}, Built("s", "", [0, 1]), True)
+    it, G = items(Pm, Rm, u.gun_frames(u.limber))
+    tip = G["bone_match"][:3, 3]
+    tiles.append(tile(it, 70.0, 12.0, "IN ITS HOLSTER: THE HOT RED TIP", span=1.3, centre=tip - np.array([0, 0.25, 0])))
+    tiles.append(tile(it, 70.0, 12.0, "IN ITS HOLSTER: THE TIP CLOSE UP", span=0.45, centre=tip))
+    d = v2.deployed()
+    P, R, fr = at(d, 0.0)
+    it, G = items(P, R, fr)
+    tip = G["bone_match"][:3, 3]
+    tiles.append(tile(it + flame(G), 150.0, 10.0, "IN HIS HAND (FLAME: THE GAME'S FUSE FIRE)", span=1.0,
+                      centre=tip - np.array([0, 0.25, 0])))
+    tiles.append(tile(it, -100.0, 5.0, "IN HIS HAND, THE WHOLE MAN FOR SCALE", span=2.6,
+                      centre=R["bip01 spine1"][:3, 3] - np.array([0, 0.25, 0])))
+    f = v2.fire()
+    P, R, fr = at(f, 0.85)
+    it, G = items(P, R, fr)
+    tip, vent = G["bone_match"][:3, 3], G["bone_fuse"][:3, 3]
+    report.append(f"fire 0.85 s: the tip {np.linalg.norm(tip - vent):.3f} from the vent")
+    for az, el, name, fl, sp in ((30.0, 45.0, "FROM THE FRONT, ABOVE", False, 1.0),
+                                 (30.0, 45.0, "CLOSE UP", False, 0.4),
+                                 (30.0, 45.0, "WITH THE GAME'S FUSE FIRE", True, 1.0)):
+        tiles.append(tile(it + (flame(G) if fl else []), az, el, f"FIRE 0.85 S: TIP ON THE VENT, {name}", span=sp,
+                          centre=vent))
+    tiles.append(tile(it, -70.0, 15.0, "FIRE 0.85 S: THE WHOLE MAN", span=2.6,
+                      centre=0.5 * (vent + R["bip01 spine1"][:3, 3])))
+    sheets.append(("z4-linstock.png", np.concatenate([
+        mgc.title(4 * 330, f"THE LINSTOCK: A PLAIN WOODEN STICK {u.src.linstock_length:.2f} LONG, ITS TIP HOT RED, "
+                           "TOUCHES THE VENT", back=(70, 40, 20)), mgc.grid(tiles, 4)], 0)))
+    S = v2.S0
+    height = float(S["bip01 head"][1, 3]) + 0.18
+    lsp = recipe["linstock"]
+    sizes = [("linstock", u.src.linstock_length), ("its thickness", 2 * lsp.get("radius", 0.018)),
+             ("hot tip", lsp.get("hot", 0.06)), ("ball across", 2 * CannonDesign.BALL),
+             ("charge bag", CannonDesign.CHARGE[1]), ("barrel", u.src.length * u.d.s / u.d.bind_scale)]
+    report.append(f"sizes against the man ({height:.2f} game units tall): "
+                  + ", ".join(f"{n} {v:.3f} ({100 * v / height:.1f}%)" for n, v in sizes))
+    paths = []
+    for name, sheet in sheets:
+        p = os.path.join(folder, name)
+        Image.fromarray(sheet).save(p)
+        paths.append(p)
+    return paths, report
+
+
+def reload_sheets(v2, items, tile, at, report):
+    """The no-rammer reload's key poses and its swing from above (round3_stills)."""
+    BLUE, ORANGE = (60, 200, 255), (255, 120, 40)
+    b = v2.reload()
+    report.append(f"reload {RELOAD2:.2f} s: hands off their goals at most {b.reach:.3f}")
 
     keys = ((0.15, -55.0, "1 LINSTOCK STUCK IN THE GROUND"), (0.50, -55.0, "2 HE PUSHES THE GUN ROUND"),
             (0.85, -140.0, "3 IT SWINGS, HE STEPS ASIDE"), (1.20, -140.0, "4 CAUGHT: MUZZLE TO HIM"),
@@ -3262,44 +3326,7 @@ def round3_stills(folder, game, recipe, unit, gun_bytes):
     sheet2 = np.concatenate([mgc.title(4 * 330, "FROM ABOVE: +90, PUSHED TO 105, FREE TO 255, PULLED TO 270, AND BACK. "
                                                 "HE STEPS 0.26 FORWARD AND BACK", back=(70, 40, 20)),
                              mgc.grid(tiles, 4)], 0)
-    tiles = []
-    Pm = u.camel.fix_hang(u.camel.pose(u.camel.base, 0.0))
-    Rm = u.seated(Pm)
-    Rm = u.hands(Rm, {"r": u.reins(Rm, Pm, "r"), "l": u.cascabel(Pm, u.gun_frames(u.limber))}, Built("s", "", [0, 1]), True)
-    it, G = items(Pm, Rm, u.gun_frames(u.limber))
-    tip = G["bone_match"][:3, 3]
-    tiles.append(tile(it, 70.0, 12.0, "IN ITS HOLSTER: THE EMBER AT ITS TIP", span=1.4, centre=tip - np.array([0, 0.15, 0]),
-                      marks=[(tip, ORANGE, 4)]))
-    d = v2.deployed()
-    P, R, fr = at(d, 0.0)
-    it, G = items(P, R, fr)
-    tip = G["bone_match"][:3, 3]
-    tiles.append(tile(it, -110.0, 8.0, "IN HIS HAND AT HIS STATION", span=1.4, centre=tip - np.array([0, 0.15, 0]),
-                      marks=[(tip, ORANGE, 4)]))
-    f = v2.fire()
-    P, R, fr = at(f, 0.85)
-    it, G = items(P, R, fr)
-    tip, vent = G["bone_match"][:3, 3], G["bone_fuse"][:3, 3]
-    report.append(f"fire 0.85 s: the match {np.linalg.norm(tip - vent):.3f} from the vent")
-    for az, el, name in ((30.0, 45.0, "FROM THE FRONT, ABOVE"), (150.0, 50.0, "FROM THE REAR, ABOVE")):
-        tiles.append(tile(it, az, el, f"FIRE 0.85 S: TIP ON THE VENT, {name}", span=1.1, centre=vent,
-                          marks=[(tip, ORANGE, 4)]))
-    sheet3 = np.concatenate([mgc.title(4 * 330, "THE LINSTOCK'S BURNING TIP (EMBER AND SMALL FLAME, IN GAME THE FUSE FIRE "
-                                                "ON BONE_MATCH) TOUCHES THE VENT", back=(70, 40, 20)),
-                             mgc.grid(tiles, 4)], 0)
-    S = v2.S0
-    height = float(S["bip01 head"][1, 3]) + 0.18
-    sizes = [("linstock", u.src.linstock_length), ("ember across", 2 * CannonDesign.EMBER[0]),
-             ("flame", CannonDesign.EMBER[1]), ("ball across", 2 * CannonDesign.BALL),
-             ("charge bag", CannonDesign.CHARGE[1]), ("barrel", u.src.length * u.d.s / u.d.bind_scale)]
-    report.append(f"sizes against the man ({height:.2f} game units tall): "
-                  + ", ".join(f"{n} {v:.2f} ({100 * v / height:.0f}%)" for n, v in sizes))
-    paths = []
-    for name, sheet in (("z3-reload-keys.png", sheet1), ("z3-reload-swing.png", sheet2), ("z3-linstock-ember.png", sheet3)):
-        p = os.path.join(folder, name)
-        Image.fromarray(sheet).save(p)
-        paths.append(p)
-    return paths, report
+    return [("z3-reload-keys.png", sheet1), ("z3-reload-swing.png", sheet2)]
 
 
 def posed_gun_bytes(design, name, source_data, state):
@@ -3350,12 +3377,14 @@ def main(argv):
                                        "unit's left and right)")
     ap.add_argument("--round2-stills", help="a folder for the stills of round 2 (the short linstock, the gun at +90, "
                                             "the reload's key poses)")
+    ap.add_argument("--linstock-stills", help="a folder for the linstock's stills only (stop 0: holster, hand, "
+                                              "vent, scale)")
     ap.add_argument("--round3-stills", help="a folder for stop 0 of the no-rammer reload (its key poses, the swing "
                                             "from above, the linstock's burning tip, the props' sizes)")
     args = ap.parse_args(argv)
     try:
         for p in (args.out, args.sheet, args.barrel_sheet, args.limber_options, args.sizes, args.clips, args.textured,
-                  args.round2_stills, args.round3_stills):
+                  args.round2_stills, args.round3_stills, args.linstock_stills):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -3411,11 +3440,12 @@ def main(argv):
                 report.append(f"runtime {fname}.gr2 {len(data)} B: crc {crc}, read {read}, oodle1 {packed} B"
                               + ("" if ok else "  FAIL"))
                 failed |= not ok
-        if args.round3_stills:
+        if args.round3_stills or args.linstock_stills:
             rider = mgc.Rider(game, recipe["rider"])
             foot_rig = Rig.of(gr2.load(game.granny(mgc.FOOT_MODEL)).root())
             unit3 = ZUnit(game, recipe, camel, rider, design, foot_rig)
-            paths3, rep3 = round3_stills(args.round3_stills, game, recipe, unit3, gun)
+            paths3, rep3 = round3_stills(args.round3_stills or args.linstock_stills, game, recipe, unit3, gun,
+                                         reload=bool(args.round3_stills))
             report += rep3
             for p in paths3:
                 print(p)
