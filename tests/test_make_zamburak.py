@@ -47,6 +47,22 @@ class Press(unittest.TestCase):
         self.assertLessEqual(float(out.max()), 1.0 + 1e-3)
 
 
+class Turns(unittest.TestCase):
+    def test_vslerp_stays_unit_and_never_passes_through_nothing(self):
+        a, b = np.array([1.0, 0.0, 0.0]), np.array([-1.0, 0.0, 0.0])       # opposite: about the vertical
+        for w in np.linspace(0.0, 1.0, 11):
+            v = mz.vslerp(a, b, w)
+            self.assertAlmostEqual(float(np.linalg.norm(v)), 1.0)
+            self.assertAlmostEqual(math.degrees(math.acos(max(-1.0, min(1.0, float(v @ a))))), 180.0 * w, places=5)
+        np.testing.assert_allclose(mz.vslerp(a, np.array([0.0, 0.0, 1.0]), 0.5), np.array([1.0, 0.0, 1.0]) / math.sqrt(2),
+                                   atol=1e-9)
+
+    def test_span_and_ease(self):
+        self.assertEqual(mz.span(0.0, 1.0, 2.0), 0.0)
+        self.assertEqual(mz.span(3.0, 1.0, 2.0), 1.0)
+        self.assertAlmostEqual(mz.span(1.5, 1.0, 2.0), 0.5)
+
+
 class Solids(unittest.TestCase):
     def test_cylinder_and_box_are_closed_and_wound_outward(self):
         for part in (mz.cylinder((0, 0, 0), (0, 1, 0), 0.2), mz.cylinder((0, 0, 0), (1, 1, 0.5), 0.05, sides=6),

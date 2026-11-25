@@ -80,6 +80,9 @@ DEFAULT_RECIPE = {
     # limbered: the barrel pitched down this many degrees (positive: muzzle down) and turned this
     # many about the post (positive: toward the unit's right), so it clears the neck
     "limber": {"pitch": 20.0, "yaw": 30.0},
+    # killed unlimbered: the game's standing rifleman death B (A flings his arms forward into the lying
+    # camel beside him; B falls back away from it)
+    "foot_death": mgc.LIB + "range\\death_standing_rifleman_B",
 }
 FPS = 30
 
@@ -431,7 +434,7 @@ class CannonDesign:
     def linstock_rest(self):
         """The linstock's frame at rest (design space): upright in a ring on the right of the
         socket, its foot by the saddle's flank, leaning back a little."""
-        foot = self.saddle + np.array([0.16, -0.30, -0.05])
+        foot = self.saddle + np.array([0.16, -0.30, -0.15])
         R = axis_matrix(X, -12.0)
         m = rot4(R)
         m[:3, 3] = foot
@@ -747,6 +750,1420 @@ def midfa_items(game, recipe):
 
 
 # --------------------------------------------------------------------------------------------------
+# The clips (the beat-list script approved on 2026-11-26, z-script-v1: every beat below names its
+# time in that script)
+
+Z_IDLE = mgc.ZAMB + "zamburak_camel_idle00"
+LIMBERED = [  # (our name, the anim it plays under, the camel's own clip, the rider's base, gait nod, both on the reins)
+    ("idle", "Idle", Z_IDLE, None, 0.0, False),
+    ("walk", "Walk", mgc.ZAMB + "zamburak_camel_walk00", None, 1.5, False),
+    ("jog", "Jog", mgc.ZAMB + "zamburak_camel_jog", None, 3.0, False),
+    ("run", "Run", mgc.LIB + "cavalry\\horse_gallop", None, 4.0, True),
+    ("bored_a", "Bored", mgc.ZAMB + "zamburak_camel_idle02", None, 0.0, False),
+    ("bored_b", "Bored", mgc.ZAMB + "zamburak_camel_idle03", None, 0.0, False),
+    ("bored_c", "Bored", mgc.ZAMB + "zamburak_camel_idle06", None, 0.0, False),
+]
+# Cheer: today's rider cheers, unchanged, each on one of the camel's idles of the same length (the
+# 3.67 s cheer H on idle03 played a little faster); the camel clips written with the rider's bone held
+# and its head kept off the barrel
+CHEERS = [("cheer_a", mgc.ZAMB + "zamburak_camel_idle02", mgc.LIB + "cavalry\\sword_cheer_F"),
+          ("cheer_b", mgc.ZAMB + "zamburak_camel_idle03", mgc.LIB + "cavalry\\sword_cheer_H"),
+          ("cheer_c", Z_IDLE, mgc.LIB + "cavalry\\sword_bored_A"),
+          ("cheer_d", mgc.ZAMB + "zamburak_camel_idle06", mgc.LIB + "cavalry\\sword_cheer_E")]
+UNLIMBER, LIMBER_T, DEPLOYED, FIRE, RELOAD, DEATH_B = 6.3333, 5.1667, 2.0, 2.0, 3.0, 3.0
+SHOT = 0.90
+RELEASE = 0.10           # killed unlimbered: the linstock leaves his hand as he is hit
+STAFF_R = 0.035          # the staff's radius (game units): the palm sits this far from its axis
+
+
+def ease(u):
+    return mgc.smooth(min(1.0, max(0.0, u)))
+
+
+def span(t, a, b):
+    """0 before a, 1 after b, eased between."""
+    return ease((t - a) / max(b - a, 1e-9))
+
+
+def vslerp(a, b, w):
+    """Between two directions along the great circle (a hand's fingers or palm turning, never through
+    nothing when they are opposite: then about the vertical, or the x axis)."""
+    a, b = unit(a), unit(b)
+    d = float(max(-1.0, min(1.0, a @ b)))
+    ang = math.acos(d)
+    if ang < 1e-6:
+        return a
+    axis = np.cross(a, b)
+    if np.linalg.norm(axis) < 1e-6:
+        axis = np.cross(a, Y)
+        if np.linalg.norm(axis) < 1e-6:
+            axis = np.cross(a, X)
+    return unit(axis_matrix(unit(axis), math.degrees(ang * w)) @ a)
+
+
+def lerp(a, b, w):
+    return np.asarray(a, np.float64) + (np.asarray(b, np.float64) - np.asarray(a, np.float64)) * w
+
+
+class Built:
+    def __init__(self, name, anim, times):
+        self.name, self.anim, self.times = name, anim, np.asarray(times, np.float64)
+        self.length = float(self.times[-1])
+        self.camel, self.gun, self.rider = [], [], []
+        self.grips = []          # (name, side, t0, t1): his palm on the staff in that window
+        self.reach = 0.0
+        self.camel_bytes = self.gun_bytes = self.rider_bytes = None
+        self.camel_name = None
+
+
+class ZUnit:
+    """The zamburak cannon's clips: the camel's (its own, the borrowed lying-down ones laid on the
+    ground), the gun's (the swivel's turn and tilt, the linstock's frame) and the rider's, from the
+    script's beats; written as the game's files."""
+
+    def __init__(self, game, recipe, camel, rider, design, foot_rig):
+        self.game, self.r, self.camel, self.rider, self.d = game, recipe, camel, rider, design
+        self.foot = foot_rig
+        self.limber = dict(recipe["limber"])
+        self.src = design.src
+        self.L = self.src.linstock_length            # the staff's length (game units)
+        self._lie = None
+        self._stand = None
+        self.stand_anim = rider.anim(mgc.STAND_CLIP)
+        self.gun_name = f"{recipe['name']}_gun"
+        self._fwd_sign = None
+
+    # -- frames
+
+    def C(self, P):
+        return rigid(P[self.camel.hang]) @ self.d.S
+
+    def lie(self):
+        if self._lie is None:
+            cam = self.camel
+            self._lie = cam.fix_hang(cam.grounded(cam.anim(mgc.B_IDLE), [0.0])[0])
+        return self._lie
+
+    def staff_world(self, P, frame):
+        """The staff's world frame (x, y along the staff, z; origin its foot) of a design frame."""
+        C = self.C(P)
+        s = np.cbrt(abs(np.linalg.det(C[:3, :3])))
+        W = np.eye(4)
+        W[:3, :3] = (C[:3, :3] / s) @ frame[:3, :3]
+        W[:3, 3] = point(C, frame[:3, 3])
+        return W
+
+    def staff_design(self, P, W):
+        C = self.C(P)
+        Cr = C[:3, :3] / np.cbrt(abs(np.linalg.det(C[:3, :3])))
+        f = np.eye(4)
+        f[:3, :3] = Cr.T @ W[:3, :3]
+        f[:3, 3] = point(np.linalg.inv(C), W[:3, 3])
+        return f
+
+    @staticmethod
+    def staff(foot, axis, side=None):
+        """A staff frame: its foot, +y along `axis`; x level where it can be."""
+        y = unit(axis)
+        x = np.cross(y, Z if side is None else side)
+        if np.linalg.norm(x) < 1e-6:
+            x = np.cross(y, X)
+        x = unit(x)
+        z = np.cross(x, y)
+        W = np.eye(4)
+        W[:3, 0], W[:3, 1], W[:3, 2], W[:3, 3] = x, y, z, foot
+        return W
+
+    def staff_mix(self, A, B, w, arc=None):
+        """Between two staff frames: the foot moved (out along `arc` at mid-way, so a staff passed
+        across him stays clear of his body), the axis and the facing of its head turned."""
+        foot = lerp(A[:3, 3], B[:3, 3], w)
+        if arc is not None:
+            foot = foot + np.asarray(arc, np.float64) * math.sin(math.pi * min(1.0, max(0.0, w)))
+        axis = unit(lerp(A[:3, 1], B[:3, 1], w))
+        side = lerp(A[:3, 2], B[:3, 2], w)
+        return self.staff(foot, axis, side=side if np.linalg.norm(side) > 1e-6 else None)
+
+    def ring(self, P):
+        return self.staff_world(P, self.d.linstock_rest())
+
+    def gun_frames(self, state):
+        return self.d.frames(state)
+
+    def cascabel(self, P, fr):
+        """(palm, finger, normal) world: the left palm on top of the knob behind the breech."""
+        C = self.C(P)
+        to_w = C @ fr["cannon"] @ tr(-self.d.trunnion)
+        b = point(to_w, self.d.bpoint(self.src.breech))
+        m = point(to_w, self.d.bpoint(self.src.muzzle))
+        ax = unit(m - b)
+        upv = unit(np.cross(np.cross(ax, Y), ax)) if abs(ax @ Y) < 0.99 else Z
+        if upv @ Y < 0:
+            upv = -upv
+        rad = self.d.radius / self.d.bind_scale
+        palm = b - 0.04 * ax + (0.6 * rad + 0.03) * upv
+        return palm, ax, -upv
+
+    # -- the rider
+
+    def fwd_lean(self, R, deg):
+        """The trunk leaned forward by `deg` (back if negative) about his side axis at the spine."""
+        if not deg:
+            return R
+        if self._fwd_sign is None:
+            h0 = R["bip01 head"][:3, 3]
+            T = self.rider.turn(R, "bip01 spine", self.side_axis(R), 10.0)
+            self._fwd_sign = 1.0 if (T["bip01 head"][:3, 3] - h0) @ self.facing(R) > 0 else -1.0
+        return self.rider.turn(R, "bip01 spine", self.side_axis(R), self._fwd_sign * deg)
+
+    def facing(self, R):
+        f = R["bip01 pelvis"][:3, :3] @ (self.rider.body.base["bip01 pelvis"][:3, :3].T @ Z)
+        f = np.array([f[0], 0.0, f[2]])
+        return unit(f)
+
+    def side_axis(self, R):
+        return unit(np.cross(Y, self.facing(R)))          # +: his left... the turn's sign is measured
+
+    def right_of(self, R):
+        f = self.facing(R)
+        return unit(np.array([f[2], 0.0, -f[0]]))          # the unit's right when he faces +z: +x
+
+    def seated(self, P, t=0.0, length=None):
+        anim = self.rider.idle
+        tb = (t * anim.duration / length) % anim.duration if length else 0.0
+        return self.rider.seated(anim, tb, rigid(P[self.camel.rider_bone]), square=True)
+
+    def reins(self, R, P, s):
+        A = rigid(P[self.camel.rider_bone])[:3, :3]
+        side = 0.07 if s == "r" else -0.07
+        palm = R["bip01 pelvis"][:3, 3] + A @ np.array([side, 0.05, 0.27])
+        return palm, A @ np.array([-3.0 * side, -0.3, 1.0]), A @ np.array([0.0, -1.0, 0.25])
+
+    def grip_on(self, R, W, dist, s, normal_hint=None, lock=None):
+        """(palm, finger, normal): his palm on the staff `dist` from its foot, on the side toward his
+        shoulder, the fingers round it toward where he faces."""
+        ax = W[:3, 1]
+        p = point(W, (0.0, dist, 0.0))
+        key = (s, round(float(dist if lock is None else lock), 2))
+        locks = getattr(self, "_locks", None)
+        if locks is not None and key in locks:
+            # the palm keeps its side of the staff and its fingers' way round it while it holds it (it
+            # neither slides round the staff nor turns over on it)
+            to_l, fin_l = locks[key]
+            to = unit(W[:3, :3] @ to_l)
+            to = unit(to - (to @ ax) * ax)
+            fin = unit(W[:3, :3] @ fin_l)
+        else:
+            sh = R[f"bip01 {s} upperarm"][:3, 3]
+            to = sh - p
+            to = unit(to - (to @ ax) * ax) if normal_hint is None else unit(normal_hint - (normal_hint @ ax) * ax)
+            fin = np.cross(ax, -to)
+            if fin @ self.facing(R) < 0:
+                fin = -fin
+            if locks is not None:
+                locks[key] = (W[:3, :3].T @ to, W[:3, :3].T @ unit(fin))
+        if locks is not None:
+            self._used.add(s)
+        nrm = -to
+        fin = unit(fin - (fin @ nrm) * nrm)
+        return p + STAFF_R * to, fin, nrm
+
+    def left_grip(self, S, staffs, g_r, reach=0.50):
+        """Where on the staff his left palm holds it while both hands work it (the grip never slides):
+        the place whose farthest distance from his left shoulder over the key frames `staffs` is the
+        least, at least 0.22 from the right hand's."""
+        sh = S["bip01 l upperarm"][:3, 3]
+        best = None
+        for g in np.arange(0.2, self.L - 0.1, 0.02):
+            if abs(g - g_r) < 0.22:
+                continue
+            far = max(float(np.linalg.norm(point(W, (0.0, g, 0.0)) - sh)) for W in staffs)
+            if best is None or far < best[0]:
+                best = (far, float(g))
+        return best[1]
+
+    def hang_hand(self, R, s):
+        """A hand hanging at his side: below the shoulder, a little ahead."""
+        sh = R[f"bip01 {s} upperarm"][:3, 3]
+        f, rt = self.facing(R), self.right_of(R)
+        out = rt if s == "r" else -rt
+        palm = sh - 0.52 * Y + 0.06 * f + 0.07 * out
+        return palm, -Y, -out
+
+    def poles(self, R, seated):
+        f, rt = self.facing(R), self.right_of(R)
+        if seated:
+            return {"r": unit(1.0 * rt - 0.6 * Y - 0.4 * f), "l": unit(-1.0 * rt - 0.6 * Y - 0.4 * f)}
+        # out to his sides and back, nearly level: never along an arm that hangs or reaches forward
+        return {"r": unit(0.8 * rt - 0.5 * Y - 0.3 * f), "l": unit(-0.8 * rt - 0.5 * Y - 0.3 * f)}
+
+    def hands(self, R, goals, b, seated):
+        # a hand that holds no staff this frame lets go of its places on it
+        used = getattr(self, "_used", set())
+        for s in ("l", "r"):
+            if s not in used and getattr(self, "_locks", None):
+                self._locks = {k: v for k, v in self._locks.items() if k[0] != s}
+        self._used = set()
+        poles = self.poles(R, seated)
+        Q = R
+        for s, g in goals.items():
+            if g is None:
+                continue
+            palm, fin, nor = g
+            Q = self.rider.hand(Q, s, palm, unit(fin), unit(nor), poles[s])
+        for s, g in goals.items():
+            if g is not None:
+                b.reach = max(b.reach, float(np.linalg.norm(self.rider.palm_of(Q, s) - g[0])))
+        return Q
+
+    @staticmethod
+    def blend_goal(a, z, w, lift=0.0, arc=None):
+        """Between two hand goals; the palm rises `lift` at mid-way, and swings out along `arc` (a
+        vector) so a hand crossing in front of him clears his body."""
+        if w <= 0.0:
+            return a
+        if w >= 1.0:
+            return z
+        palm = lerp(a[0], z[0], w) + np.array([0.0, lift * math.sin(math.pi * w), 0.0])
+        if arc is not None:
+            palm = palm + np.asarray(arc, np.float64) * math.sin(math.pi * w)
+        return palm, vslerp(a[1], z[1], w), vslerp(a[2], z[2], w)
+
+    # standing
+
+    def standing(self, at, heading, t=0.0):
+        anim = self.stand_anim
+        return self.rider.standing(self.foot, anim, t % anim.duration, heading, np.asarray(at, np.float64))
+
+    def station(self):
+        """(where he stands, his heading): on the camel's left, beside the vent of the level cannon on
+        the lying camel, facing it."""
+        if self._stand is None:
+            P = self.lie()
+            fr = self.gun_frames({})
+            vent = point(self.C(P), fr["fuse"][:3, 3])
+            at = np.array([vent[0] - self.r.get("station", {}).get("out", 0.80), 0.0,
+                           vent[2] - self.r.get("station", {}).get("back", 0.25)])
+            d = vent - at
+            self._stand = (at, math.degrees(math.atan2(d[0], d[2])), vent)
+        return self._stand
+
+    def plant(self, R, feet):
+        """`R` with each leg solved onto its foot frame in `feet` ({side: 4 x 4})."""
+        from aoe3game.gr2_pose import two_bone_ik
+        rig, hinge = self.rider.rig, self.rider.body.hinge
+        f = self.facing(R)
+        for s, F in feet.items():
+            th, ca, fo = (f"bip01 {s} thigh", f"bip01 {s} calf", f"bip01 {s} foot")
+            R = two_bone_ik(R, rig, th, ca, fo, F[:3, 3], f, hinge[th], hinge[ca], end_frame=F[:3, :3])
+        return R
+
+    def walk(self, A, B, u, lead):
+        """From stand pose A to stand pose B in two steps: `lead` foot first (u 0-0.5), the other
+        (0.5-1); the planted foot never moves, the stepping one lifts 0.08 at mid-step."""
+        from aoe3game.gr2_pose import blend
+        body = blend(self.rider.rig, A, B, ease(u))
+        other = "l" if lead == "r" else "r"
+        feet = {}
+        for s, (a, z) in ((lead, (0.0, 0.5)), (other, (0.5, 1.0))):
+            w = span(u, a, z)
+            Fa, Fb = A[f"bip01 {s} foot"], B[f"bip01 {s} foot"]
+            F = np.eye(4)
+            from aoe3game.gr2_pose import slerp
+            from aoe3game.gr2_anim import matrix_quat
+            from aoe3game.gr2_skin import quat_matrix
+            F[:3, :3] = quat_matrix(slerp(matrix_quat(Fa[:3, :3]), matrix_quat(Fb[:3, :3]), w))
+            F[:3, 3] = lerp(Fa[:3, 3], Fb[:3, 3], w) + np.array([0.0, 0.08 * math.sin(math.pi * w), 0.0])
+            feet[s] = F
+        return self.plant(body, feet)
+
+    # -- a clip's camel poses
+
+    def camel_own(self, rel, times):
+        cam = self.camel
+        anim = cam.anim(rel)
+        poses = [cam.fix_hang(cam.pose(anim, float(t))) for t in times]
+        scales = cam.hang_scale(poses[0], cam._scales[id(anim)])
+        return poses, anim, scales
+
+    def camel_borrow(self, rel, times, start):
+        """The borrowed lying-down clip from `start` (held before and after it)."""
+        cam = self.camel
+        anim = cam.anim(rel)
+        cache, poses = {}, []
+        for t in times:
+            tt = min(max(float(t) - start, 0.0), anim.duration)
+            if tt not in cache:
+                cache[tt] = cam.fix_hang(cam.grounded(anim, [tt])[0])
+            poses.append(cache[tt])
+        return poses, anim, cam.hang_scale(poses[0], cam.borrowed_scales(anim))
+
+    # -- the clips
+
+    def times(self, length):
+        """A clip's frames (and a fresh start for the grips and the gaze, which carry from frame to
+        frame within a clip)."""
+        self._locks, self._used, self._gaze, self._saddle_fin = {}, set(), None, None
+        n = max(2, int(round(length * FPS)) + 1)
+        return np.linspace(0.0, length, n)
+
+    GAZE_SPEED = 300.0        # degrees a second the gaze may swing (the head then stays under its limit)
+
+    def look(self, R, target, **kw):
+        """The head turned toward `target`, the gaze swinging at most GAZE_SPEED from the last frame
+        of this clip (no snap when what he looks at changes)."""
+        head = R["bip01 head"][:3, 3]
+        d = unit(np.asarray(target, np.float64) - head)
+        last = getattr(self, "_gaze", None)
+        if last is not None:
+            step = math.radians(self.GAZE_SPEED / FPS)
+            ang = math.acos(max(-1.0, min(1.0, float(last @ d))))
+            if ang > step:
+                axis = np.cross(last, d)
+                if np.linalg.norm(axis) < 1e-9:
+                    axis = Y
+                d = axis_matrix(unit(axis), math.degrees(step)) @ last
+        self._gaze = unit(d)
+        return self.rider.look(R, head + 6.0 * self._gaze, **kw)
+
+    def barrel_gap(self, P, fr):
+        """The least gap between the barrel and the camel's body at pose P (the saddle under the
+        swivel left out), game units."""
+        d, cam = self.d, self.camel
+        C = self.C(P)
+        to_w = C @ fr["cannon"] @ tr(-d.trunnion)
+        a, b = point(to_w, d.bpoint(self.src.breech)), point(to_w, d.bpoint(self.src.muzzle))
+        pivot = point(C, d.pivot)
+        pts = cam.mesh_points(P)[used_vertices(cam)]
+        pts = pts[np.linalg.norm(pts - pivot, axis=1) > 0.35]
+        ab = b - a
+        u = np.clip(((pts - a) @ ab) / (ab @ ab), 0.0, 1.0)
+        return float((np.linalg.norm(pts - (a + u[:, None] * ab), axis=1) - d.radius / d.bind_scale).min())
+
+    CLEAR = 0.015         # the gap the camel's head keeps from the barrel
+
+    def keep_head_clear(self, poses, times, fr):
+        """Where the camel's own clip swings its head into the barrel (the bored idles turn it to
+        the right, where pose B puts the muzzle), the neck bent down just enough, eased in and out
+        over half a second either side: (poses, the largest bend in degrees)."""
+        cam = self.camel
+        need = np.zeros(len(poses))
+        for i, P in enumerate(poses):
+            if self.barrel_gap(P, fr) >= self.CLEAR:
+                continue
+            for deg in range(4, 61, 4):
+                if self.barrel_gap(cam.lower_head(P, deg), fr) >= self.CLEAR:
+                    break
+            need[i] = deg
+        if not need.any():
+            return poses, 0.0
+        half = int(round(0.5 * FPS))
+        kernel = [ease((k + 1) / (half + 1)) for k in range(half)] + [1.0] + \
+                 [ease((half - k) / (half + 1)) for k in range(half)]
+        bend = np.array([max(need[j] * kernel[j - i + half] for j in range(max(0, i - half), min(len(need), i + half + 1)))
+                         for i in range(len(need))])
+        return [cam.lower_head(P, float(a)) if a > 0 else P for P, a in zip(poses, bend)], float(bend.max())
+
+    def limbered(self, name, anim_name, rel, gait, reins_only, look=None):
+        cam = self.camel
+        length = cam.anim(rel).duration
+        times = self.times(length)
+        b = Built(name, anim_name, times)
+        poses, anim, scales = self.camel_own(rel, times)
+        fr = self.gun_frames(self.limber)
+        poses, b.head_bend = self.keep_head_clear(poses, times, fr)
+        for t, P in zip(times, poses):
+            u = t / length
+            R = self.seated(P, t if not gait else 0.0, length if not gait else None)
+            if gait:
+                R = self.fwd_lean(R, gait * math.sin(4 * math.pi * u))
+            goals = {"r": self.reins(R, P, "r"),
+                     "l": self.reins(R, P, "l") if reins_only else self.cascabel(P, fr)}
+            R = self.hands(R, goals, b, True)
+            R = self.look(R, self.gaze_limbered(R, P, fr, t, look))
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=self.d.linstock_rest()))
+            b.rider.append(R)
+        b.camel_src = (anim, scales)
+        return b
+
+    def gaze_limbered(self, R, P, fr, t, look):
+        A = rigid(P[self.camel.rider_bone])[:3, :3]
+        ahead = R["bip01 head"][:3, 3] + 12.0 * (A @ Z)
+        if look is None:
+            return ahead
+        a, b_, deg = look
+        w = math.sin(math.pi * min(1.0, max(0.0, (t - a) / (b_ - a)))) if a < t < b_ else 0.0
+        d = axis_matrix(Y, deg * w) @ (A @ Z)
+        return R["bip01 head"][:3, 3] + 12.0 * d
+
+    def stand_pose(self, t=0.0):
+        at, h, _v = self.station()
+        return self.standing(at, h, t)
+
+    def staff_at_station(self, S):
+        """The staff upright at the station: its foot on the ground by his right foot, a little out."""
+        foot = S["bip01 r foot"][:3, 3]
+        rt = self.right_of(S)
+        base = np.array([foot[0], 0.0, foot[2]]) + 0.22 * rt + 0.14 * self.facing(S)
+        return self.staff(base, unit(Y + 0.04 * rt))
+
+    def station_grip(self, S):
+        """How far up the staff his right palm holds it standing: at his chest, below the shoulder."""
+        return float(S["bip01 r upperarm"][1, 3] - 0.42)
+
+    def deployed_idle(self):
+        times = self.times(DEPLOYED)
+        b = Built("deployed", "Bombard_ranged_idle", times)
+        poses, anim, scales = self.camel_borrow(mgc.B_IDLE, times, 0.0)
+        fr0 = self.gun_frames({})
+        S0 = self.stand_pose()
+        W = self.staff_at_station(S0)
+        g = self.station_grip(S0)
+        _at, _h, vent = self.station()
+        for t, P in zip(times, poses):
+            u = t / DEPLOYED
+            R = self.stand_pose(u * self.stand_anim.duration)
+            R = self.plant(R, {s: S0[f"bip01 {s} foot"] for s in ("l", "r")})
+            R = self.hands(R, {"r": self.grip_on(R, W, g, "r"), "l": self.hang_hand(R, "l")}, b, False)
+            down = self.downrange(P, fr0)
+            w = math.sin(math.pi * min(1.0, max(0.0, (t - 0.8) / 0.6))) if 0.8 < t < 1.4 else 0.0
+            look = lerp(down, point(W, (0.0, self.L, 0.0)), w)
+            R = self.look(R, look, max_pitch=30.0)
+            b.camel.append(P)
+            b.gun.append(dict(fr0, linstock=self.staff_design(P, W)))
+            b.rider.append(R)
+        b.grips.append(("right palm on the staff", "r", 0.0, DEPLOYED))
+        b.camel_src = (anim, scales)
+        return b
+
+    def downrange(self, P, fr):
+        C = self.C(P)
+        m = point(C, fr["muzzle"][:3, 3])
+        d = unit(C[:3, :3] @ (fr["muzzle"][:3, :3] @ Z))
+        return m + 12.0 * d
+
+    def fire(self):
+        times = self.times(FIRE)
+        b = Built("fire", "Bombard_ranged_attack", times)
+        P = self.lie()
+        poses = [P] * len(times)
+        S0 = self.stand_pose()
+        W0 = self.staff_at_station(S0)
+        g_r = self.station_grip(S0)
+        _at, _h, vent = self.station()
+        fr0 = self.gun_frames({})
+        hip = S0["bip01 r thigh"][:3, 3]
+        rt, f = self.right_of(S0), self.facing(S0)
+        # the staff's tip on the vent, its foot back past his right hip
+        tail = hip + 0.25 * rt - 0.45 * f - 0.05 * Y
+        ax = unit(vent - tail)
+        W_touch = self.staff(vent - (self.L - 0.01) * ax, ax)
+        W_near = self.staff(vent + 0.10 * Y - (self.L - 0.01) * ax + 0.06 * f, ax)
+        # back up after the shot: upright again, held out in front of him, before its foot goes down
+        up = self.staff(W0[:3, 3] + 0.10 * Y + 0.22 * f, W0[:3, 1])
+        g_l = self.left_grip(S0, [W0, self.staff_mix(W0, W_near, 0.5), W_near, W_touch, up], g_r)
+        for t, _P in zip(times, poses):
+            # the staff: upright -> over the vent (0.0-0.5) -> on it (0.5-0.9) -> held (0.9-0.95) -> back
+            # up (0.92-1.40) -> its foot down (1.40-1.80)
+            if t <= 0.50:
+                W = self.staff_mix(W0, W_near, span(t, 0.0, 0.50))
+                W[:3, 3] += np.array([0.0, 0.10 * span(t, 0.0, 0.10), 0.0]) * (1.0 - span(t, 0.0, 0.5))
+            elif t <= 0.95:
+                W = self.staff_mix(W_near, W_touch, span(t, 0.50, 0.80))
+            elif t <= 1.40:
+                W = self.staff_mix(W_touch, up, span(t, 0.92, 1.40))
+            else:
+                W = self.staff_mix(up, W0, span(t, 1.40, 1.80))
+            kick = 6.0 * (span(t, SHOT, 1.00) - span(t, 1.00, 1.50))
+            fr = self.gun_frames({"pitch": -kick})
+            R = self.stand_pose(0.0)
+            R = self.fwd_lean(R, -5.0 * span(t, 0.0, 0.5) * (1.0 - span(t, 1.4, 2.0)))
+            R = self.plant(R, {s: S0[f"bip01 {s} foot"] for s in ("l", "r")})
+            wl = span(t, 0.0, 0.35) * (1.0 - span(t, 1.60, 2.00))
+            left = self.blend_goal(self.hang_hand(R, "l"), self.grip_on(R, W, g_l, "l"), wl,
+                                   arc=0.22 * self.facing(R))
+            R = self.hands(R, {"r": self.grip_on(R, W, g_r, "r"), "l": left}, b, False)
+            away = math.sin(math.pi * min(1.0, max(0.0, (t - 0.92) / 0.48))) if 0.92 < t < 1.40 else 0.0
+            look = vent if t < 1.40 else self.downrange(P, fr)
+            if away > 0:
+                h = R["bip01 head"][:3, 3]
+                look = h + axis_matrix(Y, -45.0 * away) @ (look - h)
+            R = self.look(R, look, max_yaw=60.0, max_pitch=35.0)
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=self.staff_design(P, W)))
+            b.rider.append(R)
+        b.grips += [("right palm on the staff", "r", 0.0, FIRE), ("left palm on the staff", "l", 0.35, 1.60)]
+        cam = self.camel
+        anim = cam.anim(mgc.B_IDLE)
+        b.camel_src = (anim, cam.hang_scale(P, cam.borrowed_scales(anim)))
+        b.flash = [SHOT]
+        return b
+
+    def reload(self):
+        times = self.times(RELOAD)
+        b = Built("reload", "Bombard_reload", times)
+        P = self.lie()
+        S0 = self.stand_pose()
+        W0 = self.staff_at_station(S0)
+        g_r = self.station_grip(S0)
+        fr = self.gun_frames({})
+        head = S0["bip01 head"][:3, 3]
+        rt, f = self.right_of(S0), self.facing(S0)
+        tip = head + 0.30 * f + 0.05 * Y + 0.05 * rt
+        tail = S0["bip01 r thigh"][:3, 3] + 0.35 * rt - 0.30 * f - 0.25 * Y
+        ax = unit(tip - tail)
+        W_face = self.staff(tip - self.L * ax, ax)
+        g_l = self.left_grip(S0, [W0, self.staff_mix(W0, W_face, 0.5), W_face], g_r)
+        for t in times:
+            if t <= 0.60:
+                W = self.staff_mix(W0, W_face, span(t, 0.05, 0.60))
+            elif t <= 1.40:
+                W = W_face
+            else:
+                W = self.staff_mix(W_face, W0, span(t, 1.40, 1.90))
+            R = self.stand_pose(0.0)
+            # two small pushes of the head and chest toward the match (he blows on it at 1.0 and 1.3)
+            push = math.exp(-((t - 1.0) / 0.06) ** 2) + math.exp(-((t - 1.3) / 0.06) ** 2)
+            R = self.fwd_lean(R, 3.0 * push)
+            R = self.plant(R, {s: S0[f"bip01 {s} foot"] for s in ("l", "r")})
+            wl = span(t, 0.0, 0.35) * (1.0 - span(t, 1.60, 2.00))
+            left = self.blend_goal(self.hang_hand(R, "l"), self.grip_on(R, W, g_l, "l"), wl,
+                                   arc=0.22 * self.facing(R))
+            R = self.hands(R, {"r": self.grip_on(R, W, g_r, "r"), "l": left}, b, False)
+            match = point(W, (0.0, self.L, 0.0))
+            if 0.60 <= t < 1.40:
+                R = self.look(R, match, max_pitch=30.0)
+            elif t < 2.0:
+                R = self.look(R, match, max_pitch=30.0)
+            else:
+                R = self.look(R, self.downrange(P, fr), max_pitch=30.0)
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=self.staff_design(P, W)))
+            b.rider.append(R)
+        b.grips += [("right palm on the staff", "r", 0.0, RELOAD), ("left palm on the staff", "l", 0.35, 1.60)]
+        cam = self.camel
+        anim = cam.anim(mgc.B_IDLE)
+        b.camel_src = (anim, cam.hang_scale(P, cam.borrowed_scales(anim)))
+        return b
+
+    # getting off and on
+
+    def climb_keys(self, P):
+        """Getting off the lying camel to its left, the right leg back over the rump, as (share,
+        pose) keys from seated (0) to standing beside the saddle facing it (1); his hands are set by
+        the clip (the left holds the staff out, the right on the saddle behind his hip)."""
+        ck = getattr(self, "_ck", None)
+        if ck is not None and ck[0] is P:
+            return ck[1]
+        keys = self._climb_keys(P)
+        self._ck = (P, keys)
+        return keys
+
+    def _climb_keys(self, P):
+        from aoe3game.gr2_pose import rotate_about, translate
+        rider, rig = self.rider, self.rider.rig
+        root = rig.names[0].lower()
+        attach = rigid(P[self.camel.rider_bone])
+        A = attach[:3, :3]
+        fwd, up, right = A @ Z, A @ Y, A @ X
+        left = -right
+        seat_at = attach[:3, 3]
+        k0 = self.seated(P)
+        k1 = translate(self.seated(P), rig, root, 0.06 * up + 0.04 * left)
+        k1 = self.fwd_lean(k1, 15.0)
+        # the right thigh lifted backward (its knee goes back) and swung toward the left over the rump
+        k2 = translate(self.seated(P), rig, root, 0.12 * up + 0.16 * left)
+        k2 = self.fwd_lean(k2, 25.0)
+        knee0 = k2["bip01 r calf"][:3, 3].copy()
+        for sign in (1.0, -1.0):
+            T = rotate_about(k2, rig, "bip01 r thigh", "bip01 r thigh", left, sign * 60.0)
+            if (T["bip01 r calf"][:3, 3] - knee0) @ fwd < 0:
+                break
+        k2 = rotate_about(T, rig, "bip01 r thigh", "bip01 r thigh", fwd, 0.0)
+        k2b = translate(k2, rig, root, 0.06 * left)
+        S = self.standing(np.zeros(3), math.degrees(math.atan2(right[0], right[2])))
+        cur = S[root][:3, 3]
+        k3 = translate(S, rig, root, seat_at + 0.40 * left - 0.55 * up - 0.10 * fwd - cur)
+        k4 = translate(S, rig, root, np.array([seat_at[0] - 0.72 - cur[0], 0.0, seat_at[2] - 0.12 - cur[2]]))
+        # the turn to face the camel (k2b to k3) takes the longest share: his hand on the saddle has let go
+        keys = [(0.0, k0), (0.12, k1), (0.30, k2), (0.42, k2b), (0.80, k3), (1.0, k4)]
+        return [(s_, self.above_ground(k_)) for s_, k_ in keys]
+
+    def above_ground(self, R):
+        from aoe3game.gr2_pose import translate
+        low = min(float(R[b][1, 3]) for b in R if b.endswith(" foot") or b.endswith(" toe0"))
+        S = self.stand_pose()
+        sole = min(float(S[b][1, 3]) for b in S if b.endswith(" foot") or b.endswith(" toe0"))
+        if sole - low > 1e-4:
+            return translate(R, self.rider.rig, self.rider.rig.names[0].lower(), np.array([0.0, sole - low, 0.0]))
+        return R
+
+    def climb(self, keys, share):
+        from aoe3game.gr2_pose import blend
+        share = min(max(share, 0.0), 1.0)
+        i = min(max(j for j, (k, _p) in enumerate(keys) if k <= share + 1e-9), len(keys) - 2)
+        (s0, p0), (s1, p1) = keys[i], keys[i + 1]
+        return blend(self.rider.rig, p0, p1, ease((share - s0) / (s1 - s0)))
+
+    def saddle_palm(self, P, R=None):
+        """His right palm flat on the saddle as he gets off or on: one fixed point at its right rear,
+        behind his right hip (he pushes on it as his right leg swings over the rump), the palm down."""
+        attach = rigid(P[self.camel.rider_bone])
+        A = attach[:3, :3]
+        p = attach[:3, 3] + A @ np.array([0.10, 0.04, -0.14])
+        # the fingers point the way his arm reaches to it (level), so the wrist stays in reach; as he
+        # swings round, the hand turns with him at most HAND_TURN degrees a second
+        want = A @ np.array([0.0, 0.0, -1.0])
+        if R is not None:
+            d = p - R["bip01 r upperarm"][:3, 3]
+            d[1] = 0.0
+            if np.linalg.norm(d) > 0.05:
+                want = unit(d)
+        fin = getattr(self, "_saddle_fin", None)
+        if fin is None:
+            fin = want
+        else:
+            step = self.HAND_TURN / FPS
+            ang = math.degrees(math.acos(max(-1.0, min(1.0, float(fin @ want)))))
+            fin = want if ang <= step else vslerp(fin, want, step / ang)
+        self._saddle_fin = fin
+        return p, fin, A @ np.array([0.0, -1.0, 0.0])
+
+    HAND_TURN = 300.0
+
+    def _carry(self, R, g):
+        """The staff upright in his right hand at his side as he walks, its grip `g` up from its foot."""
+        p = R["bip01 r upperarm"][:3, 3] - 0.32 * Y + 0.12 * self.right_of(R) + 0.10 * self.facing(R)
+        return self.staff(p - g * Y - STAFF_R * self.right_of(R), Y, side=self.facing(R))
+
+    def transition(self, mount):
+        """Bombard_unlimber (mount False) or Bombard_limber (mount True), as the script times them."""
+        length = LIMBER_T if mount else UNLIMBER
+        times = self.times(length)
+        b = Built("limber" if mount else "unlimber", "Bombard_limber" if mount else "Bombard_unlimber", times)
+        cam = self.camel
+        if mount:
+            poses, anim, scales = self.camel_borrow(mgc.B_UP, times, 3.0)
+        else:
+            poses, anim, scales = self.camel_borrow(mgc.B_DOWN, times, 0.0)
+        P_lie = poses[-1] if not mount else poses[0]
+        keys = self.climb_keys(P_lie)
+        S_beside = keys[-1][1]
+        S0 = self.stand_pose()
+        W_station = self.staff_at_station(S0)
+        g_st = self.station_grip(S0)
+        for t, P in zip(times, poses):
+            fr = self.gun_frames(self.beat_state(t, mount))
+            ring = self.ring(P)
+            R, goals, W = self.transition_pose(t, mount, P, P_lie, fr, keys, S_beside, S0, W_station, g_st, ring, b)
+            R = self.hands(R, goals, b, seated=self._seated_now(t, mount))
+            R = self.look(R, self._look_now(t, mount, R, P, fr, W), max_yaw=45.0, max_pitch=30.0)
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=self.staff_design(P, W)))
+            b.rider.append(R)
+        b.grips += self._transition_grips(mount)
+        b.camel_src = (anim, scales)
+        return b
+
+    # The unlimber's beats (z-script-v1): 0-3.33 lying down, reins; 3.33-3.53 right hand to the ring,
+    # 3.53-3.83 lifts it 0.35; 3.83-3.93 left hand to the cascabel, 3.93-4.38 the swing, 4.43 lets go;
+    # 4.43-4.73 the staff passed right to left (both hands 4.53-4.63); 4.73-5.43 getting off; 5.43-5.73
+    # back to the right hand (both 5.53-5.63); 5.73-6.33 two steps to the station, foot down at 6.33.
+    # The limber (5.17 s): 0-0.50 two steps back to the saddle (the staff's foot up at 0.0-0.1);
+    # 0.50-0.80 right to left (both 0.60-0.70); 0.80-1.60 getting on; 1.60-1.90 left to right (both
+    # 1.70-1.80); 1.90-2.40 the swing back (2.00-2.35); 2.40-2.90 into the ring (2.55-2.80);
+    # 2.90-3.00 reins; 3.00-5.17 the camel rises.
+
+    def beat_state(self, t, mount):
+        lim = self.limber
+        if mount:
+            w = span(t, 2.08, 2.40)
+        else:
+            w = 1.0 - span(t, 3.93, 4.38)
+        return {"pitch": lim["pitch"] * w, "yaw": lim["yaw"] * w}
+
+    def _seated_now(self, t, mount):
+        return t >= 1.30 if mount else t < 4.90
+
+    def _look_now(self, t, mount, R, P, fr, W):
+        A = rigid(P[self.camel.rider_bone])[:3, :3]
+        ahead = R["bip01 head"][:3, 3] + 12.0 * (A @ Z)
+        if not mount:
+            if 3.33 <= t < 3.83:
+                return point(W, (0.0, 0.3, 0.0))
+            if 3.83 <= t < 4.43:
+                return self.cascabel(P, fr)[0]
+            if 4.73 <= t < 5.13:          # where he gets down, on his left
+                return R["bip01 head"][:3, 3] + 2.0 * (-(A @ X)) + 1.0 * (A @ Z) - 2.0 * Y
+            if 5.13 <= t < 5.73:          # turned to the camel: the saddle
+                return rigid(P[self.camel.rider_bone])[:3, 3]
+            if t >= 5.73:
+                return self.station()[2]
+            return ahead
+        if t < 0.80:
+            return R["bip01 head"][:3, 3] + 6.0 * (A @ Z)
+        if t < 1.30:                      # getting on: the saddle
+            return rigid(P[self.camel.rider_bone])[:3, 3]
+        if 1.90 <= t < 2.40:
+            return self.cascabel(P, fr)[0]
+        if 2.40 <= t < 2.90:
+            return point(self.ring(P), (0.0, 0.3, 0.0))
+        return ahead
+
+    def _transition_grips(self, mount):
+        if not mount:
+            return [("right palm on the staff (drawn, held)", "r", 3.53, 4.63),
+                    ("left palm on the staff (passed, getting off)", "l", 4.53, 5.68),
+                    ("right palm on the staff (to the station)", "r", 5.66, 6.13)]
+        return [("right palm on the staff (back to the saddle)", "r", 0.10, 0.70),
+                ("left palm on the staff (getting on)", "l", 0.62, 1.90),
+                ("right palm on the staff (into the ring)", "r", 1.90, 2.80)]
+
+    def transition_pose(self, t, mount, P, P_lie, fr, keys, S_beside, S0, W_station, g_st, ring, b):
+        """(rider pose, hand goals, staff world frame) at t of the unlimber or the limber."""
+        if not mount:
+            return self._unlimber_pose(t, P, fr, keys, S_beside, S0, W_station, g_st, ring)
+        return self._limber_pose(t, P, fr, keys, S_beside, S0, W_station, g_st, ring)
+
+    def _ring_grip(self, P, ring):
+        """How far up the staff in its ring his right palm closes on it (by his right hip)."""
+        R = self.seated(P)
+        hip = R["bip01 pelvis"][:3, 3]
+        return float((hip[1] + 0.30) - ring[1, 3]) / max(ring[1, 1], 0.5)
+
+    def _held_seated(self, R, P, ring, g):
+        """The staff drawn 0.35 up out of its ring, held in the right hand (seated)."""
+        return self.staff(ring[:3, 3] + 0.35 * ring[:3, 1], ring[:3, 1])
+
+    def _front(self, R, g_hold, standing=False):
+        """The staff upright in front of his chest (both hands on it): its palm point there."""
+        # seated, well out in front (over the cannon's breech); standing beside the camel, nearer,
+        # so the staff stays clear of the camel's flank
+        # seated, the cannon's breech is right in front of him: the staff passes to his right of it
+        ahead, up, side = (0.26, -0.05, 0.0) if standing else (0.22, 0.10, 0.14)
+        c = R["bip01 spine1"][:3, 3] + ahead * self.facing(R) + up * Y + side * self.right_of(R)
+        return self.staff(c - g_hold * Y, Y, side=self.facing(R))
+
+    def _out_left(self, R, g_hold):
+        """The staff upright in his left hand held out from the camel's flank."""
+        rt, f = self.right_of(R), self.facing(R)
+        p = R["bip01 l upperarm"][:3, 3] - 0.30 * Y - 0.30 * rt + 0.05 * f
+        return self.staff(p - g_hold * Y, Y, side=f)
+
+    def _unlimber_pose(self, t, P, fr, keys, S_beside, S0, W_station, g_st, ring):
+        g_ring = self._ring_grip(P, ring)
+        seat = self.seated(P)
+        lean = (-15.0 * span(t, 0.3, 1.6) + 25.0 * span(t, 1.6, 3.0) - 10.0 * span(t, 3.0, 3.33)) if t < 3.33 else 0.0
+        if t < 4.73:
+            R = self.fwd_lean(seat, lean)
+        elif t < 5.43:
+            R = self.climb(keys, (t - 4.73) / 0.70)
+        elif t < 5.73:
+            R = S_beside
+        else:
+            R = self.walk(S_beside, S0, (t - 5.73) / 0.60, "l")
+            R = self.plant(R, {s: R[f"bip01 {s} foot"] for s in ("l", "r")})
+        # the staff
+        drawn = self.staff(ring[:3, 3] + 0.35 * ring[:3, 1] * span(t, 3.53, 3.83), ring[:3, 1])
+        g_hold = g_ring
+        if t < 4.43:
+            W = drawn if t >= 3.53 else ring
+        elif t < 4.73:
+            front = self._front(R, g_hold)
+            W = self.staff_mix(drawn, front, span(t, 4.43, 4.58))
+            W = self.staff_mix(W, self._out_left(R, g_hold), span(t, 4.63, 4.90), arc=0.22 * self.facing(R))
+        elif t < 5.43:
+            W = self.staff_mix(self._front(R, g_hold), self._out_left(R, g_hold), span(t, 4.63, 4.90),
+                               arc=0.22 * self.facing(R))
+        else:
+            front = self._front(R, g_hold, standing=True)
+            out = self._out_left(R, g_hold)
+            if t < 5.68:
+                W = self.staff_mix(out, front, span(t, 5.43, 5.68))
+            elif t < 6.13:
+                W = self.staff_mix(front, self._carry(R, g_hold), span(t, 5.68, 5.95), arc=0.12 * self.facing(R))
+            else:
+                # at the station he lets the staff slide down through his hand onto the ground
+                W = self.staff_mix(self._carry(R, g_hold), W_station, span(t, 6.13, 6.33))
+        # the hands
+        reins_r, reins_l = self.reins(R, P, "r"), self.reins(R, P, "l")
+        goals = {}
+        if t < 3.33:
+            goals = {"r": reins_r, "l": reins_l}
+        elif t < 4.43:
+            grip_r = self.grip_on(R, W, g_hold, "r")
+            goals["r"] = self.blend_goal(reins_r, grip_r, span(t, 3.33, 3.53), 0.05)
+            casc = self.cascabel(P, fr)
+            goals["l"] = self.blend_goal(reins_l, casc, span(t, 3.83, 3.93), 0.04)
+        elif t < 4.73:
+            goals["r"] = self.grip_on(R, W, g_hold, "r") if t < 4.63 else self.blend_goal(
+                self.grip_on(R, W, g_hold, "r"), self.saddle_palm(P, R), span(t, 4.63, 4.83))
+            goals["l"] = self.blend_goal(self.cascabel(P, fr), self.grip_on(R, W, g_hold + 0.12, "l"),
+                                         span(t, 4.43, 4.53), 0.04)
+        elif t < 5.43:
+            goals["r"] = self.blend_goal(self.grip_on(R, W, g_hold, "r"), self.saddle_palm(P, R), span(t, 4.63, 4.83)) \
+                if t < 4.83 else self.saddle_palm(P, R) if t < 5.02 else self.blend_goal(
+                self.saddle_palm(P, R), self.hang_hand(R, "r"), span(t, 5.02, 5.50))
+            goals["l"] = self.grip_on(R, W, g_hold + 0.12, "l")
+        else:
+            g_new = g_hold + (g_st - g_hold) * span(t, 6.13, 6.33)
+            goals["r"] = self.blend_goal(self.hang_hand(R, "r"), self.grip_on(R, W, g_hold, "r"),
+                                         span(t, 5.43, 5.66), arc=0.15 * self.facing(R)) if t < 5.66 else self.grip_on(R, W, g_new, "r", lock=g_hold)
+            let_go = self.grip_on(R, self._front(R, g_hold, standing=True), g_hold + 0.12, "l")
+            goals["l"] = self.grip_on(R, W, g_hold + 0.12, "l") if t < 5.68 else self.blend_goal(
+                let_go, self.hang_hand(R, "l"), span(t, 5.68, 5.95), arc=0.15 * self.facing(R))
+        return R, goals, W
+
+    def _limber_pose(self, t, P, fr, keys, S_beside, S0, W_station, g_st, ring):
+        g_ring = self._ring_grip(P, ring)
+        g_hold = g_ring
+        seat = self.seated(P)
+        if t < 0.50:
+            R = self.walk(S0, S_beside, t / 0.50, "r")
+            R = self.plant(R, {s: R[f"bip01 {s} foot"] for s in ("l", "r")})
+        elif t < 0.80:
+            R = S_beside
+        elif t < 1.60:
+            R = self.climb(keys, 1.0 - (t - 0.80) / 0.80)
+        else:
+            lean = (15.0 * span(t, 3.0, 4.1) - 25.0 * span(t, 4.1, 5.0) + 10.0 * span(t, 5.0, 5.17)) if t >= 3.0 else 0.0
+            R = self.fwd_lean(seat, lean)
+        # the staff
+        drawn = self.staff(ring[:3, 3] + 0.35 * ring[:3, 1] * (1.0 - span(t, 2.55, 2.80)), ring[:3, 1])
+        if t < 0.50:
+            # the staff slides up through his hand off the ground (0.0-0.10), then he carries it
+            W = self.staff_mix(W_station, self._carry(R, g_hold), span(t, 0.0, 0.10))
+        elif t < 0.80:
+            W = self.staff_mix(self._carry(R, g_hold), self._front(R, g_hold, standing=True), span(t, 0.50, 0.65),
+                               arc=0.12 * self.facing(R))
+            W = self.staff_mix(W, self._out_left(R, g_hold), span(t, 0.68, 0.88), arc=0.10 * self.facing(R))
+        elif t < 1.60:
+            W = self.staff_mix(self._front(R, g_hold, standing=True), self._out_left(R, g_hold), span(t, 0.68, 0.88),
+                               arc=0.10 * self.facing(R))
+        elif t < 2.40:
+            W = self.staff_mix(self._out_left(R, g_hold), self._front(R, g_hold), span(t, 1.60, 1.75),
+                               arc=0.12 * self.facing(R))
+            W = self.staff_mix(W, drawn, span(t, 1.90, 2.12)) if t >= 1.90 else W
+        else:
+            W = drawn
+        reins_r, reins_l = self.reins(R, P, "r"), self.reins(R, P, "l")
+        goals = {}
+        if t < 0.70:
+            g = g_st + (g_hold - g_st) * span(t, 0.0, 0.10)
+            goals["r"] = self.grip_on(R, W, g, "r", lock=g_hold)
+            goals["l"] = self.blend_goal(self.hang_hand(R, "l"), self.grip_on(R, W, g_hold + 0.12, "l"),
+                                         span(t, 0.48, 0.62), arc=0.15 * self.facing(R))
+        elif t < 1.90:
+            # the left holds the staff out while he gets on; the right goes to the saddle (0.70-0.80),
+            # stays there and, seated, comes to the staff in front of his chest (1.60-1.75)
+            goals["l"] = self.grip_on(R, W, g_hold + 0.12, "l")
+            let_go = self.grip_on(R, self._front(R, g_hold, standing=True), g_hold, "r")
+            goals["r"] = self.blend_goal(let_go, self.saddle_palm(P, R), span(t, 0.70, 1.25), arc=0.10 * self.facing(R)) \
+                if t < 1.45 else self.blend_goal(self.saddle_palm(P, R), self.grip_on(R, W, g_hold, "r"), span(t, 1.45, 1.90),
+                                                 arc=0.15 * self.right_of(R) + 0.12 * self.facing(R) + 0.05 * Y)
+        elif t < 2.90:
+            goals["r"] = self.grip_on(R, W, g_hold, "r") if t < 2.80 else self.blend_goal(
+                self.grip_on(R, W, g_hold, "r"), reins_r, span(t, 2.80, 2.95))
+            casc = self.cascabel(P, fr)
+            let_go = self.grip_on(R, self._front(R, g_hold), g_hold + 0.12, "l")
+            goals["l"] = (let_go if t < 1.90 else self.blend_goal(let_go, casc, span(t, 1.90, 2.08), 0.04)) \
+                if t < 2.40 else self.blend_goal(casc, reins_l, span(t, 2.40, 2.55))
+        else:
+            goals = {"r": self.blend_goal(self.grip_on(R, W, g_hold, "r"), reins_r, span(t, 2.80, 2.95)) if t < 2.95
+                     else reins_r, "l": reins_l}
+        return R, goals, W
+
+    def death_b(self):
+        times = self.times(DEATH_B)
+        b = Built("death", "Bombard_death", times)
+        cam = self.camel
+        still = self.lie()
+        # the gun stays on the rolling camel (the rider's bone kept on its chest): the artillerist's own
+        # clip places him on the ground whatever that bone does
+        poses = [cam.fix_hang(cam.roll_over(still, float(t))) for t in times]
+        anim = cam.anim(mgc.B_IDLE)
+        scales = cam.hang_scale(poses[0], cam.borrowed_scales(anim))
+        at, h, _v = self.station()
+        S0 = self.stand_pose()
+        W0 = self.staff_at_station(S0)
+        g = self.station_grip(S0)
+        fr = self.gun_frames({})
+        dies = self.rider.anim(self.r.get("foot_death", mgc.FOOT_DEATH))
+        R0 = self.rider.standing(self.foot, dies, 0.0, h, at)
+        # the staff in his right hand as the death's first frame holds it (its grip at his palm,
+        # upright), carried by that hand until he lets go at 0.35; then it tips over outward (away
+        # from the camel) about its foot onto the ground
+        palm0 = self.rider.palm_of(R0, "r")
+        W_hand0 = self.staff(np.array([palm0[0], 0.0, palm0[2]]) + STAFF_R * self.right_of(R0), Y,
+                             side=self.facing(R0))
+        out = unit(-self.right_of(S0) - 0.3 * self.facing(S0))
+        released = None
+        for t, P in zip(times, poses):
+            R = self.rider.standing(self.foot, dies, min(float(t), dies.duration), h, at)
+            if t < RELEASE:
+                # carried by his hand, upright (the hand's turns are not passed to the long staff)
+                palm = self.rider.palm_of(R, "r")
+                foot = palm - (palm0 - W_hand0[:3, 3])
+                foot[1] = max(0.0, foot[1])          # as he drops, its foot stays on the ground
+                W = self.staff(foot, W_hand0[:3, 1], side=W_hand0[:3, 2])
+                released = W
+            else:
+                foot = released[:3, 3].copy()
+                foot[1] = max(STAFF_R, foot[1] - 0.6 * (t - RELEASE))     # its foot comes down to the ground
+                lying = self.staff(np.array([foot[0], STAFF_R, foot[2]]), out)
+                w = min(1.0, (t - RELEASE) / 0.45) ** 2                 # it falls, faster as it goes
+                W = self.staff_mix(self.staff(foot, released[:3, 1], side=released[:3, 2]), lying, w)
+            b.camel.append(P)
+            b.gun.append(dict(fr, linstock=self.staff_design(P, W)))
+            b.rider.append(R)
+        b.camel_src = (anim, scales)
+        b.death = True
+        return b
+
+    def cheer(self, name, camel_rel, rel):
+        """Today's rider cheer (his clip unchanged) on a camel idle played over the cheer's length."""
+        cam = self.camel
+        anim = self.rider.anim(rel)
+        times = self.times(anim.duration)
+        b = Built(name, "Cheer", times)
+        canim = cam.anim(camel_rel)
+        k = canim.duration / anim.duration
+        poses = [cam.fix_hang(cam.pose(canim, float(t) * k)) for t in times]
+        fr = self.gun_frames(self.limber)
+        b.camel, b.head_bend = self.keep_head_clear(poses, times, fr)
+        b.gun = [dict(fr, linstock=self.d.linstock_rest())] * len(times)
+        b.rider = [self.rider.seated(anim, float(t), rigid(P[cam.rider_bone]), square=False)
+                   for t, P in zip(times, b.camel)]
+        b.rider, b.chest_back = self.keep_chest_clear(b.rider, b.camel, fr)
+        b.rider, b.arm_moved = self.keep_arms_clear(b.rider, b.camel, fr)
+        moved = b.arm_moved or b.chest_back
+        b.camel_src = (canim, cam.hang_scale(b.camel[0], cam._scales[id(canim)]))
+        b.stock_rider = None if moved else rel     # moved: written as a clip of ours
+        return b
+
+    def rider_gap(self, R, P, fr):
+        """The least gap between the rider's mesh and the barrel (game units)."""
+        if getattr(self, "_rfig", None) is None:
+            self._rfig = mgc.Figure(self.game, self.rider.data)
+        d = self.d
+        to_w = self.C(P) @ fr["cannon"] @ tr(-d.trunnion)
+        a, b_ = point(to_w, d.bpoint(self.src.breech)), point(to_w, d.bpoint(self.src.muzzle))
+        pts = np.concatenate([it[0] for it in self._rfig.items(R)])
+        ab = b_ - a
+        u = np.clip(((pts - a) @ ab) / (ab @ ab), 0.0, 1.0)
+        return float((np.linalg.norm(pts - (a + u[:, None] * ab), axis=1) - d.radius / d.bind_scale).min())
+
+    CHEST_CLEAR = 0.02
+
+    def lean_chest(self, R, deg):
+        """The chest (spine1 up: arms and head with it, not the legs) leaned back by `deg`."""
+        if not deg:
+            return R
+        if getattr(self, "_chest_sign", None) is None:
+            h0 = R["bip01 head"][:3, 3]
+            T = self.rider.turn(R, "bip01 spine1", self.side_axis(R), 10.0)
+            self._chest_sign = -1.0 if (T["bip01 head"][:3, 3] - h0) @ self.facing(R) > 0 else 1.0
+        return self.rider.turn(R, "bip01 spine1", self.side_axis(R), self._chest_sign * deg)
+
+    def keep_chest_clear(self, poses, camel, fr):
+        """Where today's cheer leans his chest or shoulder into the cannon's breech: the chest leaned
+        back just enough (the script's rule for a cheer that meets the cannon), eased in and out
+        over half a second. (poses, the largest lean in degrees)."""
+        # the breech of pose B is at his left front: the chest turns right (its left shoulder back)
+        # and leans back a little, the least of the two that clears it
+        need = np.zeros((len(poses), 2))
+        tries = sorted(((lean, turn) for lean in range(0, 25, 4) for turn in range(0, 41, 5) if lean or turn),
+                       key=lambda x: x[0] + x[1])
+        for i, (R, P) in enumerate(zip(poses, camel)):
+            if self.rider_gap(R, P, fr) >= self.CHEST_CLEAR:
+                continue
+            best = tries[-1]
+            for lean, turn in tries:
+                if self.rider_gap(self.turn_chest(self.lean_chest(R, lean), turn), P, fr) >= self.CHEST_CLEAR:
+                    best = (lean, turn)
+                    break
+            need[i] = best
+        if not need.any():
+            return poses, 0.0
+        half = int(round(0.5 * FPS))
+        kernel = np.array([ease((k + 1) / (half + 1)) for k in range(half)] + [1.0] +
+                          [ease((half - k) / (half + 1)) for k in range(half)])
+        amt = np.array([np.max(need[max(0, i - half):i + half + 1] *
+                               kernel[max(0, i - half) - i + half:min(len(need), i + half + 1) - i + half, None], axis=0)
+                        for i in range(len(need))])
+        return ([self.turn_chest(self.lean_chest(R, a[0]), a[1]) for R, a in zip(poses, amt)],
+                float(amt.max()))
+
+    def turn_chest(self, R, deg):
+        """The chest turned to his right by `deg` about the vertical (its left shoulder goes back)."""
+        if not deg:
+            return R
+        if getattr(self, "_turn_sign", None) is None:
+            s0 = R["bip01 l upperarm"][:3, 3]
+            T = self.rider.turn(R, "bip01 spine1", Y, 10.0)
+            self._turn_sign = 1.0 if (T["bip01 l upperarm"][:3, 3] - s0) @ self.facing(R) < 0 else -1.0
+        return self.rider.turn(R, "bip01 spine1", Y, self._turn_sign * deg)
+
+    ARM_CLEAR = 0.13      # a palm's centre this far from the barrel's surface (the hand's own thickness)
+
+    def keep_arms_clear(self, poses, camel, fr):
+        """Where today's cheer swings a hand into the cannon's breech (the script's rule: the arm moved
+        clear and said so): that palm moved straight out from the barrel just enough, eased in and out
+        over half a second, the arm solved to it, the hand turned as it was. (poses, the largest move)."""
+        d = self.d
+        need = {s: np.zeros(len(poses)) for s in ("l", "r")}
+        away = {s: [None] * len(poses) for s in ("l", "r")}
+        rad = d.radius / d.bind_scale
+        for i, (R, P) in enumerate(zip(poses, camel)):
+            C = self.C(P)
+            to_w = C @ fr["cannon"] @ tr(-d.trunnion)
+            a, b_ = point(to_w, d.bpoint(self.src.breech)), point(to_w, d.bpoint(self.src.muzzle))
+            ab = b_ - a
+            for s in ("l", "r"):
+                p = self.rider.palm_of(R, s)
+                u = float(np.clip((p - a) @ ab / (ab @ ab), 0.0, 1.0))
+                q = a + u * ab
+                gap = float(np.linalg.norm(p - q)) - rad
+                if gap < self.ARM_CLEAR:
+                    need[s][i] = self.ARM_CLEAR - gap
+                    away[s][i] = unit(p - q)
+        if not any(v.any() for v in need.values()):
+            return poses, 0.0
+        half = int(round(0.5 * FPS))
+        kernel = [ease((k + 1) / (half + 1)) for k in range(half)] + [1.0] + \
+                 [ease((half - k) / (half + 1)) for k in range(half)]
+        out, most = [], 0.0
+        body = self.rider.body
+        for i, (R, P) in enumerate(zip(poses, camel)):
+            Q = R
+            for s in ("l", "r"):
+                lo, hi = max(0, i - half), min(len(poses), i + half + 1)
+                cand = [(need[s][j] * kernel[j - i + half], away[s][j]) for j in range(lo, hi) if away[s][j] is not None]
+                if not cand:
+                    continue
+                amount, direction = max(cand, key=lambda x: x[0])
+                if amount <= 1e-4:
+                    continue
+                most = max(most, amount)
+                hand = Q[f"bip01 {s} hand"][:3, :3]
+                palm = self.rider.palm_of(Q, s) + amount * direction
+                Q = self.rider.hand(Q, s, palm, unit(hand @ body.finger_local[s]), unit(hand @ body.normal_local[s]),
+                                    self.poles(Q, True)[s])
+            out.append(Q)
+        return out, most
+
+    def build_all(self):
+        out = {}
+        for name, anim_name, rel, _r, gait, reins_only in LIMBERED:
+            look = {"idle": (1.5, 3.0, 25.0), "bored_b": (1.0, 3.0, -35.0)}.get(name)
+            out[name] = self.limbered(name, anim_name, rel, gait, reins_only, look)
+        for name, camel_rel, rel in CHEERS:
+            out[name] = self.cheer(name, camel_rel, rel)
+        out["unlimber"] = self.transition(False)
+        out["limber"] = self.transition(True)
+        out["deployed"] = self.deployed_idle()
+        out["fire"] = self.fire()
+        out["reload"] = self.reload()
+        out["death"] = self.death_b()
+        return out
+
+    # -- the files
+
+    def write(self, b):
+        cam, d = self.camel, self.d
+        name = self.r["name"]
+        if b.camel_name is None:
+            b.camel_name = f"{name}_camel_{b.name}"
+            anim, scales = b.camel_src
+            b.camel_bytes = cam.track_bytes(b.camel_name, b.times, b.camel, anim, scales)
+        bones = d.BONES
+        locs = []
+        for fr in b.gun:
+            worlds = {"root": np.eye(4)}
+            for k in bones[1:]:
+                worlds[k] = d.to_model(fr[k])
+            loc = []
+            for k in bones:
+                par = d.PARENT[k]
+                m = worlds[k] if par is None else np.linalg.inv(worlds[par]) @ worlds[k]
+                loc.append(split(m))
+            locs.append(loc)
+        names = [f"bone_{self.gun_name}" if k == "root" else d.NAMES[k] for k in bones]
+        tracks = [(nm, b.times, np.array([f[i][0] for f in locs]), np.array([f[i][1] for f in locs]))
+                  for i, nm in enumerate(names)]
+        like = self.rider.idle
+        b.gun_name = f"{name}_gun_{b.name}"
+        b.gun_bytes = animation_file(b.gun_name, float(b.times[-1]), names[0], tracks, basis=self.rider.rig.basis,
+                                     accumulation=like.accumulation, timestep=like.timestep, source=b.gun_name)
+        if getattr(b, "stock_rider", None):
+            b.rider_name = None                 # today's clip, unchanged
+        else:
+            b.rider_name = f"{name}_rider_{b.name}"
+            rl = [self.rider.to_local(R, rigid(P[cam.rider_bone])) for R, P in zip(b.rider, b.camel)]
+            b.rider_bytes = self.rider.track_bytes(b.rider_name, b.times, rl, like)
+        return b
+
+
+def split(m):
+    from aoe3game.gr2_anim import split as _split
+    return _split(m)
+
+
+def animation_file(*a, **k):
+    from aoe3game.gr2_anim import animation_file as _af
+    return _af(*a, **k)
+
+
+# --------------------------------------------------------------------------------------------------
+# The checks (tools/check_anim.py): the job of the new clips, today's clips as its baseline, and the
+# deaths (the dead model) with theirs
+
+BASELINE = [  # today's MEZamburak anim file: (clip, camel clip, rider clip)
+    ("idle", Z_IDLE, mgc.ZAMB + "zamburak_rider_idle00"),
+    ("walk", mgc.ZAMB + "zamburak_camel_walk00", mgc.ZAMB + "zamburak_rider_walk"),
+    ("jog", mgc.ZAMB + "zamburak_camel_jog", mgc.LIB + "cavalry\\sword_jog"),
+    ("run", mgc.LIB + "cavalry\\horse_gallop", mgc.LIB + "cavalry\\sword_gallop"),
+    ("bored_a", mgc.ZAMB + "zamburak_camel_idle02", mgc.ZAMB + "zamburak_rider_idle01"),
+    ("bored_b", mgc.ZAMB + "zamburak_camel_idle03", mgc.ZAMB + "zamburak_rider_idle00"),
+    ("bored_c", mgc.ZAMB + "zamburak_camel_idle06", mgc.ZAMB + "zamburak_rider_idle01"),
+    # today's file picks the camel's and the rider's cheer variants apart: paired here as the new clips pair them
+    ("cheer_a", mgc.ZAMB + "zamburak_camel_idle02", mgc.LIB + "cavalry\\sword_cheer_F"),
+    ("cheer_b", mgc.ZAMB + "zamburak_camel_idle03", mgc.LIB + "cavalry\\sword_cheer_H"),
+    ("cheer_c", Z_IDLE, mgc.LIB + "cavalry\\sword_bored_A"),
+    ("cheer_d", mgc.ZAMB + "zamburak_camel_idle06", mgc.LIB + "cavalry\\sword_cheer_E"),
+    ("attack_ranged", mgc.ZAMB + "zamburak_camel_attackRanged01", mgc.ZAMB + "zamburak_rider_attackRanged00"),
+    ("attack_ranged_reload", mgc.ZAMB + "zamburak_camel_reload", mgc.ZAMB + "zamburak_rider_reload"),
+    ("attack_melee_a", mgc.ZAMB + "Zamburak_Melee_Attack_1", mgc.LIB + "cavalry\\sword_attack_A"),
+    ("attack_melee_b", mgc.ZAMB + "Zamburak_Melee_Attack_2", mgc.LIB + "cavalry\\sword_attack_B"),
+    ("attack_melee_c", mgc.ZAMB + "Zamburak_Melee_Attack_3", mgc.LIB + "cavalry\\sword_attack_C"),
+    ("raze_idle_a", Z_IDLE, mgc.LIB + "cavalry\\raze_idle_A"),
+    ("raze_idle_b", mgc.ZAMB + "zamburak_camel_idle02", mgc.LIB + "cavalry\\raze_idle_C"),
+    ("raze_idle_c", mgc.ZAMB + "zamburak_camel_idle03", mgc.LIB + "cavalry\\raze_idle_D"),
+    ("raze_idle_d", mgc.ZAMB + "zamburak_camel_idle06", mgc.LIB + "cavalry\\raze_idle_G"),
+    ("raze_attack", mgc.ZAMB + "zamburak_camel_razeAttack00", "units\\asians\\indians\\sowar\\sowarRider_razeAttack00"),
+]
+SOWAR = "units\\asians\\indians\\sowar\\"
+DEATHS = [  # the limbered deaths, as today's anim file plays them: (clip, camel clip, rider clip)
+    ("death_melee_a", SOWAR + "sowarCamel_death00", mgc.LIB + "cavalry\\sword_deathA"),
+    ("death_melee_b", SOWAR + "sowarCamel_death01", mgc.LIB + "cavalry\\sword_deathB"),
+    ("death_melee_c", SOWAR + "sowarCamel_death02", mgc.LIB + "cavalry\\sword_deathC"),
+    ("death_havoc_a", mgc.LIB + "cavalry\\horse_death_front", mgc.LIB + "cavalry\\rider_death_havoc_a"),
+    ("death_havoc_b", mgc.LIB + "cavalry\\horse_death_behind", mgc.LIB + "cavalry\\rider_death_havoc_b"),
+    ("death_havoc_c", mgc.LIB + "cavalry\\horse_death_left", mgc.LIB + "cavalry\\rider_death_havoc_a"),
+    ("death_havoc_d", mgc.LIB + "cavalry\\horse_death_right", mgc.LIB + "cavalry\\rider_death_havoc_b"),
+    ("death_havoc_e", mgc.LIB + "cavalry\\horse_death_run", mgc.LIB + "cavalry\\rider_death_havoc_a"),
+]
+REMOVED = {
+    "attack_ranged": "REMOVED: Attack_ranged from the saddle, because limbered cannot fire (the working plan; "
+                     "JTMaston question 2)",
+    "attack_ranged_reload": "REMOVED: Attack_ranged_reload from the saddle, because limbered cannot fire",
+    "attack_melee_a": "REMOVED: Attack_melee, because MEZamburak's tactics have no hand attack (never played today)",
+    "attack_melee_b": "REMOVED: Attack_melee, because MEZamburak's tactics have no hand attack (never played today)",
+    "attack_melee_c": "REMOVED: Attack_melee, because MEZamburak's tactics have no hand attack (never played today)",
+    "raze_idle_a": "REMOVED: Raze_idle, because MEZamburak's tactics have no building attack (never played today)",
+    "raze_idle_b": "REMOVED: Raze_idle, because MEZamburak's tactics have no building attack (never played today)",
+    "raze_idle_c": "REMOVED: Raze_idle, because MEZamburak's tactics have no building attack (never played today)",
+    "raze_idle_d": "REMOVED: Raze_idle, because MEZamburak's tactics have no building attack (never played today)",
+    "raze_attack": "REMOVED: Raze_attack, because MEZamburak's tactics have no building attack (never played today)",
+    "walk:rider": "REMOVED: the stock rider walk (hips and shoulders sway), because his left hand stays on the cascabel; "
+                  "replaced by the upright seat with a nod",
+    "jog:rider": "REMOVED: the stock sword jog (hips and shoulders sway), because his left hand stays on the cascabel; "
+                 "replaced by the upright seat with a nod",
+    "run:rider": "REMOVED: the stock sword gallop (his legs swing with it), replaced by the upright seat with a nod and "
+                 "both fists on the reins",
+}
+HOOVES = [{"name": "hoof front left", "bone": "HS Bone Hoof Frnt Lt"}, {"name": "hoof front right", "bone": "HS Bone Hoof Frnt Rt"},
+          {"name": "hoof back left", "bone": "HS Bone Hoof Back Lt"}, {"name": "hoof back right", "bone": "HS Bone Hoof Back Rt"}]
+LOOPS = ("idle", "walk", "jog", "run", "deployed")
+MOVES = ("walk", "jog", "run")
+
+
+def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_path, recipe):
+    """The three jobs (new clips, today's as the baseline, the deaths and theirs) and every file
+    they read (the stock clips and models expanded), below `check`."""
+    os.makedirs(check, exist_ok=True)
+    stock = os.path.join(check, "stock")
+    os.makedirs(stock, exist_ok=True)
+
+    def expand(rel):
+        dst = os.path.join(stock, rel.replace("\\", "_") + ".gr2")
+        if not os.path.exists(dst):
+            with open(dst, "wb") as f:
+                f.write(game.granny(rel))
+        return dst.replace("\\", "/")
+    rider_model = expand(recipe["rider"]["model"])
+    upm = gr2_mesh.read(unit.rider.data)["units_per_meter"]
+    palm = {s: (np.asarray(unit.rider.body.palm_local[s]) / upm).tolist() for s in ("l", "r")}
+    hand = {s: {"bone": f"rider:bip01 {s} hand", "offset": palm[s]} for s in ("l", "r")}
+    staff_m = unit.L / gr2_mesh.read(unit.src.linstock_data)["units_per_meter"]
+    actors = {"camel": {"model": camel_path, "rig": {"preset": "bare", "feet": HOOVES}},
+              "gun": {"model": gun_path, "attach": {"to": "camel", "bone": "bone attachpoint",
+                                                     "from_bone": f"bone_{unit.gun_name}"}},
+              "rider": {"model": rider_model, "rig": "human", "attach": {"to": "camel", "bone": "bone attachpoint"}}}
+    clips, grips = {}, []
+    path = lambda n: os.path.join(folder, n + ".gr2").replace("\\", "/")  # noqa: E731
+    for name, b in built.items():
+        anims = {"camel": path(b.camel_name), "gun": path(b.gun_name),
+                 "rider": path(b.rider_name) if b.rider_name else expand(b.stock_rider)}
+        c = {"anims": anims, "duration": round(b.length, 6), "loop": name in LOOPS, "death": name == "death",
+             "ground_speed": "auto" if name in MOVES else 0.0}
+        if name in MOVES:
+            c["limits"] = {"sink": 0.12}
+        if name.startswith("cheer"):
+            c["limits"] = {"look_yaw": 85.0, "penetration": 0.10}
+        if name == "death":
+            c["limits"] = {"look_yaw": 115.0, "look_pitch_down": 80.0, "look_pitch_up": 80.0,
+                           "angular_speed": 2000.0, "sink": 0.25, "slide": 0.30, "penetration": 0.30}
+        routes = {"unlimber": ("ring", "ground"), "limber": ("ground", "ring"), "deployed": ("ground", "ground"),
+                  "fire": ("ground", "ground"), "reload": ("ground", "ground"), "death": ("ground", "ground")}
+        r0 = routes.get(name, ("ring", "ring"))
+        c["routes"] = {"linstock": {"start": r0[0], "end": r0[1]}}
+        clips[name] = c
+        for gname, s, t0, t1 in b.grips:
+            k0 = int(round(t0 * FPS))
+            grips.append({"name": gname, "clips": [name], "hand": hand[s], "frames": [[t0, t1]],
+                          "grip": {"bone": "gun:bone_linstock", "at": hand[s], "frame": k0}})
+    casc = {"idle": (0.0, None), "walk": (0.0, None), "jog": (0.0, None), "bored_a": (0.0, None),
+            "bored_b": (0.0, None), "bored_c": (0.0, None), "unlimber": (3.93, 4.43), "limber": (2.08, 2.40)}
+    for name, (t0, t1) in casc.items():
+        g = {"name": "left palm on the cascabel", "clips": [name], "hand": hand["l"],
+             "grip": {"bone": "gun:bone_cannon", "at": hand["l"], "frame": int(round(t0 * FPS))}}
+        if t1 is not None:
+            g["frames"] = [[t0, t1]]
+        grips.append(g)
+    grips.append({"name": "the match on the vent", "clips": ["fire"], "frames": [[0.80, 0.95]], "max": 0.03,
+                  "hand": {"bone": "gun:bone_linstock", "offset": [0.0, staff_m, 0.0]}, "grip": "gun:bone_fuse"})
+    # the ring: where the staff's foot sits on the camel's chest (metres, in the chest's frame)
+    P = unit.camel.fix_hang(unit.camel.pose(unit.camel.base, 0.0))
+    ring = unit.ring(P)
+    upm_c = gr2_mesh.read(unit.camel.cut)["units_per_meter"]
+    chest = P[unit.camel.mount].copy()
+    chest[:3, 3] /= upm_c
+    off = (np.linalg.inv(chest) @ np.r_[ring[:3, 3] / upm_c, 1.0])[:3]
+    job = {"fps": FPS, "ground": 0.0, "actors": actors, "clips": clips,
+           "mounts": [{"name": "the fork in its socket", "part": "gun:bone_yaw",
+                       "mount": {"bone": "camel:hs bone chest", "at": "gun:bone_yaw"}},
+                      {"name": "the trunnions in the fork", "part": "gun:bone_cannon",
+                       "mount": {"bone": "gun:bone_yaw", "at": "gun:bone_cannon"}}],
+           "grips": grips,
+           "ahead": [{"name": f"{s} palm in front of his chest", "clips": ["fire"], "frames": [[0.5, 1.4]],
+                      "point": hand[s], "of": f"rider:bip01 {s} upperarm", "min": 0.15} for s in ("l", "r")],
+           "capsules": [{"name": "camel body", "a": "camel:hs bone pelvis", "b": "camel:hs bone chest", "radius": 0.45}],
+           "props": {"linstock": {"bone": "gun:bone_linstock", "size": 0.08}},
+           "speed_exempt": ["rider:bip01 prop1", "rider:bip01 prop2"],
+           "places": {"ring": {"point": {"bone": "camel:hs bone chest", "offset": off.tolist()}, "radius": 0.05}},
+           "speed_limits": {f"camel:{h['bone'].lower()}": 2000.0 for h in HOOVES} |
+                           {"camel:hs bone tail_01": 2000.0, "camel:hs bone ear left": 2100.0,
+                            "camel:hs bone ear right": 2100.0},
+           "reasons": {"walk/jog/run sink 0.12": "the camel's walk, jog and run are the game's own clips, whose hoof "
+                                                 "toes sink 6-11 cm; the legs are copied unchanged",
+                       "hoof and tail speed 2000": "the game's own camel clips and lying idle flick the hooves and tail "
+                                                   "up to 1890 deg/s",
+                       "prop bones exempt": "the rider's Prop1 and Prop2 bones hold nothing in this unit; the "
+                                            "seated and standing stances give them different turns",
+                       "ear speed 2100": "the camel's own idles (idle02, idle03) flick its ears at 2013 deg/s",
+                       "cheer look 85, penetration 0.10": "today's rider cheers, unchanged: they turn his head 84 deg "
+                                                           "and swing a heel 9 cm into the crude capsule round the "
+                                                           "camel's body as the stock rider does",
+                       "death look/speed/sink/slide/penetration": "the artillerist's death is the game's standing "
+                                                                  "rifleman death B, unchanged: it throws the head back "
+                                                                  "75 deg at 1410 deg/s, its feet go through the ground "
+                                                                  "as the body drops, and it flings the arms forward "
+                                                                  "into the crude capsule round the lying camel"},
+           "removed": dict(REMOVED)}
+    base_actors = {"camel": {"model": expand(recipe["camel"]["model"]), "rig": {"preset": "bare", "feet": HOOVES}},
+                   "rider": actors["rider"]}
+    base = {"fps": FPS, "ground": 0.0, "actors": base_actors,
+            "clips": {n: {"anims": {"camel": expand(c), "rider": expand(r)}, "loop": n in LOOPS}
+                      for n, c, r in BASELINE}}
+    dead = {"fps": FPS, "ground": 0.0,
+            "actors": {"camel": {"model": dead_path, "rig": {"preset": "bare", "feet": HOOVES}}, "rider": actors["rider"]},
+            "clips": {n: {"anims": {"camel": expand(c), "rider": expand(r)}, "death": True,
+                          "limits": {"look_yaw": 95.0, "look_pitch_down": 90.0, "look_pitch_up": 90.0,
+                                     "angular_speed": 2000.0, "sink": 0.65, "slide": 0.60, "penetration": 0.50,
+                                     "duration": 2.0}}
+                      for n, c, r in DEATHS},
+            "reasons": {"all": "today's death clips of the camel and the rider, unchanged (their hooves and feet sink "
+                               "up to 61 cm, heads turn 92 deg, the havoc riders' clips are shorter than the camel's, "
+                               "as today); only the camel's model changes (the cannon built in), so these clips are "
+                               "checked for what rests at the end"}}
+    dead_base = dict(dead, actors={"camel": base_actors["camel"], "rider": actors["rider"]})
+    dead["speed_limits"] = {"rider:bip01 head": 2000.0, "rider:bip01 neck": 2000.0}
+    # killed unlimbered: its own job (the stock rifleman death turns his head faster than a living
+    # man's limit allows the other clips)
+    death_b = json.loads(json.dumps(job))
+    death_b["clips"] = {"death": job["clips"].pop("death")}
+    death_b["speed_limits"].update({"rider:bip01 head": 1500.0, "rider:bip01 neck": 1500.0})
+    death_b["removed"] = {}
+    out = {}
+    for fname, spec in (("job.json", job), ("baseline.json", base), ("job-deaths.json", dead),
+                        ("baseline-deaths.json", dead_base), ("job-death-unlimbered.json", death_b)):
+        p = os.path.join(check, fname)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(spec, f, indent=1)
+        out[fname] = p
+    return out
+
+
+def textured_sheets(folder, game, recipe, unit, built, gun_bytes, moments=8):
+    """For each clip, `moments` frames from the unit's left and right (3/4, a little above), drawn
+    with the textures as the game would (the check's own sheets are flat-shaded): one PNG per clip."""
+    from PIL import Image
+    os.makedirs(folder, exist_ok=True)
+    scene = mgc.Scene(game, recipe, unit.camel, unit.rider)
+    pic = Picture(game, recipe, unit.camel, unit.rider, scene, unit.d, gun_bytes, None)
+    out = []
+    for name, b in built.items():
+        tiles = []
+        n = len(b.times)
+        for i in range(moments):
+            k = round(i * (n - 1) / (moments - 1))
+            P, R = b.camel[k], b.rider[k]
+            hang = rigid(P[unit.camel.hang])
+            G = {unit.d.NAMES.get(key, f"bone_{unit.gun_name}").lower(): hang @ unit.d.to_model(v)
+                 for key, v in b.gun[k].items()}
+            G[pic.gun_rig.names[0].lower()] = hang
+            items = pic.gun_fig.items(G) + scene.camel_fig.items(P) + scene.rider_fig.items(R) + scene.hat_items(R)
+            centre = tuple(0.5 * (P["hs bone chest"][:3, 3] + R["bip01 spine1"][:3, 3]))
+            for az, side in ((-55.0, "LEFT"), (55.0, "RIGHT")):
+                img = mgc.draw(items, 300, 280, az, 14.0, span=3.6, centre=centre)
+                tiles.append(mgc.caption(img, f"{name.upper()} {b.times[k]:.2f}S {side} 3/4"))
+        sheet = mgc.grid(tiles, 8)
+        head = mgc.title(sheet.shape[1], f"ZAMBURAK CANNON - {name.upper()} ({b.anim}, {b.length:.2f} S): {moments} "
+                                          f"MOMENTS, THE UNIT'S LEFT AND RIGHT, TEXTURED", back=(70, 40, 20))
+        path = os.path.join(folder, f"{name}-textured.png")
+        Image.fromarray(np.concatenate([head, sheet], 0)).save(path)
+        out.append(path)
+    return out
+
+
+def posed_gun_bytes(design, name, source_data, state):
+    """The gun model with every part moved to `state` (its bones at that state, rest = the state):
+    the cannon as the dead model carries it."""
+    rest, fr = design.rest(), design.frames(state)
+    keep_rest = design.rest
+    keep_parts = design.parts
+
+    def parts():
+        out = {}
+        for key, (p, bone) in keep_parts().items():
+            m = fr[bone] @ np.linalg.inv(rest[bone])
+            q = dict(p)
+            q["positions"] = apply(m, p["positions"])
+            q["normals"] = p["normals"] @ m[:3, :3].T
+            q["tangents"] = p["tangents"] @ m[:3, :3].T
+            out[key] = (q, bone)
+        return out
+    design.rest = lambda: dict(fr)
+    design.parts = parts
+    try:
+        return design.model_bytes(name, source_data)
+    finally:
+        design.rest, design.parts = keep_rest, keep_parts
+
+
+# --------------------------------------------------------------------------------------------------
 # The work
 
 
@@ -763,9 +2180,13 @@ def main(argv):
     ap.add_argument("--sizes", help="a sheet of the cannon at several sizes (PNG)")
     ap.add_argument("--size-list", default="1.0,0.75,0.6,0.5", help="the sizes the sizes sheet shows")
     ap.add_argument("--scale", type=float, help="the cannon's size against the source's (default: the recipe's)")
+    ap.add_argument("--clips", help="also make every clip of the script and write the check_anim jobs (the new "
+                                    "clips, today's as their baseline, the deaths) into this folder")
+    ap.add_argument("--textured", help="with --clips: a folder for textured sheets of every clip (8 moments, the "
+                                       "unit's left and right)")
     args = ap.parse_args(argv)
     try:
-        for p in (args.out, args.sheet, args.barrel_sheet, args.limber_options, args.sizes):
+        for p in (args.out, args.sheet, args.barrel_sheet, args.limber_options, args.sizes, args.clips, args.textured):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -821,6 +2242,55 @@ def main(argv):
                 report.append(f"runtime {fname}.gr2 {len(data)} B: crc {crc}, read {read}, oodle1 {packed} B"
                               + ("" if ok else "  FAIL"))
                 failed |= not ok
+        if args.clips:
+            rider = mgc.Rider(game, recipe["rider"])
+            foot_rig = Rig.of(gr2.load(game.granny(mgc.FOOT_MODEL)).root())
+            unit_ = ZUnit(game, recipe, camel, rider, design, foot_rig)
+            built = unit_.build_all()
+            clip_files = {}
+            for name, b in built.items():
+                unit_.write(b)
+                if b.camel_bytes is not None:
+                    clip_files[b.camel_name] = b.camel_bytes
+                clip_files[b.gun_name] = b.gun_bytes
+                if b.rider_bytes is not None:
+                    clip_files[b.rider_name] = b.rider_bytes
+                report.append(f"clip {name:9} ({b.anim}) {b.length:.3f} s, {len(b.times)} frames; hands off their "
+                              f"targets at most {b.reach:.3f}" + (f"; the camel's neck bent down up to "
+                                                                  f"{b.head_bend:.0f} deg to keep its head off the barrel"
+                                                                  if getattr(b, "head_bend", 0.0) else "") +
+                              (f"; a hand moved out from the breech up to {b.arm_moved:.2f}" if getattr(b, "arm_moved", 0.0)
+                               else "") +
+                              (f"; his chest turned right / leaned back up to {b.chest_back:.0f} deg to keep it off the "
+                               f"breech" if getattr(b, "chest_back", 0.0) else ""))
+            # the limbered unit's dead model: the camel with the cannon (in its limber pose, the
+            # linstock in its ring) built in, playing today's camel deaths
+            lim_gun = posed_gun_bytes(design, f"{recipe['name']}_gun", src.data, dict(recipe["limber"]))
+            files[f"{recipe['name']}_camel_dead"] = mgc.dead_model(cut, lim_gun, camel.hang_bind,
+                                                                    recipe["camel"]["mount_bone"])
+            for fname, data in list(clip_files.items()) + [(f"{recipe['name']}_camel_dead",
+                                                           files[f"{recipe['name']}_camel_dead"])]:
+                with open(os.path.join(folder, fname + ".gr2"), "wb") as f:
+                    f.write(data)
+                if runtime is not None:
+                    crc, read, packed = mgc.runtime_check(data, runtime, fname[-24:].replace("_", ""))
+                    if not (crc and read):
+                        report.append(f"runtime {fname}.gr2: crc {crc}, read {read}  FAIL")
+                        failed = True
+            if runtime is not None:
+                report.append(f"runtime: {len(clip_files) + 1} clip and model files checked")
+            fr_lim = unit_.gun_frames(dict(recipe["limber"]))
+            report.append("barrel to the camel in the clips written (limbered, pose B), least gap: " +
+                          ", ".join(f"{n} {min(unit_.barrel_gap(P, fr_lim) for P in built[n].camel):+.3f}"
+                                    for n, *_x in LIMBERED))
+            paths = write_checks(folder, args.clips, game, unit_, built,
+                                 os.path.join(folder, f"{recipe['name']}_gun.gr2").replace("\\", "/"),
+                                 os.path.join(folder, f"{recipe['name']}_camel.gr2").replace("\\", "/"),
+                                 os.path.join(folder, f"{recipe['name']}_camel_dead.gr2").replace("\\", "/"), recipe)
+            report.append("check jobs: " + ", ".join(paths.values()))
+            if args.textured:
+                for p in textured_sheets(args.textured, game, recipe, unit_, built, gun):
+                    print(p)
         with open(os.path.join(args.out, f"{recipe['name']}-report.txt"), "w", encoding="utf-8") as f:
             f.write("\n".join(report) + "\n")
         print("\n".join(report))
@@ -906,13 +2376,13 @@ def used_vertices(cam):
     return cam._used
 
 
-def barrel_clearance(pic, state, samples=12):
+def barrel_clearance(pic, state, samples=12, clips=None):
     """The smallest gap (game units) between the barrel (its axis from breech to muzzle, less its
     radius) and the camel's body, the parts within 0.35 of the swivel's pivot left out (the saddle
     it stands on), over the camel's idle, walk, jog and run: [(clip, time, gap)], worst first."""
     d, cam = pic.design, pic.camel
     out = []
-    for name, rel in MOVE_CLIPS:
+    for name, rel in (clips or MOVE_CLIPS):
         anim = cam.anim(rel)
         length = anim.duration
         worst = (None, 1e9, None, None)
