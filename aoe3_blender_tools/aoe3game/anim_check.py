@@ -1260,8 +1260,12 @@ def check_penetration(job, s):
         for h in (a.rig or {}).get("hands", []):
             if a.model.has(h):
                 pts[f"{name}:{h.lower()}"] = (s.at(name, h), None)
+    own = {}                                  # a named point's own limit ("max", metres)
     for key in job.spec.get("penetration_points") or []:
-        pts[key if isinstance(key, str) else key.get("name", key["bone"])] = (s.point(key), None)
+        k_ = key if isinstance(key, str) else key.get("name", key["bone"])
+        pts[k_] = (s.point(key), None)
+        if isinstance(key, dict) and key.get("max") is not None:
+            own[k_] = float(key["max"])
     props = job.spec.get("props") or {}
     for pname, prop in props.items():
         p, scale = _prop_track(job, s, prop)
@@ -1285,7 +1289,7 @@ def check_penetration(job, s):
                 depth[k] = below[k]
                 det[k] = f"{key} {below[k] * 100:.1f} cm below the ground"
         depth = np.where(np.isfinite(depth), np.maximum(depth, 0.0), 0.0)
-        out.append(_result(s, "penetration", key, depth, lim, " m", det, [[q] for q in p], n=n))
+        out.append(_result(s, "penetration", key, depth, own.get(key, lim), " m", det, [[q] for q in p], n=n))
     for key, p in contacts.items():
         depth = np.zeros(len(p))
         det = [""] * len(p)

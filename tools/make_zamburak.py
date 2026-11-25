@@ -2143,6 +2143,16 @@ DEATHS = [  # the limbered deaths, as today's anim file plays them: (clip, camel
     ("death_havoc_d", mgc.LIB + "cavalry\\horse_death_right", mgc.LIB + "cavalry\\rider_death_havoc_b"),
     ("death_havoc_e", mgc.LIB + "cavalry\\horse_death_run", mgc.LIB + "cavalry\\rider_death_havoc_a"),
 ]
+# the limbered deaths that drive the cannon on the camel's back into the ground (check_anim, 2026-11-26:
+# breech or muzzle 13-101 cm under it): not played by the limbered unit (script v3 delta)
+DEATHS_DROPPED = {
+    "death_melee_c": "REMOVED: the camel's death02 rolls it onto its back: the muzzle goes 25 cm into the ground",
+    "death_havoc_a": "REMOVED: horse_death_front: the breech goes 101 cm and the muzzle 46 cm into the ground",
+    "death_havoc_b": "REMOVED: horse_death_behind: the muzzle goes 39 cm into the ground",
+    "death_havoc_c": "REMOVED: horse_death_left: the muzzle goes 30 cm into the ground",
+    "death_havoc_e": "REMOVED: horse_death_run: the muzzle goes 13 cm into the ground",
+}
+DEATHS_KEPT = [d for d in DEATHS if d[0] not in DEATHS_DROPPED]
 REMOVED = {
     "attack_ranged": "REMOVED: Attack_ranged from the saddle, because limbered cannot fire (the working plan; "
                      "JTMaston question 2)",
@@ -2166,6 +2176,7 @@ HOOVES = [{"name": "hoof front left", "bone": "HS Bone Hoof Frnt Lt"}, {"name": 
           {"name": "hoof back left", "bone": "HS Bone Hoof Back Lt"}, {"name": "hoof back right", "bone": "HS Bone Hoof Back Rt"}]
 LOOPS = ("idle", "walk", "jog", "run", "deployed")
 MOVES = ("walk", "jog", "run")
+AHEAD_MIN = -0.10         # a palm at most this far behind its shoulder (metres; the deaths aside)
 
 
 def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_path, recipe):
@@ -2203,7 +2214,7 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
             c["limits"] = {"look_yaw": 85.0, "penetration": 0.10}
         if name == "death":
             c["limits"] = {"look_yaw": 115.0, "look_pitch_down": 80.0, "look_pitch_up": 80.0,
-                           "angular_speed": 2000.0, "sink": 0.30, "slide": 0.30, "penetration": 0.30}
+                           "angular_speed": 2000.0, "sink": 0.30, "slide": 0.30, "penetration": 0.30, "cross": 0.40}
         if name not in ("unlimber", "limber", "deployed", "fire", "reload", "death"):
             c["routes"] = {"linstock": {"start": "ring", "end": "ring"}}
         if name == "reload":
@@ -2237,6 +2248,23 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
     d = unit.d
     upm_g = gr2_mesh.read(unit.src.data)["units_per_meter"]
     bore = [((d.bpoint(q) - d.trunnion) / d.bind_scale / upm_g).tolist() for q in (d.src.breech, d.src.muzzle)]
+    # the barrel as points (breech to muzzle) and the linstock's hot tip: never in the camel's head or
+    # neck, his body, or the ground (a death that drives the weapon into it)
+    b0, b1 = np.asarray(bore[0]), np.asarray(bore[1])
+    barrel_pts = [{"name": f"barrel {k}/4", "bone": "gun:bone_cannon", "offset": (b0 + (b1 - b0) * k / 4.0).tolist()}
+                  for k in range(5)]
+    tip_pt = {"name": "linstock tip", "bone": "gun:bone_match"}
+    barrel_names = [p["name"] for p in barrel_pts]
+    # the props against the man, as shares of his height (lowest foot bone to head bone): the approved
+    # sizes (stop 0, 2026-11-26: linstock 50%, barrel 66%) within a fifth either way
+    sizes = [{"name": "the linstock against him", "a": "gun:bone_linstock", "b": "gun:bone_match", "of": "rider",
+              "min": 0.40, "max": 0.60},
+             {"name": "the barrel against him", "a": {"bone": "gun:bone_cannon", "offset": bore[0]},
+              "b": {"bone": "gun:bone_cannon", "offset": bore[1]}, "of": "rider", "min": 0.53, "max": 0.80}]
+    # his palms not behind his shoulders (the deaths aside)
+    living = [n for n in clips if n != "death"]
+    ahead = [{"name": f"{'right' if s == 'r' else 'left'} palm not behind his shoulder", "clips": living,
+              "point": hand[s], "of": f"rider:bip01 {s} upperarm", "min": AHEAD_MIN} for s in ("r", "l")]
     job = {"fps": FPS, "ground": 0.0, "actors": actors, "clips": clips,
            "mounts": [{"name": "the fork in its socket", "part": "gun:bone_yaw",
                        "mount": {"bone": "camel:hs bone chest", "at": "gun:bone_yaw"}},
@@ -2244,10 +2272,16 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
                        "mount": {"bone": "gun:bone_yaw", "at": "gun:bone_cannon"}}],
            "grips": grips,
            "ahead": [{"name": "right palm in front of his chest", "clips": ["fire"], "frames": [[0.5, 1.4]],
-                      "point": hand["r"], "of": "rider:bip01 r upperarm", "min": 0.15}],
-           "capsules": [{"name": "camel body", "a": "camel:hs bone pelvis", "b": "camel:hs bone chest", "radius": 0.45},
+                      "point": hand["r"], "of": "rider:bip01 r upperarm", "min": 0.15}] + ahead,
+           "sizes": sizes,
+           "penetration_points": barrel_pts + [tip_pt],
+           "capsules": [{"name": "camel body", "a": "camel:hs bone pelvis", "b": "camel:hs bone chest", "radius": 0.45,
+                         "allow": barrel_names},
+                        {"name": "camel neck", "a": "camel:hs bone neck upper", "b": "camel:hs bone head", "radius": 0.13},
+                        {"name": "camel head", "a": "camel:hs bone head", "b": "camel:hs bone jaw", "radius": 0.13},
                         {"name": "bore", "a": {"bone": "gun:bone_cannon", "offset": bore[0]},
-                         "b": {"bone": "gun:bone_cannon", "offset": bore[1]}, "radius": 0.10}],
+                         "b": {"bone": "gun:bone_cannon", "offset": bore[1]}, "radius": 0.10,
+                         "allow": barrel_names}],
            "props": {"linstock": {"bone": "gun:bone_linstock", "size": 0.08},
                      "charge": {"bone": "gun:bone_charge", "size": 0.06, "hide_in": ["rider torso", "bore"]},
                      "ball": {"bone": "gun:bone_ball", "size": 0.05, "hide_in": ["rider torso", "bore"]}},
@@ -2266,11 +2300,14 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
                        "cheer look 85, penetration 0.10": "today's rider cheers, unchanged: they turn his head 84 deg "
                                                            "and swing a heel 9 cm into the crude capsule round the "
                                                            "camel's body as the stock rider does",
-                       "death look/speed/sink/slide/penetration": "the artillerist's death is the game's "
-                                                                  "defend_death (the gatling camel's deployed gunner's), "
-                                                                  "unchanged: it throws the head back fast and its toes go "
-                                                                  "through the ground (26 cm at 0.13 s, 23 cm at 1.40 s) as "
-                                                                  "the body drops"},
+                       "death look/speed/sink/slide/penetration/cross": "the artillerist's death is the game's "
+                                                                        "defend_death (the gatling camel's deployed "
+                                                                        "gunner's), unchanged: it throws the head back "
+                                                                        "fast, its toes go through the ground (26 cm at "
+                                                                        "0.13 s, 23 cm at 1.40 s) and its legs cross "
+                                                                        "(30 cm at 0.77 s) as the body drops",
+                       "palms -0.10": "a palm at most 10 cm behind its shoulder: today's rider cheer H holds one "
+                                      "6.5 cm behind"},
            "removed": dict(REMOVED)}
     base_actors = {"camel": {"model": expand(recipe["camel"]["model"]), "rig": {"preset": "bare", "feet": HOOVES}},
                    "rider": actors["rider"]}
@@ -2282,13 +2319,32 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
             "clips": {n: {"anims": {"camel": expand(c), "rider": expand(r)}, "death": True,
                           "limits": {"look_yaw": 95.0, "look_pitch_down": 90.0, "look_pitch_up": 90.0,
                                      "angular_speed": 2000.0, "sink": 0.65, "slide": 0.60, "penetration": 0.50,
-                                     "duration": 2.0}}
-                      for n, c, r in DEATHS},
+                                     "duration": 2.0, "cross": 0.40}}
+                      for n, c, r in DEATHS_KEPT},
+            "removed": dict(DEATHS_DROPPED),
             "reasons": {"all": "today's death clips of the camel and the rider, unchanged (their hooves and feet sink "
                                "up to 61 cm, heads turn 92 deg, the havoc riders' clips are shorter than the camel's, "
                                "as today); only the camel's model changes (the cannon built in), so these clips are "
-                               "checked for what rests at the end"}}
-    dead_base = dict(dead, actors={"camel": base_actors["camel"], "rider": actors["rider"]})
+                               "checked for what rests at the end",
+                        "cross 0.40": "the stock riders' deaths cross their legs as they fall (rider_death_havoc_b: "
+                                      "36 cm); unchanged"}}
+    # the cannon built into the dead model (its limber pose): its breech and muzzle, held by the bone it
+    # is bound to, must not go into the ground as the camel falls
+    Pl = P
+    fr_l = unit.gun_frames(dict(recipe["limber"]))
+    to_w = unit.C(Pl) @ fr_l["cannon"] @ tr(-d.trunnion)
+    holder = Pl[unit.camel.mount].copy()
+    holder[:3, 3] /= upm_c
+    dead["penetration_points"] = [
+        {"name": f"cannon {nm}", "bone": f"camel:{unit.camel.mount}", "max": 0.05,
+         "offset": (np.linalg.inv(holder) @ np.r_[point(to_w, d.bpoint(q)) / upm_c, 1.0])[:3].tolist()}
+        for nm, q in (("breech", d.src.breech), ("muzzle", d.src.muzzle))]
+    dead["reasons"]["cannon into the ground 0.05"] = ("the cannon on the dead camel's back: its breech and muzzle "
+                                                      "may not go more than 5 cm into the ground as it falls")
+    dead_base = dict(dead, actors={"camel": base_actors["camel"], "rider": actors["rider"]},
+                     clips={n: {"anims": {"camel": expand(c), "rider": expand(r)}, "death": True} for n, c, r in DEATHS})
+    dead_base.pop("penetration_points", None)
+    dead_base.pop("removed", None)
     dead["speed_limits"] = {"rider:bip01 head": 2000.0, "rider:bip01 neck": 2000.0}
     # killed unlimbered: its own job (the stock rifleman death turns his head faster than a living
     # man's limit allows the other clips)
@@ -2947,7 +3003,7 @@ class V2:
         self.keep(b, 1.19, 1.27, "r", "cannon", "right palm on the chase (catch)")
         self.keep(b, 2.02, 2.08, "r", "cannon", "right palm on the chase (push off)")
         self.keep(b, 2.60, 2.70, "r", "cannon", "right palm on the cascabel (settle)")
-        self.keep(b, 2.92, RELOAD2, "r")
+        self.keep(b, 2.96, RELOAD2, "r")
         b.rider = limit_arm_rates(u.rider.rig, b.rider)
         b.rider = limit_arm_rates(u.rider.rig, b.rider, 720.0, bones=("bip01 neck", "bip01 head"))
         b.camel_src = (anim, scales)
