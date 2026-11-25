@@ -760,6 +760,49 @@ class Camel:
         dy = -self.lowest(p)
         return {k: tr((0.0, dy, 0.0)) @ v for k, v in p.items()}
 
+    def slump(self, pose, t, roll=12.0, time=1.4):
+        """Round 6 (B's gun at rest across its back, pointing out over its right side): the lying camel
+        dies without rolling over: its neck bends down at its base until its head lies on the ground,
+        and its body slumps `roll` degrees onto its right side, over `time` seconds, laid on the ground
+        (a roll onto its right side would drive the gun's barrels into the ground; onto its left, the
+        camel would fall on the gunner)."""
+        from aoe3game.gr2_pose import rotate_about
+        from aoe3game.gr2_pose import smooth as ease
+        a = ease(min(1.0, max(0.0, t / time)))
+        if getattr(self, "_slump_neck", None) is None:
+            self._slump_neck = {}
+        key = id(pose)
+        if key not in self._slump_neck:
+            # the neck's bend that lays the head on the ground (its lowest point at the body's)
+            n, h = pose["hs bone neck lower"][:3, 3], pose["hs bone head"][:3, 3]
+            d = h - n
+            d[1] = 0.0
+            side = unit(np.cross(Y, unit(d)))
+            base = self.lowest(pose)
+            best = 0.0
+            for deg in np.arange(0.0, 95.0, 2.5):
+                for sgn in (1.0, -1.0):
+                    p = rotate_about(pose, self.rig, "hs bone neck lower", "hs bone neck lower", side, sgn * deg)
+                    if p["hs bone head"][1, 3] < h[1] - 1e-6:
+                        if self.lowest(p) >= base - 0.01:
+                            best = sgn * deg
+                        break
+            self._slump_neck[key] = (side, best)
+        side, best = self._slump_neck[key]
+        p = rotate_about(pose, self.rig, "hs bone neck lower", "hs bone neck lower", side, best * a)
+        c = p[self.mount][:3, 3]
+        fwd = unit(p[self.mount][:3, :3] @ (self.pose(self.base, 0.0)[self.mount][:3, :3].T @ Z))
+        fwd[1] = 0.0
+        fwd = unit(fwd)
+        r = roll * a
+        for sign in (1.0, -1.0):                     # its left side (-x) goes up
+            m = tr(c) @ rot4(axis_matrix(fwd, sign * r)) @ tr(-c)
+            if r == 0 or (m[:3, :3] @ -X)[1] > 0:
+                break
+        p = {k: m @ v for k, v in p.items()}
+        dy = -self.lowest(p)
+        return {k: tr((0.0, dy, 0.0)) @ v for k, v in p.items()}
+
     def heading(self, pose):
         """The body's heading (degrees about the vertical, 0 toward +z): pelvis to chest."""
         d = pose[self.mount][:3, 3] - pose["hs bone pelvis"][:3, 3]
@@ -1017,6 +1060,15 @@ HANDLE_BAR = (0.25, 0.45)
 HANDLE_SETS = {"v4": {"crank_back": 0.0, "crank_out": 0.0, "bar": (0.25, 0.45)},
                "v5": {"crank_back": 0.30, "crank_out": 0.18, "bar": (0.15, 0.45), "bar_side": 0.18}}
 HANDLES = "v5"
+# B on foot, deployed (round 6, 2026-11-26): the gun rests across the lying camel, its arc's bisector
+# square to the camel's spine, B_HOME degrees toward the unit's right (the side away from the gunner),
+# and turns over B_ARC (degrees, the unit's right positive) about it; the gunner works it from the
+# other side. B_SEGMENTS stations each side of home. The deploy swings the gun from ahead to home and
+# the undeploy back; every clip he works the gun in has it at home, so the game's yaw is the clip's
+# plus the turn from home (the aim file's home yaw). Recipe "b_home", "b_arc", "b_segments".
+B_HOME = 90.0
+B_ARC = (30.0, 150.0)
+B_SEGMENTS = 2
 # v5 stations: each palm at least PALM_AHEAD metres in front of its shoulder along his facing, the
 # elbows bent ELBOW_BEND degrees (from straight), preferably the middle
 PALM_AHEAD = 0.15
@@ -1050,6 +1102,9 @@ B_DOWN = LIB + "quads\\bighorn_sheep_laydownA"
 B_IDLE = LIB + "quads\\bighorn_sheep_laydown_idleA"
 B_UP = LIB + "quads\\bighorn_sheep_laydown_getup"
 FOOT_DEATH = LIB + "range\\death_standing_rifleman_A"
+# round 6: facing the camel at his station across it, he falls backward, away from it (the rifleman's A falls
+# forward, into the camel; its B starts in the air)
+FOOT_DEATH_BACK = LIB + "range\\defend\\defend_death"
 CAMEL_DEATH = "units\\asians\\indians\\sowar\\sowarCamel_death00"
 RIDER_DEATH = LIB + "cavalry\\sword_deathA"       # 3.0 s, as long as the camel's
 
@@ -1165,6 +1220,53 @@ class Unit:
         self.handle_set = recipe.get("handles", HANDLES)
         if self.long:
             self.long_handles(recipe.get("handle_drop", HANDLE_DROP))
+        # round 6: B on foot's gun at rest across the camel (B_HOME), its arc about it; else ahead (0)
+        if self.long and self.handle_set != "v4" and recipe.get("b_home", B_HOME):
+            self.home = float(recipe.get("b_home", B_HOME))
+            self.arc = tuple(float(v) for v in recipe.get("b_arc", B_ARC))
+            self.segments_per_side = int(recipe.get("b_segments", B_SEGMENTS))
+        else:
+            self.home = 0.0
+            self.arc = (-30.0, 90.0) if self.style == "B" else (-90.0, 90.0)
+            self.segments_per_side = 0
+
+    def home_frames(self, state=None):
+        """The gun's frames for a state with the gun at its rest yaw (B on foot: across the camel)."""
+        s = dict(state or {})
+        s.setdefault("yaw", self.home)
+        return self.gun.frames(s)
+
+    def home_turn(self):
+        """The design-space turn from the gun ahead to its rest yaw (identity when it rests ahead)."""
+        return self.gun.yaw_matrix(self.home) if self.home else np.eye(4)
+
+    # the deploy's last part (round 6): his hands go from the saddle to the grips with the gun still
+    # ahead (SWING[0] of the climb, the rest of the window after he stands at the saddle), then he
+    # swings the gun round to its rest yaw while he steps to his station (SWING[1]); the undeploy is
+    # the same backward
+    SWING = (0.25, 1.0)
+
+    def clip_yaw(self, clip, t, length, b):
+        """The gun's yaw in our own clip at time t (degrees): its rest yaw while he works it on foot,
+        swung from ahead to it at the end of the deploy and back at the start of the undeploy."""
+        if not self.home:
+            return 0.0
+        do = clip.get("do")
+        if do in ("stand", "fire", "reload", "foot_death"):
+            return self.home
+        if do in ("dismount", "mount"):
+            t0, t1 = getattr(b, "window", (0.0, length))
+            k = (t - t0) / max(t1 - t0, 1e-9)
+            k = k if do == "dismount" else 1.0 - k
+            return self.home * self.swing_share(k)
+        return 0.0
+
+    def swing_share(self, k):
+        """How far (0..1) the gun has swung from ahead to its rest yaw at share k of the climb."""
+        s4 = self.CLIMB_SHARES_HOME[4]
+        a = s4 + (1.0 - s4) * self.SWING[0]
+        b_ = s4 + (1.0 - s4) * self.SWING[1]
+        return smooth(min(1.0, max(0.0, (k - a) / max(b_ - a, 1e-9))))
 
     # -- the gun in the world (camel space) at a camel pose
 
@@ -1516,8 +1618,13 @@ class Unit:
         side = 1.0 if self.style == "A" else -1.0        # the gunner's side of the hopper (B: the mirrored gun's)
         # clear of the hopper; on foot (B) he cannot reach as high: lifted less, held low
         lift = seat + np.array([0.0, (0.32 if self.style == "A" else 0.12) * height, 0.0])
-        seated = tr(seat)
-        lifted = tr(lift)
+        # every frame below is where the thing is in the camel's frame (design space) with the gun at
+        # its rest yaw (round 6, B: across the camel); the empty magazine's bone turns with the gun, so
+        # its frames are taken back by that turn at the end (GunDesign.frames turns them again)
+        TH = self.home_turn()
+        seated = TH @ tr(seat)
+        lifted = TH @ tr(lift)
+        lift = point(TH, lift)
         stash = g.stash
         # held near its top (over the gun, the end he pulls up and pushes down); on foot, low, just
         # above the hopper
@@ -1534,7 +1641,7 @@ class Unit:
             Rm = M[:3, :3]
             return (point(M, (g.mag_top - seat) + np.array([-0.01, 0.035, 0.0])), Rm @ np.array([0.0, -0.25, 1.0]),
                     Rm @ unit(np.array([0.35, -1.0, 0.0])))
-        rest = self.target("breech" if self.style == "A" else "dropcrank" if self.long else "casing", g.frames({}))
+        rest = self.target("breech" if self.style == "A" else "dropcrank" if self.long else "casing", self.home_frames())
 
         def mix(a, b, w):
             w = smooth(min(1.0, max(0.0, w)))
@@ -1568,7 +1675,8 @@ class Unit:
         inv_rel = np.linalg.inv(Crel)[:3, :3]
         left_d, fwd_d = unit(inv_rel @ -b_right), unit(inv_rel @ b_fwd)
         tip = -35.0 * float(np.cross(fwd_d, left_d) @ Y)        # the top tipped out to his left
-        throw = tr(lift + 0.17 * left_d + np.array([0.0, -0.10, 0.0]) + 0.04 * fwd_d) @ rot4(axis_matrix(fwd_d, tip))
+        throw = tr(lift + 0.17 * left_d + np.array([0.0, -0.10, 0.0]) + 0.04 * fwd_d) @ rot4(axis_matrix(fwd_d, tip)) \
+            @ rot4(TH[:3, :3])
         p0 = point(Crel, throw[:3, 3])
         v0 = Crel[:3, :3] @ (1.3 * left_d + 0.8 * Y + 0.2 * fwd_d)
         g_acc = 9.8
@@ -1707,6 +1815,9 @@ class Unit:
             turn.append(w)
             look.append(point(C, H[0]))
         self._reload_t = None
+        if self.home:
+            back = np.linalg.inv(TH)
+            old = [back @ O for O in old]
         look = self.calm_gaze(poses, times, length, look)
         # the instant moves, out of sight: the new one from the camel's body to the pocket (u 0.01)
         # and back (0.95, seated inside the old one), the old one back in the gun (0.95, inside the
@@ -1745,7 +1856,7 @@ class Unit:
                 hz = math.hypot(float(d @ fwd), float(d @ right))
                 return (math.degrees(math.atan2(float(d @ right), float(d @ fwd))),
                         math.degrees(math.atan2(float(d[1]), hz)), hz)
-            yd, pd, _h = angles(self.downrange(C, self.gun.frames({})))
+            yd, pd, _h = angles(self.downrange(C, self.home_frames()))
             yh, ph, hz = angles(points[i])
             wy = smooth(min(1.0, max(0.0, (hz - 0.10) / 0.25)))         # the hand far enough aside
             yh = wy * max(-self.GAZE_YAW, min(self.GAZE_YAW, yh)) + (1.0 - wy) * yd
@@ -1921,6 +2032,12 @@ class Unit:
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
             # the rider climbs while the camel is held down: after it lies down, or before it gets up
             b.window = (0.0, before) if before else (anim.duration, length)
+        elif clip.get("do") == "foot_death" and self.home:
+            # round 6: it lies at the gun with its neck turned (NECK_TURN), then slumps (Camel.slump)
+            still = self.neck_turned(cam.fix_hang(cam.grounded(anim, [0.0])[0]), 1.0)
+            poses = [cam.slump(still, t) for t in times]
+            b.necked = True
+            b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
         elif clip.get("do") == "foot_death" or clip.get("roll"):
             still = cam.grounded(anim, [0.0])[0]
             poses = [cam.roll_over(still, t) for t in times]
@@ -1962,12 +2079,15 @@ class Unit:
             u = t / length
             state = {}
             if rolls and t >= DEATH_SPARE_AT - 1e-9:
-                state["magazine2"] = tr(g.at["ammo"])
+                state["magazine2"] = self.home_turn() @ tr(g.at["ammo"])
             if do == "fire":
                 state = self.fire_state(t, length)
                 for s in self.shots(length):
                     if 0.0 <= t - s < 0.045:
                         b.flash.append(t)
+            yaw_t = self.clip_yaw(clip, t, length, b)
+            if yaw_t:
+                state["yaw"] = yaw_t
             if plan is not None:
                 state["magazine"], state["magazine2"] = plan["old"][i], plan["new"][i]
                 self._plan_at = (plan, i)
@@ -1993,7 +2113,63 @@ class Unit:
             b.rider.append(R)
         self._plan_at = None
         b.length = length
+        if self.home:
+            # the camel's bone_turret (the launch point and the muzzle flash, and the dead model's
+            # gun) turned with the gun, so the clip shows them where the gun points; lying down, its
+            # neck turned to its right, its head out of the gunner's way (NECK_TURN)
+            yaws = [self.clip_yaw(clip, t, length, b) for t in times]
+            necks = [0.0 if getattr(b, "necked", False) else self.neck_share(clip, t, length, b) for t in times]
+            if any(yaws) or any(necks):
+                def done(P, y, k):
+                    return self.turret_turned(self.neck_turned(P, k), y)
+                b.camel_bytes = cam.track_bytes(cname, times, [done(*a) for a in zip(poses, yaws, necks)], anim, scales)
+                b.camel = [done(*a) for a in zip(b.camel, yaws, necks)]
         return b
+
+    # round 6: the lying camel turns its neck this far to its right (degrees about its up), so its head
+    # is out of the way of the gunner's arms when the gun points back over its right side
+    NECK_TURN = 60.0
+
+    def neck_share(self, clip, t, length, b):
+        """How much of NECK_TURN the camel shows at t: all of it lying at the gun, eased in while it
+        lies down (the deploy) and out while it rises (the undeploy)."""
+        if not self.home:
+            return 0.0
+        do = clip.get("do")
+        if do in ("stand", "fire", "reload", "foot_death"):
+            return 1.0
+        if do == "dismount":                  # the lying-down clip plays before the window
+            t1 = getattr(b, "window", (length, length))[0]
+            return smooth(min(1.0, max(0.0, (t - 0.45 * t1) / (0.5 * t1))))
+        if do == "mount":                     # the getting-up clip plays after the window
+            t0 = getattr(b, "window", (0.0, 0.0))[1]
+            return 1.0 - smooth(min(1.0, max(0.0, (t - t0) / (0.4 * (length - t0)))))
+        return 0.0
+
+    def neck_turned(self, P, share):
+        if not self.home or share <= 0.0:
+            return P
+        from aoe3game.gr2_pose import rotate_about
+        cam = self.camel
+        if getattr(self, "_mount_rest", None) is None:
+            self._mount_rest = cam.pose(cam.base, 0.0)[cam.mount][:3, :3].copy()
+        up = unit(P[cam.mount][:3, :3] @ (self._mount_rest.T @ Y))
+        return rotate_about(P, cam.rig, "hs bone neck lower", "hs bone neck lower", up, self.NECK_TURN * share)
+
+    @staticmethod
+    def turret_turned(P, yaw):
+        """The camel pose with bone_turret and the bones on it turned by `yaw` degrees about the
+        turret's own vertical (as turretArc turns it)."""
+        if not yaw or "bone_turret" not in P:
+            return P
+        from aoe3game.gr2_pose import about
+        T = P["bone_turret"]
+        M = about(T[:3, 3], axis_matrix(unit(T[:3, :3] @ Y), yaw))
+        out = dict(P)
+        for k in ("bone_turret", "bone_launchpoint", "bone_muzzle"):
+            if k in out:
+                out[k] = M @ out[k]
+        return out
 
     def bag_point(self, P):
         """Where the magazine is put down, in design space: A, at the saddle beside the rider's left
@@ -2106,6 +2282,9 @@ class Unit:
                 stand = self.traverse.reload_body(t)   # v5: he steps in to the hopper and back
             elif getattr(self, "_stand_at", None) is not None:
                 stand = self._stand_at                 # placed on his feet by a Traverse (preview)
+            elif self.long and getattr(self, "traverse", None) is not None:
+                if abs(yaw - self.home) > 0.5:
+                    stand = self.traverse.stair(yaw)   # stepped round the post with the gun
             elif abs(yaw) > 0.5:
                 stand = self.step_around(stand, C, fr, yaw)
             R = self.at_gun(stand, C, fr, do, u, b, trunk=(0.1 if do == "reload" else 0.35, 22.0)
@@ -2115,7 +2294,7 @@ class Unit:
                 return rider.look(R, plan_at[0]["look"][plan_at[1]])
             return rider.look(R, self.gaze(do, clip, R, C, fr, attach))
         if do == "foot_death":
-            anim = rider.anim(FOOT_DEATH)
+            anim = rider.anim(FOOT_DEATH_BACK if self.home else FOOT_DEATH)
             return self.at_station(rider.standing(self.foot, anim, min(t, anim.duration), 90.0, self.stand_info["at"]))
         # dismount / mount: seated while the camel moves, the climb (keys) while it is held down
         t0, t1 = getattr(b, "window", (0.0, length))
@@ -2170,7 +2349,7 @@ class Unit:
             # standing, the hopper is at his shoulder's height and close: he turns his chest to it and
             # leans back a little while he carries the new magazine over and seats it, so his hand comes
             # to it from in front of him, not through his shoulder
-            hop = point(C, self.gun.at["ammo"])
+            hop = point(C, point(self.gun.yaw_matrix(self.yaw_of(fr)), self.gun.at["ammo"]))
             a_, b_ = self.reload_times()["hop"]
             w2 = math.sin(math.pi * min(1.0, max(0.0, (u - a_) / (b_ - a_)))) if a_ < u < b_ else 0.0
             if w2 > 0.0:
@@ -2192,14 +2371,14 @@ class Unit:
         the rest place of stand_pose."""
         trav = getattr(self, "traverse", None)
         if getattr(self, "long", False) and trav is not None:
-            return trav.settled(0.0)
+            return trav.settled(self.home)
         return self.stand_pose()
 
     def at_station(self, P):
         """A pose made at stand_pose's place carried to his station (station_body)."""
         trav = getattr(self, "traverse", None)
         if getattr(self, "long", False) and trav is not None:
-            M = trav.M(*trav.station(0.0))
+            M = trav.M(*trav.station(self.home))
             return {k: M @ v for k, v in P.items()}
         return P
 
@@ -2351,13 +2530,15 @@ class Unit:
         k5 = rider.standing(self.foot, walk, 0.3 * walk.duration, 45.0, np.zeros(3))
         k5 = translate(k5, rig, root, np.array([mid[0] - k5[root][0, 3], 0.0, mid[2] - k5[root][2, 3]]))
         k5 = rider.look(k5, k5["bip01 head"][:3, 3] + 5.0 * unit(fwd + right))
-        # 6. at the gun
-        k6 = self.at_gun(stand, C, fr, "stand", 0.0, None)
-        k6 = rider.look(k6, self.downrange(C, fr))
+        # 6. at the gun (round 6: the gun at its rest yaw, across the camel)
+        fr6 = self.home_frames() if self.home else fr
+        k6 = self.at_gun(stand, C, fr6, "stand", 0.0, None)
+        k6 = rider.look(k6, self.downrange(C, fr6))
         k0 = rider.look(k0, k0["bip01 head"][:3, 3] + 12.0 * fwd)
         k1 = rider.look(k1, seat_at + 0.6 * left - up * 0.6 + 0.4 * fwd, max_pitch=25.0)
         k2 = rider.look(k2, seat_at + 1.0 * left - up * 1.2, max_pitch=25.0)
-        keys = [(0.0, k0), (0.14, k1), (0.30, k2), (0.48, k3), (0.64, k4), (0.82, k5), (1.0, k6)]
+        s = self.CLIMB_SHARES_HOME if self.home else self.CLIMB_SHARES
+        keys = list(zip(s, (k0, k1, k2, k3, k4, k5, k6)))
         keys = [(s_, self.above_ground(k_)) for s_, k_ in keys]
         self._climb = (P, keys)
         return keys
@@ -2378,13 +2559,57 @@ class Unit:
 
     SIDESTEP = 0.45     # v5: the longest side step (metres) from the saddle back to his station
     TO_STATION_TURN = 0.5   # share of the way from the saddle to the station spent turning to the gun
+    # the climb's key poses as shares of the window the camel is held down in (seated, up on the hands,
+    # the leg over, down the flank, standing at the saddle, a step, at the gun); round 6: the climb a
+    # little quicker, so the swing of the gun to its rest yaw has the rest
+    CLIMB_SHARES = (0.0, 0.14, 0.30, 0.48, 0.64, 0.82, 1.0)
+    CLIMB_SHARES_HOME = (0.0, 0.11, 0.24, 0.38, 0.50, 0.75, 1.0)
 
-    def to_station(self, keys, share):
+    def to_station_swing(self, keys, share, C, fr):
+        """Round 6 (the gun rests across the camel): from standing at the saddle (key 4) he turns on the
+        spot toward the two grips (the gun still ahead) while his hands go to them (the first SWING[0]
+        of the rest), then pushes the gun round to its rest yaw while he steps round the post to his
+        station, by way of the station of half the turn (two legs of two steps, the leading foot the
+        one that keeps his feet apart), his hands on the grips, looking along the barrels. Played
+        backward for the mount; the gun's yaw at each share is clip_yaw's."""
+        from aoe3game.gr2_pose import blend
+        trav, rig, rider = self.traverse, self.rider.rig, self.rider
+        root = rig.names[0].lower()
+        (s4, k4) = keys[4]
+        f = (share - s4) / max(1.0 - s4, 1e-9)
+        if getattr(self, "_swing_path", None) is None:
+            a = k4[root][:3, 3] - trav.stand[root][:3, 3]
+            sa = trav.s0 + a[[0, 2]]
+            # a station for the gun ahead (both hands on the grips in front of his chest, clear of the
+            # camel) a step or two from where he stands at the saddle
+            st0, _c, _i = trav._search(0.0, (sa, trav.h0, (trav.STATION_STEP, 60.0)))
+            MA, MB = trav.M(sa, trav.h0), trav.M(*st0)
+            st1 = trav.station(self.home)
+            mid, _c, _i = trav._search(0.5 * self.home, (st1[0], st1[1], (trav.STATION_STEP, trav.STATION_TURN)))
+            MW, M1 = trav.M(*mid), trav.M(*st1)
+            self._swing_path = [(MA, MB, trav.best_lead(MA, MB)), (MB, MW, trav.best_lead(MB, MW)),
+                                (MW, M1, trav.best_lead(MW, M1))]
+        (MA, MB, la), (_mb, MW, lb), (_mw, M1, lc) = self._swing_path
+        if f < self.SWING[0]:                    # he turns to the grips; his hands leave the saddle for them
+            body = trav.walk(MA, MB, f / self.SWING[0], la, (0.0, 0.5), (0.5, 1.0))
+        else:
+            g = min(1.0, (f - self.SWING[0]) / (self.SWING[1] - self.SWING[0]))
+            body = (trav.walk(MB, MW, g / 0.5, lb, (0.0, 0.5), (0.5, 1.0)) if g < 0.5 else
+                    trav.walk(MW, M1, (g - 0.5) / 0.5, lc, (0.0, 0.5), (0.5, 1.0)))
+        R = self.at_gun(body, C, fr, "stand", 0.0, None)
+        R = rider.look(R, self.downrange(C, fr))
+        if f < self.SWING[0]:
+            R = blend(rig, k4, R, smooth(f / self.SWING[0]))
+        return self.above_ground(R)
+
+    def to_station(self, keys, share, C=None, fr=None):
         """v5 (the station behind the turret): from standing at the saddle (the climb's key 4) he
         side-steps back along the flank, still facing the saddle, in as many pairs of steps as keep
         each step under SIDESTEP, then turns on the spot to face along the barrels while his hands go
         to the grips (key 6). Played backward for the mount."""
         from aoe3game.gr2_pose import blend
+        if self.home:
+            return self.to_station_swing(keys, share, C, fr)
         trav, rig = self.traverse, self.rider.rig
         root = rig.names[0].lower()
         (s4, k4), (_s6, k6) = keys[4], keys[6]
@@ -2421,7 +2646,7 @@ class Unit:
         keys = self.climb_keys(P, C, fr)
         share = min(max(share, 0.0), 1.0)
         if self.steps_in() and share > keys[4][0]:
-            return self.to_station(keys, share)
+            return self.to_station(keys, share, C, fr)
         i = max(j for j, (k, _p) in enumerate(keys) if k <= share + 1e-9)
         i = min(i, len(keys) - 2)
         (s0, p0), (s1, p1) = keys[i], keys[i + 1]
@@ -2773,6 +2998,8 @@ class Aim:
             self.still = cam.fix_hang(cam.grounded(self.anim, [0.0])[0])
         if couched:
             self.still = cam.fix_hang(cam.grounded(cam.anim(B_IDLE), [0.0])[0])
+        elif getattr(unit, "home", 0.0) and "camel" not in self.clip:
+            self.still = unit.neck_turned(self.still, 1.0)        # round 6: its head out of his way
 
     def camel_pose(self, t):
         cam, clip = self.unit.camel, self.clip
@@ -2880,6 +3107,93 @@ class Traverse:
                         for s in ("l", "r")}
         self._cache = {}
 
+    # round 6: the lying camel seen from above as the height of its top at each spot (FIELD_STEP metres
+    # apart), so a place inside its body, or a head under its neck, is never read as clear (a distance
+    # to its vertices alone found the middle of its back clear: the hull has no vertex there)
+    FIELD_STEP = 0.03
+    FIELD_X = (-1.9, 0.9)
+    FIELD_Z = (-1.6, 2.4)
+
+    def _tops(self):
+        if getattr(self, "_top", None) is not None:
+            return self._top
+        cam = self.u.camel
+        cam.mesh_points(self.P0)
+        meshes, skel = cam._mesh
+        names = [b["name"] for b in skel["bones"]]
+        exact = {n: self.P0[n.lower()] for n in names if n.lower() in self.P0}
+        xs = np.arange(self.FIELD_X[0], self.FIELD_X[1] + 1e-9, self.FIELD_STEP)
+        zs = np.arange(self.FIELD_Z[0], self.FIELD_Z[1] + 1e-9, self.FIELD_STEP)
+        X_, Z_ = np.meshgrid(xs, zs, indexing="ij")
+        x, z = X_.ravel(), Z_.ravel()
+        top = np.full(len(x), -np.inf)
+        for msh in meshes:
+            p = gr2_skin.deform(msh["file_positions"], msh["vertex_bones4"], msh["vertex_weights4"], msh["skin_names"],
+                                skel, exact)
+            for a, b, c in p[np.asarray(msh["triangles"], np.int64)]:
+                d = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2])
+                if abs(d) < 1e-12:
+                    continue
+                lo_x, hi_x = min(a[0], b[0], c[0]), max(a[0], b[0], c[0])
+                lo_z, hi_z = min(a[2], b[2], c[2]), max(a[2], b[2], c[2])
+                sel = np.nonzero((x >= lo_x) & (x <= hi_x) & (z >= lo_z) & (z <= hi_z))[0]
+                if not len(sel):
+                    continue
+                w1 = ((b[2] - c[2]) * (x[sel] - c[0]) + (c[0] - b[0]) * (z[sel] - c[2])) / d
+                w2 = ((c[2] - a[2]) * (x[sel] - c[0]) + (a[0] - c[0]) * (z[sel] - c[2])) / d
+                w3 = 1.0 - w1 - w2
+                hit = (w1 >= 0) & (w2 >= 0) & (w3 >= 0)
+                h = w1 * a[1] + w2 * b[1] + w3 * c[1]
+                top[sel[hit]] = np.maximum(top[sel[hit]], h[hit])
+        self._top = (xs, zs, top.reshape(len(xs), len(zs)))
+        self._clear_fields = {}
+        return self._top
+
+    def clear(self, x, z, height):
+        """How far (metres, seen from above) the spots (x, z) are from any part of the lying camel
+        that reaches `height` or higher (0 inside it)."""
+        xs, zs, top = self._tops()
+        key = round(float(height), 2)
+        field = self._clear_fields.get(key)
+        if field is None:
+            occ = top >= height
+            idx = np.argwhere(occ)
+            if not len(idx):
+                field = np.full(top.shape, 9.0)
+            else:
+                P = np.c_[xs[idx[:, 0]], zs[idx[:, 1]]]
+                X_, Z_ = np.meshgrid(xs, zs, indexing="ij")
+                Q = np.c_[X_.ravel(), Z_.ravel()]
+                best = np.full(len(Q), 9.0)
+                for i in range(0, len(P), 300):
+                    p = P[i:i + 300]
+                    best = np.minimum(best, np.sqrt(((Q[:, None, :] - p[None, :, :]) ** 2).sum(-1)).min(1))
+                field = best.reshape(top.shape)
+            self._clear_fields[key] = field
+        x, z = np.asarray(x, np.float64), np.asarray(z, np.float64)
+        ix = np.clip(np.round((x - xs[0]) / self.FIELD_STEP).astype(int), 0, len(xs) - 1)
+        iz = np.clip(np.round((z - zs[0]) / self.FIELD_STEP).astype(int), 0, len(zs) - 1)
+        out = field[ix, iz]
+        far = (x < xs[0]) | (x > xs[-1]) | (z < zs[0]) | (z > zs[-1])
+        return np.where(far, 9.0, out)
+
+    # his parts kept clear of the camel (round 6): (bone, how far, the camel's height that counts below
+    # the bone's own)
+    CLEAR_PARTS = (("bip01 pelvis", 0.20, 0.35), ("bip01 spine1", 0.16, 0.25), ("bip01 l upperarm", 0.10, 0.15),
+                   ("bip01 r upperarm", 0.10, 0.15), ("bip01 head", 0.14, 0.15))
+
+    def body_clearance_cost(self, place, weight):
+        """The cost of his body's parts nearer the camel than CLEAR_PARTS allows, for `place` (a rest
+        point -> (x, y, z) arrays at every candidate)."""
+        cost = 0.0
+        for bone, need, below in self.CLEAR_PARTS:
+            x, y, z = place(self.stand[bone][:3, 3])
+            cost = cost + weight * np.maximum(0.0, need - self.clear(x, z, float(np.mean(y)) - below))
+        for s in ("l", "r"):
+            x, _y, z = place(self.feet0[s][:3, 3])
+            cost = cost + weight * np.maximum(0.0, self.FOOT_R - self.clear(x, z, 0.02))
+        return cost
+
     # a station: (x, z) of his root on the ground and his heading (degrees about +y, 90: facing +x)
     def M(self, s, h):
         return tr((s[0], 0.0, s[1])) @ rot4(axis_matrix(Y, h - self.h0)) @ tr((-self.s0[0], 0.0, -self.s0[1]))
@@ -2927,7 +3241,7 @@ class Traverse:
         u = self.u
         fr = u.gun.frames({"yaw": yaw})
         if not hasattr(self, "_grid"):
-            xs = np.arange(-1.3, 0.5, 0.03)
+            xs = np.arange(-1.7, 0.5, 0.03)
             zs = np.arange(-1.0, 1.9, 0.03)
             X_, Z_ = np.meshgrid(xs, zs)
             S = np.c_[X_.ravel(), Z_.ravel()]
@@ -3009,6 +3323,8 @@ class Traverse:
             for s in ("l", "r"):
                 fx, _fy, fz = place(self.feet0[s][:3, 3])
                 cost += hard * np.maximum(0.0, self.foot_r - self._mind(np.c_[fx, fz], self.low_pts))
+            if self.home:                       # round 6: his body clear of the camel at every height
+                cost += self.body_clearance_cost(place, hard)
             # his head out of the barrels' line (pivot to well past the muzzle, near his head's height)
             hx, _hy, hz = place(self.stand["bip01 head"][:3, 3])
             w = np.clip(((hx - p0[0]) * seg[0] + (hz - p0[2]) * seg[1]) / L2, 0.0, 1.0)
@@ -3038,12 +3354,13 @@ class Traverse:
         if not self._cache:
             u = self.u
             if getattr(u, "long", False) and u.handle_set != "v4":
-                self._cache[0] = self._search(0.0, None)
+                home = self.home
+                self._cache[home] = self._search(home, None)
                 for sign in (1, -1):
                     step_, count = self.segments(sign)
-                    prev = self._cache[0][0]
+                    prev = self._cache[home][0]
                     for k in range(1, count + 1):
-                        y = sign * k * step_
+                        y = home + sign * k * step_
                         st, c, info = self._search(y, (prev[0], prev[1], (self.STATION_STEP, self.STATION_TURN)))
                         self._cache[y] = (st, c, info)
                         prev = st
@@ -3086,45 +3403,69 @@ class Traverse:
     STAIR_LEAD = (1.0 / 45.0, 21.0 / 45.0)
     STAIR_TRAIL = (24.0 / 45.0, 44.0 / 45.0)
 
+    @property
+    def home(self):
+        """The gun's rest yaw (degrees): the middle station (round 6: across the camel, B_HOME)."""
+        return float(getattr(self.u, "home", 0.0))
+
+    def spans(self):
+        """How far the gun turns from home toward a shrinking yaw and toward a growing one (degrees)."""
+        u = self.u
+        if getattr(u, "segments_per_side", 0):
+            lo, hi = u.arc
+            return self.home - lo, hi - self.home
+        return self.STAIR_LEFT, 90.0
+
     def segments(self, sign):
-        """The segment length and count on one side (sign +1: right, -1: left)."""
+        """The segment length and count on one side of home (sign +1: the yaw growing, -1: shrinking)."""
+        u = self.u
+        if getattr(u, "segments_per_side", 0):
+            n = u.segments_per_side
+            span = self.spans()[1 if sign > 0 else 0]
+            return span / n, n
         return (self.STAIR_STEP, int(round(90.0 / self.STAIR_STEP))) if sign > 0 else (self.STAIR_LEFT, 1)
 
     def stair_bands(self):
         """The yaw bands in which a foot is stepping, (from, to) degrees, for the aim file."""
         out = []
+        h = self.home
         for sign in (1.0, -1.0):
             step, count = self.segments(sign)
             for k in range(count):
                 for lo, hi in (self.STAIR_LEAD, self.STAIR_TRAIL):
                     a, b = (k + lo) * step, (k + hi) * step
-                    out.append((a, b) if sign > 0 else (-b, -a))
+                    out.append((h + a, h + b) if sign > 0 else (h - b, h - a))
         return sorted(out)
 
     def lead_foot(self, sign):
         """The foot that leads when the gun turns toward `sign` (+1 right): the one farther along
-        his way from the station at 0 to the next."""
+        his way from the station at home to the next."""
         if not hasattr(self, "_lead"):
             self._lead = {}
         if sign not in self._lead:
-            M0, M1 = self.M(*self.station(0.0)), self.M(*self.station(sign * self.segments(sign)[0]))
+            M0 = self.M(*self.station(self.home))
+            M1 = self.M(*self.station(self.home + sign * self.segments(sign)[0]))
             way = (M1 @ np.r_[self.s0[0], 0.0, self.s0[1], 1.0])[:3] - (M0 @ np.r_[self.s0[0], 0.0, self.s0[1], 1.0])[:3]
             score = {s: float(point(M0, self.feet0[s][:3, 3]) @ way) for s in ("l", "r")}
             self._lead[sign] = max(score, key=score.get)
         return self._lead[sign]
 
+    def clamp_yaw(self, yaw):
+        left, right = self.spans()
+        return max(self.home - left, min(self.home + right, float(yaw)))
+
     def stair(self, yaw):
         """His body on his feet at the gun's yaw (Traverse.STAIR_*): each foot planted at its station
         or, inside its band, lifted and carried to the next one; his body between his feet, the
         legs solved to them."""
-        from aoe3game.gr2_pose import translate, two_bone_ik
-        yaw = max(-self.STAIR_LEFT, min(90.0, float(yaw)))
-        sign = 1.0 if yaw >= 0 else -1.0
+        yaw = self.clamp_yaw(yaw)
+        rel = yaw - self.home
+        sign = 1.0 if rel >= 0 else -1.0
         step, count = self.segments(sign)
-        a = abs(yaw)
+        a = abs(rel)
         k = min(int(a // step), count - 1)
         f = (a - k * step) / step                      # the share of the segment crossed
-        y0, y1 = sign * k * step, sign * (k + 1) * step
+        y0, y1 = self.home + sign * k * step, self.home + sign * (k + 1) * step
         M0, M1 = self.M(*self.station(y0)), self.M(*self.station(y1))
         return self.walk(M0, M1, f, self.lead_foot(sign), self.STAIR_LEAD, self.STAIR_TRAIL)
 
@@ -3168,21 +3509,24 @@ class Traverse:
     # RELOAD_SPOT (two steps, RELOAD_STEP_IN of the clip) and back (RELOAD_STEP_OUT)
     RELOAD_STEP_IN = (0.0, 0.50)      # seconds: two steps of 0.25 s (about 0.8 m, a brisk walk)
     RELOAD_STEP_OUT = (2.50, 3.00)
+    # round 6: at the reload spot his right palm on the breech box this far in front of his shoulder
+    # (metres, standing square): his chest turns to the pocket and to the hopper during the reload
+    RELOAD_PALM_AHEAD = 0.30
 
     def reload_spot(self):
-        """(x, z), heading: where he stands to reload with the gun at 0 (v5): his left hand as near
+        """(x, z), heading: where he stands to reload with the gun at rest (v5): his left hand as near
         the magazine in the hopper as the lying camel lets him stand, his right hand reaching the
         breech box's near side, few steps from his station, facing within 40 degrees of the hopper."""
         if getattr(self, "_reload_spot", None) is not None:
             return self._reload_spot
         u = self.u
         self.table()
-        fr = u.gun.frames({})
+        fr = u.home_frames()
         S, body_clear = self._grid
         n = len(S)
         mag = point(self.C, u.target("magazine", fr)[0])
         box = point(self.C, u.target("casing_side", fr)[0])
-        s0_, _h0 = self.station(0.0)
+        s0_, _h0 = self.station(self.home)
         camel = 400.0 * np.maximum(0.0, self.body_r - body_clear)
         base = np.degrees(np.arctan2(mag[0] - S[:, 0], mag[2] - S[:, 1]))
         best = (np.inf, None)
@@ -3201,6 +3545,13 @@ class Traverse:
             for s in ("l", "r"):
                 f_ = place(self.feet0[s][:3, 3])
                 cost += 400.0 * np.maximum(0.0, self.foot_r - self._mind(f_[:, [0, 2]], self.low_pts))
+            if self.home:                       # round 6: his body clear of the camel at every height
+                cost += self.body_clearance_cost(lambda p: tuple(place(p).T), 4000.0)
+                # the right palm in front of his chest on the breech box (check_anim's "ahead")
+                hr_ = np.radians(h)
+                sx, _sy, sz = place(self.stand["bip01 r upperarm"][:3, 3]).T
+                ahead_r = (box[0] - sx) * np.sin(hr_) + (box[2] - sz) * np.cos(hr_)
+                cost += 400.0 * np.maximum(0.0, self.RELOAD_PALM_AHEAD - ahead_r)
             cost += 0.5 * ((S - s0_) ** 2).sum(1) + 0.0005 * dh ** 2
             i = int(np.argmin(cost))
             if cost[i] < best[0]:
@@ -3212,7 +3563,7 @@ class Traverse:
         """His body at time t of the reload (v5): at his station 0, stepping in to the reload spot,
         there, stepping back."""
         (a, b), (c, d) = self.RELOAD_STEP_IN, self.RELOAD_STEP_OUT
-        M0, M1 = self.M(*self.station(0.0)), self.M(*self.reload_spot())
+        M0, M1 = self.M(*self.station(self.home)), self.M(*self.reload_spot())
         if t <= a or t >= d:
             return {k: M0 @ v for k, v in self.stand.items()}
         if b <= t <= c:
@@ -3250,10 +3601,10 @@ class Traverse:
         """The yaw at which the step under way at `yaw` ends, the gun having turned toward
         `direction` (+1: the yaw growing, -1: shrinking): the end of the band it is in, else the yaw
         itself (both feet down). Traverse.stair at that yaw is his body once the step has finished."""
-        yaw = max(-self.STAIR_LEFT, min(90.0, float(yaw)))
-        sign = 1.0 if yaw >= 0 else -1.0
+        rel = self.clamp_yaw(yaw) - self.home
+        sign = 1.0 if rel >= 0 else -1.0
         step, count = self.segments(sign)
-        a = abs(yaw)
+        a = abs(rel)
         k = min(int(a // step), count - 1)
         f = (a - k * step) / step
         outward = (direction > 0) == (sign > 0)
@@ -3261,7 +3612,7 @@ class Traverse:
             if lo < f < hi:
                 f = hi if outward else lo
                 break
-        return sign * (k + f) * step
+        return self.home + sign * (k + f) * step
 
     def settled(self, yaw):
         """His body standing at the yaw's station, both feet set."""
@@ -3452,6 +3803,14 @@ def palms_ahead(rider, R):
 
 
 STILL_ANGLES = (-30.0, 0.0, 30.0, 60.0, 90.0)
+
+
+def still_angles(u):
+    """The five yaws the stills show: B's arc in four equal parts (round 6: 30 60 90 120 150)."""
+    if getattr(u, "home", 0.0):
+        lo, hi = u.arc
+        return tuple(float(v) for v in np.linspace(lo, hi, 5))
+    return STILL_ANGLES
 STILL_RELOAD = (0.0, 0.25, 0.50, 0.66, 1.02, 1.42, 1.80, 2.22, 2.36, 2.46, 2.75, 3.0)
 
 
@@ -3473,11 +3832,13 @@ def stills(folder, pb, scene, label):
              ("FROM ABOVE (CAMEL'S HEAD UP)", 180.0, 89.0, 3.2, (-0.1, 1.0, 0.2)),
              ("FROM HIS SIDE (THE CAMEL'S LEFT)", -90.0, 8.0, 2.8, (-0.3, 1.0, 0.2))]
     w, h = 300, 280
-    rows = [title(w * len(STILL_ANGLES), f"{label.upper()}: B ON FOOT FIRING, THE GUN AT -30 0 30 60 90, "
-                                         "L/R: EACH PALM IN FRONT OF ITS SHOULDER", back=(70, 40, 20))]
+    angles = still_angles(u)
+    rows = [title(w * len(angles), f"{label.upper()}: B ON FOOT FIRING, THE GUN AT "
+                                   + " ".join(f"{a:.0f}" for a in angles) +
+                                   ", L/R: EACH PALM IN FRONT OF ITS SHOULDER", back=(70, 40, 20))]
     for vname, az, el, span, cen in views:
         tiles = []
-        for yaw in STILL_ANGLES:
+        for yaw in angles:
             stand = trav.stair(yaw)
             items, marks, reach = aim.items(fig, t_fire, yaw, stand)
             _P, _G, R, _r = aim.poses(t_fire, yaw, stand)
@@ -3487,7 +3848,7 @@ def stills(folder, pb, scene, label):
             if vname == views[0][0]:
                 lines.append(f"gun {yaw:+.0f}: palms in front of the shoulders l {ah['l'] * 100:+.0f} cm, "
                              f"r {ah['r'] * 100:+.0f} cm; grips missed by {reach * 100:.1f} cm")
-        rows.append(title(w * len(STILL_ANGLES), vname, scale=1))
+        rows.append(title(w * len(angles), vname, scale=1))
         rows.append(np.concatenate(tiles, 1))
     Image.fromarray(np.concatenate(rows, 0)).save(stem + "-angles.png")
     os.makedirs(os.path.join(folder, "parts"), exist_ok=True)
@@ -3514,6 +3875,38 @@ def stills(folder, pb, scene, label):
         Image.fromarray(np.concatenate([title(sheet.shape[1], f"{label.upper()}: THE RELOAD'S KEY POSES "
                                               f"({length:.2f} S), TWO VIEWS EACH, L/R: PALMS IN FRONT OF THE "
                                               "SHOULDERS (CM)", back=(70, 40, 20)), sheet], 0)).save(stem + "-reload.png")
+    # round 6: the deploy's end and the undeploy's start (the gun swung between ahead and its rest
+    # yaw), and the death, two views each
+    seqs = []
+    if "deploy" in pb.clips:
+        L = pb.clips["deploy"][3].length
+        seqs.append(("deploy", [L - 2.0 + d for d in (0.0, 0.6, 1.0, 1.2, 1.35, 1.5, 1.65, 1.8, 2.0)]))
+    if "undeploy" in pb.clips:
+        seqs.append(("undeploy", [0.0, 0.2, 0.35, 0.5, 0.65, 0.8, 1.0, 1.6, 2.0]))
+    if "death" in pb.clips:
+        seqs.append(("death", [0.0, 0.3, 0.6, 1.0, 1.5, 2.0, 2.5, 3.0]))
+    for name, ts in seqs:
+        length = pb.clips[name][3].length
+        tiles = []
+        for t in ts:
+            t = min(max(t, 0.0), length - 1e-3)
+            items, marks = pb.items(name, t)
+            if name == "death" and getattr(pb, "dead_fig", None) is not None:
+                # the game plays it on the dead model (the gun built in, on the turret bone), the
+                # gunner attached; the gun's own clip is not played
+                P, _G, R = pb.poses(name, t)
+                items = pb.dead_fig.items(P) + scene.rider_fig.items(R) + scene.hat_items(R)
+            views = ((-150.0, 15.0, "BEHIND LEFT"), (180.0, 80.0, "ABOVE"))
+            if name == "death":
+                views += ((60.0, 6.0, "FRONT RIGHT, LOW"),)
+            for az, el, vname in views:
+                img = draw(items, 250, 230, az, el, 3.2, (-0.3, 1.0, 0.5), marks=marks)
+                tiles.append(caption(img, f"{name.upper()} {t:.2f} S {vname}"))
+        tiles += [np.zeros_like(tiles[0])] * ((-len(tiles)) % 6)
+        sheet = grid(tiles, 6)
+        Image.fromarray(np.concatenate([title(sheet.shape[1], f"{label.upper()}: {name.upper()} ({length:.2f} S), "
+                                              "TWO VIEWS PER MOMENT", back=(70, 40, 20)), sheet], 0)
+                        ).save(f"{stem}-{name}.png")
     return lines
 
 
@@ -3822,6 +4215,9 @@ def aim_table(unit, built, traverse=None):
     names = rider.rig.names
     foot = unit.style == "B" and traverse is not None
     yaws_t = AIM_TABLE_YAWS_FOOT if foot else AIM_TABLE_YAWS
+    if foot and unit.home:              # round 6: the arc about the gun's rest yaw, every 2 degrees
+        lo, hi = unit.arc
+        yaws_t = tuple(float(y) for y in np.arange(lo, hi + 1e-6, 2.0))
     clips_t = AIM_TABLE_CLIPS_FOOT if foot else AIM_TABLE_CLIPS
     stairs = {y: traverse.stair(y) for y in yaws_t} if foot else {}
     settled = {d: {y: traverse.stair(traverse.settle_yaw(y, d)) for y in yaws_t} for d in (1, -1)} if foot else {}
@@ -3873,7 +4269,7 @@ def aim_table(unit, built, traverse=None):
         if foot and clip["name"] in AIM_TABLE_SETTLE:
             settles.append((name, [table(b, settled[d])[0] for d in (1, -1)], count))
     # the bones that move with the yaw (or settle)
-    zero = yaws_t.index(0.0)
+    zero = yaws_t.index(unit.home if unit.home in yaws_t else 0.0)
     moving = set()
     every = [frames for _n, frames, _c in tables] + [fr for _n, both, _c in settles for fr in both]
     for frames in every:
@@ -3897,9 +4293,15 @@ def aim_table(unit, built, traverse=None):
     # lying down, its post much lower than at the bind pose), in the camel's model space
     fire = built.get("fire")
     Cf = unit.C(fire.camel[0]) if fire is not None else np.eye(4)
-    pivot, muzzle = (point(Cf, g.post), point(Cf, g.at["muzzle"])) if fire is not None else (g.post, g.at["muzzle"])
-    out = [b"UHCA", st.pack("<I", 1), name32(GunDesign.bone_name("yaw")), name32("bone_turret"),
-           st.pack("<3f", *[float(v) for v in pivot]), st.pack("<3f", *[float(v) for v in muzzle]),
+    mz = point(unit.home_turn(), g.at["muzzle"])          # the muzzle with the gun at its rest yaw
+    pivot, muzzle = (point(Cf, g.post), point(Cf, mz)) if fire is not None else (g.post, mz)
+    # version 2 (round 6): the gun's rest yaw follows the muzzle (its clips show the gun there, so a
+    # game turns the bones by the aim less that yaw); version 1 rests ahead
+    head = [b"UHCA", st.pack("<I", 2 if unit.home else 1), name32(GunDesign.bone_name("yaw")), name32("bone_turret"),
+            st.pack("<3f", *[float(v) for v in pivot]), st.pack("<3f", *[float(v) for v in muzzle])]
+    if unit.home:
+        head.append(st.pack("<f", float(unit.home)))
+    out = head + [
            st.pack("<I", len(yaws_t)),
            st.pack(f"<{len(yaws_t)}f", *yaws_t), st.pack("<I", len(bones))]
     out += [name32(names[k]) for k in bones]
@@ -4206,8 +4608,10 @@ def main(argv):
                     unit.traverse = Traverse(Aim(scene, unit, None))
                 model = unit.gun.model_bytes(unit.gun_name)
                 files[unit.gun_name] = model
+                # round 6 (B's gun at rest across the camel): the dead model's gun on bone_turret, which
+                # the deployed death clip turns with it; the stock deaths leave it ahead
                 files[f"{recipe['name']}_camel_dead_{unit.tag}"] = dead_model(
-                    camel.cut, model, camel.hang_bind, recipe["camel"]["mount_bone"])
+                    camel.cut, model, camel.hang_bind, "bone_turret" if unit.home else recipe["camel"]["mount_bone"])
                 built = {}
                 for clip in unit.clips:
                     b = unit.write(unit.build(clip))
@@ -4220,6 +4624,7 @@ def main(argv):
                         tags[unit.clip_name("camel", b) + ".gr2.precomp"] = camel_precomp(
                             camel, camel_tags, b.length, lambda t, a=mine: camel.pose(a, t))
                 pb = Playback(game, scene, unit, model, built)
+                pb.dead_fig = Figure(game, files[f"{recipe['name']}_camel_dead_{unit.tag}"])
                 plays[(variant, scale)] = pb
                 units[(variant, scale)] = (unit, built)
                 g = unit.gun
