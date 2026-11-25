@@ -3246,6 +3246,23 @@ class Traverse:
             return 1.0
         return smooth((t - a) / (b - a)) if t < b else 1.0 - smooth((t - c) / (d - c))
 
+    def settle_yaw(self, yaw, direction):
+        """The yaw at which the step under way at `yaw` ends, the gun having turned toward
+        `direction` (+1: the yaw growing, -1: shrinking): the end of the band it is in, else the yaw
+        itself (both feet down). Traverse.stair at that yaw is his body once the step has finished."""
+        yaw = max(-self.STAIR_LEFT, min(90.0, float(yaw)))
+        sign = 1.0 if yaw >= 0 else -1.0
+        step, count = self.segments(sign)
+        a = abs(yaw)
+        k = min(int(a // step), count - 1)
+        f = (a - k * step) / step
+        outward = (direction > 0) == (sign > 0)
+        for lo, hi in (self.STAIR_LEAD, self.STAIR_TRAIL):
+            if lo < f < hi:
+                f = hi if outward else lo
+                break
+        return sign * (k + f) * step
+
     def settled(self, yaw):
         """His body standing at the yaw's station, both feet set."""
         s, h = self.station(yaw)
@@ -3778,6 +3795,7 @@ AIM_TABLE_CLIPS = ("idle", "deployed", "fire", "reload")
 # table is sampled finer, and only for the clips he works the gun in on foot
 AIM_TABLE_YAWS_FOOT = tuple(float(y) for y in range(-30, 91, 2))      # B's arc: -30 .. +90
 AIM_TABLE_CLIPS_FOOT = ("deployed", "fire", "reload")
+AIM_TABLE_SETTLE = ("deployed", "fire")     # B: the clips with his feet settled at rest too (aim_table)
 
 
 def aim_table(unit, built, traverse=None):
@@ -3794,7 +3812,11 @@ def aim_table(unit, built, traverse=None):
     blending the two nearest yaws and frames starts from what it plays. Only bones that move with
     the yaw are listed. B on foot (`traverse`): every 2 degrees, his feet stepping round the post
     (Traverse.stair), and after the clips "BAND", a count and the (from, to) yaw bands in which a
-    foot is in the air: a game keeps the gun from coming to rest inside one."""
+    foot is in the air; then "SETL", a count and, for the clips he stands at the gun in (deployed,
+    fire), the clip's name (64 B), length and frame count and two tables laid out as above: his
+    pose at each yaw once the step under way has finished, the gun having turned toward a growing
+    yaw, then toward a shrinking one (Traverse.settle_yaw: his feet down, his hands on the grips at
+    that yaw). A game blends to them when the gun comes to rest, so no foot is left in the air."""
     import struct as st
     cam, rider, g = unit.camel, unit.rider, unit.gun
     names = rider.rig.names
@@ -3802,12 +3824,10 @@ def aim_table(unit, built, traverse=None):
     yaws_t = AIM_TABLE_YAWS_FOOT if foot else AIM_TABLE_YAWS
     clips_t = AIM_TABLE_CLIPS_FOOT if foot else AIM_TABLE_CLIPS
     stairs = {y: traverse.stair(y) for y in yaws_t} if foot else {}
-    tables = []
-    length_of = {}
-    for b in built.values():
+    settled = {d: {y: traverse.stair(traverse.settle_yaw(y, d)) for y in yaws_t} for d in (1, -1)} if foot else {}
+
+    def table(b, stand_of):
         clip = b.clip
-        if clip["name"] not in clips_t:
-            continue
         do = clip.get("do")
         length = b.length
         count = max(2, int(round(length * AIM_TABLE_FPS)) + 1)     # evenly over the clip, both ends
@@ -3830,7 +3850,7 @@ def aim_table(unit, built, traverse=None):
                 state["yaw"] = yaw
                 fr = g.frames(state)
                 attach = rigid(P[cam.rider_bone])
-                unit._stand_at = stairs.get(yaw)
+                unit._stand_at = stand_of.get(yaw)
                 try:
                     R = unit.rider_pose(clip, do, t, length, u, P, unit.C(P), fr, base, attach, Built(clip, [t]))
                 finally:
@@ -3838,12 +3858,25 @@ def aim_table(unit, built, traverse=None):
                     unit._stand_at = None
                 row.append(rider.to_local(R, attach))
             frames.append(row)
-        tables.append((unit.clip_name("rider", b), frames, len(idx)))
-        length_of[unit.clip_name("rider", b)] = float(length)
-    # the bones that move with the yaw
+        return frames, len(idx)
+
+    tables, settles = [], []
+    length_of = {}
+    for b in built.values():
+        clip = b.clip
+        if clip["name"] not in clips_t:
+            continue
+        name = unit.clip_name("rider", b)
+        frames, count = table(b, stairs)
+        tables.append((name, frames, count))
+        length_of[name] = float(length_of.get(name, b.length))
+        if foot and clip["name"] in AIM_TABLE_SETTLE:
+            settles.append((name, [table(b, settled[d])[0] for d in (1, -1)], count))
+    # the bones that move with the yaw (or settle)
     zero = yaws_t.index(0.0)
     moving = set()
-    for _n, frames, _c in tables:
+    every = [frames for _n, frames, _c in tables] + [fr for _n, both, _c in settles for fr in both]
+    for frames in every:
         for row in frames:
             for y, loc in enumerate(row):
                 for k, (p, q) in enumerate(loc):
@@ -3856,6 +3889,10 @@ def aim_table(unit, built, traverse=None):
     def name32(s, n=32):
         b = s.encode("ascii")[: n - 1]
         return b + b"\0" * (n - len(b))
+
+    def data(frames):
+        return [st.pack("<7f", *[float(v) for v in loc[k][0]], *[float(v) for v in loc[k][1]])
+                for row in frames for loc in row for k in bones]
     # the pivot and the muzzle where the unit fires: at the first frame of its fire clip (B: the camel
     # lying down, its post much lower than at the bind pose), in the camel's model space
     fire = built.get("fire")
@@ -3868,15 +3905,13 @@ def aim_table(unit, built, traverse=None):
     out += [name32(names[k]) for k in bones]
     out.append(st.pack("<I", len(tables)))
     for name, frames, count in tables:
-        out += [name32(name, 64), st.pack("<fI", length_of[name], count)]
-        for row in frames:
-            for loc in row:
-                for k in bones:
-                    p, q = loc[k]
-                    out.append(st.pack("<7f", *[float(v) for v in p], *[float(v) for v in q]))
+        out += [name32(name, 64), st.pack("<fI", length_of[name], count)] + data(frames)
     if foot:
         bands = traverse.stair_bands()
         out += [b"BAND", st.pack("<I", len(bands))] + [st.pack("<2f", a, b_) for a, b_ in bands]
+        out += [b"SETL", st.pack("<I", len(settles))]
+        for name, both, count in settles:
+            out += [name32(name, 64), st.pack("<fI", length_of[name], count)] + data(both[0]) + data(both[1])
     return b"".join(out), len(bones), [(n, c) for n, _f, c in tables]
 
 
