@@ -40,6 +40,24 @@ class CommandIcons(unittest.TestCase):
         inside = off[5:-5, 5:-5]
         self.assertTrue((inside[..., 0] >= inside[..., 1]).mean() > 0.95)  # the "off" picture is tinted red
 
+    def test_fattened(self):
+        data = mci.encode("fattened", "on")
+        h = ddt.read_header(data)
+        self.assertEqual((h.width, h.height, h.format, h.alpha, h.usage, h.mips), (64, 64, ddt.BGRA, 0, 0, 1))
+        img = np.asarray(ddt.decode(data))[..., :3].astype(int)
+        self.assertTrue((img[0] < 20).all())                            # the wood frame: black outside
+        self.assertTrue((img[2, 20:44, 0] > img[2, 20:44, 2]).all())    # then gold (more red than blue)
+        wool = (img[..., 0] > 200) & (img[..., 1] > 190) & (img[..., 2] > 170)
+        self.assertGreater(wool[14:46, 14:54].sum(), 300)               # the fleece
+        red = (img[..., 0] > 170) & (img[..., 1] < 80)
+        self.assertGreater(red[50:58, 12:52].sum(), 100)                # the food bar, full
+        self.assertTrue(red[54, 13:51].all())                            # to its end
+        blue = np.asarray(ddt.decode(mci.encode("fattened", "on", "blue")))[..., :3].astype(int)
+        self.assertTrue((blue[0, :, 2] > blue[0, :, 0]).all())          # --frame blue
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(mci.main(["--glyph", "fattened", "--all", tmp]), 0)
+            self.assertEqual(sorted(p.name for p in pathlib.Path(tmp).iterdir()), ["uhc_select_fattened.ddt"])
+
     def test_deterministic_and_check(self):
         self.assertEqual(mci.encode("autoscout", "on"), mci.encode("autoscout", "on"))
         with tempfile.TemporaryDirectory() as tmp:
