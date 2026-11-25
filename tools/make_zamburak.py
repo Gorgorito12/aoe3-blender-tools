@@ -66,6 +66,7 @@ MIDFA = "WoL\\units\\artillery\\Midfa\\"
 DEFAULT_RECIPE = {
     "name": "zamburak_cannon",
     "folder": "WoL\\units\\cavalry_ranged\\zamburak_cannon",
+    "rider_xml": "WoL\\units\\cavalry_ranged\\zamburak\\zamburak_rider.xml",     # his models by rank, his hats
     "camel": dict(mgc.DEFAULT_RECIPE["camel"]),
     # the lateral swivel gun: every piece of it, the post too (the cannon gets its own swivel)
     "cut": {"x_below": -0.18, "y_above": 1.6, "keep_post": False},
@@ -2057,11 +2058,23 @@ class ZUnit:
 
     # -- the files
 
+    def gun_yaw(self, fr):
+        """The gun's yaw (degrees, toward the unit's right +) in a frame set, from its yaw bone."""
+        rest = self.d.rest()["yaw"][:3, :3]
+        z = (rest.T @ fr["yaw"][:3, :3]) @ Z
+        a = math.degrees(math.atan2(z[0], z[2]))
+        return a if (axis_matrix(Y, a) @ Z) @ z > 0.999 else -a
+
     def write(self, b):
         cam, d = self.camel, self.d
         name = self.r["name"]
+        tag = FILE_TAGS.get(b.name, b.name)
+        if b.name in UNLIMBERED:
+            # the camel's bone_turret (the launch point and the muzzle flash on it) turned with the gun:
+            # turretArc turns it by the aim less the rest yaw, so the clips show it where the gun is
+            b.camel = [mgc.Unit.turret_turned(P, self.gun_yaw(fr)) for P, fr in zip(b.camel, b.gun)]
         if b.camel_name is None:
-            b.camel_name = f"{name}_camel_{b.name}"
+            b.camel_name = f"{name}_camel_{tag}"
             anim, scales = b.camel_src
             b.camel_bytes = cam.track_bytes(b.camel_name, b.times, b.camel, anim, scales)
         bones = d.BONES
@@ -2082,13 +2095,13 @@ class ZUnit:
         tracks = [(nm, b.times, np.array([f[i][0] for f in locs]), np.array([f[i][1] for f in locs]))
                   for i, nm in enumerate(names)]
         like = self.rider.idle
-        b.gun_name = f"{name}_gun_{b.name}"
+        b.gun_name = f"{name}_gun_{tag}"
         b.gun_bytes = animation_file(b.gun_name, float(b.times[-1]), names[0], tracks, basis=self.rider.rig.basis,
                                      accumulation=like.accumulation, timestep=like.timestep, source=b.gun_name)
         if getattr(b, "stock_rider", None):
             b.rider_name = None                 # today's clip, unchanged
         else:
-            b.rider_name = f"{name}_rider_{b.name}"
+            b.rider_name = f"{name}_rider_{tag}"
             rl = [self.rider.to_local(R, rigid(P[cam.rider_bone])) for R, P in zip(b.rider, b.camel)]
             b.rider_bytes = self.rider.track_bytes(b.rider_name, b.times, rl, like)
         return b
@@ -2177,6 +2190,11 @@ HOOVES = [{"name": "hoof front left", "bone": "HS Bone Hoof Frnt Lt"}, {"name": 
 LOOPS = ("idle", "walk", "jog", "run", "deployed")
 MOVES = ("walk", "jog", "run")
 AHEAD_MIN = -0.10         # a palm at most this far behind its shoulder (metres; the deaths aside)
+# the unlimbered clips (the gun's bone_turret follows its yaw in them), and the names their files and
+# animations take: turretArc keeps the gun at its rest while a clip whose name holds "deploy", "reload"
+# or "death" plays, so the unlimber and the limber are named as a deploy and an undeploy
+UNLIMBERED = ("unlimber", "limber", "deployed", "fire", "reload", "death")
+FILE_TAGS = {"unlimber": "deploy", "limber": "undeploy"}
 
 
 def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_path, recipe):
@@ -2438,10 +2456,13 @@ class Round2:
         R = u.look(R, vent, max_pitch=30.0)
         return R, W
 
-    def touch(self, yaw):
-        """The shot: his right arm reaches up, the match at the vent (one hand)."""
+    def touch(self, yaw, stand_yaw=None):
+        """The shot: his right arm reaches up, the match at the vent (one hand); with `stand_yaw`, he
+        stays at that yaw's station and reaches the vent of the gun turned to `yaw` (the aim table)."""
         u = self.u
         at, h, vent = self.station(yaw)
+        if stand_yaw is not None:
+            at, h, _v = self.station(stand_yaw)
         R = u.standing(at, h)
         sh = R["bip01 r upperarm"][:3, 3]
         reach = u.src.linstock_length - self.GRIP
@@ -2757,12 +2778,14 @@ class V2:
     def downrange(self, P, fr):
         return self.u.downrange(P, fr)
 
-    def deployed(self):
+    def deployed(self, yaw=REST_YAW):
+        """The idle at the gun; with `yaw`, the gun turned there (he looks down its line: a row of the
+        aim table)."""
         u = self.u
         times = u.times(DEPLOYED)
         b = Built("deployed", "Bombard_ranged_idle", times)
         poses, anim, scales = self.lying(times)
-        fr = u.gun_frames({"yaw": REST_YAW})
+        fr = u.gun_frames({"yaw": yaw})
         for t, P in zip(times, poses):
             R = self.stand(t / DEPLOYED * u.stand_anim.duration)
             R = u.hands(R, {"r": u.grip_on(R, self.W0, self.G, "r"), "l": u.hang_hand(R, "l")}, b, False)
@@ -2776,13 +2799,16 @@ class V2:
         b.camel_src = (anim, scales)
         return b
 
-    def fire(self):
+    def fire(self, yaw=REST_YAW):
+        """The one-handed shot; with `yaw`, the gun turned there and he, still at his rest station,
+        reaching its vent (a row of the aim table: turretArc blends these by the gun's yaw)."""
         u = self.u
         times = u.times(FIRE)
         b = Built("fire", "Bombard_ranged_attack", times)
         poses, anim, scales = self.lying(times, borrow=False)
         P = self.P
-        _Rt, W_touch, _m = self.r2.touch(REST_YAW)
+        _Rt, W_touch, _m = self.r2.touch(yaw, stand_yaw=REST_YAW)
+        vent = self.r2.station(yaw)[2]
         d = W_touch[:3, 1]
         W_near = u.staff(W_touch[:3, 3] - 0.08 * d + 0.06 * Y, d, side=W_touch[:3, 2])
         W_up = u.staff(self.W0[:3, 3] + 0.08 * Y + 0.10 * u.facing(self.S0), self.W0[:3, 1], side=self.W0[:3, 2])
@@ -2796,11 +2822,11 @@ class V2:
             else:
                 W = u.staff_mix(W_up, self.W0, span(t, 1.40, 1.80))
             kick = 6.0 * (span(t, SHOT, 1.00) - span(t, 1.00, 1.50))
-            fr = u.gun_frames({"yaw": REST_YAW, "pitch": -kick})
+            fr = u.gun_frames({"yaw": yaw, "pitch": -kick})
             R = self.stand(0.0, lean=-4.0 * span(t, 0.0, 0.5) * (1.0 - span(t, 1.4, 2.0)))
             R = u.hands(R, {"r": u.grip_on(R, W, self.G, "r"), "l": u.hang_hand(R, "l")}, b, False)
             away = math.sin(math.pi * min(1.0, max(0.0, (t - 0.92) / 0.48))) if 0.92 < t < 1.40 else 0.0
-            look = self.vent if t < 1.40 else self.downrange(P, fr)
+            look = vent if t < 1.40 else self.downrange(P, fr)
             if away > 0:
                 hpos = R["bip01 head"][:3, 3]
                 look = hpos + axis_matrix(Y, -45.0 * away) @ (look - hpos)
@@ -3385,6 +3411,164 @@ def reload_sheets(v2, items, tile, at, report):
     return [("z3-reload-keys.png", sheet1), ("z3-reload-swing.png", sheet2)]
 
 
+AIM_YAWS = tuple(float(y) for y in np.arange(ARC[0], ARC[1] + 1e-6, 2.0))   # the arc, every 2 degrees
+
+GAITS = {  # today's footstep tags of the zamburak camel's gaits (its anim file)
+    "Walk": (("FootstepLeft", "FRNT LT", 1.00), ("FootstepLeft", "BACK LT", 0.83),
+             ("FootstepRight", "FRNT RT", 0.70), ("FootstepRight", "BACK RT", 0.50)),
+    "Jog": (("FootstepLeft", "FRNT LT", 0.80), ("FootstepLeft", "BACK LT", 0.50),
+            ("FootstepRight", "FRNT RT", 0.95), ("FootstepRight", "BACK RT", 0.75)),
+    "Run": (("FootstepLeft", "FRNT LT", 0.73), ("FootstepLeft", "BACK LT", 0.50),
+            ("FootstepRight", "FRNT RT", 1.00), ("FootstepRight", "BACK RT", 0.70)),
+}
+DECAL = ("\t\t<decal>\n\t\t\t<effecttype>default</effecttype>\n"
+         "\t\t\t<texture isfakeshadow=\"1\">shadows_selections\\shadow_circle_128x128</texture>\n"
+         "\t\t\t<selectedtexture>shadows_selections\\selection_oval_32x64</selectedtexture>\n"
+         "\t\t\t<width>2.00</width>\n\t\t\t<height>3.00</height>\n\t\t\t<zoffset>-0.10</zoffset>\n\t\t</decal>\n")
+# the anims of the unit's two modes: (anim name, our clips (variants), component)
+ANIMS = (("Idle", ("idle",)), ("Walk", ("walk",)), ("Jog", ("jog",)), ("Run", ("run",)),
+         ("Bored", ("bored_a", "bored_b", "bored_c")), ("Cheer", ("cheer_a", "cheer_b", "cheer_c", "cheer_d")),
+         ("Bombard_unlimber", ("unlimber",)), ("Bombard_limber", ("limber",)),
+         ("Bombard_ranged_idle", ("deployed",)), ("Bombard_bored", ("deployed",)), ("Bombard_aim", ("deployed",)),
+         ("Bombard_ranged_attack", ("fire",)), ("Bombard_reload", ("reload",)), ("Bombard_death", ("death",)))
+
+
+def anim_files(recipe, built, rider_head):
+    """{file name: text} of the unit's three anim files (the camel's, the gun's, the rider's): one unit
+    with both modes. Limbered: idle, gaits, bored, cheer, the stock camel deaths on the dead model (the
+    cannon built in; the three that keep it out of the ground). Unlimbered: the unlimber and limber,
+    the idle at the gun, the shot (its attack, sound and smoke at SHOT), the reload, the death.
+    `rider_head`: today's rider anim file up to its first <anim> (his model by rank, his hats)."""
+    folder, name = recipe["folder"], recipe["name"]
+    gun_name = f"{name}_gun"
+
+    def anim(an, files, comp="ModelComp", tags=""):
+        out = []
+        for f in files:
+            out.append(f"\t<anim>\n\t\t{an}\n\t\t<assetreference type=\"GrannyAnim\">\n\t\t\t<file>{f}</file>\n"
+                       f"{tags}\t\t</assetreference>\n\t\t<component>{comp}</component>\n\t</anim>\n")
+        return "".join(out)
+
+    def ours(kind, clip):
+        b = built[clip]
+        nm = {"camel": b.camel_name, "gun": b.gun_name, "rider": b.rider_name}[kind]
+        if nm is None:                       # today's rider clip, unchanged
+            return b.stock_rider
+        return f"{folder}\\{nm}"
+    head = ("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- Wars of Liberty's zamburak cannon (MEZamburak): the "
+            "zamburak's camel without its swivel gun, a bronze cannon on a swivel on its withers, its rider, who "
+            "limbers and unlimbers it. Made with aoe3-blender-tools tools/make_zamburak.py. -->\n")
+    shot = SHOT / FIRE
+    fire_tags = (f"\t\t\t<tag type=\"Attack\">{shot:.2f}</tag>\n"
+                 f"\t\t\t<tag type=\"SpecificSoundSet\" checkvisible=\"1\" set=\"FalconetShoot\">{shot:.2f}</tag>\n"
+                 f"\t\t\t<tag type=\"Particles\" particlename=\"smallcannonmuzzle\">{shot:.2f}</tag>\n")
+    camel = [head, "<animfile>\n"]
+    camel += [f"\t<definebone>HS Bone Hoof {w}</definebone>\n" for w in ("Frnt Lt", "Frnt Rt", "Back Lt", "Back Rt")]
+    camel += ["\t<definebone>bone_launchpoint</definebone>\n\t<definebone>bone_muzzle</definebone>\n",
+              f"\t<attachment>\n\t\trider\n\t\t<include>{folder}\\{name}_rider.xml</include>\n\t</attachment>\n",
+              f"\t<attachment>\n\t\tcannon\n\t\t<include>{folder}\\{name}_gun.xml</include>\n\t</attachment>\n",
+              f"\t<component>\n\t\tModelComp\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{name}_camel"
+              f"</file>\n\t\t</assetreference>\n{DECAL}"
+              "\t\t<attach a=\"rider\" frombone=\"hotspot\" tobone=\"ATTACHPOINT\" syncanims=\"1\"/>\n"
+              f"\t\t<attach a=\"cannon\" frombone=\"bone_{gun_name}\" tobone=\"ATTACHPOINT\" syncanims=\"1\"/>\n"
+              "\t</component>\n",
+              f"\t<component>\n\t\tDeadComp\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{name}"
+              f"_camel_dead</file>\n\t\t</assetreference>\n{DECAL}"
+              "\t\t<attach a=\"rider\" frombone=\"hotspot\" tobone=\"ATTACHPOINT\" syncanims=\"1\"/>\n\t</component>\n"]
+    gun = [head, "<animfile>\n",
+           f"\t<component>\n\t\tModelComp\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{gun_name}"
+           "</file>\n\t\t</assetreference>\n\t</component>\n"]
+    rider = [rider_head]
+    for an, clips in ANIMS:
+        gait = "".join(f"\t\t\t<tag type=\"{k}\" footprinttype=\"Horse\" footprintbone=\"HS BONE HOOF {b_}\">{v:.2f}</tag>\n"
+                       for k, b_, v in GAITS.get(an, ()))
+        camel.append(anim(an, [ours("camel", c) for c in clips], tags=gait + (fire_tags if an == "Bombard_ranged_attack"
+                                                                                else "")))
+        gun.append(anim(an, [ours("gun", c) for c in clips]))
+        rider.append(anim(an, [ours("rider", c) for c in clips]))
+    impact = "\t\t\t<tag type=\"SpecificSoundSet\" checkvisible=\"1\" set=\"RagdollImpact\">0.62</tag>\n"
+    melee = [d for d in DEATHS_KEPT if d[0].startswith("death_melee")]
+    havoc = [d for d in DEATHS_KEPT if d[0].startswith("death_havoc")]
+    for an, group in (("Death_by_melee", melee), ("Death_by_range", melee), ("Death_by_havoc", havoc)):
+        camel.append(anim(an, [c for _n, c, _r in group], "DeadComp", impact if an != "Death_by_havoc" else ""))
+        rider.append(anim(an, [r for _n, _c, r in group]))
+    camel.append("</animfile>\n")
+    gun.append("</animfile>\n")
+    rider.append("</animfile>\n")
+    return {f"{name}.xml": "".join(camel), f"{name}_gun.xml": "".join(gun), f"{name}_rider.xml": "".join(rider)}
+
+
+def rider_head(game_folder, recipe):
+    """Today's rider anim file up to its first <anim>: his model by rank and his hats (kept as they are);
+    our anims follow it."""
+    path = os.path.join(game_folder, "art", recipe["rider_xml"])
+    with open(path, encoding="utf-8-sig", errors="replace") as f:
+        text = f.read()
+    i = text.find("\t<anim>")
+    if i < 0:
+        i = text.find("<anim>")
+    return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" + text[:i].replace("<!-- converted from XMB to XML -->\n", "")
+
+
+def aim_table(unit, built):
+    """The bytes of the unlimbered unit's aim table for turretArc (version 2, little endian, as
+    make_gun_camel.aim_table writes it): "UHCA", 2, the gun's yaw bone and the camel's turret bone
+    (32 B each), the pivot and the muzzle (the gun at its rest yaw, the camel lying as the fire clip
+    has it, the camel's model space), the rest yaw, the yaws (+30..+150 every 2), the rider's bones
+    that move with the yaw, then per clip (the deployed idle and the fire, as their rider animations
+    are named) its length, frame count and, per frame, per yaw, per bone, the position and rotation
+    local to its parent. He stays at his rest station (no step): his arm reaches the vent of the
+    turned gun and his head follows it. No BAND or SETL (a gunner who steps only)."""
+    import struct as st
+    v2 = V2(unit)
+    rider, cam, d = unit.rider, unit.camel, unit.d
+    names = rider.rig.names
+    rows = {"deployed": v2.deployed, "fire": v2.fire}
+    tables = []
+    for key, make in rows.items():
+        b0 = built[key]
+        length = float(b0.times[-1])
+        count = max(2, int(round(length * mgc.AIM_TABLE_FPS)) + 1)
+        idx = [int(round(k * (len(b0.times) - 1) / (count - 1))) for k in range(count)]
+        per_yaw = []
+        for yaw in AIM_YAWS:
+            b = make(yaw)
+            per_yaw.append([rider.to_local(b.rider[i], rigid(b.camel[i][cam.rider_bone])) for i in idx])
+        frames = [[per_yaw[y][f] for y in range(len(AIM_YAWS))] for f in range(count)]
+        tables.append((b0.rider_name, length, count, frames))
+    zero = AIM_YAWS.index(REST_YAW)
+    moving = set()
+    for _n, _l, _c, frames in tables:
+        for row in frames:
+            for loc in row:
+                for k, (p, q) in enumerate(loc):
+                    p0, q0 = row[zero][k]
+                    if np.abs(np.asarray(p) - np.asarray(p0)).max() > 1e-5 or min(
+                            np.abs(np.asarray(q) - np.asarray(q0)).max(), np.abs(np.asarray(q) + np.asarray(q0)).max()) > 1e-5:
+                        moving.add(k)
+    bones = sorted(moving)
+
+    def name32(s, n=32):
+        raw = s.encode("ascii")[: n - 1]
+        return raw + b"\0" * (n - len(raw))
+    fire = built["fire"]
+    Cf = unit.C(fire.camel[0])
+    rest = unit.gun_frames({"yaw": REST_YAW})
+    pivot = point(Cf, d.pivot)
+    muzzle = point(Cf, rest["muzzle"][:3, 3])
+    out = [b"UHCA", st.pack("<I", 2), name32(d.NAMES["yaw"]), name32("bone_turret"),
+           st.pack("<3f", *[float(v) for v in pivot]), st.pack("<3f", *[float(v) for v in muzzle]),
+           st.pack("<f", REST_YAW), st.pack("<I", len(AIM_YAWS)), st.pack(f"<{len(AIM_YAWS)}f", *AIM_YAWS),
+           st.pack("<I", len(bones))]
+    out += [name32(names[k]) for k in bones]
+    out.append(st.pack("<I", len(tables)))
+    for name, length, count, frames in tables:
+        out += [name32(name, 64), st.pack("<fI", length, count)]
+        out += [st.pack("<7f", *[float(v) for v in loc[k][0]], *[float(v) for v in loc[k][1]])
+                for row in frames for loc in row for k in bones]
+    return b"".join(out), [names[k] for k in bones], [(n, c) for n, _l, c, _f in tables]
+
+
 def posed_gun_bytes(design, name, source_data, state):
     """The gun model with every part moved to `state` (its bones at that state, rest = the state):
     the cannon as the dead model carries it."""
@@ -3431,6 +3615,8 @@ def main(argv):
                                     "clips, today's as their baseline, the deaths) into this folder")
     ap.add_argument("--textured", help="with --clips: a folder for textured sheets of every clip (8 moments, the "
                                        "unit's left and right)")
+    ap.add_argument("--pack", action="store_true", help="with --clips: also the game's files beside them (the camel "
+                                                        "clips' tag files, the turretArc aim table, the three anim files)")
     ap.add_argument("--round2-stills", help="a folder for the stills of round 2 (the short linstock, the gun at +90, "
                                             "the reload's key poses)")
     ap.add_argument("--linstock-stills", help="a folder for the linstock's stills only (stop 0: holster, hand, "
@@ -3559,6 +3745,32 @@ def main(argv):
                                  os.path.join(folder, f"{recipe['name']}_camel.gr2").replace("\\", "/"),
                                  os.path.join(folder, f"{recipe['name']}_camel_dead.gr2").replace("\\", "/"), recipe)
             report.append("check jobs: " + ", ".join(paths.values()))
+            if args.pack:
+                # the game's files beside the models and clips: the camel clips' tag files, the aim
+                # table, the three anim files
+                template = game._g.raw(mgc.ZAMB + "zamburak_camel_idle00.gr2.precomp", "")
+                n_tags = 0
+                for b in built.values():
+                    if b.camel_bytes is None:
+                        continue
+                    frames = b.camel
+
+                    def pose_at(t, b=b, frames=frames):
+                        return frames[min(len(frames) - 1, int(round(t / max(b.length, 1e-9) * (len(frames) - 1))))]
+                    with open(os.path.join(folder, b.camel_name + ".gr2.precomp"), "wb") as f:
+                        f.write(mgc.camel_precomp(camel, template, b.length, pose_at))
+                    n_tags += 1
+                data, bones, tabs = aim_table(unit_, built)
+                aim_path = os.path.join(folder, f"{recipe['name']}.aim")
+                with open(aim_path, "wb") as f:
+                    f.write(data)
+                for fname, text in anim_files(recipe, built, rider_head(args.game, recipe)).items():
+                    with open(os.path.join(folder, fname), "w", encoding="utf-8", newline="\r\n") as f:
+                        f.write(text)
+                report.append(f"pack: {n_tags} tag files; aim table {os.path.basename(aim_path)} {len(data)} B, "
+                              f"yaws {AIM_YAWS[0]:.0f}..{AIM_YAWS[-1]:.0f} every 2, rest {REST_YAW:.0f}, "
+                              f"{len(bones)} rider bones, clips " + ", ".join(f"{n} ({c} frames)" for n, c in tabs)
+                              + "; anim files written")
             if args.textured:
                 for p in textured_sheets(args.textured, game, recipe, unit_, built, gun):
                     print(p)
