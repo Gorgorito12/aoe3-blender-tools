@@ -124,6 +124,8 @@ class Pitch(unittest.TestCase):
             fuse = np.array([0.0, 0.24, -0.2])
             barrel = {}
             linstock = {}
+            linstock_length = 0.85
+            cloth = None
             patches = {k: ((0.5, 0.5), None) for k in ("bronze", "iron", "wood")}
         bind = np.eye(4)
         bind[:3, :3] *= 0.9
