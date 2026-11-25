@@ -1719,7 +1719,7 @@ class ZUnit:
                 foot = released[:3, 3].copy()
                 foot[1] = max(STAFF_R, foot[1] - 0.6 * (t - RELEASE))     # its foot comes down to the ground
                 lying = self.staff(np.array([foot[0], STAFF_R, foot[2]]), out)
-                w = min(1.0, (t - RELEASE) / 0.45) ** 2                 # it falls, faster as it goes
+                w = min(1.0, (t - RELEASE) / 0.40) ** 1.3               # it falls as he does, faster as it goes
                 W = self.staff_mix(self.staff(foot, released[:3, 1], side=released[:3, 2]), lying, w)
             b.camel.append(P)
             b.gun.append(dict(fr, linstock=self.staff_design(P, W)))
