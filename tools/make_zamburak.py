@@ -77,7 +77,8 @@ DEFAULT_RECIPE = {
                # the trunnions this share of the (shortened) length from the breech
                "trunnion": 0.30},
     # the artillerist's linstock: a mesh of the same model (the field gun's own staff)
-    "linstock": {"model": MIDFA + "Midfa_stripped", "mesh": "screw_pole"},
+    # (short: the user's choice, 2026-11-26: about a forearm and an arm, held in one hand)
+    "linstock": {"model": MIDFA + "Midfa_stripped", "mesh": "screw_pole", "length": 0.85},
     # the artillerist on foot as the previews show him (a mesh of the field gun's model)
     "gunner": {"model": MIDFA + "Midfa_stripped", "meshes": ["gunner"]},
     # the swivel: its pivot on the camel's centre line (x = 0) this far along the body (design
@@ -533,13 +534,20 @@ class CannonDesign:
             m[:3, :3] = axis_matrix(Z, 10.0) @ axis_matrix(X, -18.0)
         return m
 
+    RAMMER_AT = (-0.34, -0.34, 0.08, 6.0)     # on the saddle: x, below the saddle's top, z of its head, slope
+
     def rammer_rest(self):
-        """Strapped along the barrel's left side (level, yaw 0), its butt by the breech, its head
-        toward the muzzle."""
-        b, m = self.bpoint(self.src.breech), self.bpoint(self.src.muzzle)
-        side = -(self.radius + 0.035 * self.bind_scale)
-        f = np.eye(4)
-        f[:3, 3] = np.array([side, b[1] - 0.02, b[2] - 0.03])
+        """Strapped along the left side of the saddle, behind the rider's left leg, its head forward
+        (just behind his knee) and its butt back over the camel's left hip, sloping down a little to
+        the rear: its frame's +z runs from the butt to the head."""
+        x, dy, zh, slope = self.RAMMER_AT
+        L = self.RAMMER[0] * self.bind_scale
+        head = np.array([x, self.saddle[1] + dy, zh])
+        d = unit(axis_matrix(X, -slope) @ Z)                  # forward, rising a little to the head
+        butt = head - L * d
+        f = rot4(np.array([np.cross(Y, d) / np.linalg.norm(np.cross(Y, d)), np.cross(d, np.cross(Y, d) /
+                           np.linalg.norm(np.cross(Y, d))), d]).T)
+        f[:3, 3] = butt
         return f
 
     def rest(self):
@@ -573,12 +581,13 @@ class CannonDesign:
         rel = cannon @ tr(-self.trunnion)
         out = {"root": rest["root"], "post": rest["post"], "yaw": rest["yaw"], "cannon": cannon,
                "fuse": rel @ rest["fuse"], "muzzle": rel @ rest["muzzle"]}
-        for k in ("rammer", "ball", "charge"):           # with the barrel unless in his hands
+        for k in ("ball", "charge"):                     # inside the bore unless in his hands
             out[k] = rel @ rest[k]
+        out["rammer"] = rest["rammer"]                   # on the saddle unless in his hands
         yaw = state.get("yaw", 0.0)
         if yaw:
             turn = tr(self.pivot) @ rot4(axis_matrix(Y, yaw)) @ tr(-self.pivot)
-            for k in ("yaw", "cannon", "fuse", "muzzle", "rammer", "ball", "charge"):
+            for k in ("yaw", "cannon", "fuse", "muzzle", "ball", "charge"):
                 out[k] = turn @ out[k]
         for k in ("rammer", "ball", "charge"):
             if state.get(k) is not None:
@@ -2219,6 +2228,306 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
     return out
 
 
+# --------------------------------------------------------------------------------------------------
+# Round 2 (2026-11-26, the user's corrections): a short linstock, a muzzle-loading reload, and the
+# unlimbered unit laid out as the deployed gatling camel's round 6 (the gun resting square to the
+# camel's spine, +90, turning +30..+150, the artillerist on the camel's left behind the breech).
+# These are the key poses of the script delta, for the stills.
+
+REST_YAW = 90.0
+ARC = (30.0, 150.0)
+WALK = mgc.LIB + "range\\march_rifleman"
+
+
+class Round2:
+    """The key poses of round 2 on the lying camel: his station at a gun yaw, the fire, and the
+    reload's walk round the camel's front to the muzzle on its right."""
+
+    GRIP = 0.30           # his hand this far up the short linstock from its foot (the match 0.55 above)
+
+    def __init__(self, unit):
+        self.u = unit
+        self.P = unit.lie()
+        self.walk_anim = unit.rider.anim(WALK)
+        pts = unit.camel.mesh_points(self.P)[used_vertices(unit.camel)]
+        self.body = pts
+        self.front = float(pts[:, 2].max())
+        self.back = float(pts[:, 2].min())
+
+    def frames(self, yaw, **state):
+        st = {"yaw": yaw}
+        st.update(state)
+        return self.u.gun_frames(st)
+
+    def world(self, fr, key, local=None):
+        C = self.u.C(self.P)
+        if local is None:
+            return point(C, fr[key][:3, 3])
+        return point(C, point(fr[key], local))
+
+    def barrel_points(self, fr):
+        d = self.u.d
+        C = self.u.C(self.P)
+        to_w = C @ fr["cannon"] @ tr(-d.trunnion)
+        return point(to_w, d.bpoint(d.src.breech)), point(to_w, d.bpoint(d.src.muzzle))
+
+    def flank_x(self, z, half=0.25):
+        """The camel's left side (its least x) about z."""
+        band = self.body[np.abs(self.body[:, 2] - z) < half]
+        return float(band[:, 0].min()) if len(band) else float(self.body[:, 0].min())
+
+    def station(self, yaw):
+        """(at, heading): behind the breech along the barrel, never nearer the camel than 0.30 outside
+        its left side, facing the vent."""
+        fr = self.frames(yaw)
+        b, m = self.barrel_points(fr)
+        ax = unit(np.array([m[0] - b[0], 0.0, m[2] - b[2]]))
+        at = b - 0.55 * ax
+        at[1] = 0.0
+        at[0] = min(at[0], self.flank_x(at[2]) - 0.30)
+        vent = self.world(fr, "fuse")
+        dvec = vent - at
+        return at, math.degrees(math.atan2(dvec[0], dvec[2])), vent
+
+    def at_station(self, yaw, holding=True):
+        """His pose at the station of `yaw`, the linstock in his right hand (match up)."""
+        u = self.u
+        at, h, vent = self.station(yaw)
+        R = u.standing(at, h)
+        W = u._carry(R, self.GRIP) if holding else None
+        goals = {"l": u.hang_hand(R, "l")}
+        if holding:
+            goals["r"] = u.grip_on(R, W, self.GRIP, "r")
+        b = Built("still", "", [0.0, 1.0])
+        R = u.hands(R, goals, b, False)
+        R = u.look(R, vent, max_pitch=30.0)
+        return R, W
+
+    def touch(self, yaw):
+        """The shot: his right arm reaches up, the match at the vent (one hand)."""
+        u = self.u
+        at, h, vent = self.station(yaw)
+        R = u.standing(at, h)
+        sh = R["bip01 r upperarm"][:3, 3]
+        reach = u.src.linstock_length - self.GRIP
+        d = unit(vent - sh)
+        hand = vent - reach * d
+        W = u.staff(hand - self.GRIP * d, d, side=u.facing(R))
+        b = Built("still", "", [0.0, 1.0])
+        R = u.hands(R, {"r": u.grip_on(R, W, self.GRIP, "r"), "l": u.hang_hand(R, "l")}, b, False)
+        R = u.look(R, vent, max_pitch=35.0)
+        return R, W, b.reach
+
+    def planted(self, yaw=REST_YAW):
+        """The linstock stuck in the ground at his station, beside his right foot, its spike 0.06 in."""
+        at, h, _v = self.station(yaw)
+        S = self.u.standing(at, h)
+        foot = S["bip01 r foot"][:3, 3]
+        return self.u.staff(np.array([foot[0], -0.06, foot[2]]) + 0.25 * self.u.right_of(S), Y)
+
+    def reload_path(self, yaw=REST_YAW):
+        """His way to the muzzle and back: from the station along the left side, round the camel's
+        front, along its right to the spot beside the muzzle (the rammer's line clear): [(x, z)]."""
+        at, _h, _v = self.station(yaw)
+        fr = self.frames(yaw)
+        _b, m = self.barrel_points(fr)
+        fx = self.flank_x(self.front - 0.2) - 0.35
+        front = self.front + 0.35
+        right = float(self.body[:, 0].max()) + 0.35
+        spot = np.array([m[0] + 0.55, m[2] + 0.38])
+        pts = [np.array([at[0], at[2]]), np.array([fx, front]), np.array([right, front]),
+               np.array([max(right, spot[0]), spot[1]])]
+        return pts, m
+
+    def path_length(self, pts):
+        return float(sum(np.linalg.norm(b - a) for a, b in zip(pts, pts[1:])))
+
+    def load_pose(self, what, yaw=REST_YAW):
+        """At the muzzle: 'pouch' (his right hand at the pouch on his left hip), 'charge' or 'ball'
+        (his right hand pushing it into the muzzle), 'ram' (both hands on the rammer, its head half
+        way down the bore), 'stowed' (the rammer in its straps). (pose, gun state)."""
+        u = self.u
+        pts, m = self.reload_path(yaw)
+        fr = self.frames(yaw)
+        b_, mz_ = self.barrel_points(fr)
+        ax = unit(mz_ - b_)
+        spot = pts[-1]
+        at = np.array([spot[0], 0.0, spot[1]])
+        if what == "stowed":           # the rammer's first push: he stands back by its butt, then steps in
+            at = at + 0.45 * unit(np.array([ax[0], 0.0, ax[2]]))
+        aim = mz_ + 0.45 * ax
+        dvec = aim - at
+        R = u.standing(at, math.degrees(math.atan2(dvec[0], dvec[2])))
+        st = {"yaw": yaw, "linstock": u.staff_design(self.P, self.planted(yaw))}
+        b = Built("still", "", [0.0, 1.0])
+        C = u.C(self.P)
+        Ci = np.linalg.inv(C)
+        rt, f = u.right_of(R), u.facing(R)
+        if what == "pouch":
+            pal = R["bip01 pelvis"][:3, 3] - 0.13 * rt + 0.10 * f - 0.02 * Y
+            R = u.hands(R, {"r": (pal, -Y, rt), "l": u.hang_hand(R, "l")}, b, False)
+            prop = tr(pal)
+            st["charge"] = u.staff_design(self.P, prop)
+            look = pal
+        elif what in ("charge", "ball"):
+            pal = mz_ + 0.07 * ax
+            R = u.hands(R, {"r": (pal, -ax, -ax), "l": u.hang_hand(R, "l")}, b, False)
+            st[what] = u.staff_design(self.P, tr(mz_ - 0.02 * ax))
+            look = mz_
+        else:
+            L = CannonDesign.RAMMER[0]
+            # in: its head just inside the muzzle, his hands near its butt; ram: down to the charge
+            # at the breech, his hands by the muzzle
+            depth, gr = (0.25, (0.10, 0.40)) if what != "ram" else (0.90, (0.03, 0.25))
+            butt = mz_ + ax * (L - depth)
+            Wr = u.staff(butt, -ax, side=Y)               # its +y: butt to head (into the bore)
+            Wr = rot_y_to_z(Wr)
+            grips = (point(Wr, (0, 0, gr[0])), point(Wr, (0, 0, gr[1])))
+            R = u.hands(R, {"r": (grips[0], -ax, -Y), "l": (grips[1], -ax, -Y)}, b, False)
+            st["rammer"] = u.staff_design(self.P, Wr)
+            look = mz_
+        R = u.look(R, look, max_pitch=35.0)
+        return R, st, b.reach
+
+
+def rot_y_to_z(W):
+    """A staff frame (+y along it) as a rammer frame (+z along it), the same point and direction."""
+    out = W.copy()
+    out[:3, 2] = W[:3, 1]
+    out[:3, 1] = -W[:3, 2]
+    return out
+
+
+def round2_stills(folder, game, recipe, unit, gun_bytes):
+    """The stills of the script delta: the short linstock and its holster, the unlimbered unit at
+    +90 with his station and the arc, the one-handed touch, and the reload's key poses with its walk."""
+    from PIL import Image
+    os.makedirs(folder, exist_ok=True)
+    u = unit
+    r2 = Round2(u)
+    scene = mgc.Scene(game, recipe, u.camel, u.rider)
+    pic = Picture(game, recipe, u.camel, u.rider, scene, u.d, gun_bytes, None)
+    report = []
+
+    def items(P, R, state, extra=None):
+        fr = u.d.frames(state)
+        hang = rigid(P[u.camel.hang])
+        G = {u.d.NAMES.get(k, f"bone_{u.gun_name}").lower(): hang @ u.d.to_model(v) for k, v in fr.items()}
+        G[pic.gun_rig.names[0].lower()] = hang
+        out = pic.gun_fig.items(G) + scene.camel_fig.items(P)
+        if R is not None:
+            out += scene.rider_fig.items(R) + scene.hat_items(R)
+        return out, G
+
+    def tile(it, az, el, text, span=3.6, centre=(0.0, 1.2, 0.6), marks=None, w=330, h=300):
+        return mgc.caption(mgc.draw(it, w, h, az, el, span=span, centre=tuple(centre), marks=marks), text)
+
+    P = r2.P
+    # 1. the linstock
+    tiles = []
+    Pm = u.camel.fix_hang(u.camel.pose(u.camel.base, 0.0))
+    Rm = u.seated(Pm)
+    Rm = u.hands(Rm, {"r": u.reins(Rm, Pm, "r"), "l": u.cascabel(Pm, u.gun_frames(u.limber))}, Built("s", "", [0, 1]), True)
+    it, G = items(Pm, Rm, dict(u.limber))
+    tip = G["bone_match"][:3, 3]
+    marks = [(tip, (255, 120, 40), 7)]
+    hol = G["bone_linstock"][:3, 3]
+    tiles += [tile(it, 70.0, 12.0, "LIMBERED: IN ITS HOLSTER, RIGHT", span=2.6, centre=hol + np.array([0, 0.4, 0]), marks=marks),
+              tile(it, 140.0, 20.0, "IN ITS HOLSTER, RIGHT REAR", span=2.6, centre=hol + np.array([0, 0.4, 0]), marks=marks)]
+    R0, W0 = r2.at_station(REST_YAW)
+    it, G = items(P, R0, {"yaw": REST_YAW, "linstock": u.staff_design(P, W0)})
+    sh = R0["bip01 spine1"][:3, 3]
+    tiles += [tile(it, -110.0, 8.0, "IN HIS RIGHT HAND, MATCH UP", span=2.4, centre=sh - np.array([0, 0.3, 0]),
+                   marks=[(G["bone_match"][:3, 3], (255, 120, 40), 7)])]
+    # the long staff of preview v1 beside the short one, to scale
+    long_len = u.src.linstock_source_length
+    tiles += [linstock_compare(game, u, R0, long_len)]
+    sheet1 = np.concatenate([mgc.title(4 * 330, f"SHORT LINSTOCK: {u.src.linstock_length:.2f} LONG (THE MIDFA STAFF "
+                                                 f"{long_len:.2f}), MATCH (STAR) AT ITS TIP", back=(70, 40, 20)),
+                             mgc.grid(tiles, 4)], 0)
+    # 2. unlimbered at +90: views, and the arc from above
+    tiles = []
+    it, G = items(P, R0, {"yaw": REST_YAW, "linstock": u.staff_design(P, W0)})
+    vent = G["bone_fuse"][:3, 3]
+    vm = [(vent, (255, 120, 40), 6)]
+    for az, el, name in ((-90.0, 75.0, "FROM ABOVE"), (-60.0, 15.0, "LEFT FRONT"), (-130.0, 15.0, "LEFT REAR"),
+                         (60.0, 15.0, "RIGHT FRONT")):
+        tiles.append(tile(it, az, el, f"AT REST +90: {name}", marks=vm, centre=(0.2, 1.0, 0.6)))
+    for yaw in (ARC[0], REST_YAW, ARC[1]):
+        Ry, Wy = r2.at_station(yaw)
+        it2, G2 = items(P, Ry, {"yaw": yaw, "linstock": u.staff_design(P, Wy)})
+        tiles.append(tile(it2, -90.0, 80.0, f"GUN AT +{yaw:.0f}: HIS STATION", centre=(0.2, 1.0, 0.6),
+                          marks=[(G2["bone_fuse"][:3, 3], (255, 120, 40), 6)]))
+    Rt, Wt, miss = r2.touch(REST_YAW)
+    it3, G3 = items(P, Rt, {"yaw": REST_YAW, "linstock": u.staff_design(P, Wt)})
+    report.append(f"touch: hand off its goal {miss:.3f}")
+    tiles.append(tile(it3, -70.0, 15.0, "THE SHOT: ONE HAND, MATCH ON THE VENT", span=2.6,
+                      centre=0.5 * (G3["bone_fuse"][:3, 3] + Rt["bip01 spine1"][:3, 3]),
+                      marks=[(G3["bone_fuse"][:3, 3], (255, 120, 40), 7)]))
+    sheet2 = np.concatenate([mgc.title(4 * 330, "UNLIMBERED AS THE GATLING CAMEL'S ROUND 6: THE GUN AT +90 (SQUARE TO THE "
+                                                "SPINE), ARC +30..+150, HE ON THE LEFT BEHIND THE BREECH (STAR: THE VENT)",
+                                       back=(70, 40, 20)), mgc.grid(tiles, 4)], 0)
+    # 3. the reload's key poses
+    pts, mz_ = r2.reload_path()
+    length = r2.path_length(pts)
+    report.append(f"reload walk: {length:.2f} game units each way ({len(pts) - 1} legs); front of the camel at "
+                  f"z {r2.front:.2f}; the muzzle at {np.round(mz_, 2).tolist()}")
+    tiles = []
+    path_marks = [(np.array([x, 0.02, z]), (40, 120, 255), 6) for x, z in pts]
+    Rp = u.standing(np.array([pts[0][0], 0.0, pts[0][1]]), r2.station(REST_YAW)[1])
+    Rp = mgc.Unit.crouch(u, Rp, 0.30, 25.0)
+    Wplant = u.staff(np.array([Rp["bip01 r foot"][0, 3], -0.06, Rp["bip01 r foot"][2, 3]]) + 0.25 * u.right_of(Rp), Y)
+    Rp = u.hands(Rp, {"r": u.grip_on(Rp, Wplant, u.src.linstock_length - 0.08, "r")}, Built("s", "", [0, 1]), False)
+    it4, _G = items(P, Rp, {"yaw": REST_YAW, "linstock": u.staff_design(P, Wplant)})
+    tiles.append(tile(it4, -90.0, 15.0, "1 THE LINSTOCK STUCK IN THE GROUND", centre=(-0.5, 0.8, 0.6)))
+    mid = 0.5 * (pts[1] + pts[2])
+    mid_at = np.array([mid[0], 0.0, mid[1]])
+    Rw = u.rider.standing(u.foot, r2.walk_anim, 0.3 * r2.walk_anim.duration, 90.0, mid_at)
+    it5, _G = items(P, Rw, {"yaw": REST_YAW, "linstock": u.staff_design(P, r2.planted())})
+    tiles.append(tile(it5, -90.0, 75.0, f"2 ROUND THE CAMEL'S FRONT ({length:.1f} EACH WAY)", centre=(0.3, 0.8, 0.8),
+                      marks=path_marks))
+    for k, (what, text) in enumerate((("pouch", "3 POWDER FROM THE POUCH AT HIS LEFT HIP"),
+                                      ("charge", "4 THE CHARGE INTO THE MUZZLE"),
+                                      ("ball", "5 THE BALL INTO THE MUZZLE"),
+                                      ("stowed", "6 THE RAMMER (FROM THE SADDLE) INTO THE MUZZLE"),
+                                      ("ram", "7 RAMMING HOME"))):
+        Rl, st, miss = r2.load_pose(what)
+        report.append(f"reload {what}: hands off their goals {miss:.3f}")
+        it6, G6 = items(P, Rl, st)
+        tiles.append(tile(it6, 140.0, 15.0, text, span=2.6, centre=0.5 * (mz_ + Rl["bip01 spine1"][:3, 3]),
+                          marks=[(G6["bone_launchpoint"][:3, 3], (255, 120, 40), 6)]))
+    sheet3 = np.concatenate([mgc.title(4 * 330, "RELOAD (THE WALK TO THE MUZZLE, AS ASKED): KEY POSES", back=(70, 40, 20)),
+                             mgc.grid(tiles, 4)], 0)
+    paths = []
+    for name, sheet in (("z2-linstock.png", sheet1), ("z2-unlimbered.png", sheet2), ("z2-reload-keys.png", sheet3)):
+        p = os.path.join(folder, name)
+        Image.fromarray(sheet).save(p)
+        paths.append(p)
+    return paths, report
+
+
+def linstock_compare(game, u, R, long_len):
+    """The short linstock and the long staff standing beside him on the ground, to scale."""
+    from PIL import Image  # noqa: F401
+    src = u.src
+    tex = mgc.Figure(game, src.linstock_data)
+    m = next(mm for mm, t in tex.meshes if mm.get("name") == u.r["linstock"]["mesh"])
+    texture = next(t for mm, t in tex.meshes if mm.get("name") == u.r["linstock"]["mesh"])
+    at = R["bip01 pelvis"][:3, 3]
+    rt = u.right_of(R)
+    out = mgc.Scene(game, u.r, u.camel, u.rider).rider_fig.items(R)
+    uv = src.linstock["uvs"].copy()
+    uv[:, 1] = 1.0 - uv[:, 1]
+    short = src.linstock["positions"] + np.array([at[0], 0.0, at[2]]) + 0.45 * rt
+    out.append((short, src.linstock["triangles"], uv, texture, (180, 140, 60)))
+    full = np.asarray(m["file_positions"], np.float64)
+    full = full - np.array([full[:, 0].mean(), full[:, 1].min(), full[:, 2].mean()]) + np.array([at[0], 0, at[2]]) + 0.85 * rt
+    out.append((full, m["triangles"], m["uvs"], texture, (180, 140, 60)))
+    c = np.array([at[0], 1.1, at[2]]) + 0.4 * rt
+    return mgc.caption(mgc.draw(out, 330, 300, -100.0, 5.0, span=2.8, centre=tuple(c)),
+                       f"SHORT {src.linstock_length:.2f} AND LONG {long_len:.2f} BESIDE HIM")
+
+
 def textured_sheets(folder, game, recipe, unit, built, gun_bytes, moments=8):
     """For each clip, `moments` frames from the unit's left and right (3/4, a little above), drawn
     with the textures as the game would (the check's own sheets are flat-shaded): one PNG per clip."""
@@ -2297,9 +2606,12 @@ def main(argv):
                                     "clips, today's as their baseline, the deaths) into this folder")
     ap.add_argument("--textured", help="with --clips: a folder for textured sheets of every clip (8 moments, the "
                                        "unit's left and right)")
+    ap.add_argument("--round2-stills", help="a folder for the stills of round 2 (the short linstock, the gun at +90, "
+                                            "the reload's key poses)")
     args = ap.parse_args(argv)
     try:
-        for p in (args.out, args.sheet, args.barrel_sheet, args.limber_options, args.sizes, args.clips, args.textured):
+        for p in (args.out, args.sheet, args.barrel_sheet, args.limber_options, args.sizes, args.clips, args.textured,
+                  args.round2_stills):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -2355,6 +2667,14 @@ def main(argv):
                 report.append(f"runtime {fname}.gr2 {len(data)} B: crc {crc}, read {read}, oodle1 {packed} B"
                               + ("" if ok else "  FAIL"))
                 failed |= not ok
+        if args.round2_stills:
+            rider = mgc.Rider(game, recipe["rider"])
+            foot_rig = Rig.of(gr2.load(game.granny(mgc.FOOT_MODEL)).root())
+            unit2 = ZUnit(game, recipe, camel, rider, design, foot_rig)
+            paths2, rep2 = round2_stills(args.round2_stills, game, recipe, unit2, gun)
+            report += rep2
+            for p in paths2:
+                print(p)
         if args.clips:
             rider = mgc.Rider(game, recipe["rider"])
             foot_rig = Rig.of(gr2.load(game.granny(mgc.FOOT_MODEL)).root())
