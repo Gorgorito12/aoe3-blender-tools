@@ -126,6 +126,7 @@ class Pitch(unittest.TestCase):
             linstock = {}
             linstock_length = 0.85
             cloth = None
+            ember = None
             patches = {k: ((0.5, 0.5), None) for k in ("bronze", "iron", "wood")}
         bind = np.eye(4)
         bind[:3, :3] *= 0.9

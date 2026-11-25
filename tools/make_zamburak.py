@@ -369,6 +369,25 @@ class Source:
             self.patches["iron"] = self.patches["iron2"]
         for key in ("bronze", "iron", "wood"):
             self.patches.setdefault(key, (raw["uvs"][raw["triangles"][0]].mean(0), self.material))
+        # the ember's colour: the most orange texel of the barrel's texture whose neighbours are orange too
+        # (the source has no brighter one; in game the fuse fire on bone_match is the glow)
+        self.ember = None
+        if self.img is not None:
+            im = np.asarray(self.img, np.float64)
+            hh, ww = im.shape[:2]
+            org = (im[..., 0] > 170) & (im[..., 2] < 90) & (im[..., 1] < im[..., 0] - 40)
+            if im.shape[-1] > 3:
+                org &= im[..., 3] > 200
+            core = org.copy()
+            core[1:-1, 1:-1] = (org[:-2, :-2] & org[:-2, 1:-1] & org[:-2, 2:] & org[1:-1, :-2] & org[1:-1, 1:-1]
+                                & org[1:-1, 2:] & org[2:, :-2] & org[2:, 1:-1] & org[2:, 2:])
+            core[0, :] = core[-1, :] = False
+            core[:, 0] = core[:, -1] = False
+            if core.any():
+                ys, xs = np.nonzero(core)
+                score = im[ys, xs, 0] - im[ys, xs, 2] + 0.5 * im[ys, xs, 0]
+                k = int(np.argmax(score))
+                self.ember = (np.array([(xs[k] + 0.5) / ww, (ys[k] + 0.5) / hh]), self.patches["bronze"][1])
         # the linstock
         lspec = recipe["linstock"]
         ldata = game.granny(lspec["model"]) if lspec["model"] != spec["model"] else self.data
@@ -421,16 +440,16 @@ class CannonDesign:
     bone draws its triangles 1/s bigger than its bind (s, the bind's scale), so the design scale is
     scale x s."""
 
-    # `match`: the linstock's burning tip (a game attaches the fuse fire there); `rammer`: strapped
-    # along the barrel's left side, in his hands to load; `ball` and `charge`: the next round, inside
-    # the bore (out of sight) but while he loads it (from the pouch at his left hip)
-    BONES = ("root", "post", "yaw", "cannon", "fuse", "muzzle", "linstock", "match", "rammer", "ball", "charge")
+    # `match`: the linstock's burning tip, a glowing ember on it (a game attaches the fuse fire there);
+    # `ball` and `charge`: the next round, inside the bore (out of sight) but while he loads it by hand
+    # (from the pouch at his left hip). No rammer (the user, 2026-11-26: he loads with his hands only).
+    BONES = ("root", "post", "yaw", "cannon", "fuse", "muzzle", "linstock", "match", "ball", "charge")
     PARENT = {"root": None, "post": "root", "yaw": "post", "cannon": "yaw", "fuse": "cannon", "muzzle": "cannon",
-              "linstock": "root", "match": "linstock", "rammer": "root", "ball": "root", "charge": "root"}
+              "linstock": "root", "match": "linstock", "ball": "root", "charge": "root"}
     NAMES = {"post": "bone_post", "yaw": "bone_yaw", "cannon": "bone_cannon", "fuse": "bone_fuse",
              "muzzle": "bone_launchpoint", "linstock": "bone_linstock", "match": "bone_match",
-             "rammer": "bone_rammer", "ball": "bone_ball", "charge": "bone_charge"}
-    RAMMER = (1.20, 0.020, 0.045, 0.08)     # world units: length, shaft radius, head radius, head length
+             "ball": "bone_ball", "charge": "bone_charge"}
+    EMBER = (0.035, 0.10, 0.024)           # world units: the glowing match's ball radius, its flame's length and radius
     BALL = 0.040                            # the ball's radius (the bore at the muzzle: about 0.05)
     CHARGE = (0.042, 0.10)                  # the powder bag: radius, length
 
@@ -486,15 +505,19 @@ class CannonDesign:
                          uv=P["bronze"][0]) for sx in (-1.0, 1.0)]
         self.made["pins"] = (merge(pins), P["bronze"][1], "cannon")
         # the loading gear, each made in its own frame (design units: world x bind scale) and placed at
-        # its rest frame: the rammer along +z from its butt to its head, the ball and the bag round
-        # their centres
+        # its rest frame: the ball and the bag round their centres; the ember on the match, a glowing
+        # ball with a small flame along the linstock (its +y)
         bs = self.bind_scale
-        L, r, hr, hl = (v * bs for v in self.RAMMER)
         rest = self.rest()
-        self.made["rammer"] = (apply_part(cylinder((0, 0, 0), (0, 0, L - hl), r, sides=6), rest["rammer"],
-                                          P["wood"][0]), P["wood"][1], "rammer")
-        self.made["rammer_head"] = (apply_part(cylinder((0, 0, L - hl), (0, 0, L), hr, sides=8), rest["rammer"],
-                                               P["iron"][0]), P["iron"][1], "rammer")
+        er, el, fr_ = (v * bs for v in self.EMBER)
+        glow = src.ember or P["bronze"]
+        flame = sphere(fr_)                                 # a drop along +y: the sphere stretched on its z
+        Rf = axis_matrix(X, -90.0)
+        if (Rf @ Z)[1] < 0:
+            Rf = axis_matrix(X, 90.0)
+        flame = dict(flame, positions=(flame["positions"] * np.array([1.0, 1.0, el / (2.0 * fr_)])) @ Rf.T
+                     + np.array([0.0, 0.5 * el, 0.0]), normals=flame["normals"] @ Rf.T, tangents=flame["tangents"] @ Rf.T)
+        self.made["ember"] = (apply_part(merge([sphere(er), flame]), rest["match"], glow[0]), glow[1], "match")
         self.made["ball"] = (apply_part(sphere(self.BALL * bs), rest["ball"], P["iron"][0]), P["iron"][1], "ball")
         cr, cl = (v * bs for v in self.CHARGE)
         cloth = src.cloth or P["wood"]
@@ -534,24 +557,6 @@ class CannonDesign:
             m[:3, :3] = axis_matrix(Z, 10.0) @ axis_matrix(X, -18.0)
         return m
 
-    # on the saddle's left side, strapped low along the blanket's edge behind his left leg (x, below the
-    # saddle's top, z of its head, slope): within reach of a man standing by the lying camel's flank
-    RAMMER_AT = (-0.42, -0.20, -0.15, 0.0)
-
-    def rammer_rest(self):
-        """Strapped along the left side of the saddle, behind the rider's left leg, its head forward
-        (just behind his knee) and its butt back over the camel's left hip, sloping down a little to
-        the rear: its frame's +z runs from the butt to the head."""
-        x, dy, zh, slope = self.RAMMER_AT
-        L = self.RAMMER[0] * self.bind_scale
-        head = np.array([x, self.saddle[1] + dy, zh])
-        d = unit(axis_matrix(X, -slope) @ Z)                  # forward, rising a little to the head
-        butt = head - L * d
-        f = rot4(np.array([np.cross(Y, d) / np.linalg.norm(np.cross(Y, d)), np.cross(d, np.cross(Y, d) /
-                           np.linalg.norm(np.cross(Y, d))), d]).T)
-        f[:3, 3] = butt
-        return f
-
     def rest(self):
         """{bone: design frame at rest} (rigid, axis-aligned with the camel; the barrel level)."""
         out = {"root": rot4(self.R)}
@@ -563,7 +568,6 @@ class CannonDesign:
         out["muzzle"] = tr(self.bpoint(self.src.muzzle))
         out["linstock"] = self.linstock_rest()
         out["match"] = out["linstock"] @ tr((0.0, self.src.linstock_length * self.ls, 0.0))
-        out["rammer"] = self.rammer_rest()
         mid = self.bpoint(0.55 * self.src.breech + 0.45 * self.src.muzzle)
         out["ball"] = tr(mid)                    # inside the bore, out of sight
         out["charge"] = tr(mid - np.array([0.0, 0.0, 0.12 * self.bind_scale]))
@@ -585,13 +589,12 @@ class CannonDesign:
                "fuse": rel @ rest["fuse"], "muzzle": rel @ rest["muzzle"]}
         for k in ("ball", "charge"):                     # inside the bore unless in his hands
             out[k] = rel @ rest[k]
-        out["rammer"] = rest["rammer"]                   # on the saddle unless in his hands
         yaw = state.get("yaw", 0.0)
         if yaw:
             turn = tr(self.pivot) @ rot4(axis_matrix(Y, yaw)) @ tr(-self.pivot)
             for k in ("yaw", "cannon", "fuse", "muzzle", "ball", "charge"):
                 out[k] = turn @ out[k]
-        for k in ("rammer", "ball", "charge"):
+        for k in ("ball", "charge"):
             if state.get(k) is not None:
                 out[k] = state[k]
         ls = state.get("linstock")
@@ -2188,8 +2191,7 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
         if name not in ("unlimber", "limber", "deployed", "fire", "reload", "death"):
             c["routes"] = {"linstock": {"start": "ring", "end": "ring"}}
         if name == "reload":
-            c["routes"] = {"charge": {"start": "hidden", "end": "hidden"}, "ball": {"start": "hidden", "end": "hidden"},
-                           "rammer": {"start": "saddle", "end": "saddle"}}
+            c["routes"] = {"charge": {"start": "hidden", "end": "hidden"}, "ball": {"start": "hidden", "end": "hidden"}}
         clips[name] = c
         for g in b.grips:
             gname, s, t0, t1 = g[:4]
@@ -2215,10 +2217,6 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
     chest = P[unit.camel.mount].copy()
     chest[:3, 3] /= upm_c
     off = (np.linalg.inv(chest) @ np.r_[ring[:3, 3] / upm_c, 1.0])[:3]
-    # the rammer's straps on the saddle (its butt), the same way
-    C = unit.C(P)
-    butt = point(C, unit.d.rest()["rammer"][:3, 3])
-    off_r = (np.linalg.inv(chest) @ np.r_[butt / upm_c, 1.0])[:3]
     # the bore: from the breech to the muzzle in the cannon bone's frame (metres)
     d = unit.d
     upm_g = gr2_mesh.read(unit.src.data)["units_per_meter"]
@@ -2236,11 +2234,9 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
                          "b": {"bone": "gun:bone_cannon", "offset": bore[1]}, "radius": 0.10}],
            "props": {"linstock": {"bone": "gun:bone_linstock", "size": 0.08},
                      "charge": {"bone": "gun:bone_charge", "size": 0.06, "hide_in": ["rider torso", "bore"]},
-                     "ball": {"bone": "gun:bone_ball", "size": 0.05, "hide_in": ["rider torso", "bore"]},
-                     "rammer": {"bone": "gun:bone_rammer", "size": 0.05}},
+                     "ball": {"bone": "gun:bone_ball", "size": 0.05, "hide_in": ["rider torso", "bore"]}},
            "speed_exempt": ["rider:bip01 prop1", "rider:bip01 prop2"],
-           "places": {"ring": {"point": {"bone": "camel:hs bone chest", "offset": off.tolist()}, "radius": 0.08},
-                      "saddle": {"point": {"bone": "camel:hs bone chest", "offset": off_r.tolist()}, "radius": 0.05}},
+           "places": {"ring": {"point": {"bone": "camel:hs bone chest", "offset": off.tolist()}, "radius": 0.08}},
            "speed_limits": {f"camel:{h['bone'].lower()}": 2000.0 for h in HOOVES} |
                            {"camel:hs bone tail_01": 2000.0, "camel:hs bone ear left": 2100.0,
                             "camel:hs bone ear right": 2100.0},
@@ -2394,7 +2390,7 @@ class Round2:
 
     def reload_path(self, yaw=REST_YAW):
         """His way to the muzzle and back: from the station along the left side, round the camel's
-        front, along its right to the spot beside the muzzle (the rammer's line clear): [(x, z)]."""
+        front, along its right to the spot beside the muzzle: [(x, z)]."""
         at, _h, _v = self.station(yaw)
         fr = self.frames(yaw)
         _b, m = self.barrel_points(fr)
@@ -2411,8 +2407,7 @@ class Round2:
 
     def load_pose(self, what, yaw=REST_YAW):
         """At the muzzle: 'pouch' (his right hand at the pouch on his left hip), 'charge' or 'ball'
-        (his right hand pushing it into the muzzle), 'ram' (both hands on the rammer, its head half
-        way down the bore), 'stowed' (the rammer in its straps). (pose, gun state)."""
+        (his right hand pushing it into the muzzle). (pose, gun state)."""
         u = self.u
         pts, m = self.reload_path(yaw)
         fr = self.frames(yaw)
@@ -2420,8 +2415,6 @@ class Round2:
         ax = unit(mz_ - b_)
         spot = pts[-1]
         at = np.array([spot[0], 0.0, spot[1]])
-        if what == "stowed":           # the rammer's first push: he stands back by its butt, then steps in
-            at = at + 0.45 * unit(np.array([ax[0], 0.0, ax[2]]))
         aim = mz_ + 0.45 * ax
         dvec = aim - at
         R = u.standing(at, math.degrees(math.atan2(dvec[0], dvec[2])))
@@ -2436,22 +2429,10 @@ class Round2:
             prop = tr(pal)
             st["charge"] = u.staff_design(self.P, prop)
             look = pal
-        elif what in ("charge", "ball"):
-            pal = mz_ + 0.07 * ax
-            R = u.hands(R, {"r": (pal, -ax, -ax), "l": u.hang_hand(R, "l")}, b, False)
-            st[what] = u.staff_design(self.P, tr(mz_ - 0.02 * ax))
-            look = mz_
         else:
-            L = CannonDesign.RAMMER[0]
-            # in: its head just inside the muzzle, his hands near its butt; ram: down to the charge
-            # at the breech, his hands by the muzzle
-            depth, gr = (0.25, (0.10, 0.40)) if what != "ram" else (0.90, (0.03, 0.25))
-            butt = mz_ + ax * (L - depth)
-            Wr = u.staff(butt, -ax, side=Y)               # its +y: butt to head (into the bore)
-            Wr = rot_y_to_z(Wr)
-            grips = (point(Wr, (0, 0, gr[0])), point(Wr, (0, 0, gr[1])))
-            R = u.hands(R, {"r": (grips[0], -ax, -Y), "l": (grips[1], -ax, -Y)}, b, False)
-            st["rammer"] = u.staff_design(self.P, Wr)
+            pal = mz_ + 0.07 * ax
+            R = u.hands(R, {"r": (pal, -ax, -Y), "l": u.hang_hand(R, "l")}, b, False)
+            st[what] = u.staff_design(self.P, tr(mz_ - 0.02 * ax))
             look = mz_
         R = u.look(R, look, max_pitch=35.0)
         return R, st, b.reach
@@ -2468,18 +2449,10 @@ def neck_turned(unit, P, share):
     return rotate_about(P, unit.camel.rig, "hs bone neck lower", "hs bone neck lower", Y, NECK_TURN * share)
 
 
-def rot_y_to_z(W):
-    """A staff frame (+y along it) as a rammer frame (+z along it), the same point and direction."""
-    out = W.copy()
-    out[:3, 2] = W[:3, 1]
-    out[:3, 1] = -W[:3, 2]
-    return out
-
-
 # The unlimbered clips of script v2 (approved 2026-11-26), at the gun's rest yaw (+90); a game key
 # (turretArc, aim file version 2) turns the gun from there. Times are the script's.
-UNLIMBER2, LIMBER2, RELOAD2 = 6.6667, 5.5, 4.5
-LOAD_YAW = 200.0          # the reload swings the gun round through its back until its muzzle is by him
+UNLIMBER2, LIMBER2, RELOAD2 = 6.6667, 5.5, 3.0
+LOAD_YAW = 270.0          # the reload swings the gun round through its back until its muzzle points at him
 
 
 class V2:
@@ -2768,53 +2741,38 @@ class V2:
         b.flash = [SHOT]
         return b
 
-    # the reload (4.5 s): the gun swung round to him through its back, loaded at the muzzle, swung back
-    # (script v2's alternative, chosen by the user on 2026-11-26). LOAD_YAW puts the muzzle over the
-    # camel's left shoulder: from one place by the saddle he loads it, and the rammer lifts from its
-    # straps at his right straight into the muzzle.
-    PUSH, CATCH = 105.0, 190.0        # he pushes the gun to PUSH; it swings on to CATCH, where he takes it
-    OUT, OFF = 0.80, 0.28             # his place: this far out along the barrel's line from the muzzle,
-                                      # the line this far to his right
-    STROKE = 0.42                     # each push (and pull) of the rammer, hand over hand (home: 0.84)
-    LEAD, SPACE = 0.48, 0.13          # his left hand this far out from the muzzle as a push starts; his
-                                      # right hand this far behind it on the shaft
-    TAKE = (0.85, 1.00)               # his hands on the rammer (right, left, from its butt) to lift it
-    LEAN = 30.0                       # he leans into a push as his hands near the muzzle
-    PUSHES = ((2.40, 2.54), (2.64, 2.78))
-    PULLS = ((2.78, 2.92), (3.02, 3.16))
+    # the reload (3.0 s): the gun swung round to him through its back until its muzzle points at the place
+    # he stood, loaded by hand at the muzzle (charge, then ball: no rammer, the user, 2026-11-26), swung back.
+    # He steps a pace forward out of the barrel's way as it comes round and back again as it leaves.
+    PUSH, CATCH = 105.0, 255.0        # he pushes the gun to PUSH; it swings on to CATCH, where he takes it
     # the beats: (start, end) of each
     B_PLANT = (0.00, 0.30)            # crouch, the linstock stuck in the ground (planted by 0.15), up
     B_PUSH = (0.24, 0.55)             # hands to the cascabel (0.24-0.40), the push to PUSH (0.40-0.55)
-    B_SWING = (0.55, 1.10)            # it swings on to CATCH while he walks to the muzzle (0.55-1.08)
-    B_CATCH = (1.10, 1.22)            # he catches the chase and pulls the muzzle to him (LOAD_YAW)
-    B_CHARGE = (1.22, 1.52)           # pouch (1.32), at the muzzle (1.44), down the bore (1.52)
-    B_BALL = (1.52, 1.82)             # pouch (1.62), at the muzzle (1.74), down the bore (1.82)
-    B_TAKE = (1.82, 2.40)             # a step back (1.82-1.96), he bends, hands on the rammer (2.06), lifts
-                                      # it out of its straps and its head into the muzzle (2.06-2.30),
-                                      # his hands slide back along it (2.30-2.40)
-    B_RAM = (2.40, 2.78)              # two pushes hand over hand (the hands slide back between, 2.54-2.64)
-    B_DRAW = (2.78, 3.16)             # two pulls (the hands slide forward between, 2.92-3.02)
-    B_STOW = (3.16, 3.46)             # hands forward on it (3.16-3.24), back into its straps bending (3.24-3.44)
-    B_BACK = (3.46, 4.18)             # a step in, hands to the barrel (3.44-3.58), pushed off (3.58-3.66), it
-                                      # swings to PUSH (3.66-3.98) as he walks back (3.60-4.10), caught
-                                      # (3.96-4.08) and settled at the rest (4.08-4.18)
-    B_PICK = (4.18, 4.50)             # crouch (4.20-4.36), the linstock pulled up as he rises (4.36-4.50)
+    B_SWING = (0.55, 1.15)            # it swings on to CATCH; he steps forward out of its way (0.60-0.90)
+                                      # and reaches for the chase (0.95-1.15)
+    B_CATCH = (1.15, 1.27)            # he catches the chase and pulls the muzzle to him (LOAD_YAW)
+    B_CHARGE = (1.27, 1.57)           # pouch (1.37), at the muzzle (1.49), pushed in (1.57)
+    B_BALL = (1.57, 1.87)             # pouch (1.67), at the muzzle (1.79), pushed in (1.87)
+    B_BACK = (1.87, 2.70)             # both hands on the chase (1.87-2.00), pushed off (2.00-2.08); it swings
+                                      # back to PUSH (2.08-2.50) as he steps back to his station (2.12-2.40);
+                                      # he catches the cascabel (2.42-2.56) and sets it at the rest (2.58-2.70)
+    B_PICK = (2.70, 3.00)             # crouch (2.70-2.85), the linstock pulled up as he rises (2.85-3.00)
 
     def spots(self):
-        """His places in the reload (S_work, where he rams, facing the muzzle along the barrel's line,
-        the line at his right; S_load a step nearer the muzzle) and the muzzle and the barrel's axis."""
+        """His place to load (S_load: a pace ahead of his station, beside the muzzle of the gun swung
+        round to LOAD_YAW, on its front side, facing it) and the muzzle and the barrel's axis there."""
         u = self.u
         fr = u.gun_frames({"yaw": LOAD_YAW})
         b_, m = self.r2.barrel_points(fr)
         ax = unit(np.array([m[0] - b_[0], 0.0, m[2] - b_[2]]))
-        heading = math.degrees(math.atan2(-ax[0], -ax[2]))
-        rt = u.right_of(u.standing(np.zeros(3), heading))
-        rt = unit(rt - (rt @ Y) * Y)
-        at = m + self.OUT * ax - self.OFF * rt
-        S_work = u.standing(np.array([at[0], 0.0, at[2]]), heading)
-        at = m + 0.38 * ax - 0.22 * rt                     # a step nearer, to load the charge and the ball
-        S_load = u.standing(np.array([at[0], 0.0, at[2]]), heading)
-        return S_work, S_load, m, ax
+        side = np.cross(Y, ax)
+        if side @ Z < 0:
+            side = -side                                   # the front side: the barrel comes from the rear
+        at = m + 0.15 * ax + 0.34 * side
+        tgt = m - 0.20 * ax
+        dv = tgt - at
+        S_load = u.standing(np.array([at[0], 0.0, at[2]]), math.degrees(math.atan2(dv[0], dv[2])))
+        return S_load, m, ax
 
     def reload(self):
         u = self.u
@@ -2823,76 +2781,32 @@ class V2:
         P = self.P
         anim = u.camel.anim(mgc.B_IDLE)
         scales = u.camel.hang_scale(P, u.camel.borrowed_scales(anim))
-        S_work, S_load, _m, _ax = self.spots()
+        S_load, _m, _ax = self.spots()
         S_sq = mgc.Unit.crouch(u, self.S0, 0.45, 35.0)
-        S_bend = mgc.Unit.crouch(u, S_work, 0.22, 25.0)
         feet0 = {s: self.S0[f"bip01 {s} foot"] for s in ("l", "r")}
-        feet1 = {s: S_work[f"bip01 {s} foot"] for s in ("l", "r")}
         Wp = self.planted()
-        L_r = CannonDesign.RAMMER[0]
         C = u.C(P)
-        W_saddle = self.saddle_rammer(C)
         PU, CA = self.PUSH, self.CATCH
-        ST, LEAD, SPACE = self.STROKE, self.LEAD, self.SPACE
-        RAM_IN = self.TAKE                                  # (right, left) on the shaft from its butt
 
         def bar(frx, from_muzzle):
             """His palm on top of the chase, the fingers away from him along it (toward the breech)."""
             p, fin, nor = self.barrel_at(P, frx, from_muzzle)
             return p, -fin, nor
 
-        def ram_grip(Wr, g, lift=0.0):
-            return point(Wr, (0, 0, g)) + lift * Y, unit(Wr[:3, 2]), -Y
-
         def yaw_at(t):
             if t < 0.40:
                 return REST_YAW
             if t < 0.55:
                 return REST_YAW + (PU - REST_YAW) * span(t, 0.40, 0.55)
-            if t < 1.10:
-                return PU + (CA - PU) * span(t, 0.55, 1.10)
-            if t < 3.58:
-                return CA + (LOAD_YAW - CA) * span(t, 1.10, 1.22)
-            if t < 3.66:
-                return LOAD_YAW - (LOAD_YAW - CA) * span(t, 3.58, 3.66)
-            if t < 4.08:
-                return CA - (CA - PU) * span(t, 3.66, 3.98)
-            return PU - (PU - REST_YAW) * span(t, 4.08, 4.18)
-
-        def depth_at(t):
-            d = 0.0
-            for t0, t1 in self.PUSHES:
-                d += ST * span(t, t0, t1)
-            for t0, t1 in self.PULLS:
-                d -= ST * span(t, t0, t1)
-            return d
-
-        # the left hand's grip on the shaft (from its butt) through each stroke: a push starts with it
-        # LEAD out from the muzzle, a pull with it LEAD - STROKE out; between two strokes the hands slide
-        # along the shaft; before the first and after the last they hold it where they lift it
-        seq = [(0.0, 2.30, self.TAKE[1])]
-        seq += [(t0, t1, L_r - ST * k - LEAD) for k, (t0, t1) in enumerate(self.PUSHES)]
-        seq += [(t0, t1, L_r - ST * (len(self.PULLS) - k) - (LEAD - ST)) for k, (t0, t1) in enumerate(self.PULLS)]
-        seq += [(3.24, 9.0, self.TAKE[1])]
-
-        def hands_on(t):
-            for i, (t0, t1, g) in enumerate(seq):
-                if t0 <= t < t1:
-                    return (g - SPACE, g), 0.0
-                if i + 1 < len(seq) and t1 <= t < seq[i + 1][0]:
-                    w = span(t, t1, seq[i + 1][0])
-                    gg = g + (seq[i + 1][2] - g) * w
-                    return (gg - SPACE, gg), 0.03 * math.sin(math.pi * w)
-            return RAM_IN, 0.0
-
-        def lean_at(t):
-            """His lean into the rammer: none with his left hand 0.40 out from the muzzle or more, LEAN
-            with it at the muzzle."""
-            if not 2.30 <= t < 3.24:
-                return 0.0
-            g, _lift = hands_on(t)
-            x = L_r - depth_at(t) - g[1]
-            return self.LEAN * min(1.0, max(0.0, (0.40 - x) / 0.34))
+            if t < 1.15:
+                return PU + (CA - PU) * span(t, 0.55, 1.15)
+            if t < 2.00:
+                return CA + (LOAD_YAW - CA) * span(t, 1.15, 1.27)
+            if t < 2.08:
+                return LOAD_YAW - (LOAD_YAW - CA) * span(t, 2.00, 2.08)
+            if t < 2.58:
+                return CA - (CA - PU) * span(t, 2.08, 2.50)
+            return PU - (PU - REST_YAW) * span(t, 2.58, 2.70)
 
         def crouched(A, S, feet, w):
             return u.plant(blend_pose(u, A, S, w), feet)
@@ -2902,39 +2816,19 @@ class V2:
                 return crouched(self.S0, S_sq, feet0, span(t, 0.0, 0.15))
             if t < 0.30:
                 return crouched(self.S0, S_sq, feet0, 1.0 - span(t, 0.15, 0.30))
-            if t < 0.55:
+            if t < 0.60:
                 return self.S0
-            if t < 1.08:
-                return u.walk(self.S0, S_load, (t - 0.55) / 0.53, "l")
-            if t < 1.82:
+            if t < 0.90:
+                return u.walk(self.S0, S_load, (t - 0.60) / 0.30, "l")
+            if t < 2.12:
                 return S_load
-            if t < 1.96:
-                return u.walk(S_load, S_work, (t - 1.82) / 0.14, "r")
-            if t < 2.30:                                   # bent to the saddle 1.96-2.06, up by 2.30
-                return crouched(S_work, S_bend, feet1, span(t, 1.96, 2.06) * (1.0 - span(t, 2.12, 2.30)))
-            if t < 3.24:                                   # ramming, leaning into it
-                lean = lean_at(t)
-                return u.plant(u.fwd_lean(S_work, lean), feet1) if lean > 0.0 else S_work
-            if t < 3.46:                                   # bent to the saddle 3.24-3.36, up by 3.46
-                return crouched(S_work, S_bend, feet1, span(t, 3.24, 3.36) * (1.0 - span(t, 3.38, 3.46)))
-            if t < 3.56:
-                return u.walk(S_work, S_load, (t - 3.46) / 0.10, "l")
-            if t < 3.60:
-                return S_load
-            if t < 4.10:
-                return u.walk(S_load, self.S0, (t - 3.60) / 0.50, "r")
-            if t < 4.20:
+            if t < 2.40:
+                return u.walk(S_load, self.S0, (t - 2.12) / 0.28, "r")
+            if t < 2.70:
                 return self.S0
-            if t < 4.36:
-                return crouched(self.S0, S_sq, feet0, span(t, 4.20, 4.36))
-            return crouched(self.S0, S_sq, feet0, 1.0 - span(t, 4.36, 4.50))
-
-        def out_frame(w, m, ax):
-            """The rammer on its way from its straps (w 0) to its head in the muzzle (w 1)."""
-            inserted = ram_frame(u, m + ax * L_r, -ax)
-            head = lerp(point(W_saddle, (0, 0, L_r)), m, w) + 0.06 * math.sin(math.pi * w) * Y
-            dvec = vslerp(W_saddle[:3, 2], inserted[:3, 2], w)
-            return ram_frame(u, head - L_r * dvec, dvec)
+            if t < 2.85:
+                return crouched(self.S0, S_sq, feet0, span(t, 2.70, 2.85))
+            return crouched(self.S0, S_sq, feet0, 1.0 - span(t, 2.85, 3.00))
 
         for t in times:
             yaw = yaw_at(t)
@@ -2943,30 +2837,21 @@ class V2:
             ax = unit(m - a)
             st = {"yaw": yaw}
             R = body(t)
-            # the linstock: from his hand to the ground (0.0-0.15), stuck there, back in his hand (4.36-4.50)
+            # the linstock: from his hand to the ground (0.0-0.15), stuck there, back in his hand (2.85-3.00)
             if t < 0.15:
                 W = u.staff_mix(self.W0, Wp, span(t, 0.0, 0.15))
-            elif t < 4.36:
+            elif t < 2.85:
                 W = Wp
             else:
-                W = u.staff_mix(Wp, self.W0, span(t, 4.36, 4.50))
+                W = u.staff_mix(Wp, self.W0, span(t, 2.85, 3.00))
             st["linstock"] = u.staff_design(P, W)
-            # the rammer: lifted from its straps into the muzzle, rammed, drawn, back into its straps
-            Wr = None
-            if 2.06 <= t < 3.46:
-                if t < 2.30:
-                    Wr = out_frame(span(t, 2.06, 2.30), m, ax)
-                elif t < 3.24:
-                    Wr = ram_frame(u, m + ax * (L_r - depth_at(t)), -ax)
-                else:
-                    Wr = out_frame(1.0 - span(t, 3.24, 3.44), m, ax)
-                st["rammer"] = u.staff_design(P, Wr)
             fr = u.gun_frames(st)
             # his hands
             rt = u.right_of(R)
             hang_l, hang_r = u.hang_hand(R, "l"), u.hang_hand(R, "r")
             goals = {"l": hang_l}
             mouth = (m + 0.10 * ax, -ax, -Y)
+            inside_mouth = (m - 0.04 * ax, -ax, -Y)            # fingers pushing it in
             if t < 0.15:
                 goals["r"] = u.grip_on(R, W, self.G, "r")
             elif t < 0.24:
@@ -2975,56 +2860,49 @@ class V2:
                 rel = u.blend_goal(u.grip_on(R, Wp, self.G, "r"), hang_r, 1.0)
                 goals["r"] = u.blend_goal(rel, self.cascabel2(P, fr, 0.04), span(t, 0.24, 0.40))
                 goals["l"] = u.blend_goal(hang_l, self.cascabel2(P, fr, -0.04), span(t, 0.24, 0.40))
-            elif t < 0.95:                                 # he lets go and walks
+            elif t < 0.95:                                 # he lets go and steps out of its way
                 push = u.gun_frames({"yaw": PU})
                 goals["r"] = u.blend_goal(self.cascabel2(P, push, 0.04), hang_r, span(t, 0.55, 0.70))
-                goals["l"] = u.blend_goal(self.cascabel2(P, push, -0.04), hang_l, span(t, 0.55, 0.70))
-            elif t < 1.10:                                 # and reaches for the chase coming to him
+                goals["l"] = u.blend_goal(self.cascabel2(P, push, -0.04), hang_l, span(t, 0.55, 0.70),
+                                          arc=-0.10 * rt)
+            elif t < 1.15:                                 # and reaches for the chase coming to him
                 catch = u.gun_frames({"yaw": CA})
-                goals["r"] = u.blend_goal(hang_r, bar(catch, 0.04), span(t, 0.95, 1.10))
-                goals["l"] = u.blend_goal(hang_l, bar(catch, 0.15), span(t, 0.95, 1.10))
-            elif t < 1.22:
+                goals["r"] = u.blend_goal(hang_r, bar(catch, 0.04), span(t, 0.95, 1.15))
+                goals["l"] = u.blend_goal(hang_l, bar(catch, 0.15), span(t, 0.95, 1.15))
+            elif t < 1.27:
                 goals["r"], goals["l"] = bar(fr, 0.04), bar(fr, 0.15)
-            elif t < 1.82:
-                goals["l"] = u.blend_goal(bar(fr, 0.15), hang_l, span(t, 1.22, 1.42),
-                                          arc=0.05 * u.facing(R) - 0.16 * rt)
+            elif t < 1.87:
+                goals["l"] = u.blend_goal(bar(fr, 0.15), hang_l, span(t, 1.27, 1.47), arc=0.05 * u.facing(R) - 0.16 * rt)
                 f_ = u.facing(R)
                 pel = R["bip01 pelvis"][:3, 3]
                 pouch = (pel - 0.13 * rt + 0.12 * f_ - 0.02 * Y, f_, -Y)
                 front = (pel + 0.32 * f_ + 0.18 * Y + 0.04 * rt, f_, -Y)     # his hand passes in front of him
-                goals["r"] = keyed([(1.22, bar(fr, 0.04)), (1.27, front), (1.32, pouch), (1.34, pouch),
-                                    (1.44, mouth), (1.52, mouth), (1.57, front), (1.62, pouch), (1.64, pouch),
-                                    (1.74, mouth), (1.82, mouth)], t, u)
-            elif t < 2.06:
-                gr, gl = ram_grip(W_saddle, RAM_IN[0]), ram_grip(W_saddle, RAM_IN[1])
-                goals["r"] = u.blend_goal(mouth, gr, span(t, 1.82, 2.06), arc=0.08 * rt)
-                goals["l"] = u.blend_goal(hang_l, gl, span(t, 1.84, 2.06), arc=-0.10 * rt)
-            elif Wr is not None:
-                g, lift = hands_on(t)
-                goals["r"], goals["l"] = ram_grip(Wr, g[0], lift), ram_grip(Wr, g[1], lift)
-            elif t < 3.66:
-                gr, gl = ram_grip(W_saddle, RAM_IN[0]), ram_grip(W_saddle, RAM_IN[1])
-                goals["r"] = u.blend_goal(gr, bar(fr, 0.04), span(t, 3.44, 3.58), arc=0.08 * rt)
-                goals["l"] = u.blend_goal(gl, bar(fr, 0.15), span(t, 3.44, 3.58), arc=0.10 * Y)
-            elif t < 3.94:                                 # he lets it go and walks back
+                goals["r"] = keyed([(1.27, bar(fr, 0.04)), (1.32, front), (1.37, pouch), (1.39, pouch),
+                                    (1.49, mouth), (1.54, inside_mouth), (1.57, mouth), (1.62, front),
+                                    (1.67, pouch), (1.69, pouch), (1.79, mouth), (1.84, inside_mouth),
+                                    (1.87, mouth)], t, u)
+            elif t < 2.08:
+                goals["r"] = u.blend_goal(mouth, bar(fr, 0.04), span(t, 1.87, 2.00))
+                goals["l"] = u.blend_goal(hang_l, bar(fr, 0.15), span(t, 1.87, 2.00), arc=-0.10 * rt)
+            elif t < 2.42:                                 # he lets it go and steps back
                 at_ca = u.gun_frames({"yaw": CA})
-                goals["r"] = u.blend_goal(bar(at_ca, 0.04), hang_r, span(t, 3.66, 3.80))
-                goals["l"] = u.blend_goal(bar(at_ca, 0.15), hang_l, span(t, 3.66, 3.80), arc=0.05 * u.facing(R) - 0.16 * rt)
-            elif t < 4.08:                                 # and reaches for the cascabel coming back
+                goals["r"] = u.blend_goal(bar(at_ca, 0.04), hang_r, span(t, 2.08, 2.22))
+                goals["l"] = u.blend_goal(bar(at_ca, 0.15), hang_l, span(t, 2.08, 2.22), arc=-0.10 * rt)
+            elif t < 2.58:                                 # and reaches for the cascabel coming back
                 at_pu = u.gun_frames({"yaw": PU})
-                goals["r"] = u.blend_goal(hang_r, self.cascabel2(P, at_pu, 0.04), span(t, 3.94, 4.08))
-                goals["l"] = u.blend_goal(hang_l, self.cascabel2(P, at_pu, -0.04), span(t, 3.94, 4.08))
-            elif t < 4.18:
+                goals["r"] = u.blend_goal(hang_r, self.cascabel2(P, at_pu, 0.04), span(t, 2.42, 2.56))
+                goals["l"] = u.blend_goal(hang_l, self.cascabel2(P, at_pu, -0.04), span(t, 2.42, 2.56))
+            elif t < 2.70:
                 goals["r"], goals["l"] = self.cascabel2(P, fr, 0.04), self.cascabel2(P, fr, -0.04)
             else:
-                goals["r"] = u.blend_goal(self.cascabel2(P, fr, 0.04), u.grip_on(R, W, self.G, "r"), span(t, 4.18, 4.36))
-                goals["l"] = u.blend_goal(self.cascabel2(P, fr, -0.04), hang_l, span(t, 4.18, 4.42))
+                goals["r"] = u.blend_goal(self.cascabel2(P, fr, 0.04), u.grip_on(R, W, self.G, "r"), span(t, 2.70, 2.84))
+                goals["l"] = u.blend_goal(self.cascabel2(P, fr, -0.04), hang_l, span(t, 2.70, 2.90))
             R = u.hands(R, goals, b, False)
             # the charge and the ball: hidden inside him (the pouch at his left hip), in his right hand,
             # into the muzzle and down the bore (out of sight there)
             inside = R["bip01 pelvis"][:3, 3] + 0.12 * Y - 0.03 * u.right_of(R)
             palm = u.rider.palm_of(R, "r")
-            for prop, (t_draw, t_in, t_gone) in (("charge", (1.32, 1.44, 1.52)), ("ball", (1.62, 1.74, 1.82))):
+            for prop, (t_draw, t_in, t_gone) in (("charge", (1.37, 1.49, 1.57)), ("ball", (1.67, 1.79, 1.87))):
                 if t < t_draw:
                     pos = inside
                 elif t < t_in:
@@ -3036,14 +2914,12 @@ class V2:
                 if pos is not None:
                     st[prop] = u.staff_design(P, tr(pos))
             fr = u.gun_frames(st)
-            if t < 0.24 or t >= 4.18:
+            if t < 0.24 or t >= 2.70:
                 look = point(Wp, (0, 0.8, 0))
-            elif 0.55 <= t < 0.95 or 3.66 <= t < 3.94:
-                look = R["bip01 head"][:3, 3] + 4.0 * u.facing(R)
-            elif t < 1.22 or 3.94 <= t < 4.18:
+            elif 0.55 <= t < 0.95 or 2.08 <= t < 2.42:
                 look = point(C, fr["cannon"][:3, 3])
-            elif 1.82 <= t < 2.10 or 3.24 <= t < 3.46:
-                look = point(W_saddle, (0, 0, RAM_IN[1]))
+            elif t < 1.27 or 2.42 <= t < 2.70:
+                look = point(C, fr["cannon"][:3, 3])
             else:
                 look = m
             R = u.look(R, look, max_yaw=60.0, max_pitch=28.0)
@@ -3052,28 +2928,14 @@ class V2:
             b.rider.append(R)
         self.keep(b, 0.0, 0.10, "r")
         self.keep(b, 0.42, 0.55, "r", "cannon", "right palm on the cascabel (push)")
-        self.keep(b, 1.14, 1.22, "r", "cannon", "right palm on the chase (catch)")
-        self.keep(b, 2.08, 2.30, "r", "rammer", "right palm on the rammer (out of its straps)")
-        self.keep(b, 2.08, 2.30, "l", "rammer", "left palm on the rammer (out of its straps)")
-        for k, (t0, t1) in enumerate(self.PUSHES + self.PULLS):
-            self.keep(b, t0 + 0.07, t1, "r", "rammer", f"right palm on the rammer (stroke {k + 1})")
-            self.keep(b, t0 + 0.07, t1, "l", "rammer", f"left palm on the rammer (stroke {k + 1})")
-        self.keep(b, 3.26, 3.38, "r", "rammer", "right palm on the rammer (into its straps)")
-        self.keep(b, 4.10, 4.18, "r", "cannon", "right palm on the cascabel (settle)")
-        self.keep(b, 4.43, RELOAD2, "r")
+        self.keep(b, 1.19, 1.27, "r", "cannon", "right palm on the chase (catch)")
+        self.keep(b, 2.02, 2.08, "r", "cannon", "right palm on the chase (push off)")
+        self.keep(b, 2.60, 2.70, "r", "cannon", "right palm on the cascabel (settle)")
+        self.keep(b, 2.92, RELOAD2, "r")
         b.rider = limit_arm_rates(u.rider.rig, b.rider)
         b.rider = limit_arm_rates(u.rider.rig, b.rider, 720.0, bones=("bip01 neck", "bip01 head"))
         b.camel_src = (anim, scales)
         return b
-
-    def saddle_rammer(self, C):
-        """The rammer's world frame on its saddle straps (its +z from the butt to the head)."""
-        f = self.u.d.rest()["rammer"]
-        s = np.cbrt(abs(np.linalg.det(C[:3, :3])))
-        W = np.eye(4)
-        W[:3, :3] = (C[:3, :3] / s) @ f[:3, :3]
-        W[:3, 3] = point(C, f[:3, 3])
-        return W
 
     def death(self):
         u, cam = self.u, self.u.camel
@@ -3149,11 +3011,6 @@ def limit_arm_rates(rig, poses, limit=1350.0, fps=30.0, bones=ARM_BONES):
         out.append(W)
         prev = loc
     return out
-
-
-def ram_frame(u, butt, direction):
-    """A rammer frame: its butt at `butt`, its +z (butt to head) along `direction`."""
-    return rot_y_to_z(u.staff(np.asarray(butt, np.float64), unit(direction), side=Y))
 
 
 def keyed(keys, t, u):
@@ -3261,9 +3118,7 @@ def round2_stills(folder, game, recipe, unit, gun_bytes):
                       marks=path_marks))
     for k, (what, text) in enumerate((("pouch", "3 POWDER FROM THE POUCH AT HIS LEFT HIP"),
                                       ("charge", "4 THE CHARGE INTO THE MUZZLE"),
-                                      ("ball", "5 THE BALL INTO THE MUZZLE"),
-                                      ("stowed", "6 THE RAMMER (FROM THE SADDLE) INTO THE MUZZLE"),
-                                      ("ram", "7 RAMMING HOME"))):
+                                      ("ball", "5 THE BALL INTO THE MUZZLE"))):
         Rl, st, miss = r2.load_pose(what)
         report.append(f"reload {what}: hands off their goals {miss:.3f}")
         it6, G6 = items(P, Rl, st)
@@ -3333,6 +3188,120 @@ def textured_sheets(folder, game, recipe, unit, built, gun_bytes, moments=8):
     return out
 
 
+def round3_stills(folder, game, recipe, unit, gun_bytes):
+    """Stop 0 of the no-rammer reload (the user, 2026-11-26): its key poses as built, the swing from
+    above, the linstock's burning tip (holster, hand, on the vent) and the props' sizes against him."""
+    from PIL import Image
+    os.makedirs(folder, exist_ok=True)
+    u = unit
+    v2 = V2(u)
+    scene = mgc.Scene(game, recipe, u.camel, u.rider)
+    pic = Picture(game, recipe, u.camel, u.rider, scene, u.d, gun_bytes, None)
+    report = []
+    ORANGE = (255, 120, 40)
+    BLUE = (60, 200, 255)
+
+    def items(P, R, fr):
+        hang = rigid(P[u.camel.hang])
+        fr = dict(fr, match=fr["linstock"] @ tr((0.0, u.src.linstock_length * u.d.ls, 0.0)))
+        G = {u.d.NAMES.get(k, f"bone_{u.gun_name}").lower(): hang @ u.d.to_model(v) for k, v in fr.items()}
+        G[pic.gun_rig.names[0].lower()] = hang
+        out = pic.gun_fig.items(G) + scene.camel_fig.items(P)
+        if R is not None:
+            out += scene.rider_fig.items(R) + scene.hat_items(R)
+        out += glow(G)
+        return out, G
+
+    def glow(G):
+        """The burning match drawn bright (the game's fuse fire there): an ember and a small flame
+        rising from it, flat orange and yellow."""
+        from aoe3game.gr2_pose import unit as _unit
+        tipw, axw = G["bone_match"][:3, 3], _unit(G["bone_linstock"][:3, 1])
+        er, el, fr_ = CannonDesign.EMBER
+        ball = sphere(er)
+        drop = sphere(fr_)
+        Rf = np.array([X, -Z, Y]).T                         # the flame rises: its long axis up
+        dp = (drop["positions"] * np.array([1.0, 1.0, el / (2.0 * fr_)])) @ Rf.T + tipw + 0.5 * el * Y
+        return [(ball["positions"] + tipw, ball["triangles"], None, None, (255, 110, 20)),
+                (dp, drop["triangles"], None, None, (255, 200, 40))]
+
+    def tile(it, az, el, text, span=3.0, centre=(0.0, 1.2, 0.6), marks=None, w=330, h=300):
+        return mgc.caption(mgc.draw(it, w, h, az, el, span=span, centre=tuple(centre), marks=marks), text)
+
+    b = v2.reload()
+    report.append(f"reload {RELOAD2:.2f} s: hands off their goals at most {b.reach:.3f}")
+
+    def at(bb, t):
+        k = min(len(bb.times) - 1, int(round(t * FPS)))
+        return bb.camel[k], bb.rider[k], bb.gun[k]
+
+    keys = ((0.15, -55.0, "1 LINSTOCK STUCK IN THE GROUND"), (0.50, -55.0, "2 HE PUSHES THE GUN ROUND"),
+            (0.85, -140.0, "3 IT SWINGS, HE STEPS ASIDE"), (1.20, -140.0, "4 CAUGHT: MUZZLE TO HIM"),
+            (1.38, -140.0, "5 CHARGE FROM THE POUCH"), (1.53, -140.0, "6 CHARGE PUSHED IN BY HAND"),
+            (1.83, -140.0, "7 BALL PUSHED IN BY HAND"), (2.04, -140.0, "8 HE PUSHES IT BACK ROUND"),
+            (2.30, -140.0, "9 IT SWINGS BACK, HE STEPS BACK"), (2.64, -55.0, "10 SET AT ITS REST (+90)"),
+            (2.86, -55.0, "11 HE TAKES THE LINSTOCK UP"), (RELOAD2, -55.0, "12 END: READY TO FIRE"))
+    tiles = []
+    for t, az, text in keys:
+        P, R, fr = at(b, t)
+        it, G = items(P, R, fr)
+        mz_ = G["bone_launchpoint"][:3, 3]
+        c = 0.5 * (mz_ + R["bip01 spine1"][:3, 3])
+        tiles.append(tile(it, az, 15.0, f"{t:.2f} S {text}", span=3.0, centre=c,
+                          marks=[(mz_, BLUE, 6), (G["bone_match"][:3, 3], ORANGE, 7)]))
+    sheet1 = np.concatenate([mgc.title(4 * 330, f"RELOAD WITHOUT A RAMMER ({RELOAD2:.1f} S, ROF {RELOAD2 + FIRE:.1f} S): "
+                                                "KEY POSES (BLUE DOT: MUZZLE, ORANGE STAR: THE MATCH)", back=(70, 40, 20)),
+                             mgc.grid(tiles, 4)], 0)
+    tiles = []
+    for t, text in ((0.30, "AT REST +90"), (0.80, "THROUGH ITS BACK"), (1.25, "AT 270, MUZZLE AT HIM"),
+                    (2.30, "SWINGING BACK")):
+        P, R, fr = at(b, t)
+        it, G = items(P, R, fr)
+        tiles.append(tile(it, -90.0, 80.0, f"{t:.2f} S FROM ABOVE: {text}", span=3.4, centre=(0.0, 1.0, 0.5),
+                          marks=[(G["bone_launchpoint"][:3, 3], BLUE, 6)]))
+    sheet2 = np.concatenate([mgc.title(4 * 330, "FROM ABOVE: +90, PUSHED TO 105, FREE TO 255, PULLED TO 270, AND BACK. "
+                                                "HE STEPS 0.26 FORWARD AND BACK", back=(70, 40, 20)),
+                             mgc.grid(tiles, 4)], 0)
+    tiles = []
+    Pm = u.camel.fix_hang(u.camel.pose(u.camel.base, 0.0))
+    Rm = u.seated(Pm)
+    Rm = u.hands(Rm, {"r": u.reins(Rm, Pm, "r"), "l": u.cascabel(Pm, u.gun_frames(u.limber))}, Built("s", "", [0, 1]), True)
+    it, G = items(Pm, Rm, u.gun_frames(u.limber))
+    tip = G["bone_match"][:3, 3]
+    tiles.append(tile(it, 70.0, 12.0, "IN ITS HOLSTER: THE EMBER AT ITS TIP", span=1.4, centre=tip - np.array([0, 0.15, 0]),
+                      marks=[(tip, ORANGE, 4)]))
+    d = v2.deployed()
+    P, R, fr = at(d, 0.0)
+    it, G = items(P, R, fr)
+    tip = G["bone_match"][:3, 3]
+    tiles.append(tile(it, -110.0, 8.0, "IN HIS HAND AT HIS STATION", span=1.4, centre=tip - np.array([0, 0.15, 0]),
+                      marks=[(tip, ORANGE, 4)]))
+    f = v2.fire()
+    P, R, fr = at(f, 0.85)
+    it, G = items(P, R, fr)
+    tip, vent = G["bone_match"][:3, 3], G["bone_fuse"][:3, 3]
+    report.append(f"fire 0.85 s: the match {np.linalg.norm(tip - vent):.3f} from the vent")
+    for az, el, name in ((30.0, 45.0, "FROM THE FRONT, ABOVE"), (150.0, 50.0, "FROM THE REAR, ABOVE")):
+        tiles.append(tile(it, az, el, f"FIRE 0.85 S: TIP ON THE VENT, {name}", span=1.1, centre=vent,
+                          marks=[(tip, ORANGE, 4)]))
+    sheet3 = np.concatenate([mgc.title(4 * 330, "THE LINSTOCK'S BURNING TIP (EMBER AND SMALL FLAME, IN GAME THE FUSE FIRE "
+                                                "ON BONE_MATCH) TOUCHES THE VENT", back=(70, 40, 20)),
+                             mgc.grid(tiles, 4)], 0)
+    S = v2.S0
+    height = float(S["bip01 head"][1, 3]) + 0.18
+    sizes = [("linstock", u.src.linstock_length), ("ember across", 2 * CannonDesign.EMBER[0]),
+             ("flame", CannonDesign.EMBER[1]), ("ball across", 2 * CannonDesign.BALL),
+             ("charge bag", CannonDesign.CHARGE[1]), ("barrel", u.src.length * u.d.s / u.d.bind_scale)]
+    report.append(f"sizes against the man ({height:.2f} game units tall): "
+                  + ", ".join(f"{n} {v:.2f} ({100 * v / height:.0f}%)" for n, v in sizes))
+    paths = []
+    for name, sheet in (("z3-reload-keys.png", sheet1), ("z3-reload-swing.png", sheet2), ("z3-linstock-ember.png", sheet3)):
+        p = os.path.join(folder, name)
+        Image.fromarray(sheet).save(p)
+        paths.append(p)
+    return paths, report
+
+
 def posed_gun_bytes(design, name, source_data, state):
     """The gun model with every part moved to `state` (its bones at that state, rest = the state):
     the cannon as the dead model carries it."""
@@ -3381,10 +3350,12 @@ def main(argv):
                                        "unit's left and right)")
     ap.add_argument("--round2-stills", help="a folder for the stills of round 2 (the short linstock, the gun at +90, "
                                             "the reload's key poses)")
+    ap.add_argument("--round3-stills", help="a folder for stop 0 of the no-rammer reload (its key poses, the swing "
+                                            "from above, the linstock's burning tip, the props' sizes)")
     args = ap.parse_args(argv)
     try:
         for p in (args.out, args.sheet, args.barrel_sheet, args.limber_options, args.sizes, args.clips, args.textured,
-                  args.round2_stills):
+                  args.round2_stills, args.round3_stills):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -3440,6 +3411,14 @@ def main(argv):
                 report.append(f"runtime {fname}.gr2 {len(data)} B: crc {crc}, read {read}, oodle1 {packed} B"
                               + ("" if ok else "  FAIL"))
                 failed |= not ok
+        if args.round3_stills:
+            rider = mgc.Rider(game, recipe["rider"])
+            foot_rig = Rig.of(gr2.load(game.granny(mgc.FOOT_MODEL)).root())
+            unit3 = ZUnit(game, recipe, camel, rider, design, foot_rig)
+            paths3, rep3 = round3_stills(args.round3_stills, game, recipe, unit3, gun)
+            report += rep3
+            for p in paths3:
+                print(p)
         if args.round2_stills:
             rider = mgc.Rider(game, recipe["rider"])
             foot_rig = Rig.of(gr2.load(game.granny(mgc.FOOT_MODEL)).root())
