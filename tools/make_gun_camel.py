@@ -3218,14 +3218,24 @@ class Traverse:
         if b <= t <= c:
             return {k: M1 @ v for k, v in self.stand.items()}
         if not hasattr(self, "_reload_lead"):
-            way = (M1 @ np.r_[self.s0[0], 0.0, self.s0[1], 1.0])[:3] - (M0 @ np.r_[self.s0[0], 0.0, self.s0[1], 1.0])[:3]
-            score = {s: float(point(M0, self.feet0[s][:3, 3]) @ way) for s in ("l", "r")}
-            self._reload_lead = max(score, key=score.get)
-        lead = self._reload_lead
-        if t < b:                                   # in: the leading foot first
-            return self.walk(M0, M1, (t - a) / (b - a), lead, (0.0, 0.5), (0.5, 1.0))
-        back = "l" if lead == "r" else "r"          # out: the foot nearer home first
-        return self.walk(M1, M0, (t - c) / (d - c), back, (0.0, 0.5), (0.5, 1.0))
+            self._reload_lead = (self.best_lead(M0, M1), self.best_lead(M1, M0))
+        lead_in, lead_out = self._reload_lead
+        if t < b:                                   # in
+            return self.walk(M0, M1, (t - a) / (b - a), lead_in, (0.0, 0.5), (0.5, 1.0))
+        return self.walk(M1, M0, (t - c) / (d - c), lead_out, (0.0, 0.5), (0.5, 1.0))
+
+    def feet_apart(self, body):
+        """How far the right foot is to the right of the left, across his hips (< 0: crossed)."""
+        right = body["bip01 r thigh"][:3, 3] - body["bip01 l thigh"][:3, 3]
+        right[1] = 0.0
+        return float((body["bip01 r foot"][:3, 3] - body["bip01 l foot"][:3, 3]) @ unit(right))
+
+    def best_lead(self, M0, M1, bands=((0.0, 0.5), (0.5, 1.0))):
+        """The foot to lead a walk from M0 to M1 with: the one whose steps keep the feet farther
+        apart (a step that turns him may otherwise carry the leading foot across the other)."""
+        score = {s: min(self.feet_apart(self.walk(M0, M1, f, s, *bands)) for f in np.linspace(0.0, 1.0, 21))
+                 for s in ("l", "r")}
+        return max(score, key=score.get)
 
     def reload_share(self, t):
         """How far he is from his station toward the reload spot at time t (0..1)."""
