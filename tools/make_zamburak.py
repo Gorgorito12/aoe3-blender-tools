@@ -170,6 +170,44 @@ def _outward(part):
     return part
 
 
+def sphere(radius, rings=4, sides=8, uv=(0.5, 0.5)):
+    """A closed low sphere round the origin, its poles on z."""
+    pos, nrm, tris = [], [], []
+    pos.append((0.0, 0.0, -radius))
+    nrm.append((0.0, 0.0, -1.0))
+    for i in range(1, rings):
+        a = math.pi * i / rings - math.pi / 2
+        for k in range(sides):
+            b = 2 * math.pi * k / sides
+            n = (math.cos(a) * math.cos(b), math.cos(a) * math.sin(b), math.sin(a))
+            pos.append(tuple(radius * v for v in n))
+            nrm.append(n)
+    pos.append((0.0, 0.0, radius))
+    nrm.append((0.0, 0.0, 1.0))
+    top = len(pos) - 1
+    for k in range(sides):
+        tris.append((0, 1 + (k + 1) % sides, 1 + k))
+    for i in range(rings - 2):
+        a0, a1 = 1 + i * sides, 1 + (i + 1) * sides
+        for k in range(sides):
+            k1 = (k + 1) % sides
+            tris += [(a0 + k, a0 + k1, a1 + k1), (a0 + k, a1 + k1, a1 + k)]
+    last = 1 + (rings - 2) * sides
+    for k in range(sides):
+        tris.append((top, last + k, last + (k + 1) % sides))
+    return _outward(_solid(pos, nrm, tris, uv))
+
+
+def apply_part(part, frame, uv):
+    """A solid moved by `frame` (rigid), all its corners on one texel `uv`."""
+    out = dict(part)
+    out["positions"] = apply(frame, part["positions"])
+    out["normals"] = part["normals"] @ frame[:3, :3].T
+    out["tangents"] = part["tangents"] @ frame[:3, :3].T
+    out["uvs"] = np.tile(np.asarray(uv, np.float64), (len(part["positions"]), 1))
+    return out
+
+
 def merge(parts):
     pos, nrm, tan, uvs, tris = [], [], [], [], []
     base = 0
@@ -341,10 +379,29 @@ class Source:
         lfwd = np.cross(lside, lax)
         Rl = np.array([lside, lax, lfwd])
         base = np.array([lp[:, 0].mean(), lp[:, 1].min(), lp[:, 2].mean()])
-        self.linstock = {"positions": (lp - base) @ Rl.T, "normals": lpart["normals"] @ Rl.T,
+        lq = (lp - base) @ Rl.T
+        self.linstock_source_length = float(lq[:, 1].max())
+        # a short linstock (the user's choice, 2026-11-26): the staff's shaft pressed along its axis to
+        # `length` (game units, about a forearm and an arm), its forked head and its foot kept
+        want = lspec.get("length")
+        if want:
+            lq = lq.copy()
+            lq[:, 1], _s, _c = press(lq[:, 1], self.linstock_source_length, want / self.linstock_source_length)
+        self.linstock = {"positions": lq, "normals": lpart["normals"] @ Rl.T,
                          "tangents": lpart["tangents"] @ Rl.T, "uvs": lpart["uvs"], "triangles": lpart["triangles"],
                          "materials": [lpart["materials"][i] for i in lpart["tri_material"]]}
-        self.linstock_length = float(np.linalg.norm(top - foot))
+        self.linstock_length = float(lq[:, 1].max())
+        # a patch of the field gun's gunner's white cloth (for the powder charge's bag)
+        self.cloth = None
+        gpart = next((p for p in gr2_parts.mesh_parts(self.data) if p["name"] in recipe["gunner"]["meshes"]), None)
+        if gpart is not None:
+            gtex = next((n for n in gr2_mesh.read(self.data)["textures"] if n and "gunner" in n.lower()
+                         and "_b." not in n.lower()), None)
+            gimg = game.texture(gtex) if gtex else None
+            if gimg is not None:
+                hit = texel_patch(gimg, gpart, lambda c: opaque(c) and c[:3].mean() > 170 and np.ptp(c[:3]) < 30)
+                if hit is not None:
+                    self.cloth = (hit[0], gpart["materials"][gpart["tri_material"][hit[1]]])
         # where the staff stands in the source model (its own frame -> the source's space): beside
         # the source's gunner at rest, as the pictures put it in his hand
         self.linstock_in_source = rot4(Rl.T)
@@ -363,11 +420,18 @@ class CannonDesign:
     bone draws its triangles 1/s bigger than its bind (s, the bind's scale), so the design scale is
     scale x s."""
 
-    BONES = ("root", "post", "yaw", "cannon", "fuse", "muzzle", "linstock")
+    # `match`: the linstock's burning tip (a game attaches the fuse fire there); `rammer`: strapped
+    # along the barrel's left side, in his hands to load; `ball` and `charge`: the next round, inside
+    # the bore (out of sight) but while he loads it (from the pouch at his left hip)
+    BONES = ("root", "post", "yaw", "cannon", "fuse", "muzzle", "linstock", "match", "rammer", "ball", "charge")
     PARENT = {"root": None, "post": "root", "yaw": "post", "cannon": "yaw", "fuse": "cannon", "muzzle": "cannon",
-              "linstock": "root"}
+              "linstock": "root", "match": "linstock", "rammer": "root", "ball": "root", "charge": "root"}
     NAMES = {"post": "bone_post", "yaw": "bone_yaw", "cannon": "bone_cannon", "fuse": "bone_fuse",
-             "muzzle": "bone_launchpoint", "linstock": "bone_linstock"}
+             "muzzle": "bone_launchpoint", "linstock": "bone_linstock", "match": "bone_match",
+             "rammer": "bone_rammer", "ball": "bone_ball", "charge": "bone_charge"}
+    RAMMER = (1.20, 0.020, 0.045, 0.08)     # world units: length, shaft radius, head radius, head length
+    BALL = 0.040                            # the ball's radius (the bore at the muzzle: about 0.05)
+    CHARGE = (0.042, 0.10)                  # the powder bag: radius, length
 
     def __init__(self, src, hang_bind, saddle_y, recipe):
         self.src, self.r = src, recipe
@@ -420,6 +484,21 @@ class CannonDesign:
                          self.trunnion + np.array([sx * (half_gap + 2 * prong[0] + 0.02), 0.0, 0.0]), 0.035,
                          uv=P["bronze"][0]) for sx in (-1.0, 1.0)]
         self.made["pins"] = (merge(pins), P["bronze"][1], "cannon")
+        # the loading gear, each made in its own frame (design units: world x bind scale) and placed at
+        # its rest frame: the rammer along +z from its butt to its head, the ball and the bag round
+        # their centres
+        bs = self.bind_scale
+        L, r, hr, hl = (v * bs for v in self.RAMMER)
+        rest = self.rest()
+        self.made["rammer"] = (apply_part(cylinder((0, 0, 0), (0, 0, L - hl), r, sides=6), rest["rammer"],
+                                          P["wood"][0]), P["wood"][1], "rammer")
+        self.made["rammer_head"] = (apply_part(cylinder((0, 0, L - hl), (0, 0, L), hr, sides=8), rest["rammer"],
+                                               P["iron"][0]), P["iron"][1], "rammer")
+        self.made["ball"] = (apply_part(sphere(self.BALL * bs), rest["ball"], P["iron"][0]), P["iron"][1], "ball")
+        cr, cl = (v * bs for v in self.CHARGE)
+        cloth = src.cloth or P["wood"]
+        self.made["charge"] = (apply_part(cylinder((0, 0, -cl / 2), (0, 0, cl / 2), cr, sides=8), rest["charge"],
+                                          cloth[0]), cloth[1], "charge")
 
     def parts(self):
         """{name: (part dict with materials per triangle, bone key)} in design space."""
@@ -439,13 +518,29 @@ class CannonDesign:
         return out
 
     def linstock_rest(self):
-        """The linstock's frame at rest (design space): upright in a ring on the right of the
-        socket, its foot by the saddle's flank, leaning back a little."""
-        foot = self.saddle + np.array([0.16, -0.30, -0.15])
-        R = axis_matrix(X, -12.0)
+        """The linstock's frame at rest (design space): in a holster ring on the right of the saddle,
+        by the rider's right thigh, leaning back and a little out (the short stick: its match by his
+        hip)."""
+        if self.src.linstock_length < 1.5:
+            foot = self.saddle + np.array([0.20, -0.22, -0.16])
+            R = axis_matrix(Z, -10.0) @ axis_matrix(X, -18.0)
+        else:                                   # the long staff of the first preview
+            foot = self.saddle + np.array([0.16, -0.30, -0.15])
+            R = axis_matrix(X, -12.0)
         m = rot4(R)
         m[:3, 3] = foot
+        if (m[:3, :3] @ Y)[0] < 0 and self.src.linstock_length < 1.5:     # out: toward +x (his right)
+            m[:3, :3] = axis_matrix(Z, 10.0) @ axis_matrix(X, -18.0)
         return m
+
+    def rammer_rest(self):
+        """Strapped along the barrel's left side (level, yaw 0), its butt by the breech, its head
+        toward the muzzle."""
+        b, m = self.bpoint(self.src.breech), self.bpoint(self.src.muzzle)
+        side = -(self.radius + 0.035 * self.bind_scale)
+        f = np.eye(4)
+        f[:3, 3] = np.array([side, b[1] - 0.02, b[2] - 0.03])
+        return f
 
     def rest(self):
         """{bone: design frame at rest} (rigid, axis-aligned with the camel; the barrel level)."""
@@ -457,6 +552,11 @@ class CannonDesign:
         out["fuse"] = tr(self.bpoint(self.src.fuse))
         out["muzzle"] = tr(self.bpoint(self.src.muzzle))
         out["linstock"] = self.linstock_rest()
+        out["match"] = out["linstock"] @ tr((0.0, self.src.linstock_length * self.ls, 0.0))
+        out["rammer"] = self.rammer_rest()
+        mid = self.bpoint(0.55 * self.src.breech + 0.45 * self.src.muzzle)
+        out["ball"] = tr(mid)                    # inside the bore, out of sight
+        out["charge"] = tr(mid - np.array([0.0, 0.0, 0.12 * self.bind_scale]))
         return out
 
     def frames(self, state):
@@ -473,13 +573,19 @@ class CannonDesign:
         rel = cannon @ tr(-self.trunnion)
         out = {"root": rest["root"], "post": rest["post"], "yaw": rest["yaw"], "cannon": cannon,
                "fuse": rel @ rest["fuse"], "muzzle": rel @ rest["muzzle"]}
+        for k in ("rammer", "ball", "charge"):           # with the barrel unless in his hands
+            out[k] = rel @ rest[k]
         yaw = state.get("yaw", 0.0)
         if yaw:
             turn = tr(self.pivot) @ rot4(axis_matrix(Y, yaw)) @ tr(-self.pivot)
-            for k in ("yaw", "cannon", "fuse", "muzzle"):
+            for k in ("yaw", "cannon", "fuse", "muzzle", "rammer", "ball", "charge"):
                 out[k] = turn @ out[k]
+        for k in ("rammer", "ball", "charge"):
+            if state.get(k) is not None:
+                out[k] = state[k]
         ls = state.get("linstock")
         out["linstock"] = rest["linstock"] if ls is None else ls
+        out["match"] = out["linstock"] @ tr((0.0, self.src.linstock_length * self.ls, 0.0))
         return out
 
     def to_model(self, frame):
