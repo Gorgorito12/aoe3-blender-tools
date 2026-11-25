@@ -1280,6 +1280,38 @@ TOOLS = [
                                                                  "Carpeta de la vista previa de la recarga")),
           Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
          needs=("game",), outputs=("out",)),
+    Tool("make_zamburak", "tools/make_zamburak.py", "art",
+         L("Camel cannon that limbers", "Camello con cañón que se engancha"),
+         L("A camel unit's body with its own lateral swivel gun cut out and a cannon barrel from a wheeled gun "
+           "(by default the zamburak's camel and a camel-drawn field gun's barrel at 2/3 of its length) on an iron "
+           "swivel fork centred on its back: limbered, the barrel swivelled down off the neck; unlimbered, the camel "
+           "lying and the artillerist beside it with a linstock. Granny files checked by the game's runtime and a "
+           "report; optional model, size, barrel and limber-pose sheets.",
+           "El cuerpo de un camello sin su cañón giratorio lateral y el cañón de un arma con ruedas (por defecto el "
+           "camello del zamburak y el cañón de una pieza tirada por camello, a 2/3 de su largo) en una horquilla "
+           "giratoria de hierro centrada en su lomo: enganchado, el cañón girado hacia abajo, apartado del cuello; "
+           "desenganchado, el camello tumbado y el artillero a su lado con un botafuego. Archivos Granny comprobados "
+           "por el runtime del juego y un informe; hojas opcionales del modelo, los tamaños, el cañón y las posturas "
+           "de enganche."),
+         [game_dir(),
+          out_dir(help=L("Where the models and the report go. Never a Steam library.",
+                         "Dónde van los modelos y el informe. Nunca una biblioteca de Steam.")),
+          Arg("recipe", "--recipe", "file", L("Recipe (JSON)", "Receta (JSON)"),
+              L("The models, the cut, the barrel's length and size, the swivel and the limber pose; empty: the "
+                "zamburak's camel with the midfa's barrel.",
+                "Los modelos, el corte, el largo y el tamaño del cañón, la horquilla y la postura de enganche; vacío: "
+                "el camello del zamburak con el cañón de la midfa."), filters=JSON),
+          Arg("scale", "--scale", "text", L("Cannon size (share of the source's)", "Tamaño del cañón (parte del original)")),
+          Arg("sheet", "--sheet", "save", L("Model sheet", "Hoja del modelo"), filters=(("PNG", "*.png"),)),
+          Arg("sizes", "--sizes", "save", L("Sizes sheet", "Hoja de tamaños"), filters=(("PNG", "*.png"),)),
+          Arg("size_list", "--size-list", "text", L("Sizes shown", "Tamaños mostrados"), default="1.0,0.75,0.6,0.5"),
+          Arg("barrel_sheet", "--barrel-sheet", "save", L("Barrel sheet", "Hoja del cañón"), filters=(("PNG", "*.png"),)),
+          Arg("limber_options", "--limber-options", "save", L("Limber poses sheet", "Hoja de posturas de enganche"),
+              L("Poses of the limbered barrel with the gap to the camel in its idle, walk, jog and run.",
+                "Posturas del cañón enganchado con la distancia al camello en reposo, paso, trote y galope."),
+              filters=(("PNG", "*.png"),)),
+          Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
+         needs=("game",), outputs=("out",)),
     Tool("recompress_models", "tools/recompress_models.py", "art",
          L("Compress models again", "Volver a comprimir modelos"),
          L("Compresses Granny models a tool wrote uncompressed (a bone scale fix, an own texture, a rebake) through "
