@@ -420,6 +420,27 @@ class Ordinary(unittest.TestCase):
         rep = ac.check(human_job({"back": {"anims": {"man": back}}}, ahead=[hang]))
         self.assertEqual(status(rep, "ahead"), ac.PASS)
 
+    def test_crossed_feet_fail(self):
+        # the left leg swung across in front of the right (a turn's shuffle) fails; a step forward passes
+        across = clip(1.0, {"Bip01 L Thigh": (None, turn(Z, lambda t: 35.0 * ease(t, 0, 1)))})
+        step = clip(1.0, {"Bip01 L Thigh": (None, turn(X, lambda t: -25.0 * ease(t, 0, 1)))})
+        rep = ac.check(human_job({"across": {"anims": {"man": across}, "loop": False},
+                                  "step": {"anims": {"man": step}, "loop": False}}, ground=None))
+        by = {r.clip: r.status for r in results(rep, "cross")}
+        self.assertEqual(by, {"across": ac.FAIL, "step": ac.PASS})
+
+    def test_a_prop_of_unreal_size_fails(self):
+        stick = rig([("sroot", None, (0, 0, 0)), ("foot", "sroot", (0.3, 0.8, 0.2)), ("tip", "foot", (0, 0.85, 0))],
+                    "stick")
+        spec = {"ground": 0.0, "actors": {"man": {"model": human(), "rig": "human"}, "stick": {"model": stick}},
+                "clips": {"idle": {"anims": {"man": clip(1.0, {}), "stick": clip(1.0, {})}}}}
+        fits = dict(spec, sizes=[{"name": "stick", "a": "stick:foot", "b": "stick:tip", "of": "man",
+                                  "min": 0.30, "max": 0.55}])
+        huge = dict(spec, sizes=[{"name": "stick", "a": "stick:foot", "b": "stick:tip", "of": "man",
+                                  "min": 0.05, "max": 0.20}])
+        self.assertEqual(status(ac.check(ac.Job(fits)), "size"), ac.PASS)
+        self.assertEqual(status(ac.check(ac.Job(huge)), "size"), ac.FAIL)
+
     def test_a_hand_inside_the_torso_fails(self):
         into = clip(1.0, {"Bip01 L UpperArm": (None, turn(Z, lambda t: 60.0 * ease(t, 0, 1)))})
         rep = ac.check(human_job({"into": {"anims": {"man": into}}}))

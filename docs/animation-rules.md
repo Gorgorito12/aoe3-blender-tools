@@ -88,8 +88,10 @@ the first actor (set `ground` to `null` for a lone rider whose space has no grou
 | `speed` | Every bone's local rotation per second (props and the job's `speed_exempt` bones, such as a spinning barrel, excepted; `speed_limits` sets a bone's own) | 1500 deg/s; head and neck 800 deg/s |
 | `plant` | A foot point (heel and toe, from the skinned mesh) near the ground (3 cm) and slow (0.3 m/s) is planted; how far it slides while planted, the ground moving under a walk at its `ground_speed` | 4 cm |
 | `sink` | A foot point below the ground | 5 cm |
+| `cross` | The legs crossed: a human's left foot (or toe) passing to the right of the right one, along the pelvis's right made level (the shuffle of a turn on the spot) | 2 cm |
 | `grip` | A hand point from its grip during the frames given | 3 cm |
 | `ahead` | A point (a palm) in front of another (a shoulder) along an actor's facing, its chest's forward made level: a hand behind the chest's plane reads as an arm pulled back | the job's `min` (no default rule) |
+| `size` | The job's `sizes`: the distance between two points (a prop's ends) at a frame, as a share of an actor's height (its lowest foot bone to its head bone at rest), within the job's `min` and `max`: a prop of unreal size | the job's range |
 | `mount` | The point of a part that sat on its mount at the first frame, against the mount, every frame | 2 cm |
 | `prop` | A prop that jumps (faster than 20 m/s, 0.67 m a frame at 30) or scales to nothing in sight; out of sight is inside a hiding capsule, under the ground by its size, or scaled away; twin props trading places in one frame are not seen | none allowed |
 | `route` | Each object of the script starts and ends where it says (`hidden`, `ground` or a named place), followed through swaps | as the script |

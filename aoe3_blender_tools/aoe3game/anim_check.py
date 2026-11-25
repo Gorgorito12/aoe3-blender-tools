@@ -25,6 +25,8 @@ worst frames as risk frames):
 - `hinge`: an elbow or knee bent the wrong way (the bend measured against the limb's front at rest).
 - `speed`: the angular speed of every bone's local rotation (no snapping).
 - `plant` and `sink`: a foot on the ground and slow must not slide; no foot below the ground.
+- `cross`: the legs never cross (the left foot passing to the right of the right one).
+- `size`: a prop's length as a share of a man's height stays in its range (props of unreal size).
 - `grip`: a hand within reach of its grip during the frames given.
 - `mount`: the point of a part that sat on its mount stays on it (the floating gun).
 - `prop`: a prop never appears or vanishes in the open from one frame to the next.
@@ -79,6 +81,7 @@ LIMITS = {
     "loop_angle": 3.0,             # a loop's seam (last pose to first), every bone's rotation ...
     "loop_position": 0.02,         # ... and position, beyond 1.5 times its largest step inside the clip
     "death_float": 0.05,           # a part's lowest point above the ground or its support
+    "cross": 0.02,                 # the left foot this far to the right of the right foot: the legs crossed
     "removed_travel": 0.3,         # a baseline motion this large ...
     "removed_share": 0.5,          # ... that shrank below this share was removed
     "risk_frames": 3,              # the worst frames kept per check
@@ -107,10 +110,11 @@ HUMAN = {
     "torso": {"a": "bip01 pelvis", "b": "bip01 neck", "radius": 0.12},
     "speed": {"bip01 head": 800.0, "bip01 neck": 800.0},
     "signature": ["bip01 pelvis", "bip01 l foot", "bip01 r foot"],
+    "cross": [("bip01 l foot", "bip01 r foot"), ("bip01 l toe0", "bip01 r toe0")],
 }
 # Any other rig: nothing named; a job adds what it needs ("feet" for hooves, "look", "hinges", ...).
 BARE = {"chest": [], "look": [], "hinges": [], "feet": [], "hands": [], "torso": None, "speed": {},
-        "signature": [], "sole": 0.08}
+        "signature": [], "sole": 0.08, "cross": []}
 PRESETS = {"human": HUMAN, "bare": BARE}
 
 LOOP_NAMES = re.compile(r"(idle|walk|jog|run|trot|canter|gallop|bored)", re.I)
@@ -371,8 +375,8 @@ class Job:
     `spec` keys: "actors" {name: {"model": path or Model, "rig": "human" | {...}, "attach":
     {"to", "bone", "from_bone"}}}, "clips" {name: {"anims": {actor: path or Clip}, "duration",
     "loop", "death", "ground_speed", "routes", "allow_jumps"}}, "fps", "ground" (None: no ground),
-    "limits", "points", "grips", "ahead", "mounts", "capsules", "props", "places", "penetration_points",
-    "removed", "speed_exempt"."""
+    "limits", "points", "grips", "ahead", "sizes", "mounts", "capsules", "props", "places",
+    "penetration_points", "removed", "speed_exempt"."""
 
     def __init__(self, spec, base_dir="."):
         self.spec = spec
@@ -961,6 +965,71 @@ def check_ahead(job, s):
     return out
 
 
+def check_cross(job, s):
+    """The legs crossed: the left foot (and toe) passing to the right of the right one, along the
+    pelvis's right made level (the shuffle of a turn on the spot that crosses the feet). A rig's
+    `cross` pairs (left, right); the limit `cross`."""
+    out = []
+    right = np.array([1.0, 0.0, 0.0])           # the stock axes: the unit's left is -x
+    for name in job.order:
+        a = job.actors[name]
+        pairs = [(l_, r_) for l_, r_ in (a.rig or {}).get("cross", []) if a.model.has(l_) and a.model.has(r_)]
+        pelvis = (a.rig or {}).get("pelvis")
+        if not pairs or not pelvis or not a.model.has(pelvis):
+            continue
+        pi = a.model.index[pelvis.lower()]
+        right_l = rotation(s.rests[name][pi]).T @ right
+        vals = np.full(len(s.times), -np.inf)
+        det = [""] * len(s.times)
+        pts = [[] for _ in s.times]
+        for l_, r_ in pairs:
+            pl, pr = s.at(name, l_), s.at(name, r_)
+            for k in range(len(s.times)):
+                rv = rotation(s.worlds[name][k, pi]) @ right_l
+                rv = rv - (rv @ UP) * UP
+                rv = rv / max(float(np.linalg.norm(rv)), 1e-9)
+                v = float((pl[k] - pr[k]) @ rv)
+                if v > vals[k]:
+                    vals[k] = v
+                    det[k] = f"{l_} {v * 100:+.1f} cm right of {r_}"
+                    pts[k] = [pl[k], pr[k]]
+        out.append(_result(s, "cross", f"{name} feet", vals, s.limits["cross"], " m", det, pts,
+                           n=int(s.limits["risk_frames"])))
+    return out
+
+
+def actor_height(job, s, actor):
+    """An actor's height in its rest pose: from its lowest foot or toe bone to its head bone (a rig's
+    `look` bones, else its highest bone), metres."""
+    a = job.actors[actor]
+    rest = s.rests[actor][:, :3, 3]
+    feet = [b for f in (a.rig or {}).get("feet", []) for b in (f.get("bone"), f.get("toe")) if b and a.model.has(b)]
+    low = min(rest[a.model.index[b.lower()], 1] for b in feet) if feet else float(rest[:, 1].min())
+    heads = [g["bone"] for g in (a.rig or {}).get("look", []) if a.model.has(g["bone"])]
+    high = float(rest[a.model.index[heads[0].lower()], 1]) if heads else float(rest[:, 1].max())
+    return high - low
+
+
+def check_sizes(job, s):
+    """A prop's size against a man: the distance between two points (a prop's ends) at a frame of the
+    clip, as a share of an actor's height, within [min, max] (job `sizes`): props of unreal size."""
+    out = []
+    for g in job.spec.get("sizes") or []:
+        if g.get("clips") and s.name not in g["clips"]:
+            continue
+        name = g.get("name", f"{g['a']} to {g['b']}")
+        k = min(int(g.get("frame", 0)), len(s.times) - 1)
+        d = float(np.linalg.norm(s.point(g["a"])[k] - s.point(g["b"])[k]))
+        h = actor_height(job, s, g["of"])
+        share = d / max(h, 1e-9)
+        lo, hi = float(g.get("min", 0.0)), float(g.get("max", math.inf))
+        ok = lo <= share <= hi
+        out.append(Result(s.name, "size", name, PASS if ok else FAIL, share, hi if share > hi else lo, " of his height",
+                          k, float(s.times[k]), f"{d:.3f} m, {100 * share:.1f}% of {g['of']}'s {h:.2f} m "
+                                                f"(range {100 * lo:.0f}-{100 * hi:.0f}%)"))
+    return out
+
+
 def check_mounts(job, s):
     out = []
     for m in job.spec.get("mounts") or []:
@@ -1427,8 +1496,8 @@ def check_inventory(job, baseline, samples, base_samples):
 
 LOWER_LIMITS = ("ahead",)      # checks whose limit is a least value (fail below it)
 
-CHECKS = (check_lengths, check_look, check_hinges, check_speed, check_feet, check_grips, check_ahead, check_mounts,
-          check_props, check_routes, check_penetration, check_death)
+CHECKS = (check_lengths, check_look, check_hinges, check_speed, check_feet, check_cross, check_grips, check_ahead,
+          check_sizes, check_mounts, check_props, check_routes, check_penetration, check_death)
 
 
 class Report:
