@@ -55,6 +55,18 @@ HELP = {
         'no_verify': ("Skips the game's granny2.dll checks of every file (CRC, read, compressed).",
                       "Omite las comprobaciones con granny2.dll del juego de cada archivo (CRC, lectura, compresión)."),
     },
+    'make_fanning': {
+        'model': ("The unit's model, as its art path without the extension; every model that shares its skeleton can use the clips (by default a European explorer's).",
+                  "El modelo de la unidad, como su ruta de art sin la extensión; todos los modelos que comparten su esqueleto pueden usar los clips (por defecto el de un explorador europeo)."),
+        'shots': ("How many Attack tags the attack clip has, 0.2613 s of clip apart (0.28 s of game time with a 2.0 s reload and a 4.5 s ROF).",
+                  "Cuántas marcas Attack tiene el clip de ataque, a 0,2613 s de clip entre sí (0,28 s de juego con una recarga de 2,0 s y un ROF de 4,5 s)."),
+        'sheet': ("Also a sheet of one shot's key frames (READY, A, B, C, R) from the game camera's angle, far and near, and close on the hands from two sides.",
+                  "Además una hoja con los fotogramas clave de un disparo (READY, A, B, C, R) desde el ángulo de la cámara del juego, lejos y cerca, y de cerca sobre las manos desde dos lados."),
+        'risks': ("Also a sheet of the beat list's risk frames: a shot's contact, the forearm at C, a sweep, the kick, the jump into the reload, the idle's loop, the feet, the game camera far.",
+                  "Además una hoja de los fotogramas de riesgo del guion: el contacto de un disparo, el antebrazo en C, un barrido, el retroceso, el salto a la recarga, el bucle de espera, los pies y la cámara del juego de lejos."),
+        'no_verify': ("Skips reading every file back and the game's granny2.dll checks (CRC, read, compressed and expanded back).",
+                      "Omite releer cada archivo y las comprobaciones con granny2.dll del juego (CRC, lectura, compresión y expansión)."),
+    },
     'make_pray': {
         'design': ("Which designs, separated by commas: 1 kneeling with joined hands, 2 standing with the sign of the cross, 3 bowing down to the ground.",
                    "Qué diseños, separados por comas: 1 de rodillas con las manos juntas, 2 de pie con la señal de la cruz, 3 inclinándose hasta el suelo."),

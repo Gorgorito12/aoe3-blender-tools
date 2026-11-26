@@ -1243,6 +1243,34 @@ TOOLS = [
           Arg("gifs", "--gifs", "folder", L("GIF folder", "Carpeta de GIF")),
           Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
          needs=("game",), outputs=("out",)),
+    Tool("make_fanning", "tools/make_fanning.py", "art",
+         L("Hammer fanning animations", "Animaciones de abanicado del martillo"),
+         L("A unit with a pistol in its right hand (by default the European explorers) fires at the hip while "
+           "its left palm sweeps back over the hammer at each shot: an attack clip with its Attack tags and tag "
+           "file, and a matching idle loop, as Granny files checked by the game's runtime; the anim file blocks, "
+           "the job of the animation checks, a report; optional key frames from the game camera beside a "
+           "reference image, and the beat list's risk frames.",
+           "Una unidad con una pistola en la mano derecha (por defecto los exploradores europeos) dispara a la "
+           "cadera mientras la palma izquierda barre hacia atrás sobre el martillo en cada disparo: un clip de "
+           "ataque con sus marcas Attack y su archivo de marcas, y un bucle de espera a juego, como archivos "
+           "Granny comprobados por el runtime del juego; los bloques del anim file, el trabajo de las "
+           "comprobaciones de animación y un informe; opcionalmente, los fotogramas clave desde la cámara del "
+           "juego junto a una imagen de referencia, y los fotogramas de riesgo del guion."),
+         [game_dir(),
+          out_dir(help=L("Where the animations, their tag files, the anim file blocks, the check job and the report "
+                         "go. Never a Steam library.",
+                         "Dónde van las animaciones, sus archivos de marcas, los bloques del anim file, el trabajo de "
+                         "comprobación y el informe. Nunca una biblioteca de Steam.")),
+          Arg("model", "--model", "text", L("Model (art path)", "Modelo (ruta de art)"),
+              default="WoL\\units\\explorers\\europeans\\british\\british_explorer"),
+          Arg("shots", "--shots", "int", L("Shots (1 to 6)", "Disparos (1 a 6)"), default=6),
+          Arg("sheet", "--sheet", "save", L("Key frames sheet", "Hoja de fotogramas clave"), filters=PNG),
+          Arg("reference", "--reference", "file", L("Reference image", "Imagen de referencia"),
+              L("Put above the key frames, to compare the gesture.",
+                "Se pone encima de los fotogramas clave, para comparar el gesto."), filters=PNG),
+          Arg("risks", "--risks", "save", L("Risk frames sheet", "Hoja de fotogramas de riesgo"), filters=PNG),
+          Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
+         needs=("game",), outputs=("out",)),
     Tool("make_gun_camel", "tools/make_gun_camel.py", "art",
          L("Camel gun from two models", "Camello con arma a partir de dos modelos"),
          L("A camel unit's body with its own swivel gun cut out and the barrels, casing and crank of a wheeled "

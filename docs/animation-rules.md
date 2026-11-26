@@ -10,6 +10,25 @@ magazine back (an incomplete action); the gunner's head whipped round more than 
 tipped far back while he reached to a pocket; and an existing dismount was removed without anyone
 saying so. Each of those is now a rule below and a check of `tools/check_anim.py`.
 
+## Three rules added after the first reviews
+
+1. **Stop 0, before the full script.** Send a quick sketch of the key poses first, made on the unit's own
+   skeleton with its props at their real size: the props against the body, and where the figure stands
+   and works. It is approved in minutes and catches wrong proportions and places early: a linstock and a
+   rammer were once rejected only after their clips were finished.
+2. **Compare with the reference image at every stop.** When the person who asked gives a reference (a
+   picture of the real gesture, or a drawing made for it), every stop (the sketch, the script, the
+   preview) shows the work beside it and says in words how it differs and why (no fingers on the model,
+   a gesture made bigger to read from the game camera, and so on). The reviewer compares the whole
+   posture with it, an animal's included, not only the person and the props.
+3. **Known faults are checked from the first clip of every new unit,** not only on the unit where they
+   showed up. The job file of the first clip already has, where they apply: the palms in front of the
+   chest (`ahead`); a mount's head and neck clear of the weapon (`penetration` with a capsule); the feet
+   not crossing on a turn (`cross`); the weapon not going into the ground at death (`death`,
+   `penetration`); props at real sizes (`sizes`); a lying animal really lying (`lying`, on by default);
+   and the forearms, not only the palms, clear of the torso (`penetration_points` along each forearm
+   and a capsule of the torso measured on the mesh).
+
 ## A. Script first
 
 Before any key pose, write the **beat list** of every clip in plain words and get it approved by
