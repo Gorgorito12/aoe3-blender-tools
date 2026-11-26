@@ -545,3 +545,61 @@ def normal_from_texture(rgba, strength=6.0, blur=1):
     out[..., 2] = np.clip(nz * 127.5 + 127.5, 0, 255)
     out[..., 3] = np.clip(nx * 127.5 + 127.5, 0, 255)
     return out
+
+
+def levels_like(rgba, count):
+    """The image and `count - 1` halvings of it (2 x 2 box filter, at least 1 px a side): a mip
+    chain as long as an original's, whatever size its smallest level has."""
+    np = _np()
+    levels = [np.asarray(rgba, np.uint8)]
+    cur = levels[0].astype(np.float32)
+    while len(levels) < count:
+        cur = halve(cur)
+        levels.append(np.clip(cur + 0.5, 0, 255).astype(np.uint8))
+    return levels
+
+
+def write_like(original, rgba, refine=True):
+    """(bytes, changed) of a texture with new pixels in the original's format: the same size,
+    format (BGRA, DXT1, DXT3, DXT5), alpha type, usage bits and number of mip levels.
+
+    Pixels equal to the original's decoded top level give the original's bytes back (changed 0).
+    For a one-level DXT texture only the 4 x 4 blocks whose pixels changed are encoded again (the
+    refined encoder); every other block keeps the original's bytes (changed: the blocks encoded).
+    Otherwise every level is written again from the new pixels (changed -1)."""
+    np = _np()
+    hd = read_header(original)
+    a = np.asarray(rgba)
+    if a.ndim != 3 or a.shape[2] not in (3, 4):
+        raise DdtError("expected an H x W x 3 or 4 array")
+    if a.shape[2] == 3:
+        a = np.concatenate([a, np.full(a.shape[:2] + (1,), 255, a.dtype)], axis=2)
+    a = a.astype(np.uint8)
+    if a.shape[:2] != (hd.height, hd.width):
+        raise DdtError(f"the picture is {a.shape[1]}x{a.shape[0]}, the original {hd.width}x{hd.height}")
+    if hd.format not in (BGRA, DXT1, DXT3, DXT5):
+        raise DdtError(f"format {FORMATS.get(hd.format, hd.format)} is not written")
+    old = decode(original, 0)
+    if hd.format == DXT1:
+        same = (old[..., :3] == a[..., :3]).all()
+    else:
+        same = (old == a).all()
+    if same:
+        return bytes(original), 0
+    count = max(1, hd.mips)
+    if hd.format in (DXT1, DXT3, DXT5) and count == 1:
+        fmt, blocks = level_blocks(original, 0)
+        h, w = a.shape[:2]
+        bh, bw = (h + 3) // 4, (w + 3) // 4
+        diff = (old[..., :3] != a[..., :3]).any(-1) if fmt == DXT1 else (old != a).any(-1)
+        pad = np.zeros((bh * 4, bw * 4), bool)
+        pad[:h, :w] = diff
+        changed = pad.reshape(bh, 4, bw, 4).any(axis=(1, 3)).reshape(-1)
+        new_blocks = np.frombuffer(encode_level(a, fmt, refine=refine), np.uint8).reshape(blocks.shape)
+        out_blocks = np.where(changed[:, None], new_blocks, blocks)
+        off = hd.levels[0][0]
+        body = bytearray(original)
+        body[off:off + out_blocks.size] = out_blocks.tobytes()
+        return bytes(body), int(changed.sum())
+    blobs = [encode_level(lv, hd.format, refine=refine) for lv in levels_like(a, count)]
+    return pack(hd.usage, hd.alpha, hd.format, hd.width, hd.height, blobs), -1

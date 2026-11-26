@@ -5,7 +5,7 @@ and its idle, made from key poses on the unit's own skeleton.
 
     venv\\Scripts\\python -I tools/make_fanning.py --game <game copy> --out <folder>
         [--model <art path>] [--shots 6] [--granny-helper <exe>] [--no-verify]
-        [--sheet <png>] [--reference <png>] [--risks <png>]
+        [--sheet <png>] [--reference <png>] [--risks <png>] [--flash <png>]
 
 The clips (the beat list of the request, approved before any key was set):
 1. `attack` (2.2 s): starts and ends in READY (the pistol at the hip, its barrel level toward the
@@ -24,18 +24,31 @@ Prop1 is keyed so that the grip's centre sits on the right palm's centre, its ax
 closed fingers and the barrel out over the index finger. The borrowed clip the unit used before held it
 by the top of the frame (the grip's centre 26 cm from the palm, its axis 94 degrees off).
 
+The muzzle flash: the Particles tag names a particle set, and the set names the bone the game draws it
+on (the stock `musketshot` and its musket particles: `R Hand`). Drawn there, the flash showed at the
+right hand, beside the grip (seen in game, 2026-11-26). The clips key `Bip01 Prop2` (a bone of the left
+hand every explorer model has, unskinned, nothing hung on it in these animations) on the pistol's
+muzzle, turned as the right hand is (so the particles leave as `musketshot`'s did), and the tags name
+the set `fanningshot`, the same four musket particles on `Prop2` (`particleset_block`, written as
+`fanning-particleset.xml` for the mod's particle sets file). Every bone is keyed in the clip, so the
+muzzle point is the same on each model of the anim file.
+
 What it writes below --out: `art\\<FOLDER>\\<name>.gr2` and its tag file `.gr2.precomp` (sampled from
 the clip on the stock attack's tag file) for both clips; `fanning-anims.xml` (the `<anim>` blocks with
 the Attack tags, for the unit's anim file); `check\\` (the model and the pistol uncompressed and the job
 file of tools/check_anim.py: grips of the left palm on the hammer at each shot, the palm ahead of the
-chest, the forearms out of the torso); `fanning-report.txt` (the tags, the times, the checks below).
+chest, the forearms out of the torso, the flash at the muzzle); `fanning-particleset.xml` (the particle
+set the tags name, for the mod's particle sets file); `fanning-report.txt` (the tags, the times, the
+checks below).
 --sheet draws the key frames of one shot from the game camera's angle, far and close; with --reference,
 that image above them. --risks draws the beat list's risk frames (each shot's contact, the forearm at C,
-a sweep, the kick, the jump into the reload, the idle's loop, the feet, the game camera far).
+a sweep, the kick, the jump into the reload, the idle's loop, the feet, the game camera far). --flash
+draws the firing frames close, the flash's bone against the muzzle and the right hand.
 
 Checks (the tool exits 1 when one fails): the first and last frame of each clip equal; every arm and
 hand vertex outside the body's mesh (make_pray's ray cast, at most ARM_DEPTH inside); the left palm at
-most GRIP from its place over the hammer at each shot; and unless --no-verify each file read back the
+most GRIP from its place over the hammer at each shot; the flash's bone at most FLASH from the muzzle
+at each Particles tag; and unless --no-verify each file read back the
 same and by the game's granny2.dll through the helper of recompress_models.py.
 
 Compressed game files are expanded by the game's own Granny runtime (`--granny-helper`, default
@@ -66,6 +79,11 @@ STANCE = "nuggets\\outlaw_kidnap\\outlaw_pistol_attackA"   # its first frame: th
 FOLDER = "WoL\\units\\explorers\\europeans\\fanning"
 NAMES = {"attack": "explorer_fanning_attack", "idle": "explorer_fanning_idle"}
 ANIMS = {"attack": "RangedAttackSharpshoot", "idle": "SharpshootIdle"}
+FLASH_BONE = "bip01 prop2"   # keyed on the muzzle: the bone of the flash's particle set
+PARTICLE_SET = "fanningshot"
+PARTICLE_BONE = "Prop2"      # as the stock sets name a hand bone ("R Hand"): the tag file's name
+PARTICLE_FILES = ("musket_fire_A", "musket_spark_A", "musket_flair_A", "musket_smoke_A")   # musketshot's
+FLASH_AFTER = 0.01           # the Particles tag after the Attack tag (fraction of the clip)
 FPS = 30
 LENGTH = {"attack": 2.2, "idle": 2.0}
 RELOAD, ROF = 2.0, 4.5      # the tactics' reload clip and the abilities' ROF
@@ -87,6 +105,7 @@ CROUCH, LEAN = 0.03, 5.0      # the pelvis lowered (file units) and the chest le
 ARM_DEPTH = 0.035             # how deep an arm vertex may sit in the body mesh (file units)
 HOLD, HOLD_ANGLE = 0.02, 15.0  # the pistol's grip: its centre from the right palm's (file units), its axis (degrees)
 GRIP = 0.03                   # how far the palm may be from its place over the hammer at a shot (file units)
+FLASH = 0.02                  # how far the flash's bone may be from the muzzle at a Particles tag (file units)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -130,16 +149,31 @@ def recoil_keys(shots):
 
 
 def tag_lines(shots, length=None):
-    """The `<tag>` lines of the attack clip: per shot Attack, the shot's sound and the muzzle flash,
-    as the unit's anim file has them today (fractions of the clip)."""
+    """The `<tag>` lines of the attack clip: per shot Attack, the shot's sound and the muzzle flash
+    (fractions of the clip). The flash names PARTICLE_SET, drawn on the muzzle's bone."""
     length = LENGTH["attack"] if length is None else length
     out = []
     for t in shot_times(shots):
         u = t / length
         out.append(f'\t\t\t<tag type="Attack">{u:.3f}</tag>')
         out.append(f'\t\t\t<tag type="SpecificSoundSet" checkvisible="1" set="PistolShot">{u:.3f}</tag>')
-        out.append(f'\t\t\t<tag type="Particles" particlename="musketshot">{u + 0.01:.3f}</tag>')
+        out.append(f'\t\t\t<tag type="Particles" particlename="{PARTICLE_SET}">{u + FLASH_AFTER:.3f}</tag>')
     return out
+
+
+def flash_times(shots, length=None):
+    """Clip seconds of the Particles tags, as the anim file rounds them."""
+    length = LENGTH["attack"] if length is None else length
+    return [round(t / length + FLASH_AFTER, 3) * length for t in shot_times(shots)]
+
+
+def particleset_block():
+    """The particle set the Particles tags name: musketshot's four particles on the muzzle's bone."""
+    lines = [f'\t<particleset name="{PARTICLE_SET}">']
+    lines += [f'\t\t<particle filename="effects\\weapon_fire\\{f}.particle" bone="{PARTICLE_BONE}"/>'
+              for f in PARTICLE_FILES]
+    lines.append("\t</particleset>")
+    return "\n".join(lines) + "\n"
 
 
 def anim_blocks(shots):
@@ -248,6 +282,7 @@ class Unit:
         r = rigid(hand_rest)[:3, :3]
         u.knuckles = r.T @ unit(np.cross(r @ b.finger_local["r"], r @ b.normal_local["r"]))
         u.stock_hold = hold_error(stock, b.palm_local["r"], u.knuckles, u.grip)   # today's clip, for the report
+        u.muzzle_local = muzzle(u)
         u.model_data, u.pistol_data = data, game.granny(PISTOL)
         return u
 
@@ -306,7 +341,17 @@ class Unit:
         for m in mp.MARKERS:
             if m in P:
                 P = set_frame(P, rig, m, self.base[m])
+        if FLASH_BONE in P and getattr(self, "muzzle_local", None) is not None:
+            # the flash's bone on the muzzle, turned as the right hand (the particles leave as before)
+            frame = np.eye(4)
+            frame[:3, :3] = rigid(P["bip01 r hand"])[:3, :3]
+            frame[:3, 3] = (c["gun"] @ np.r_[self.muzzle_local, 1.0])[:3]
+            scale = np.linalg.inv(rigid(self.base[FLASH_BONE])) @ self.base[FLASH_BONE]
+            P = set_frame(P, rig, FLASH_BONE, frame @ scale)
         return P
+
+    def muzzle_world(self, P):
+        return (rigid(P["bip01 prop1"]) @ np.r_[self.muzzle_local, 1.0])[:3]
 
     def _knee(self, s):
         hip, knee, ankle = (self.base[n][:3, 3] for n in self.mp.LEG[s])
@@ -447,6 +492,11 @@ def check(unit, clip, times, poses, shots, keys=None):
             hammer = unit.hammer(rigid(P["bip01 prop1"])) + np.array(PLACES["B"])
             near = max(near, float(np.linalg.norm(unit.palm_world(P) - hammer)))
         out["left palm from over the posed pistol's hammer at the shots"] = (near, GRIP, None)
+        flash = 0.0
+        for t in flash_times(shots):
+            P = unit.pose(unit.channels_at(keys, t)) if keys is not None else poses[int(round(t * FPS))]
+            flash = max(flash, float(np.linalg.norm(P[FLASH_BONE][:3, 3] - unit.muzzle_world(P))))
+        out[f"the flash's bone ({FLASH_BONE}) from the muzzle at the Particles tags"] = (flash, FLASH, None)
     return {k: (v, lim, v <= lim) for k, (v, lim, _o) in out.items()}
 
 
@@ -517,6 +567,10 @@ def job_spec(unit, shots, model_file, pistol_file, clip_files):
                      {"name": "right fist", "a": "explorer:bip01 r hand",
                       "b": {"bone": "explorer:bip01 r hand", "offset": [float(v * m) for v in b.tip_local["r"]]},
                       "radius": round(0.03 * m, 4), "allow": right_side}],
+        "flashes": [{"name": f"muzzle flash ({PARTICLE_SET} on {PARTICLE_BONE}) at the pistol's muzzle",
+                     "clips": ["attack"], "flash": f"explorer:{FLASH_BONE}",
+                     "muzzle": {"bone": "explorer:bip01 prop1", "offset": [float(v * m) for v in unit.muzzle_local]},
+                     "times": [round(t, 4) for t in flash_times(shots)], "max": round(FLASH * m, 4)}],
         "holds": [{"name": "pistol held by its grip", "hand": {"bone": "explorer:bip01 r hand",
                                                              "offset": [float(v * m) for v in b.palm_local["r"]]},
                    "grip": {"bone": "explorer:bip01 prop1", "offset": [float(v * m) for v in g["centre"]]},
@@ -606,6 +660,46 @@ def sheet(path, unit, figs, pose_at, reference=None, w=240):
     out.save(path)
 
 
+def flash_sheet(path, unit, figs, pose_at, shots, w=260):
+    """The firing frames close: one column per Particles tag (the clip's time of each flash), seen
+    from the game camera's angle near, from the unit's right and from above; orange marks the
+    flash's bone (Prop2, where the game draws `fanningshot`), red the right hand's bone (where the
+    stock `musketshot` drew it); each tile says the flash's distance from the muzzle."""
+    import retarget_anims as ra
+    from PIL import Image
+    cols = []
+    for n, t in enumerate(flash_times(shots), 1):
+        P = pose_at(t)
+        flash, hand, muzzle_at = P[FLASH_BONE][:3, 3], P["bip01 r hand"][:3, 3], unit.muzzle_world(P)
+        ctr = tuple(0.5 * (flash + hand))
+        marks = [(hand, (220, 30, 30)), (flash, (255, 140, 0))]
+        far = float(np.linalg.norm(flash - muzzle_at))
+        col = []
+        for label, az, el, span in (("game camera", -35, 50, 1.1), ("his right", 90, 5, 1.1), ("above", 0, 85, 1.1)):
+            img = ra.draw(_items(figs, P), width=w, height=w, azimuth=az, elevation=el, span=span, centre=ctr,
+                          marks=marks).astype(np.uint8)
+            for _p, colour in marks:      # the marks' crosses made thicker
+                on = np.all(img == np.array(colour, np.uint8), axis=2)
+                grown = on.copy()
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        grown |= np.roll(np.roll(on, dy, 0), dx, 1)
+                img[grown] = colour
+            col.append(_tile(img, f"shot {n}  {t:.3f} s  {label}" if label == "game camera" else
+                             f"{label}: flash {far * 100:.1f} cm from the muzzle", w))
+        cols.append(np.concatenate(col, 0))
+    img = Image.fromarray(np.concatenate(cols, 1))
+    from PIL import ImageDraw
+    legend = Image.new("RGB", (img.width, 22), (30, 30, 30))
+    d = ImageDraw.Draw(legend)
+    d.text((6, 5), "orange: the flash now (fanningshot on Prop2, keyed on the muzzle)    red: the flash before "
+           "(musketshot on R Hand)", fill=(255, 255, 255))
+    both = Image.new("RGB", (img.width, img.height + 22))
+    both.paste(legend, (0, 0))
+    both.paste(img, (0, 22))
+    both.save(path)
+
+
 def script_risks(path, unit, figs, pose_at, idle_at, reload_first=None, w=220):
     """The risk frames of the beat list, two sides each: 1 the first shot (the palm on the hammer),
     2 C of the third shot (the forearm clear of the belly), 3 the middle of a sweep, 4 the kick's
@@ -669,10 +763,11 @@ def main(argv):
     ap.add_argument("--sheet")
     ap.add_argument("--reference")
     ap.add_argument("--risks")
+    ap.add_argument("--flash", help="a PNG of the firing frames close: the flash's bone against the muzzle")
     args = ap.parse_args(argv)
     try:
         refuse_steam(args.out)
-        for p in (args.sheet, args.risks):
+        for p in (args.sheet, args.risks, args.flash):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -732,7 +827,9 @@ def main(argv):
             json.dump(job_spec(unit, args.shots, "explorer.gr2", "pistol.gr2", clip_files), f, indent=1)
         with open(os.path.join(args.out, "fanning-anims.xml"), "w", encoding="utf-8") as f:
             f.write(anim_blocks(args.shots))
-        if args.sheet or args.risks:
+        with open(os.path.join(args.out, "fanning-particleset.xml"), "w", encoding="utf-8") as f:
+            f.write(particleset_block())
+        if args.sheet or args.risks or args.flash:
             import retarget_anims as ra
             figs = (ra.Figure(game, args.model), ra.Figure(game, PISTOL))
             ak, ik = unit.attack_keys(args.shots), unit.idle_keys()
@@ -748,6 +845,8 @@ def main(argv):
                 reload_anim = Animation.load(game.granny(RELOAD_CLIP))
                 first = unit.rig.by_name(unit.rig.pose(reload_anim, 0.0))
                 script_risks(args.risks, unit, figs, pose_at, idle_at, first)
+            if args.flash:
+                flash_sheet(args.flash, unit, figs, pose_at, args.shots)
         with open(os.path.join(args.out, "fanning-report.txt"), "w", encoding="utf-8") as f:
             f.write("\n".join(report) + "\n")
         print("\n".join(report))

@@ -31,6 +31,9 @@ worst frames as risk frames):
   folded inside its body's outline (the kush); on by default for the game's quadruped rigs in the
   clips where they lie.
 - `grip`: a hand within reach of its grip during the frames given.
+- `flash`: at each Particles tag of a shot, the point the game draws the muzzle flash on (the bone
+  its particle set names) within reach of the weapon's muzzle (job `flashes`; a flash drawn at the
+  hand that holds a pistol, beside its grip, was seen in game once).
 - `mount`: the point of a part that sat on its mount stays on it (the floating gun).
 - `prop`: a prop never appears or vanishes in the open from one frame to the next.
 - `route`: a prop starts and ends where the clip's script says (the reload that put the same
@@ -77,6 +80,7 @@ LIMITS = {
     "grip": 0.03,                  # a hand from its grip
     "hold": 0.03,                  # a held prop's grip centre from the palm (a pistol held by its frame failed)
     "hold_angle": 30.0,            # the grip's axis from the line of the closed fingers, degrees
+    "flash": 0.03,                 # the muzzle flash's point from the muzzle at a Particles tag
     "mount": 0.02,                 # a part's seat from its mount
     "prop_speed": 20.0,            # a prop faster than this (m/s, 0.67 m a frame at 30) jumped
     "prop_scale": 0.05,            # a prop scaled below this share of its rest size is gone
@@ -395,7 +399,7 @@ class Job:
     `spec` keys: "actors" {name: {"model": path or Model, "rig": "human" | {...}, "attach":
     {"to", "bone", "from_bone"}}}, "clips" {name: {"anims": {actor: path or Clip}, "duration",
     "loop", "death", "ground_speed", "routes", "allow_jumps"}}, "fps", "ground" (None: no ground),
-    "limits", "points", "grips", "holds", "ahead", "sizes", "mounts", "capsules", "props", "places",
+    "limits", "points", "grips", "holds", "flashes", "ahead", "sizes", "mounts", "capsules", "props", "places",
     "penetration_points", "removed", "speed_exempt"."""
 
     def __init__(self, spec, base_dir="."):
@@ -944,6 +948,48 @@ def check_grips(job, s):
         det = [f"{d[k] * 100:.1f} cm from the grip" if np.isfinite(d[k]) else "" for k in range(len(d))]
         out.append(_result(s, "grip", g.get("name", f"{g['hand']} on {g['grip']}"), d, lim, " m", det,
                            [[hand[k], grip[k]] for k in range(len(d))], n=int(s.limits["risk_frames"])))
+    return out
+
+
+def _at_time(s, track, t):
+    """A point's position at clip time t, between the two frames around it."""
+    times = s.times
+    if t <= times[0]:
+        return track[0]
+    if t >= times[-1]:
+        return track[-1]
+    k = int(np.searchsorted(times, t)) - 1
+    u = (t - times[k]) / (times[k + 1] - times[k]) if times[k + 1] > times[k] else 0.0
+    return track[k] * (1.0 - u) + track[k + 1] * u
+
+
+def check_flashes(job, s):
+    """A muzzle flash at the muzzle (job `flashes`): at each of `times` (the clip seconds of the
+    Particles tags), the `flash` point (the bone the tag's particle set names, where the game draws
+    it) within `max` (default `flash`) of the `muzzle` point (the weapon's barrel tip). Judged at the
+    tag's own time, between the two frames around it; reported on the nearest frame."""
+    out = []
+    n = int(s.limits["risk_frames"])
+    for f in job.spec.get("flashes") or []:
+        if f.get("clips") and s.name not in f["clips"]:
+            continue
+        name = f.get("name", f"{f['flash']} at {f['muzzle']}")
+        times = [float(t) for t in f.get("times") or []]
+        if not times:
+            out.append(Result(s.name, "flash", name, SKIP, detail="no Particles tag times"))
+            continue
+        flash, muzzle = s.point(f["flash"]), s.point(f["muzzle"])
+        d = np.full(len(s.times), np.nan)
+        pts = [[] for _ in s.times]
+        det = ["" for _ in s.times]
+        for t in times:
+            a, b = _at_time(s, flash, t), _at_time(s, muzzle, t)
+            k = int(np.argmin(np.abs(s.times - t)))
+            v = float(np.linalg.norm(a - b))
+            if not np.isfinite(d[k]) or v > d[k]:
+                d[k], pts[k] = v, [a, b]
+                det[k] = f"the flash {v * 100:.1f} cm from the muzzle at the tag {t:.3f} s"
+        out.append(_result(s, "flash", name, d, float(f.get("max", s.limits["flash"])), " m", det, pts, n=n))
     return out
 
 
@@ -1717,7 +1763,7 @@ def check_inventory(job, baseline, samples, base_samples):
 LOWER_LIMITS = ("ahead",)      # checks whose limit is a least value (fail below it)
 
 CHECKS = (check_lengths, check_look, check_hinges, check_speed, check_feet, check_cross, check_grips, check_holds,
-          check_ahead,
+          check_flashes, check_ahead,
           check_sizes, check_lying, check_mounts, check_props, check_routes, check_penetration, check_death)
 
 

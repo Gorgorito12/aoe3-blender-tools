@@ -270,25 +270,11 @@ def build_panel(img, panel, icons, base):
 
 
 def encode_like(data, hd, rgba):
-    """The texture in the original's format with the new pixels. For a one-level DXT1/DXT3/DXT5 texture only the
-    4 x 4 blocks whose pixels changed are encoded again (the refined encoder); every other block keeps the
-    original's bytes, so the rest of the texture is byte for byte the same. Other formats are written whole."""
-    if hd.format not in (ddt.DXT1, ddt.DXT3, ddt.DXT5) or hd.mips != 1:
-        return ddt.write(rgba, hd.format, alpha=hd.alpha, usage=hd.usage, mips=hd.mips > 1), -1
-    fmt, blocks = ddt.level_blocks(data, 0)
-    old = ddt.decode(data)
-    h, w = rgba.shape[:2]
-    bh, bw = (h + 3) // 4, (w + 3) // 4
-    diff = (old.astype(np.int16) != rgba.astype(np.int16)).any(-1)
-    pad = np.zeros((bh * 4, bw * 4), bool)
-    pad[:h, :w] = diff
-    changed = pad.reshape(bh, 4, bw, 4).any(axis=(1, 3)).reshape(-1)
-    new_blocks = np.frombuffer(ddt.encode_level(rgba, fmt, refine=True), np.uint8).reshape(blocks.shape)
-    out_blocks = np.where(changed[:, None], new_blocks, blocks)
-    off = hd.levels[0][0]
-    body = bytearray(data)
-    body[off:off + out_blocks.size] = out_blocks.tobytes()
-    return bytes(body), int(changed.sum())
+    """The texture in the original's format with the new pixels (aoe3game/ddt.write_like): for a one-level
+    DXT1/DXT3/DXT5 texture only the 4 x 4 blocks whose pixels changed are encoded again (the refined encoder);
+    every other block keeps the original's bytes, so the rest of the texture is byte for byte the same. Other
+    formats are written whole (changed -1)."""
+    return ddt.write_like(data, rgba)
 
 
 def main():
