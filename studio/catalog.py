@@ -845,6 +845,67 @@ TOOLS = [
               L("With textures: gadgets marked hidden in the layout are drawn too.",
                 "Con texturas: también se dibujan los gadgets marcados como ocultos en la disposición."))],
          outputs=("out",)),
+    Tool("ui_templates", "tools/make_ui_templates.py", "art",
+         L("Interface templates for artists (Photoshop)", "Plantillas de la interfaz para artistas (Photoshop)"),
+         L("One Photoshop file per texture of the in-game interface (ui/ingame), to restyle it per culture: the "
+           "original hidden and locked, one layer per piece named in plain words with its gadget, a hidden Guides "
+           "group (outlines and names, unused areas hatched, pieces the screen stretches marked) and guides at the "
+           "pieces' edges. Also a reference sheet (the interface with every piece numbered), the map as JSON and a "
+           "README for the artists. Derived from the game's art: keep it out of public places.",
+           "Un archivo de Photoshop por textura de la interfaz de partida (ui/ingame), para restilizarla por "
+           "cultura: el original oculto y bloqueado, una capa por pieza con su nombre en palabras y su gadget, un "
+           "grupo Guides oculto (contornos y nombres, zonas sin usar rayadas, piezas que la pantalla estira "
+           "marcadas) y guías en los bordes de las piezas. Además una hoja de referencia (la interfaz con cada "
+           "pieza numerada), el mapa en JSON y un README para los artistas. Sale del arte del juego: no lo "
+           "publiques."),
+         [game_dir(), out_dir(),
+          Arg("variant", "--variant", "choice", L("Interface", "Interfaz"),
+              L("min: the minimised interface; normal: the full one.",
+                "min: la interfaz minimizada; normal: la completa."), choices=("min", "normal"), default="min"),
+          Arg("only", "--only", "text", L("Only these textures", "Solo estas texturas"),
+              L("Texture names separated by commas. Empty: every ui/ingame texture the interface draws.",
+                "Nombres de textura separados por comas. Vacío: todas las texturas ui/ingame que dibuja la "
+                "interfaz."), placeholder="ingame_ui_small_01_ypack"),
+          Arg("size", "--size", "text", L("Screen size", "Tamaño de pantalla"),
+              L("WIDTHxHEIGHT the on-screen sizes and stretch marks are measured for. Default 1920x1080.",
+                "ANCHOxALTO para el que se miden los tamaños en pantalla y las marcas de estirado. Por defecto "
+                "1920x1080."), placeholder="1920x1080"),
+          Arg("overview", "--overview", "bool", L("Picture of each file's layers", "Imagen de las capas de cada archivo"),
+              L("Also <texture>.layers.png: the layer list and every layer side by side, to check a file without "
+                "Photoshop.",
+                "También <textura>.layers.png: la lista de capas y cada capa una al lado de otra, para revisar un "
+                "archivo sin Photoshop."))],
+         fixed=["templates"], needs=("game",), outputs=("out",)),
+    Tool("ui_templates_build", "tools/make_ui_templates.py", "art",
+         L("Interface templates back to game textures", "De las plantillas de la interfaz a texturas del juego"),
+         L("The filled templates (.psd, or PNG exported from them) as ui/ingame/<texture>_<suffix>.ddt in the "
+           "original's format, for a culture's style (suffix eu, as, ..., or as_gw for its Great War look). Warns "
+           "when a piece's transparency changes much and when paint lies outside every piece; refuses another "
+           "size. Preview the result with \"Preview an interface layout\" (textures to try, the suffix).",
+           "Las plantillas rellenadas (.psd, o PNG exportado de ellas) como ui/ingame/<textura>_<sufijo>.ddt en "
+           "el formato del original, para el estilo de una cultura (sufijo eu, as, ..., o as_gw para su aspecto de "
+           "la Gran Guerra). Avisa si la transparencia de una pieza cambia mucho y si hay pintura fuera de todas "
+           "las piezas; rechaza otro tamaño. Mira el resultado con \"Vista previa de una disposición de la "
+           "interfaz\" (texturas a probar, el sufijo)."),
+         [game_dir(),
+          Arg("input", "--in", "folder", L("Filled templates", "Plantillas rellenadas"),
+              L("The folder of <texture>.psd or .png files (or <texture>_<suffix>.psd/.png).",
+                "La carpeta de archivos <textura>.psd o .png (o <textura>_<sufijo>.psd/.png)."), required=True),
+          Arg("suffix", "--suffix", "text", L("Suffix", "Sufijo"),
+              L("The family's suffix: eu, an, la, ns, af, as, me, na, po; add _gw for the Great War.",
+                "El sufijo de la familia: eu, an, la, ns, af, as, me, na, po; añade _gw para la Gran Guerra."),
+              required=True, placeholder="as"),
+          out_dir(),
+          Arg("variant", "--variant", "choice", L("Interface", "Interfaz"),
+              L("The interface the templates were made for.", "La interfaz para la que se hicieron las plantillas."),
+              choices=("min", "normal"), default="min"),
+          Arg("only", "--only", "text", L("Only these textures", "Solo estas texturas"),
+              L("Texture names separated by commas.", "Nombres de textura separados por comas.")),
+          Arg("composite", "--composite", "bool", L("Use the merged image", "Usar la imagen combinada"),
+              L("Read a .psd's merged image (saved with Maximize compatibility) instead of composing its layers.",
+                "Lee la imagen combinada de un .psd (guardado con Maximizar compatibilidad) en vez de componer sus "
+                "capas."))],
+         fixed=["build"], needs=("game",), outputs=("out",)),
     Tool("make_stat_icon", "tools/make_stat_icon.py", "art",
          L("Stat icons for the unit panels", "Iconos de estadística para los paneles de unidad"),
          L("Draws the small icons the panels' rows put after a value (rate of fire, training time, line of "

@@ -47,6 +47,9 @@ venv/bin/python -I tests/test_panel_rows.py        # panel_rows, draw_praying_ha
 venv/bin/python -I tests/test_import_icon.py       # import_icon: a drawn PNG into a 32x32 icon .ddt (aspect, scale, tint)
 venv/bin/python -I tests/test_command_icons.py     # make_command_icon: format, frame, tick and cross
 venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout's gadgets as boxes, or the screen with its textures
+venv/bin/python -I tests/test_make_ui_templates.py # interface pieces, the PSD writer, write_like, the templates and their build
+venv/bin/python -I tools/make_ui_templates.py templates --game <copy> --out <dir> [--only tex,...] [--overview]   # Photoshop templates
+venv/bin/python -I tools/make_ui_templates.py build --game <copy> --in <filled> --suffix <s> --out <dir>   # back to .ddt
 python -I tests/test_uilayout.py                  # interface layouts byte for byte, fonts, string table
 python -I tests/test_unitpanel.py                 # the unit panels filled for a unit, the DLL's rows, why an item is absent
 venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
@@ -193,7 +196,9 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   `core/gamemesh.py` is the game mesh without Blender (measured against Blender's).
 - The game interface: `aoe3game/uilayout.py` (a layout file as a tree that keeps every byte; edits
   change only what they are about), `aoe3game/uifonts.py` (fonts3.xml, a TTF's family name),
-  `aoe3game/uidata/` (what the engine shows that the files do not say), `aoe3game/unitpanel.py` (the
+  `aoe3game/uidata/` (what the engine shows that the files do not say), `aoe3game/uiatlas.py` (the
+  interface's textures as pieces: gadget, rectangle, screen size, when shown; the visibility rules the preview
+  draws with), `aoe3game/psd.py` (a minimal Photoshop writer and reader: layers, groups, guides), `aoe3game/unitpanel.py` (the
   panels filled for one unit, the UHC DLL's rows, what it does not show and why), `studio/hud.py` and
   `studio/web/js/hud*.js` (the screen). `tests/test_uilayout.py`, `tests/hud_copy.py` (a synthetic
   copy). Engine facts there are measured on captures or marked to verify, as everywhere.
