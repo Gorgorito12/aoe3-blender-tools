@@ -404,6 +404,29 @@ class Ordinary(unittest.TestCase):
         by = {r.clip: r.status for r in results(rep, "grip")}
         self.assertEqual(by, {"hold": ac.PASS, "drift": ac.FAIL})
 
+    def test_a_prop_held_by_its_grip(self):
+        # a pistol hung on the hand: its grip's centre on the palm passes; one held by another part
+        # (the grip 10 cm away) fails the distance, and a grip turned across the fingers the axis
+        def pistol(grip_at):
+            return rig([("proot", None, (0, 0, 0)), ("grip", "proot", grip_at)], "pistol")
+
+        def job(grip_at, grip_dir):
+            return ac.Job({"ground": 0.0,
+                           "actors": {"man": {"model": human(), "rig": "human"},
+                                      "pistol": {"model": pistol(grip_at),
+                                                 "attach": {"to": "man", "bone": "bip01 r hand"}}},
+                           "clips": {"stand": {"anims": {"man": clip(1.0, {})}}},
+                           "holds": [{"name": "pistol in the right hand", "hand": "man:bip01 r hand",
+                                      "grip": "pistol:grip",
+                                      "hand_axis": {"bone": "man:bip01 r hand", "dir": [0, 0, 1]},
+                                      "grip_axis": {"bone": "pistol:grip", "dir": grip_dir}}]})
+        good = ac.check(job((0.0, 0.0, 0.0), [0, 0, 1]))
+        self.assertEqual([r.status for r in results(good, "hold")], [ac.PASS, ac.PASS])
+        top = ac.check(job((0.0, 0.1, 0.0), [0, 0, 1]))
+        self.assertEqual([r.status for r in results(top, "hold")], [ac.FAIL, ac.PASS])
+        across = ac.check(job((0.0, 0.0, 0.0), [1, 0, 0]))
+        self.assertEqual([r.status for r in results(across, "hold")], [ac.PASS, ac.FAIL])
+
     def test_hands_ahead_of_the_chest(self):
         # arms raised forward to a grip pass; an arm swung back behind the chest's plane fails, and
         # a frame range leaves out the beat where the hand goes back on purpose

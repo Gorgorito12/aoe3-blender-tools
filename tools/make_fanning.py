@@ -19,7 +19,10 @@ The clips (the beat list of the request, approved before any key was set):
 
 The pistol has no hammer and the hand no fingers: the hammer is measured on the pistol's mesh as the
 top of its frame at the rear end of the barrel (`hammer_point`), and the sweep is read in the wrist and
-forearm, bigger than a real one so that it reads from the game's camera.
+forearm, close over the pistol. The pistol is held by its grip (`grip_geometry`, `hold_frame`): Bip01
+Prop1 is keyed so that the grip's centre sits on the right palm's centre, its axis along the line of the
+closed fingers and the barrel out over the index finger. The borrowed clip the unit used before held it
+by the top of the frame (the grip's centre 26 cm from the palm, its axis 94 degrees off).
 
 What it writes below --out: `art\\<FOLDER>\\<name>.gr2` and its tag file `.gr2.precomp` (sampled from
 the clip on the stock attack's tag file) for both clips; `fanning-anims.xml` (the `<anim>` blocks with
@@ -53,7 +56,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), "aoe3_blender_tools"))
 from aoe3game import gr2, gr2_mesh  # noqa: E402
 from aoe3game.deploy import RefusedPath, refuse_steam  # noqa: E402
 from aoe3game.gr2_anim import Animation, Rig, animation_file, matrix_quat  # noqa: E402
-from aoe3game.gr2_pose import (Keys, about, axis_matrix, set_frame, transform_branch, translate,  # noqa: E402
+from aoe3game.gr2_pose import (Keys, about, align, axis_matrix, set_frame, transform_branch, translate,  # noqa: E402
                                two_bone_ik, unit)
 
 MODEL = "WoL\\units\\explorers\\europeans\\british\\british_explorer"
@@ -73,15 +76,16 @@ RECOIL_DEG, RECOIL_PEAK, RECOIL_END = 14.0, 0.03, 0.13
 X, Y, Z = (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)
 
 # Places of the left palm's centre, file units, from the hammer (x the unit's right, y up, z ahead).
-PLACES = {"ready": (0.0, 0.11, 0.0), "A": (-0.02, 0.24, 0.16), "B": (0.0, 0.05, 0.0),
-          "B-": (0.0, 0.05, 0.008), "B+": (0.0, 0.05, -0.008),
-          "C": (0.02, 0.12, -0.09), "R": (-0.02, 0.35, 0.03)}
+PLACES = {"ready": (0.0, 0.07, 0.0), "A": (-0.02, 0.11, 0.09), "B": (0.0, 0.045, 0.0),
+          "B-": (0.0, 0.045, 0.008), "B+": (0.0, 0.045, -0.008),
+          "C": (0.02, 0.07, -0.07), "R": (-0.02, 0.14, 0.01)}
 GUN = (0.16, 0.05, 0.47)      # Prop1 from the pelvis at READY: right, up, ahead (file units)
 LEFT_ELBOW = (-1.0, -0.3, 0.2)      # the left elbow's pole: out to the left, a little down and ahead (the forearm clear of the belly)
 RIGHT_ELBOW = (0.6, -0.7, -0.25)
 TWIST = 0.0                   # the chest turned about the vertical (degrees; turning it right brought the belly into the forearm)
 CROUCH, LEAN = 0.03, 5.0      # the pelvis lowered (file units) and the chest leant forward (degrees)
 ARM_DEPTH = 0.035             # how deep an arm vertex may sit in the body mesh (file units)
+HOLD, HOLD_ANGLE = 0.02, 15.0  # the pistol's grip: its centre from the right palm's (file units), its axis (degrees)
 GRIP = 0.03                   # how far the palm may be from its place over the hammer at a shot (file units)
 
 
@@ -165,6 +169,44 @@ def hammer_point(vertices):
     return np.array([barrel[:, 0].mean(), barrel[:, 1].min(), top])
 
 
+def grip_geometry(vertices):
+    """The pistol's grip in its model space: {"top", "butt", "centre", "axis" (top to butt, unit),
+    "barrel" (unit, toward the muzzle)}. The barrel runs along +y with the grip hanging from its rear
+    end toward -z: the grip is the vertices in the lowest 35 % of the height (z), its top the barrel's
+    rear end (the vertices within 4 cm of the barrel's lowest y)."""
+    v = np.asarray(vertices, np.float64)
+    z0, z1 = v[:, 2].min(), v[:, 2].max()
+    low = v[:, 2] < z0 + 0.35 * (z1 - z0)
+    barrel, grip = v[~low], v[low]
+    rear = barrel[barrel[:, 1] < barrel[:, 1].min() + 0.04]
+    top, butt = rear.mean(0), grip.mean(0)
+    return {"top": top, "butt": butt, "centre": 0.5 * (top + butt), "axis": unit(butt - top),
+            "barrel": np.array(Y)}
+
+
+def hold_frame(hand_rest, palm, finger, normal, grip):
+    """Prop1 in the right hand's frame (4 x 4) for a pistol held by its grip: the grip's centre on the
+    palm's centre, its axis (top to butt) along the line of the closed fingers (the knuckles, index to
+    little finger: finger x palm normal), the barrel out over the index finger (toward the fingers).
+    `hand_rest` is the hand's rest frame: the line of the knuckles is the cross product of the finger
+    and palm directions in world terms, brought back to the hand's frame."""
+    r = rigid(hand_rest)[:3, :3]
+    knuckles = r.T @ unit(np.cross(r @ finger, r @ normal))
+    rot = align(grip["axis"], grip["barrel"], knuckles, finger)
+    m = np.eye(4)
+    m[:3, :3] = rot
+    m[:3, 3] = np.asarray(palm, np.float64) - rot @ grip["centre"]
+    return m
+
+
+def hold_error(hand_to_prop, palm, knuckles, grip):
+    """(the grip centre's distance from the palm centre, the grip axis's angle in degrees from the line
+    of the closed fingers) of a Prop1 placement in the hand's frame."""
+    c = (hand_to_prop @ np.r_[grip["centre"], 1.0])[:3]
+    a = hand_to_prop[:3, :3] @ grip["axis"]
+    return float(np.linalg.norm(c - palm)), float(np.degrees(np.arccos(np.clip(unit(a) @ unit(knuckles), -1, 1))))
+
+
 # --------------------------------------------------------------------------------------------------
 # The unit
 
@@ -185,6 +227,7 @@ class Unit:
         self.base = base
         self.hand_to_prop = hand_to_prop
         self.hammer_local = hammer_point(pistol_vertices)
+        self.pistol_vertices = np.asarray(pistol_vertices, np.float64)
         self.pelvis = base["bip01 pelvis"][:3, 3].copy()
         self.rest = self.rig.by_name(self.rig.rest_worlds())
 
@@ -194,10 +237,17 @@ class Unit:
         stance = Animation.load(game.granny(STANCE))
         rig = Rig.of(gr2.load(data).root())
         base = rig.by_name(rig.pose(stance, 0.0))
-        h2p = np.linalg.inv(rigid(base["bip01 r hand"])) @ rigid(base["bip01 prop1"])
+        stock = np.linalg.inv(rigid(base["bip01 r hand"])) @ rigid(base["bip01 prop1"])
         pis = gr2_mesh.read(game.granny(PISTOL))
         verts = mesh_points(pis)
-        u = cls(data, stance, verts, h2p)
+        u = cls(data, stance, verts, None)
+        u.grip = grip_geometry(verts)
+        b = u.body
+        hand_rest = u.rest["bip01 r hand"]
+        u.hand_to_prop = hold_frame(hand_rest, b.palm_local["r"], b.finger_local["r"], b.normal_local["r"], u.grip)
+        r = rigid(hand_rest)[:3, :3]
+        u.knuckles = r.T @ unit(np.cross(r @ b.finger_local["r"], r @ b.normal_local["r"]))
+        u.stock_hold = hold_error(stock, b.palm_local["r"], u.knuckles, u.grip)   # today's clip, for the report
         u.model_data, u.pistol_data = data, game.granny(PISTOL)
         return u
 
@@ -248,6 +298,9 @@ class Unit:
         rot = hw[:3, :3]
         palm = (hw @ np.r_[b.palm_local["r"], 1.0])[:3]
         P = b.place_hand(P, "r", palm, rot @ b.finger_local["r"], rot @ b.normal_local["r"], unit(RIGHT_ELBOW))
+        # Prop1 (keyed in the clip) where the pistol is held by its grip, its scale as in the stance
+        scale = np.linalg.inv(rigid(self.base["bip01 prop1"])) @ self.base["bip01 prop1"]
+        P = set_frame(P, rig, "bip01 prop1", c["gun"] @ scale)
         P = b.place_hand(P, "l", c["lpalm"], unit((1.0, -0.15, 0.35)), np.array([0.0, -1.0, 0.0]),
                          unit(LEFT_ELBOW))
         for m in mp.MARKERS:
@@ -374,12 +427,26 @@ def check(unit, clip, times, poses, shots, keys=None):
         if deep > worst:
             worst, at = deep, float(t)
     out[f"arm vertex inside the body (worst at {at:.3f} s)"] = (worst, ARM_DEPTH, None)
+    dist, ang = 0.0, 0.0
+    for p in poses:
+        hand = rigid(p["bip01 r hand"])
+        h2p = np.linalg.inv(hand) @ rigid(p["bip01 prop1"])
+        d, a = hold_error(h2p, b.palm_local["r"], unit.knuckles, unit.grip)
+        dist, ang = max(dist, d), max(ang, a)
+    out["pistol: its grip's centre from the right palm's"] = (dist, HOLD, None)
+    out["pistol: its grip's axis from the closed fingers (degrees)"] = (ang, HOLD_ANGLE, None)
     if clip == "attack":
         far = 0.0
         for t in shot_times(shots):
             P = unit.pose(unit.channels_at(keys, t)) if keys is not None else poses[int(round(t * FPS))]
             far = max(far, float(np.linalg.norm(unit.palm_world(P) - unit.palm_place("B"))))
         out["left palm from its place over the hammer at the shots"] = (far, GRIP, None)
+        near = 0.0
+        for t in shot_times(shots):
+            P = unit.pose(unit.channels_at(keys, t)) if keys is not None else poses[int(round(t * FPS))]
+            hammer = unit.hammer(rigid(P["bip01 prop1"])) + np.array(PLACES["B"])
+            near = max(near, float(np.linalg.norm(unit.palm_world(P) - hammer)))
+        out["left palm from over the posed pistol's hammer at the shots"] = (near, GRIP, None)
     return {k: (v, lim, v <= lim) for k, (v, lim, _o) in out.items()}
 
 
@@ -424,6 +491,9 @@ def job_spec(unit, shots, model_file, pistol_file, clip_files):
             pen.append({"name": f"{side} forearm {int(share * 100)} %", "bone": f"explorer:bip01 {s} forearm",
                         "offset": [float(v * share * m) for v in fore[s]]})
     pen.append({"name": "left palm", "bone": "explorer:bip01 l hand", "offset": [float(v * m) for v in b.palm_local["l"]]})
+    pen.append({"name": "left fingertips", "bone": "explorer:bip01 l hand", "offset": [float(v * m) for v in b.tip_local["l"]]})
+    g = unit.grip
+    right_side = [p["name"] for p in pen if p["name"].startswith("right")] + ["explorer:bip01 r hand"]
     belly = belly_radius(unit) * m
     tag_frames = [[round(t - BRUSH, 4), round(t + BRUSH, 4)] for t in shot_times(shots)]
     return {
@@ -440,13 +510,33 @@ def job_spec(unit, shots, model_file, pistol_file, clip_files):
                                                                     "offset": [float(v * m) for v in b.palm_local["l"]]},
                    "of": "explorer:bip01 spine1", "min": round(0.12 * m, 4)}],
         "capsules": [{"name": "belly", "a": "explorer:bip01 pelvis", "b": "explorer:bip01 spine1",
-                      "radius": round(belly, 4)}],
+                      "radius": round(belly, 4)},
+                     {"name": "pistol's barrel", "a": {"bone": "explorer:bip01 prop1", "offset": [float(v * m) for v in g["top"]]},
+                      "b": {"bone": "explorer:bip01 prop1", "offset": [float(v * m) for v in muzzle(unit)]},
+                      "radius": round(0.02 * m, 4), "allow": right_side},
+                     {"name": "right fist", "a": "explorer:bip01 r hand",
+                      "b": {"bone": "explorer:bip01 r hand", "offset": [float(v * m) for v in b.tip_local["r"]]},
+                      "radius": round(0.03 * m, 4), "allow": right_side}],
+        "holds": [{"name": "pistol held by its grip", "hand": {"bone": "explorer:bip01 r hand",
+                                                             "offset": [float(v * m) for v in b.palm_local["r"]]},
+                   "grip": {"bone": "explorer:bip01 prop1", "offset": [float(v * m) for v in g["centre"]]},
+                   "hand_axis": {"bone": "explorer:bip01 r hand", "dir": [float(v) for v in unit.knuckles]},
+                   "grip_axis": {"bone": "explorer:bip01 prop1", "dir": [float(v) for v in g["axis"]]},
+                   "max": round(HOLD * m, 4), "max_angle": HOLD_ANGLE}],
         "penetration_points": pen,
         "removed": {"attack:explorer": "REMOVED: the outlaw's borrowed clip (outlaw_pistol_attackA) is no longer the "
                                        "explorer's RangedAttackSharpshoot; the arm held out at shoulder height; the "
                                        "tags at 0.35 / 0.50 / 0.65. Replaced by this clip, as the script says."},
         "hammer_in_prop1": [float(v * m) for v in hammer_in_prop],
     }
+
+
+def muzzle(unit):
+    """The pistol's muzzle end of the barrel's axis (Prop1's frame): the barrel's rear end carried
+    along the barrel to its farthest vertex."""
+    v = unit.pistol_vertices
+    far = v[:, 1].max()
+    return unit.grip["top"] + (far - unit.grip["top"][1]) * np.array(Y)
 
 
 def belly_radius(unit):
@@ -483,8 +573,8 @@ def _tile(img, label, width):
 
 def sheet(path, unit, figs, pose_at, reference=None, w=240):
     """The key frames of one shot (READY, A, B, C, R) seen from the game camera's angle (about 50
-    degrees down) far (as the game shows the unit) and nearer, and close on the hands from two sides;
-    with `reference`, that image above them."""
+    degrees down) far (as the game shows the unit) and nearer, close on the hands from two sides, and
+    the grip in the right palm from his right and from above; with `reference`, that image above them."""
     import retarget_anims as ra
     from PIL import Image
     t1 = FIRST + STEP
@@ -492,12 +582,16 @@ def sheet(path, unit, figs, pose_at, reference=None, w=240):
     hammer = tuple(unit.ready_hammer() + np.array([-0.08, 0.05, 0.0]))
     tiles = []
     for label, t in picks:
-        items = _items(figs, pose_at(t))
+        P = pose_at(t)
+        items = _items(figs, P)
+        grip = tuple((rigid(P["bip01 prop1"]) @ np.r_[unit.grip["centre"], 1.0])[:3])
         col = []
         for name, az, el, span, ctr in (("game camera, far", -35, 50, 7.0, (0.0, 0.9, 0.3)),
                                         ("game camera", -35, 50, 3.0, (0.0, 1.0, 0.3)),
                                         ("close, front left", -20, 40, 1.0, hammer),
-                                        ("close, right", 70, 15, 1.0, hammer)):
+                                        ("close, right", 70, 15, 1.0, hammer),
+                                        ("grip in the palm, from his right", 90, 5, 0.5, grip),
+                                        ("grip in the palm, from above and ahead", 55, 60, 0.5, grip)):
             img = ra.draw(items, width=w, height=w, azimuth=az, elevation=el, span=span, centre=ctr).astype(np.uint8)
             col.append(_tile(img, f"{label}  {t:.3f} s  {name}", w))
         tiles.append(np.concatenate(col, 0))

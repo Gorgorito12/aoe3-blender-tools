@@ -94,6 +94,39 @@ class Hammer(unittest.TestCase):
         self.assertLess(h[1], 0.06)                     # at the rear end of the barrel, not at the muzzle
 
 
+def pistol():
+    """A barrel along +y (y 0 to 0.4, z 0.03 to 0.07) and a grip hanging from its rear end toward -z."""
+    barrel = [[x, y, z] for x in (0.04, 0.10) for y in (0.0, 0.4) for z in (0.03, 0.07)]
+    grip = [[x, -0.12, -0.12] for x in (0.04, 0.10)] + [[0.07, -0.05, -0.13]]
+    return np.array(barrel + grip, np.float64)
+
+
+class Grip(unittest.TestCase):
+    def test_the_grip_hangs_from_the_rear_of_the_barrel(self):
+        g = mf.grip_geometry(pistol())
+        self.assertAlmostEqual(g["top"][1], 0.0)           # the barrel's rear end
+        self.assertLess(g["butt"][2], -0.1)
+        self.assertAlmostEqual(np.linalg.norm(g["axis"]), 1.0)
+        self.assertLess(g["axis"] @ g["barrel"], 0.0)      # the butt behind the barrel's rear, as a revolver's
+
+    def test_held_by_the_grip_the_centre_is_on_the_palm_and_the_axis_along_the_knuckles(self):
+        g = mf.grip_geometry(pistol())
+        palm, finger, normal = np.array([0.0, 0.08, 0.01]), np.array([0.0, 1.0, 0.0]), np.array([-1.0, 0.0, 0.0])
+        h2p = mf.hold_frame(np.eye(4), palm, finger, normal, g)
+        knuckles = np.cross(finger, normal)
+        dist, ang = mf.hold_error(h2p, palm, knuckles, g)
+        self.assertLess(dist, 1e-9)
+        self.assertLess(ang, 1e-6)
+        barrel = h2p[:3, :3] @ g["barrel"]
+        self.assertGreater(barrel @ finger, 0.5)           # the barrel out over the fingers
+        # held by the top of the frame (the grip's top on the palm) fails both measures
+        top = np.eye(4)
+        top[:3, 3] = palm - g["top"]
+        dist, ang = mf.hold_error(top, palm, knuckles, g)
+        self.assertGreater(dist, 0.05)
+        self.assertGreater(ang, 30.0)
+
+
 class Keys(unittest.TestCase):
     def test_missing_values_are_filled_between_their_neighbours(self):
         keys = [(0.0, {"a": 0.0, "b": np.array([0.0, 0.0])}), (1.0, {"a": None, "b": np.array([2.0, 2.0])}),
