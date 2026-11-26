@@ -1157,6 +1157,72 @@ TOOLS = [
           Arg("overview", "--overview", "bool", L("Review sheet", "Hoja de revisión")),
           Arg("clips", "--clips", "bool", L("Clips (needs ffmpeg)", "Clips (necesita ffmpeg)"))],
          needs=("game",), outputs=("out",)),
+    Tool("check_anim", "tools/check_anim.py", "art",
+         L("Check animations before a preview", "Comprobar animaciones antes de una vista previa"),
+         L("The automatic checks of docs/animation-rules.md on a unit's clips: a head turned too far from the "
+           "chest, an elbow or knee bent the wrong way, a bone that snaps, feet that slide or sink, a hand off its "
+           "grip, a mounted part off its mount, a prop that pops in or out of sight or does not end where the "
+           "script says, points inside a body or the ground, lengths, loops, parts floating at the end of a death, "
+           "and (with the version before) a clip or a motion removed without saying so. PASS or FAIL per check with "
+           "the worst frame; the preview is refused when one fails.",
+           "Las comprobaciones automáticas de docs/animation-rules.md sobre los clips de una unidad: una cabeza "
+           "girada de más respecto al pecho, un codo o una rodilla doblados al revés, un hueso que salta, pies que "
+           "resbalan o se hunden, una mano fuera de su agarre, una pieza montada fuera de su soporte, un objeto que "
+           "aparece o desaparece a la vista o no acaba donde dice el guion, puntos dentro de un cuerpo o del suelo, "
+           "duraciones, bucles, piezas flotando al final de una muerte y (con la versión anterior) un clip o un "
+           "movimiento quitado sin decirlo. PASS o FAIL por comprobación con el peor cuadro; la vista previa se "
+           "rechaza si una falla."),
+         [Arg("job", None, "file", L("Job file", "Archivo de trabajo"),
+              L("The JSON that names the actors, the clips and the rules (docs/animation-rules.md, \"The job file\"). "
+                "Empty: give a model and its clips below.",
+                "El JSON que nombra los actores, los clips y las reglas (docs/animation-rules.md, \"The job file\"). "
+                "Vacío: indica abajo un modelo y sus clips."), filters=JSON),
+          Arg("model", "--model", "file", L("Model (without a job file)", "Modelo (sin archivo de trabajo)"),
+              L("An uncompressed .gr2 with its skeleton, or a rig .json.",
+                "Un .gr2 sin comprimir con su esqueleto, o un .json de esqueleto."), filters=GR2 + JSON),
+          Arg("anim", "--anim", "files", L("Its clips", "Sus clips"),
+              L("The model's animation files (.gr2, uncompressed), each checked as a clip.",
+                "Los archivos de animación del modelo (.gr2, sin comprimir), cada uno comprobado como un clip."),
+              repeat=True, filters=GR2),
+          Arg("rig", "--rig", "choice", L("Rig", "Esqueleto"),
+              L("human: the game's Bip01 rigs (head, elbows, knees, feet and hands judged). bare: only what every "
+                "rig has (speed, lengths, loops).",
+                "human: los esqueletos Bip01 del juego (se juzgan cabeza, codos, rodillas, pies y manos). bare: solo "
+                "lo que tiene todo esqueleto (velocidad, duraciones, bucles)."), choices=("human", "bare"),
+              default="human"),
+          Arg("ground", "--ground", "text", L("Ground height", "Altura del suelo"),
+              L("The ground's height in the model's space, in metres; none for a model that hangs on another "
+                "(a rider) and has no ground of its own.",
+                "La altura del suelo en el espacio del modelo, en metros; none para un modelo que cuelga de otro "
+                "(un jinete) y no tiene suelo propio."), default="0"),
+          Arg("duration", "--duration", "float", L("Length from the tactics (s)", "Duración según las tácticas (s)"),
+              L("Every clip must last this long. Empty: not checked.",
+                "Cada clip debe durar esto. Vacío: no se comprueba.")),
+          Arg("death", "--death", "bool", L("Death clips", "Clips de muerte"),
+              L("The clips are deaths: nothing may float above the ground at their end.",
+                "Los clips son muertes: nada puede flotar sobre el suelo al final.")),
+          Arg("baseline", "--baseline", "file", L("Job of the version before", "Trabajo de la versión anterior"),
+              L("Adds the inventory check: every clip and every motion of that version must still be there, "
+                "unless the job names it under removed.",
+                "Añade la comprobación de inventario: cada clip y cada movimiento de esa versión debe seguir, salvo "
+                "que el trabajo lo nombre en removed."), filters=JSON),
+          Arg("clips", "--clips", "text", L("Only these clips", "Solo estos clips"),
+              L("Clip names of the job, separated by commas. Empty: every clip.",
+                "Nombres de clip del trabajo, separados por comas. Vacío: todos.")),
+          Arg("json", "--json", "save", L("Report (JSON)", "Informe (JSON)"),
+              L("Every result and the risk frames, for a preview script.",
+                "Cada resultado y los cuadros de riesgo, para un script de vista previa."), filters=JSON),
+          Arg("risk_sheet", "--risk-sheet", "save", L("Risk frames sheet", "Hoja de cuadros de riesgo"),
+              L("The frames nearest each limit, from two sides, their points marked.",
+                "Los cuadros más cerca de cada límite, desde dos lados, con sus puntos marcados."), filters=PNG),
+          Arg("preview", "--preview", "folder", L("Preview folder", "Carpeta de vista previa"),
+              L("Only when every check passes: per clip a contact sheet from 4 sides and 2 heights and a close GIF "
+                "(needs Pillow), and the risk frames.",
+                "Solo si todo pasa: por clip una hoja de contacto desde 4 lados y 2 alturas y un GIF cercano "
+                "(necesita Pillow), y los cuadros de riesgo.")),
+          Arg("verbose", "--verbose", "bool", L("List the passed checks too", "Listar también lo que pasa"),
+              L("Every check of every clip, not only the failed ones and the lengths.",
+                "Cada comprobación de cada clip, no solo las que fallan y las duraciones."))]),
     Tool("make_pray", "tools/make_pray.py", "art",
          L("Villager praying animations", "Animaciones de aldeano rezando"),
          L("Three praying animations for the villagers (kneeling with joined hands, standing with the sign of "
@@ -1175,6 +1241,78 @@ TOOLS = [
           Arg("sex", "--sex", "text", L("Villagers", "Aldeanos"), default="male,female"),
           Arg("preview", "--preview", "save", L("Review sheet", "Hoja de revisión"), filters=(("PNG", "*.png"),)),
           Arg("gifs", "--gifs", "folder", L("GIF folder", "Carpeta de GIF")),
+          Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
+         needs=("game",), outputs=("out",)),
+    Tool("make_gun_camel", "tools/make_gun_camel.py", "art",
+         L("Camel gun from two models", "Camello con arma a partir de dos modelos"),
+         L("A camel unit's body with its own swivel gun cut out and the barrels, casing and crank of a wheeled "
+           "gun put in its place (by default the zamburak's camel and the stock Gatling gun), at one or more "
+           "sizes, animated: A fired from the saddle, B deployed with the camel lying down and the rider at "
+           "the gun on foot. Granny files checked by the game's runtime, the anim file blocks, a report; "
+           "optional model sheet and GIFs.",
+           "El cuerpo de un camello sin su cañón giratorio y, en su lugar, los cañones, la caja y la manivela de "
+           "un arma con ruedas (por defecto el camello del zamburak y la ametralladora Gatling del juego), en "
+           "uno o más tamaños, animados: A disparando desde la silla, B desplegado con el camello tumbado y el "
+           "jinete a pie junto al arma. Archivos Granny comprobados por el runtime del juego, los bloques del "
+           "anim file y un informe; hoja del modelo y GIF opcionales."),
+         [game_dir(),
+          out_dir(help=L("Where the models, the animations, the anim file blocks and the report go. Never a Steam "
+                         "library.",
+                         "Dónde van los modelos, las animaciones, los bloques del anim file y el informe. Nunca "
+                         "una biblioteca de Steam.")),
+          Arg("recipe", "--recipe", "file", L("Recipe (JSON)", "Receta (JSON)"),
+              L("The models, the cut and the placement; empty: the zamburak's camel with the Gatling gun.",
+                "Los modelos, el corte y la colocación; vacío: el camello del zamburak con la Gatling."),
+              filters=JSON),
+          Arg("scales", "--scales", "text", L("Gun sizes", "Tamaños del arma"), default="0.55,0.7"),
+          Arg("variants", "--variants", "text", L("Variants", "Variantes"), default="A,B"),
+          Arg("sheet", "--sheet", "save", L("Model sheet", "Hoja del modelo"), filters=(("PNG", "*.png"),)),
+          Arg("gifs", "--gifs", "folder", L("GIF folder", "Carpeta de GIF")),
+          Arg("gaze", "--gaze", "save", L("Gaze sheet", "Hoja de la mirada"), filters=(("PNG", "*.png"),)),
+          Arg("aim_sheet", "--aim-sheet", "save", L("Aim sheet (gun turned)", "Hoja de puntería (arma girada)"),
+              L("The gun turned on its trunnion from 90 degrees left to 90 right, the camel still and the rider "
+                "following with chest, head and hands.",
+                "El arma girada sobre su muñón de 90 grados a la izquierda a 90 a la derecha, el camello quieto y "
+                "el jinete acompañando con el pecho, la cabeza y las manos."), filters=(("PNG", "*.png"),)),
+          Arg("aim_gifs", "--aim-gifs", "folder", L("Aim GIF folder", "Carpeta de GIF de puntería")),
+          Arg("reload", "--reload", "choice", L("Reload", "Recarga"), choices=("keep", "toss")),
+          Arg("reload_preview", "--reload-preview", "folder", L("Reload preview folder",
+                                                                 "Carpeta de la vista previa de la recarga")),
+          Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
+         needs=("game",), outputs=("out",)),
+    Tool("make_zamburak", "tools/make_zamburak.py", "art",
+         L("Camel cannon that limbers", "Camello con cañón que se engancha"),
+         L("A camel unit's body with its own lateral swivel gun cut out and a cannon barrel from a wheeled gun "
+           "(by default the zamburak's camel and a camel-drawn field gun's barrel at 2/3 of its length) on an iron "
+           "swivel fork centred on its back: limbered, the barrel swivelled down off the neck; unlimbered, the camel "
+           "lying and the artillerist beside it with a linstock. Granny files checked by the game's runtime and a "
+           "report; optional model, size, barrel and limber-pose sheets.",
+           "El cuerpo de un camello sin su cañón giratorio lateral y el cañón de un arma con ruedas (por defecto el "
+           "camello del zamburak y el cañón de una pieza tirada por camello, a 2/3 de su largo) en una horquilla "
+           "giratoria de hierro centrada en su lomo: enganchado, el cañón girado hacia abajo, apartado del cuello; "
+           "desenganchado, el camello tumbado y el artillero a su lado con un botafuego. Archivos Granny comprobados "
+           "por el runtime del juego y un informe; hojas opcionales del modelo, los tamaños, el cañón y las posturas "
+           "de enganche."),
+         [game_dir(),
+          out_dir(help=L("Where the models and the report go. Never a Steam library.",
+                         "Dónde van los modelos y el informe. Nunca una biblioteca de Steam.")),
+          Arg("recipe", "--recipe", "file", L("Recipe (JSON)", "Receta (JSON)"),
+              L("The models, the cut, the barrel's length and size, the swivel and the limber pose; empty: the "
+                "zamburak's camel with the midfa's barrel.",
+                "Los modelos, el corte, el largo y el tamaño del cañón, la horquilla y la postura de enganche; vacío: "
+                "el camello del zamburak con el cañón de la midfa."), filters=JSON),
+          Arg("scale", "--scale", "text", L("Cannon size (share of the source's)", "Tamaño del cañón (parte del original)")),
+          Arg("sheet", "--sheet", "save", L("Model sheet", "Hoja del modelo"), filters=(("PNG", "*.png"),)),
+          Arg("sizes", "--sizes", "save", L("Sizes sheet", "Hoja de tamaños"), filters=(("PNG", "*.png"),)),
+          Arg("size_list", "--size-list", "text", L("Sizes shown", "Tamaños mostrados"), default="1.0,0.75,0.6,0.5"),
+          Arg("barrel_sheet", "--barrel-sheet", "save", L("Barrel sheet", "Hoja del cañón"), filters=(("PNG", "*.png"),)),
+          Arg("limber_options", "--limber-options", "save", L("Limber poses sheet", "Hoja de posturas de enganche"),
+              L("Poses of the limbered barrel with the gap to the camel in its idle, walk, jog and run.",
+                "Posturas del cañón enganchado con la distancia al camello en reposo, paso, trote y galope."),
+              filters=(("PNG", "*.png"),)),
+          Arg("clips", "--clips", "folder", L("Clips and their checks (folder)", "Animaciones y sus comprobaciones (carpeta)")),
+          Arg("textured", "--textured", "folder", L("Textured clip sheets (folder)",
+                                                    "Hojas texturizadas de las animaciones (carpeta)")),
           Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
          needs=("game",), outputs=("out",)),
     Tool("recompress_models", "tools/recompress_models.py", "art",

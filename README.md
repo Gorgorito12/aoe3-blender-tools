@@ -368,9 +368,13 @@ python -I tests/test_settlement.py                    # the settlement composer 
 venv/bin/python scripts/game_export.py --out out/cart --preset PROP_BROKEN_CART
 venv/bin/python scripts/game_export.py --out out/goods --set GOODS     # a prop set: one unit, 10 models
 venv/bin/python tools/gallery.py --style PROP --cols 4 --out examples/props_gallery.jpg
+python -I tools/check_anim.py <job.json> --risk-sheet risk.png   # a unit's animations, before any preview
 ```
 
 On Windows the venv's interpreter is `venv\Scripts\python`.
+
+Unit animations are made and reviewed as `docs/animation-rules.md` says: a script first, the
+automatic checks of `tools/check_anim.py` before any preview, and a fixed preview format.
 
 With a Blender install: `blender -b --factory-startup -P scripts/generate.py -- --preset ALL`.
 

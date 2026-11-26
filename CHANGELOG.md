@@ -6,12 +6,14 @@ three together).
 
 ## Unreleased
 
-- `tools/make_rings.py`: the range ring and fill meshes are written with one unit a metre. The game reads a model's
-  vertices as its own metres and does not apply the file's UnitsPerMeter, so the rings written in the stock basis
-  (0.615) showed 0.615 of their radius (measured in game with markers at known distances); the line's width and
-  height keep what was seen until then.
-- `tools/make_rings.py`: range rings every metre from 4 to 50 m (then 55, 60, 65, 70, 80, 90 and 100), so that a
-  ring drawn at the nearest size is at most half a metre off; it was every 2 m up to 32, then 36, 40, 45 and 50.
+- `docs/animation-rules.md`: how a unit's animations are made and reviewed: a beat list of every clip
+  approved first (where every object comes from and goes to, anything removed on its own line), automatic
+  checks before any preview, a fixed preview format (4 sides x 2 heights, a close GIF, the risk frames)
+  with a checklist, and the in-game frames after. `tools/check_anim.py` (`aoe3game/anim_check.py`, a form
+  in Art utilities) runs the checks: head and neck turns, reversed elbows and knees, snapping bones, feet
+  that slide or sink, grips, mounted parts, props that pop or end in the wrong place, interpenetration,
+  lengths, loop seams, floating parts at the end of a death, and clips or motions removed without saying
+  so; exits 1 when one fails. Test: `tests/test_check_anim.py`.
 - `tools/make_pray.py` (`aoe3game/gr2_pose.py`, a form in Art utilities): three praying animations for the
   villagers (kneeling with joined hands, standing with the sign of the cross, bowing down to the ground),
   each an entry from the idle, a seamless loop and an exit, for the male and the female villager, made

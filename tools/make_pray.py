@@ -205,17 +205,24 @@ class Body:
                             self.hinge[calf], end_frame=rot)
         chest = P["bip01 spine1"] @ np.linalg.inv(self.base["bip01 spine1"])
         for s in SIDES:
-            up, fore, hand = ARM[s]
             palm = (chest @ np.r_[c[s + "palm"], 1.0])[:3]
-            rot = chest[:3, :3] @ basis_of(c[s + "finger"], c[s + "normal"]) @ \
-                basis_of(self.finger_local[s], self.normal_local[s]).T
-            wrist = palm - rot @ self.palm_local[s]
-            pole = chest[:3, :3] @ np.asarray(c[s + "elbow"], np.float64)
-            P = two_bone_ik(P, rig, up, fore, hand, wrist, pole, self.hinge[up], self.hinge[fore], end_frame=rot)
+            P = self.place_hand(P, s, palm, chest[:3, :3] @ np.asarray(c[s + "finger"], np.float64),
+                                chest[:3, :3] @ np.asarray(c[s + "normal"], np.float64),
+                                chest[:3, :3] @ np.asarray(c[s + "elbow"], np.float64))
         for m in MARKERS:
             if m in P:
                 P = set_frame(P, rig, m, self.base[m])
         return P
+
+    def place_hand(self, P, s, palm, finger, normal, pole, bend_normal=None):
+        """`P` with the arm of side `s` solved (two-bone IK) so that the hand's palm centre is at
+        `palm` with its fingers toward `finger` and its palm facing `normal` (world terms), the
+        elbow toward `pole`. tools/make_gun_camel.py uses it for a rider's hands on a gun."""
+        up, fore, hand = ARM[s]
+        rot = basis_of(finger, normal) @ basis_of(self.finger_local[s], self.normal_local[s]).T
+        wrist = np.asarray(palm, np.float64) - rot @ self.palm_local[s]
+        return two_bone_ik(P, self.rig, up, fore, hand, wrist, pole, self.hinge[up], self.hinge[fore], end_frame=rot,
+                           bend_normal=bend_normal)
 
     def foot_frame(self, s, c):
         """(world rotation, ankle position) of a foot: its idle frame turned about the vertical by
