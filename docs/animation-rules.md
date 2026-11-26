@@ -10,6 +10,36 @@ magazine back (an incomplete action); the gunner's head whipped round more than 
 tipped far back while he reached to a pocket; and an existing dismount was removed without anyone
 saying so. Each of those is now a rule below and a check of `tools/check_anim.py`.
 
+## Three rules added after the first reviews
+
+1. **Stop 0, before the full script.** Send a quick sketch of the key poses first, made on the unit's own
+   skeleton with its props at their real size: the props against the body, and where the figure stands
+   and works. It is approved in minutes and catches wrong proportions and places early: a linstock and a
+   rammer were once rejected only after their clips were finished.
+2. **Compare with the reference image at every stop.** When the person who asked gives a reference (a
+   picture of the real gesture, or a drawing made for it), every stop (the sketch, the script, the
+   preview) shows the work beside it and says in words how it differs and why (no fingers on the model,
+   a gesture made bigger to read from the game camera, and so on). The reviewer compares the whole
+   posture with it, an animal's included, not only the person and the props.
+3. **Known faults are checked from the first clip of every new unit,** not only on the unit where they
+   showed up. The job file of the first clip already has, where they apply: the palms in front of the
+   chest (`ahead`); a mount's head and neck clear of the weapon (`penetration` with a capsule); the feet
+   not crossing on a turn (`cross`); the weapon not going into the ground at death (`death`,
+   `penetration`); props at real sizes (`sizes`); a lying animal really lying (`lying`, on by default);
+   and the forearms, not only the palms, clear of the torso (`penetration_points` along each forearm
+   and a capsule of the torso measured on the mesh); a held prop held by its handle (`holds`: a
+   pistol's grip in the palm, its axis along the closed fingers; a pistol held by the top of its frame,
+   its grip hanging below the hand, was sent once and rejected, and the borrowed clip it replaced had
+   the same fault).
+
+**The pictures are drawn as the game draws them.** The game's space is left-handed: a unit facing +z
+has its right hand at +x (its R bones), and the game shows it as its right. Seen from the front, the
+unit's right is on the screen's left. The preview renderers drew the mirror image until 2026-11-26
+(a pistol in the right hand looked held in the left): `tools/retarget_anims.py` `draw`,
+`tools/check_anim.py` and `tools/make_dismount.py` now draw it the game's way
+(`tests/test_render_handedness.py`); `tools/make_gun_camel.py` already did. When a side matters,
+compare a stock clip's frame with a capture from the game before judging.
+
 ## A. Script first
 
 Before any key pose, write the **beat list** of every clip in plain words and get it approved by
@@ -90,6 +120,7 @@ the first actor (set `ground` to `null` for a lone rider whose space has no grou
 | `sink` | A foot point below the ground | 5 cm |
 | `cross` | The legs crossed: a human's left foot (or toe) passing to the right of the right one, along the pelvis's right made level (the shuffle of a turn on the spot) | 2 cm |
 | `grip` | A hand point from its grip during the frames given | 3 cm |
+| `hold` | A held prop's handle: its centre from the palm's, and its axis from the line of the closed fingers, every frame (job `holds`) | 3 cm, 30 deg (the job's `max`, `max_angle`) |
 | `ahead` | A point (a palm) in front of another (a shoulder) along an actor's facing, its chest's forward made level: a hand behind the chest's plane reads as an arm pulled back | the job's `min` (no default rule) |
 | `size` | The job's `sizes`: the distance between two points (a prop's ends) at a frame, as a share of an actor's height (its lowest foot bone to its head bone at rest), within the job's `min` and `max`: a prop of unreal size | the job's range |
 | `lying` | An animal lying down lies in the kush: its torso's lowest point (the skinned vertices of the pelvis, stomach and chest) near the ground, its hump (the torso's top) low against its standing one (the bind pose), its knees (carpus and hock) on the ground, its knees and feet inside the torso's sides and within its chest and rump ends. On by default for any actor with the game's quadruped bones (`HS Bone ...`) and a mesh: a clip that starts and ends lying is judged at every frame, a lie-down at its last frame, a get-up at its first, a death that starts lying at its first (a fall from standing is not a kush). A frame lies when the torso's lowest point is below half its standing height. A rig's `"lying": false` or a clip's `"lying": false` turns it off; a clip's `"lying": "all"` judges every frame | belly 5 cm; hump 66% (the camel's body alone is 62% of its height); knee joints' centres 25 cm (a camel's hock is 20 cm thick); 5 cm beyond the sides, 15 cm beyond the ends |
@@ -162,6 +193,10 @@ A JSON file beside the outputs (paths relative to it). Only `actors` and `clips`
 - **Mounts.** `part` is the bone that sits on the mount; its seat is the mount point at the first
   frame, carried by the part (or `seat`, in the part's frame). Choose the pivot the real thing
   turns on: a gun turns on its turntable and tips on its trunnion; one mount each.
+- **Holds.** `{"hand": <the palm's point>, "grip": <the handle's centre, a point of the prop>,
+  "hand_axis": {"bone", "dir"} (the line of the closed fingers, index to little finger, in the hand
+  bone's frame), "grip_axis": {"bone", "dir"} (the handle from its top to its butt), "max", "max_angle",
+  "clips"}`: a prop held by the wrong part fails from the first frame.
 - **Ahead.** `point` must stay at least `min` metres in front of `of`, measured along the facing
   of `actor` (default: the actor of `of`): its chest's forward at rest, carried by the chest and
   made level. `clips` and `frames` narrow it as for grips. Use it where a hand must work in front

@@ -75,6 +75,8 @@ LIMITS = {
     "slide": 0.04,                 # how far a planted foot point may slide
     "sink": 0.05,                  # how far a foot point may go below the ground
     "grip": 0.03,                  # a hand from its grip
+    "hold": 0.03,                  # a held prop's grip centre from the palm (a pistol held by its frame failed)
+    "hold_angle": 30.0,            # the grip's axis from the line of the closed fingers, degrees
     "mount": 0.02,                 # a part's seat from its mount
     "prop_speed": 20.0,            # a prop faster than this (m/s, 0.67 m a frame at 30) jumped
     "prop_scale": 0.05,            # a prop scaled below this share of its rest size is gone
@@ -393,7 +395,7 @@ class Job:
     `spec` keys: "actors" {name: {"model": path or Model, "rig": "human" | {...}, "attach":
     {"to", "bone", "from_bone"}}}, "clips" {name: {"anims": {actor: path or Clip}, "duration",
     "loop", "death", "ground_speed", "routes", "allow_jumps"}}, "fps", "ground" (None: no ground),
-    "limits", "points", "grips", "ahead", "sizes", "mounts", "capsules", "props", "places",
+    "limits", "points", "grips", "holds", "ahead", "sizes", "mounts", "capsules", "props", "places",
     "penetration_points", "removed", "speed_exempt"."""
 
     def __init__(self, spec, base_dir="."):
@@ -942,6 +944,41 @@ def check_grips(job, s):
         det = [f"{d[k] * 100:.1f} cm from the grip" if np.isfinite(d[k]) else "" for k in range(len(d))]
         out.append(_result(s, "grip", g.get("name", f"{g['hand']} on {g['grip']}"), d, lim, " m", det,
                            [[hand[k], grip[k]] for k in range(len(d))], n=int(s.limits["risk_frames"])))
+    return out
+
+
+def _direction(s, spec):
+    """N x 3 unit directions of {"bone": "actor:bone", "dir": [x, y, z]} (the direction in the bone's
+    frame, carried by the bone)."""
+    a, b = s.job.split(spec["bone"])
+    frames = s.frames(a, b)
+    d = np.einsum("nij,j->ni", frames[:, :3, :3], np.asarray(spec["dir"], np.float64))
+    return d / np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-12)
+
+
+def check_holds(job, s):
+    """A prop held by its grip (job `holds`): the grip's centre (a point of the prop) within `max`
+    (default `hold`) of the hand's point (the palm's centre), and the grip's axis (`grip_axis`, a
+    direction in a bone of the prop) within `max_angle` (default `hold_angle`) degrees of the hand's
+    (`hand_axis`: the line of the closed fingers, butt end to the little finger), at every frame of the
+    clips named. A pistol held by the top of its frame, its grip hanging below the hand, fails both."""
+    out = []
+    n = int(s.limits["risk_frames"])
+    for h in job.spec.get("holds") or []:
+        if h.get("clips") and s.name not in h["clips"]:
+            continue
+        name = h.get("name", f"{h['grip']} in {h['hand']}")
+        hand, grip = s.point(h["hand"]), s.point(h["grip"])
+        d = np.linalg.norm(hand - grip, axis=1)
+        det = [f"the grip's centre {v * 100:.1f} cm from the palm" for v in d]
+        out.append(_result(s, "hold", name, d, float(h.get("max", s.limits["hold"])), " m", det,
+                           [[hand[k], grip[k]] for k in range(len(d))], n=n))
+        if h.get("hand_axis") and h.get("grip_axis"):
+            ha, ga = _direction(s, h["hand_axis"]), _direction(s, h["grip_axis"])
+            ang = np.degrees(np.arccos(np.clip((ha * ga).sum(1), -1.0, 1.0)))
+            det = [f"the grip's axis {v:.0f} deg from the closed fingers" for v in ang]
+            out.append(_result(s, "hold", name + " (axis)", ang, float(h.get("max_angle", s.limits["hold_angle"])),
+                               " deg", det, [[grip[k]] for k in range(len(d))], n=n))
     return out
 
 
@@ -1675,7 +1712,8 @@ def check_inventory(job, baseline, samples, base_samples):
 
 LOWER_LIMITS = ("ahead",)      # checks whose limit is a least value (fail below it)
 
-CHECKS = (check_lengths, check_look, check_hinges, check_speed, check_feet, check_cross, check_grips, check_ahead,
+CHECKS = (check_lengths, check_look, check_hinges, check_speed, check_feet, check_cross, check_grips, check_holds,
+          check_ahead,
           check_sizes, check_lying, check_mounts, check_props, check_routes, check_penetration, check_death)
 
 

@@ -750,16 +750,38 @@ TOOLS = [
          [Arg("colour", "--colour", "color", L("Colour", "Color"), default="FF8C00"),
           Arg("out", "--out", "save", L("Texture to write", "Textura a escribir"), filters=DDT, work="health_bar.ddt")],
          outputs=("out",)),
+    Tool("make_pie", "tools/make_pie.py", "art",
+         L("Progress pie frames", "Fotogramas del gráfico de progreso"),
+         L("The frames of the small progress pie a unit panel row shows after its text (pie_00.ddt ... for "
+           "art/ui/uhc/pie): the training overlay's blue at half alpha in a thin gold frame, a clear wedge "
+           "turning clockwise from 12 o'clock. No pixel comes from the game.",
+           "Los fotogramas del pequeño gráfico de progreso que una fila del panel de unidad muestra tras su texto "
+           "(pie_00.ddt ... para art/ui/uhc/pie): el azul del entrenamiento a media transparencia en un marco "
+           "dorado fino, una cuña clara que gira en sentido horario desde las 12. Ningún píxel sale del juego."),
+         [out_dir(),
+          Arg("frames", "--frames", "int", L("Frames", "Fotogramas"),
+              L("How many steps the pie has (frame k shows k/N done).",
+                "Cuántos pasos tiene el gráfico (el fotograma k muestra k/N hecho)."), default=32),
+          Arg("png", "--png", "save", L("Sheet of the frames", "Hoja de los fotogramas"),
+              L("Optional: every frame enlarged, and the frames at the panel's sizes on its brown.",
+                "Opcional: cada fotograma ampliado, y los fotogramas a los tamaños del panel sobre su marrón."),
+              filters=PNG)],
+         outputs=("out", "png")),
     Tool("ui_preview", "tools/ui_preview.py", "art",
          L("Preview an interface layout", "Vista previa de una disposición de la interfaz"),
          L("Draws a game UI layout file (ui*.xml or its .xmb) as a picture: every gadget's box numbered and "
-           "coloured by nesting, the ones outside their parent in red, with a legend.",
+           "coloured by nesting, the ones outside their parent in red, with a legend. With a game folder, the "
+           "screen as the game draws its art instead (textures, no text), to judge a style without the game.",
            "Dibuja un archivo de disposición de la interfaz del juego (ui*.xml o su .xmb) como imagen: la caja de "
-           "cada gadget numerada y coloreada según su anidamiento, en rojo las que salen de su padre, con una leyenda."),
+           "cada gadget numerada y coloreada según su anidamiento, en rojo las que salen de su padre, con una "
+           "leyenda. Con una carpeta del juego, en cambio, la pantalla como el juego dibuja su arte (texturas, sin "
+           "texto), para juzgar un estilo sin abrir el juego."),
          [Arg("layout", None, "file", L("Layout file", "Archivo de disposición"),
-              L("A ui*.xml file of the game's data folder, or its compiled .xmb. It is only read.",
-                "Un archivo ui*.xml de la carpeta data del juego, o su .xmb compilado. Solo se lee."),
-              required=True, filters=XML),
+              L("A ui*.xml file of the game's data folder, or its compiled .xmb. It is only read. With a game "
+                "folder and a scene it may stay empty.",
+                "Un archivo ui*.xml de la carpeta data del juego, o su .xmb compilado. Solo se lee. Con una "
+                "carpeta del juego y una escena puede quedar vacío."),
+              filters=XML),
           Arg("out", "--out", "save", L("Picture to write", "Imagen a escribir"),
               L("The PNG preview. Empty: ui_preview.png in the work folder.",
                 "La vista previa en PNG. Vacío: ui_preview.png en la carpeta de trabajo."),
@@ -788,7 +810,40 @@ TOOLS = [
           Arg("vline", "--vline", "text", L("Vertical guides", "Guías verticales"),
               L("x positions in the 1024 x 768 space, comma-separated: dashed lines to check symmetry.",
                 "Posiciones x en el espacio de 1024 x 768, separadas por comas: líneas discontinuas para "
-                "comprobar la simetría."), placeholder="512")],
+                "comprobar la simetría."), placeholder="512"),
+          Arg("game", "--game", "folder", L("Game folder (textures)", "Carpeta del juego (texturas)"),
+              L("Draw the gadgets' textures from this game or copy (read only) instead of boxes.",
+                "Dibuja las texturas de los gadgets desde este juego o copia (solo se lee) en vez de cajas.")),
+          Arg("scene", "--scene", "choice", L("In-game screen", "Pantalla de partida"),
+              L("The layouts the game loads for a match, from the game folder: the normal or the minimised panels.",
+                "Las disposiciones que el juego carga para una partida, desde la carpeta del juego: los paneles "
+                "normales o los minimizados."), choices=("", "normal", "min"), default=""),
+          Arg("size", "--size", "text", L("Screen size", "Tamaño de pantalla"),
+              L("WIDTHxHEIGHT of the screen drawn with textures. Default 1024x768.",
+                "ANCHOxALTO de la pantalla dibujada con texturas. Por defecto 1024x768."), placeholder="1920x1080"),
+          Arg("culture", "--culture", "choice", L("Resource panel", "Panel de recursos"),
+              L("Which of the resource panel's three looks shows (the game picks it by the civ).",
+                "Cuál de los tres aspectos del panel de recursos se ve (el juego lo elige por la civilización)."),
+              choices=("Eur", "Asi", "Nat"), default="Eur"),
+          Arg("override", "--override", "folders", L("Textures to try", "Texturas a probar"),
+              L("Folders of textures by their art path (ui/ingame/x.png or .ddt), used before the game's.",
+                "Carpetas de texturas por su ruta de arte (ui/ingame/x.png o .ddt), usadas antes que las del "
+                "juego."), repeat=True),
+          Arg("suffix", "--suffix", "text", L("Texture suffix", "Sufijo de textura"),
+              L("For each texture x, use x_SUFFIX where it exists: a culture's own art beside the shared one.",
+                "Para cada textura x, usa x_SUFIJO donde exista: el arte propio de una cultura junto al común.")),
+          Arg("moment", "--moment", "text", L("Moments", "Momentos"),
+              L("ID=on or ID=off separated by spaces: what the engine shows at a moment (selected, stats, clock, "
+                "ageup, shipments, ...; aoe3game/uidata/hud_scene.json).",
+                "ID=on o ID=off separados por espacios: lo que el motor muestra en un momento (selected, stats, "
+                "clock, ageup, shipments, ...; aoe3game/uidata/hud_scene.json)."), repeat=True,
+              placeholder="selected=off"),
+          Arg("boxes", "--boxes", "bool", L("Outlines over the textures", "Contornos sobre las texturas"),
+              L("With textures: each gadget's box drawn over the picture, to see which piece is which.",
+                "Con texturas: la caja de cada gadget dibujada sobre la imagen, para ver qué pieza es cuál.")),
+          Arg("show_hidden", "--show-hidden", "bool", L("Draw hidden gadgets", "Dibujar los gadgets ocultos"),
+              L("With textures: gadgets marked hidden in the layout are drawn too.",
+                "Con texturas: también se dibujan los gadgets marcados como ocultos en la disposición."))],
          outputs=("out",)),
     Tool("make_stat_icon", "tools/make_stat_icon.py", "art",
          L("Stat icons for the unit panels", "Iconos de estadística para los paneles de unidad"),
@@ -1241,6 +1296,34 @@ TOOLS = [
           Arg("sex", "--sex", "text", L("Villagers", "Aldeanos"), default="male,female"),
           Arg("preview", "--preview", "save", L("Review sheet", "Hoja de revisión"), filters=(("PNG", "*.png"),)),
           Arg("gifs", "--gifs", "folder", L("GIF folder", "Carpeta de GIF")),
+          Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
+         needs=("game",), outputs=("out",)),
+    Tool("make_fanning", "tools/make_fanning.py", "art",
+         L("Hammer fanning animations", "Animaciones de abanicado del martillo"),
+         L("A unit with a pistol in its right hand (by default the European explorers) fires at the hip while "
+           "its left palm sweeps back over the hammer at each shot: an attack clip with its Attack tags and tag "
+           "file, and a matching idle loop, as Granny files checked by the game's runtime; the anim file blocks, "
+           "the job of the animation checks, a report; optional key frames from the game camera beside a "
+           "reference image, and the beat list's risk frames.",
+           "Una unidad con una pistola en la mano derecha (por defecto los exploradores europeos) dispara a la "
+           "cadera mientras la palma izquierda barre hacia atrás sobre el martillo en cada disparo: un clip de "
+           "ataque con sus marcas Attack y su archivo de marcas, y un bucle de espera a juego, como archivos "
+           "Granny comprobados por el runtime del juego; los bloques del anim file, el trabajo de las "
+           "comprobaciones de animación y un informe; opcionalmente, los fotogramas clave desde la cámara del "
+           "juego junto a una imagen de referencia, y los fotogramas de riesgo del guion."),
+         [game_dir(),
+          out_dir(help=L("Where the animations, their tag files, the anim file blocks, the check job and the report "
+                         "go. Never a Steam library.",
+                         "Dónde van las animaciones, sus archivos de marcas, los bloques del anim file, el trabajo de "
+                         "comprobación y el informe. Nunca una biblioteca de Steam.")),
+          Arg("model", "--model", "text", L("Model (art path)", "Modelo (ruta de art)"),
+              default="WoL\\units\\explorers\\europeans\\british\\british_explorer"),
+          Arg("shots", "--shots", "int", L("Shots (1 to 6)", "Disparos (1 a 6)"), default=6),
+          Arg("sheet", "--sheet", "save", L("Key frames sheet", "Hoja de fotogramas clave"), filters=PNG),
+          Arg("reference", "--reference", "file", L("Reference image", "Imagen de referencia"),
+              L("Put above the key frames, to compare the gesture.",
+                "Se pone encima de los fotogramas clave, para comparar el gesto."), filters=PNG),
+          Arg("risks", "--risks", "save", L("Risk frames sheet", "Hoja de fotogramas de riesgo"), filters=PNG),
           Arg("no_verify", "--no-verify", "bool", L("Skip the runtime checks", "Omitir las comprobaciones del runtime"))],
          needs=("game",), outputs=("out",)),
     Tool("make_gun_camel", "tools/make_gun_camel.py", "art",

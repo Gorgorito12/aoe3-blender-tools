@@ -25,6 +25,37 @@ draws it, but it shows and hides with that parent. `hidden` gadgets are drawn da
 The parser is lenient, as the game's is: comments, attribute names in any case, spaces around
 `=`, and stray closing tags are accepted. Text is drawn with the 5 x 7 bitmap font (`bitfont.py`),
 upper case. Standard library and numpy.
+
+With textures: the screen as the game draws its art, to judge a style without the game.
+
+    python -I tools/ui_preview.py [<layout> ...] --out <screen.png> --game <copy> [--scene normal|min]
+        [--size 1920x1080] [--culture Eur|Asi|Nat] [--override <folder>]... [--suffix S]
+        [--moment ID=on|off]... [--boxes] [--show-hidden]
+
+`--game` (or `--override` alone) switches to this mode. Each gadget's `size1024` rectangle is scaled
+to the screen (x * width / 1024, y * height / 768), then drawn as the studio's interface screen draws
+it (`studio/web/js/hud_render.js`; its assumptions are to verify in game): its `backgroundColor`
+(and `backgroundAlpha`), its `background` texture (or its first `stateEntry`'s) cropped by
+`textureCoords` or tiled (`tileBackground`, at the texture's own size times width / 1024), a
+`progressBar`'s background and mask, then its `foreground`; children over their parent, siblings
+and the top-level gadgets of every file by `z`, then in file order. Text, and what the engine draws
+into the gadgets (the minimap, portraits, the buttons it fills), is not drawn.
+
+- `--scene normal|min`: the layouts the game loads for its in-game screen, from the copy (the main
+  screen and the panels beside it, the normal or the minimised files, found as `studio/hud.py`
+  finds them); layout files named on the line are drawn over them.
+- `--culture`: which of the resource panel's skins shows (gadgets named `...Eur|Asi|Nat` then
+  `Max|Min`: Max for `normal`, Min for `min`); the engine picks it by the player's civ.
+- `--override <folder>` (repeatable): textures looked up before the copy's, by their art path
+  (`ui\\ingame\\x` is `<folder>\\ui\\ingame\\x.png` or `.ddt`).
+- `--suffix S`: for each texture `x`, `x_S` is used where it exists (in an override folder or the
+  copy), else `x`: a culture's own art beside the shared one.
+- `--boxes`: the gadget outlines over the picture; `--show-hidden`: draw `hidden` gadgets too.
+- `--moment ID=on|off` (repeatable): the gadgets the engine keeps hidden until a moment of the game
+  (`selected`: a unit selected, `stats`: its tab, `clock`, `ageup`, ...) follow
+  `aoe3game/uidata/hud_scene.json`'s defaults unless switched here.
+
+The textures it drew, where each came from, and the ones it did not find are printed.
 """
 import argparse
 import os
@@ -121,7 +152,11 @@ def parse(text):
 def load(path):
     """The root Node of a layout file: text XML, or a compiled .xmb through xmbedit.py."""
     with open(path, "rb") as fh:
-        raw = fh.read()
+        return load_bytes(fh.read())
+
+
+def load_bytes(raw):
+    """The root Node of a layout's bytes: text XML, or a compiled .xmb."""
     if raw[:4] == b"l33t" or raw[:2] == b"X1":
         import xmbedit
         elems, attrs, root = xmbedit.parse(xmbedit.decode(raw))
@@ -305,9 +340,325 @@ def render(root, scale=2.0, region="auto", hide=None, mark=None, title=None, str
     return img
 
 
+# --------------------------------------------------------------------------------------------------
+# The screen with its textures
+
+SKIN = re.compile(r"(Eur|Nat|Asi)(Min|Max)$")
+SCENE_RULES = os.path.join(ROOT, "aoe3_blender_tools", "aoe3game", "uidata", "hud_scene.json")
+
+
+def art_key(path):
+    """A texture path as the art folder keys it: lower case, backslashes, no art\\ and no extension."""
+    p = path.strip().replace("/", "\\").strip("\\").lower()
+    if p.startswith("art\\"):
+        p = p[4:]
+    return p[:-4] if p.endswith((".ddt", ".png")) else p
+
+
+class Textures:
+    """A layout's texture paths to pictures: each override folder first, then the copy's art (its
+    loose files, then its archives); with a suffix, `<path>_<suffix>` before `<path>`."""
+
+    def __init__(self, game=None, overrides=(), suffix=None):
+        self.art = None
+        if game:
+            from fix_hitpointbar_tags import Art
+            self.art = Art(os.path.join(game, "art"))
+        self.overrides = []
+        for folder in overrides:
+            index = {}
+            for top, _dirs, files in os.walk(folder):
+                for name in sorted(files):
+                    if name.lower().endswith((".ddt", ".png")):
+                        full = os.path.join(top, name)
+                        index.setdefault(art_key(os.path.relpath(full, folder)), []).append(full)
+            self.overrides.append(index)
+        self.suffix = suffix
+        self.cache, self.used, self.missing = {}, {}, set()
+
+    @staticmethod
+    def decode(data):
+        """H x W x 4 float RGBA (0..1) of a .ddt's top level or a PNG."""
+        from aoe3game import ddt
+        if data[:4] == ddt.MAGIC:
+            rgba = ddt.decode(data, 0)
+        else:
+            from core.pngio import read_png
+            rgba = read_png(data)
+            if rgba.ndim == 2:
+                rgba = rgba[:, :, None]
+            if rgba.shape[2] in (1, 2):
+                grey = rgba[:, :, :1]
+                alpha = rgba[:, :, 1:2] if rgba.shape[2] == 2 else np.full_like(grey, 255)
+                rgba = np.concatenate([grey, grey, grey, alpha], axis=-1)
+            elif rgba.shape[2] == 3:
+                rgba = np.concatenate([rgba, np.full(rgba.shape[:2] + (1,), 255, np.uint8)], axis=-1)
+        return rgba.astype(np.float32) / 255.0
+
+    def _one(self, key):
+        for index in self.overrides:
+            files = index.get(key)
+            if files:
+                first = sorted(files, key=lambda f: not f.lower().endswith(".png"))[0]   # a PNG first
+                with open(first, "rb") as fh:
+                    return self.decode(fh.read()), first
+        if self.art is not None:
+            hit = self.art.find(key + ".ddt")
+            if hit is not None:
+                return self.decode(hit[0]), hit[1]
+        return None
+
+    def get(self, path):
+        """H x W x 4 float RGBA (0..1) of a texture path, or None when it is not found."""
+        key = art_key(path)
+        if not key:
+            return None
+        if key not in self.cache:
+            hit = self._one(f"{key}_{self.suffix.lower()}") if self.suffix else None
+            hit = hit or self._one(key)
+            self.cache[key] = hit
+            if hit is None:
+                self.missing.add(key)
+            else:
+                self.used[key] = hit[1]
+        hit = self.cache[key]
+        return None if hit is None else hit[0]
+
+
+def scene_layouts(game, variant="normal"):
+    """[(stem, root Node)] of the in-game screen's layouts in the copy, found as studio/hud.py finds
+    them: the main screen, then the panels (their minimised files for `min`, else the normal ones)."""
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    from studio import hud
+    g = hud.Game(game)
+    out = []
+    for stem in [hud.MAIN] + [p + ("min" if variant == "min" else "") for p in hud.PANELS]:
+        hit = g.layout(stem)
+        if hit is None and variant == "min":
+            stem = stem[:-3]
+            hit = g.layout(stem)
+        if hit is not None:
+            out.append((stem, load_bytes(hit[0])))
+    return out
+
+
+def _glob(patterns):
+    parts = ["".join(".*" if ch == "*" else re.escape(ch) for ch in p) for p in patterns]
+    return re.compile("^(" + "|".join(parts) + ")$", re.I)
+
+
+def scene_rules(path=SCENE_RULES):
+    """([(id, name pattern, shown)], [(regex, the one shown)]) of hud_scene.json, or empty lists."""
+    import json
+    try:
+        with open(path, encoding="utf-8") as fh:
+            rules = json.load(fh)
+    except OSError:
+        return [], []
+    moments = [(m["id"], _glob(m["names"]), bool(m.get("on"))) for m in rules.get("moments", [])]
+    one_of = [(re.compile(o["re"]), o["show"]) for o in rules.get("oneOf", [])]
+    return moments, one_of
+
+
+def _num(v, default=0.0):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _colour(v, default):
+    try:
+        rgb = [float(t) for t in re.split(r"[\s,]+", str(v or "").strip())[:3]]
+    except ValueError:
+        return default
+    return rgb if len(rgb) == 3 else default
+
+
+def blit(canvas, img, uv, x, y, w, h, tile="", scale=1.0):
+    """Draws img (float RGBA) over canvas (float RGB) in the screen rectangle x, y, w, h: its texture
+    rectangle uv = (u1, v1, u2, v2) stretched to it (bilinear), or repeated at its own texel size
+    times `scale` along the axes in `tile` ("x", "y", "xy")."""
+    H, W = canvas.shape[:2]
+    x0, y0 = max(0, int(round(x))), max(0, int(round(y)))
+    x1, y1 = min(W, int(round(x + w))), min(H, int(round(y + h)))
+    if x1 <= x0 or y1 <= y0 or w <= 0 or h <= 0:
+        return
+    th, tw = img.shape[:2]
+    px = np.arange(x0, x1, dtype=np.float64) + 0.5
+    py = np.arange(y0, y1, dtype=np.float64) + 0.5
+    u1, v1, u2, v2 = uv
+    k = scale if scale > 0 else 1.0
+    sx = (px - x) / k if "x" in tile else (u1 + (px - x) / w * (u2 - u1)) * tw
+    sy = (py - y) / k if "y" in tile else (v1 + (py - y) / h * (v2 - v1)) * th
+    sx, sy = sx - 0.5, sy - 0.5
+    ix, iy = np.floor(sx).astype(np.int64), np.floor(sy).astype(np.int64)
+    fx = (sx - ix)[None, :, None].astype(np.float32)
+    fy = (sy - iy)[:, None, None].astype(np.float32)
+    xa, xb = (ix % tw, (ix + 1) % tw) if "x" in tile else (np.clip(ix, 0, tw - 1), np.clip(ix + 1, 0, tw - 1))
+    ya, yb = (iy % th, (iy + 1) % th) if "y" in tile else (np.clip(iy, 0, th - 1), np.clip(iy + 1, 0, th - 1))
+    top = img[ya][:, xa] * (1 - fx) + img[ya][:, xb] * fx
+    bottom = img[yb][:, xa] * (1 - fx) + img[yb][:, xb] * fx
+    px_ = top * (1 - fy) + bottom * fy
+    a = px_[:, :, 3:4]
+    canvas[y0:y1, x0:x1] = canvas[y0:y1, x0:x1] * (1 - a) + px_[:, :, :3] * a
+
+
+def render_screen(roots, width=1024, height=768, textures=None, culture="Eur", variant="normal",
+                  show_hidden=False, hide=None, boxes=False, rules=None, backdrop=(0, 0, 0), moments_on=None):
+    """H x W x 3 uint8 picture of the layouts (root Nodes, in file order) at the screen's own
+    pixels, with their textures (a Textures). `rules`: scene_rules()'s pair, read by default;
+    `moments_on`: {moment id: shown} over the rules' defaults."""
+    textures = textures or Textures()
+    moments, one_of = rules if rules is not None else scene_rules()
+    moments = [(rx, (moments_on or {}).get(mid, on)) for mid, rx, on in moments]
+    want = (culture, "Min" if variant == "min" else "Max")
+    order, tops, children = {}, [], {}
+    for fi, root in enumerate(roots):
+        for node, _depth, _idx in gadgets(root, hide):
+            order[id(node)] = (fi, len(order))
+            parent = gadget_parent(node)
+            if parent is None or id(parent) not in order:
+                tops.append(node)
+            else:
+                children.setdefault(id(parent), []).append(node)
+
+    def by_z(n):
+        fi, k = order[id(n)]
+        return (_num(n.attrs.get("z")), fi, k)
+
+    def own_shown(n):
+        if "hidden" in n.attrs and not show_hidden:
+            return False
+        m = SKIN.search(n.name)
+        if m and (m.group(1), m.group(2)) != want:
+            return False
+        if any(rx.match(n.name) and not on for rx, on in moments):
+            return False
+        for rx, show in one_of:
+            hit = rx.search(n.name)
+            if hit and hit.group(1) != show:
+                return False
+        return True
+
+    canvas = np.empty((height, width, 3), np.float32)
+    canvas[:] = np.array(backdrop, np.float32) / 255.0
+    sx, sy = width / 1024.0, height / 768.0
+    drawn = []
+
+    def texture(path, attrs, x, y, w, h):
+        img = textures.get(path)
+        if img is None:
+            return
+        uv = (0.0, 0.0, 1.0, 1.0)
+        if attrs.get("texturecoords"):
+            try:
+                t = [float(v) for v in attrs["texturecoords"].split()[:4]]
+            except ValueError:
+                t = []
+            if len(t) == 4:
+                uv = tuple(t)
+        tile = ("x" if "tilebackground" in attrs or "tilebackgroundhoriz" in attrs else "") + \
+               ("y" if "tilebackground" in attrs or "tilebackgroundvert" in attrs else "")
+        if tile and not attrs.get("texturecoords"):
+            blit(canvas, img, uv, x, y, w, h, tile, width / 1024.0)
+        else:
+            blit(canvas, img, uv, x, y, w, h)
+
+    def visit(n):
+        if not own_shown(n):
+            return
+        r = n.rect
+        if r is not None:
+            a = n.attrs
+            x, y, w, h = r[0] * sx, r[1] * sy, (r[2] - r[0]) * sx, (r[3] - r[1]) * sy
+            drawn.append((n, x, y, w, h))
+            if "backgroundcolor" in a:
+                rgb = np.array(_colour(a["backgroundcolor"], [0, 0, 0]), np.float32) / 255.0
+                alpha = min(1.0, max(0.0, _num(a.get("backgroundalpha"), 1.0)))
+                x0, y0 = max(0, int(round(x))), max(0, int(round(y)))
+                x1, y1 = min(width, int(round(x + w))), min(height, int(round(y + h)))
+                if x1 > x0 and y1 > y0:
+                    canvas[y0:y1, x0:x1] = canvas[y0:y1, x0:x1] * (1 - alpha) + rgb * alpha
+            bg = a.get("background")
+            if not bg:
+                states = [c.attrs.get("background") or c.attrs.get("foreground") for c in n.children
+                          if c.tag == "stateentry"]
+                bg = next((st for st in states if st), "")
+            if bg:
+                texture(bg, a, x, y, w, h)
+            if (a.get("type") or "").lower() == "progressbar":
+                for k in ("progressbarbackground", "progressbarmask"):
+                    if a.get(k):
+                        texture(a[k], {}, x, y, w, h)
+            if a.get("foreground"):
+                texture(a["foreground"], a, x, y, w, h)
+        for c in sorted(children.get(id(n), []), key=by_z):
+            visit(c)
+
+    for n in sorted(tops, key=by_z):
+        visit(n)
+    img = np.clip(canvas * 255.0 + 0.5, 0, 255).astype(np.uint8)
+    if boxes:
+        for n, x, y, w, h in drawn:
+            box(img, int(round(x)), int(round(y)), int(round(x + w)) - 1, int(round(y + h)) - 1,
+                OUT_COLOUR if outside_parent(n) else DEPTH_COLOURS[0])
+    return img
+
+
+def parse_size(text):
+    m = re.fullmatch(r"\s*(\d+)\s*[x,]\s*(\d+)\s*", text or "")
+    if not m or int(m.group(1)) < 16 or int(m.group(2)) < 16:
+        raise ValueError(f"--size takes WIDTHxHEIGHT, e.g. 1920x1080 (got {text!r})")
+    return int(m.group(1)), int(m.group(2))
+
+
+def main_textured(a, ap):
+    try:
+        width, height = parse_size(a.size)
+    except ValueError as e:
+        ap.error(str(e))
+    if a.scene and not a.game:
+        ap.error("--scene needs --game")
+    roots = []
+    if a.scene:
+        found = scene_layouts(a.game, a.scene)
+        if not found:
+            ap.error(f"no in-game layouts found in {a.game}")
+        roots += [r for _stem, r in found]
+    roots += [load(p) for p in a.layout]
+    if not roots:
+        ap.error("give a layout file or --scene")
+    moments_on = {}
+    for item in a.moment or ():
+        mid, _, val = item.partition("=")
+        if val.lower() not in ("on", "off"):
+            ap.error(f"--moment takes ID=on or ID=off (got {item!r})")
+        moments_on[mid] = val.lower() == "on"
+    known = {mid for mid, _rx, _on in scene_rules()[0]}
+    for mid in moments_on:
+        if mid not in known:
+            ap.error(f"--moment: no moment {mid!r} (known: {', '.join(sorted(known))})")
+    tex = Textures(a.game, a.override or (), a.suffix)
+    img = render_screen(roots, width, height, tex, a.culture, a.scene or "normal", a.show_hidden,
+                        re.compile(a.hide) if a.hide else None, a.boxes, moments_on=moments_on)
+    if a.title:
+        bitfont.draw(img, a.title, 4, 4, TEXT, shadow=(0, 0, 0))
+    with open(a.out, "wb") as fh:
+        fh.write(encode_png(img))
+    print(f"{a.out}: {width}x{height}, {sum(len(gadgets(r)) for r in roots)} gadgets in {len(roots)} files, "
+          f"{len(tex.used)} textures drawn, {len(tex.missing)} not found")
+    for key, where in sorted(tex.used.items()):
+        print(f"  {key}  <- {where}")
+    for key in sorted(tex.missing):
+        print(f"  {key}  NOT FOUND")
+    return 0
+
+
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("layout")
+    ap.add_argument("layout", nargs="*")
     ap.add_argument("--out", required=True)
     ap.add_argument("--scale", type=float, default=2.0)
     ap.add_argument("--region", default="auto", help="auto, or x1,y1,x2,y2 in the 1024 x 768 space")
@@ -317,7 +668,23 @@ def main(argv):
     ap.add_argument("--strip", help="name prefix to drop in the legend")
     ap.add_argument("--text", action="store_true", help="list each gadget's text in the legend")
     ap.add_argument("--vline", help="x of dashed vertical guides in the 1024 x 768 space, comma-separated")
+    ap.add_argument("--game", help="a game copy: draw the gadgets' textures from its art")
+    ap.add_argument("--scene", choices=("normal", "min"), help="the copy's in-game layouts, normal or minimised")
+    ap.add_argument("--size", default="1024x768", help="the screen, WIDTHxHEIGHT (textured mode)")
+    ap.add_argument("--culture", choices=("Eur", "Asi", "Nat"), default="Eur",
+                    help="which resource panel skin shows (textured mode)")
+    ap.add_argument("--override", action="append", help="a folder of textures by art path, looked up first")
+    ap.add_argument("--suffix", help="use <texture>_<suffix> where it exists")
+    ap.add_argument("--boxes", action="store_true", help="draw the gadget outlines over the textures")
+    ap.add_argument("--show-hidden", action="store_true", help="draw hidden gadgets too (textured mode)")
+    ap.add_argument("--moment", action="append",
+                    help="ID=on|off: a moment of aoe3game/uidata/hud_scene.json shown or not (textured mode)")
     a = ap.parse_args(argv)
+    if a.game or a.override:
+        return main_textured(a, ap)
+    if len(a.layout) != 1:
+        ap.error("give one layout file (or --game for the textured screen)")
+    a.layout = a.layout[0]
     region = "auto" if a.region == "auto" else [float(v) for v in a.region.split(",")]
     if region != "auto" and len(region) != 4:
         ap.error("--region takes auto or four numbers")

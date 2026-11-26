@@ -13,7 +13,10 @@
     {"id": "training", "on": false, "names": ["unitTrainingPanel"], "en": "Units in training", "es": "Unidades entrenándose"},
     {"id": "trains", "on": false, "names": ["trainsandcontains"], "en": "What a building trains and holds", "es": "Lo que entrena y contiene un edificio"},
     {"id": "traderoute", "on": false, "names": ["traderoutepanel2"], "en": "A trade route selected", "es": "Una ruta comercial seleccionada"},
-    {"id": "natives", "on": false, "names": ["nativecommandpanel2"], "en": "A native settlement selected", "es": "Un asentamiento nativo seleccionado"}
+    {"id": "natives", "on": false, "names": ["nativecommandpanel2"], "en": "A native settlement selected", "es": "Un asentamiento nativo seleccionado"},
+    {"id": "clock", "on": false, "names": ["clockTimer"], "en": "A game clock (a timer of the map)", "es": "Un reloj de partida (un contador del mapa)"},
+    {"id": "shipments", "on": true, "names": ["shipsDisplay*", "shipsTimer*"], "en": "The shipment counter (a player with a home city)", "es": "El contador de envíos (un jugador con ciudad natal)"},
+    {"id": "ageup", "on": false, "names": ["uimain-AgeAdvFG"], "en": "Advancing to the next age (its progress)", "es": "Avanzando a la siguiente edad (su progreso)"}
   ],
   "oneOf": [
     {"re": "unitHealthBar(Red|Yellow|Green)$", "show": "Green", "en": "Health bar colour", "es": "Color de la barra de vida", "choices": ["Green", "Yellow", "Red"]}

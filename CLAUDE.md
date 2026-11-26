@@ -46,7 +46,7 @@ venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, har
 venv/bin/python -I tests/test_panel_rows.py        # panel_rows, draw_praying_hands: rows moved, a new row, blocks kept
 venv/bin/python -I tests/test_import_icon.py       # import_icon: a drawn PNG into a 32x32 icon .ddt (aspect, scale, tint)
 venv/bin/python -I tests/test_command_icons.py     # make_command_icon: format, frame, tick and cross
-venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout file's gadgets as boxes
+venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout's gadgets as boxes, or the screen with its textures
 python -I tests/test_uilayout.py                  # interface layouts byte for byte, fonts, string table
 python -I tests/test_unitpanel.py                 # the unit panels filled for a unit, the DLL's rows, why an item is absent
 venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
@@ -68,10 +68,12 @@ python -I tests/test_hitpointbar_tags.py           # animation tag files and the
 python -I tests/test_dmg_bones.py                 # dmg_bones.py --fix: definebone lines, text and .xmb
 venv/bin/python -I tests/test_retarget_anims.py    # gr2_retarget and retarget_anims on synthetic rigs
 venv/bin/python -I tests/test_make_pray.py         # gr2_pose (IK, keys) and make_pray on synthetic rigs
+venv/bin/python -I tests/test_make_fanning.py      # make_fanning: shot times, tags, the palm's schedule, the hammer
 venv/bin/python -I tests/test_gun_camel.py         # gr2_parts (normals, components, cut, rigid parts) and make_gun_camel
 venv/bin/python -I tests/test_make_zamburak.py     # make_zamburak: the barrel's press, the swivel's solids, colour patches
 venv/bin/python -I tools/make_zamburak.py --game <copy> --out <dir> [--sheet <png>] [--sizes <png>] [--limber-options <png>]
 venv/bin/python -I tools/make_pray.py --game <copy> --out <dir> [--preview <png>] [--gifs <dir>]   # villager praying
+venv/bin/python -I tools/make_fanning.py --game <copy> --out <dir> [--sheet <png> --reference <png>] [--risks <png>]   # hammer fanning
 python -I tools/check_anim.py <job.json> [--baseline <old job.json>] --risk-sheet <png>   # before any animation preview (docs/animation-rules.md)
 venv/bin/python -I tests/test_check_anim.py      # the animation checks on synthetic rigs and clips
 venv/bin/python -I tools/retarget_anims.py --game <copy> --out <dir> [--recipe skirmisher --recipe native] [--preview <png>]
