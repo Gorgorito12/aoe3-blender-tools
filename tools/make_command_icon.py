@@ -7,9 +7,13 @@ cross at the bottom left for the "off" one.
     venv\\Scripts\\python -I tools/make_command_icon.py --glyph autoscout --all <folder> [--png <sheet.png>] [--check]
     venv\\Scripts\\python -I tools/make_command_icon.py --glyph autoscout --state on --out <file.ddt>
 
-Glyphs (the file names `--all` gives the two states):
+Glyphs (the file names `--all` gives the states):
 - `autoscout` (`uhc_autoscout_start.ddt`, `uhc_autoscout_stop.ddt`): a unit that explores on its own: a parchment
   map, half of it still blank, a dotted route that loops into the blank part, and a brass spyglass across it.
+- `fattened` (`uhc_select_fattened.ddt`, one state, no mark): select the livestock that has reached its maximum
+  food: a fat sheep over a food bar filled to the end. Its default frame is `wood` (a dark tile with a gold edge and
+  corners, as the resource panel's rows), for a button beside that panel; `--frame blue` gives it the command
+  buttons' frame.
 
 Every pixel is computed here (no image is read): shapes are sampled 4x4 per texel and averaged, the frame's
 mottling comes from a fixed pseudo-random sequence, so the output is the same on every run. `--check` exits with
@@ -48,7 +52,23 @@ OUTLINE = np.array([20, 14, 8], float)
 GREEN = np.array([30, 170, 40], float)
 RED = np.array([220, 24, 24], float)
 
-FILES = {("autoscout", "on"): "uhc_autoscout_start.ddt", ("autoscout", "off"): "uhc_autoscout_stop.ddt"}
+WOOL = np.array([238, 232, 216], float)
+WOOL_SHADE = np.array([176, 164, 140], float)
+HEAD = np.array([46, 40, 36], float)
+HEAD_LIGHT = np.array([92, 82, 72], float)
+MEAT = np.array([196, 34, 30], float)
+MEAT_LIGHT = np.array([240, 110, 90], float)
+BAR_EMPTY = np.array([40, 14, 12], float)
+SLATE_TOP = np.array([58, 48, 44], float)
+SLATE_BOTTOM = np.array([26, 22, 22], float)
+GOLD = np.array([170, 132, 62], float)
+GOLD_DARK = np.array([96, 70, 30], float)
+
+FILES = {("autoscout", "on"): "uhc_autoscout_start.ddt", ("autoscout", "off"): "uhc_autoscout_stop.ddt",
+         ("fattened", "on"): "uhc_select_fattened.ddt"}
+# The frame each glyph gets by default: "blue" (the command panel's buttons) or "wood" (a dark tile with a gold
+# edge, as the resource panel's rows and corners).
+FRAMES = {"autoscout": "blue", "fattened": "wood"}
 
 
 def samples():
@@ -120,6 +140,66 @@ def picture_autoscout(c, u, v):
     c.paint(lens, LENS)
 
 
+def picture_fattened(c, u, v):
+    """A fat sheep, seen from the side and facing left, over a food bar filled to the end: livestock that has
+    reached its maximum food."""
+    inside = (u >= FRAME) & (u < SIZE - FRAME) & (v >= FRAME) & (v < SIZE - FRAME)
+    t = np.clip((v - FRAME) / (SIZE - 2 * FRAME), 0.0, 1.0)[..., None]
+    c.rgb[inside] = (SLATE_TOP * (1 - t) + SLATE_BOTTOM * t)[inside]
+    # legs (behind the wool): four short dark posts
+    legs = np.zeros_like(u, bool)
+    for x0 in (23.0, 29.0, 39.0, 45.0):
+        legs |= (np.abs(u - x0) < 1.4) & (v > 36) & (v < 47.5)
+    c.paint(inside & (np.abs(u[..., None] - np.array([23.0, 29.0, 39.0, 45.0])).min(axis=-1) < 2.5) & (v > 35)
+            & (v < 48.6), OUTLINE)
+    c.paint(inside & legs, HEAD)
+    # the wool: a round cloud of overlapping puffs, lighter at the top
+    puffs = [(34, 30, 12.5), (24, 30, 8.5), (44, 30, 8.5), (29, 22, 8.0), (40, 22, 8.0), (28, 37, 7.5),
+             (40, 37, 7.5), (34, 38, 7.5), (49, 26, 5.5)]
+    wool = np.zeros_like(u, bool)
+    for px, py, r in puffs:
+        wool |= np.hypot(u - px, v - py) < r
+    ring = np.zeros_like(u, bool)
+    for px, py, r in puffs:
+        ring |= np.hypot(u - px, v - py) < r + 1.2
+    c.paint(inside & ring & ~wool, OUTLINE)
+    shade = np.clip((v - 18) / 24.0, 0.0, 1.0)[..., None]
+    c.rgb[inside & wool] = (WOOL * (1 - shade) + WOOL_SHADE * shade)[inside & wool]
+    shine = wool & (np.hypot((u - 31) / 1.4, v - 21) < 5.0)
+    c.rgb[shine] = np.minimum(c.rgb[shine] + 14, 255)
+    # the head: a dark oval to the left, with an ear and an eye
+    hx, hy = 15.5, 27.0
+    head = np.hypot((u - hx) / 5.6, (v - hy) / 6.6) < 1.0
+    ear = np.hypot((u - 20.5) / 3.6, (v - 21.5) / 1.8) < 1.0
+    snout = np.hypot((u - 12.0) / 3.4, (v - 31.5) / 3.0) < 1.0
+    shape = head | ear | snout
+    grown = (np.hypot((u - hx) / 6.8, (v - hy) / 7.8) < 1.0) | (np.hypot((u - 20.5) / 4.8, (v - 21.5) / 3.0) < 1.0) \
+        | (np.hypot((u - 12.0) / 4.6, (v - 31.5) / 4.2) < 1.0)
+    c.paint(inside & grown & ~shape & ~wool, OUTLINE)
+    c.paint(inside & shape, HEAD)
+    c.paint(inside & head & (np.hypot(u - 16.5, v - 24.0) < 2.2), HEAD_LIGHT)
+    c.paint(inside & (np.hypot(u - 14.0, v - 25.5) < 1.1), np.array([235, 225, 200], float))
+    # the food bar: filled to the end
+    bar = inside & (u > 11) & (u < 53) & (v > 51) & (v < 56.5)
+    c.paint(inside & (u > 9.8) & (u < 54.2) & (v > 49.8) & (v < 57.7), OUTLINE)
+    c.paint(bar, MEAT)
+    c.paint(bar & (v < 52.8), MEAT_LIGHT)
+
+
+def frame_wood(c, u, v):
+    x, y = np.floor(u).astype(int), np.floor(v).astype(int)
+    ring = np.minimum(np.minimum(x, y), np.minimum(SIZE - 1 - x, SIZE - 1 - y))
+    c.paint(ring == 0, BLACK)
+    t = np.clip(v / SIZE, 0.0, 1.0)[..., None]
+    gold = (ring >= 1) & (ring <= 2)
+    c.rgb[gold] = (GOLD * (1 - t) + GOLD_DARK * t)[gold]
+    c.paint(ring == 3, BLACK)
+    c.paint(ring == 4, np.array([70, 58, 52], float))
+    # gold corner brackets, as the resource panel's corners
+    corner = ((x < 12) | (x > SIZE - 13)) & ((y < 12) | (y > SIZE - 13)) & (ring <= 4)
+    c.paint(corner & (ring >= 1) & (ring <= 3), np.minimum(GOLD + 50, 255))
+
+
 def frame(c, u, v):
     x, y = np.floor(u).astype(int), np.floor(v).astype(int)
     ring = np.minimum(np.minimum(x, y), np.minimum(SIZE - 1 - x, SIZE - 1 - y))
@@ -145,11 +225,16 @@ def cross(c, u, v):
     c.paint(d < 2.6, RED)
 
 
-def draw(glyph, state):
-    if glyph != "autoscout":
-        raise ValueError(glyph)
+def draw(glyph, state, frame_style=None):
+    if glyph not in FRAMES or (glyph, state) not in FILES:
+        raise ValueError((glyph, state))
+    frame_style = frame_style or FRAMES[glyph]
     u, v = samples()
     c = Canvas()
+    if glyph == "fattened":  # one state: a button with no on / off mark
+        picture_fattened(c, u, v)
+        (frame_wood if frame_style == "wood" else frame)(c, u, v)
+        return np.clip(np.rint(c.texels()), 0, 255).astype(np.uint8)
     picture_autoscout(c, u, v)
     if state == "off":  # the picture tinted red, as the game's "off" buttons are
         inside = (u >= FRAME) & (u < SIZE - FRAME) & (v >= FRAME) & (v < SIZE - FRAME)
@@ -158,12 +243,12 @@ def draw(glyph, state):
         cross(c, u, v)
     else:
         tick(c, u, v)
-    frame(c, u, v)
+    (frame_wood if frame_style == "wood" else frame)(c, u, v)
     return np.clip(np.rint(c.texels()), 0, 255).astype(np.uint8)
 
 
-def encode(glyph, state):
-    return ddt.write_bgra(draw(glyph, state), alpha=0, usage=0, mips=False)
+def encode(glyph, state, frame_style=None):
+    return ddt.write_bgra(draw(glyph, state, frame_style), alpha=0, usage=0, mips=False)
 
 
 def preview(images):
@@ -179,13 +264,14 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--glyph", default="autoscout", choices=sorted({g for g, _ in FILES}))
     ap.add_argument("--state", choices=("on", "off"), default="on")
+    ap.add_argument("--frame", choices=("blue", "wood"), help="the frame (default: the glyph's own)")
     ap.add_argument("--out")
-    ap.add_argument("--all", metavar="FOLDER", help="write both states of the glyph into this folder")
+    ap.add_argument("--all", metavar="FOLDER", help="write every state of the glyph into this folder")
     ap.add_argument("--png", help="also write a 4x enlarged preview of what is written")
     ap.add_argument("--check", action="store_true")
     a = ap.parse_args(argv)
     if a.all:
-        jobs = [(s, pathlib.Path(a.all) / FILES[(a.glyph, s)]) for s in ("on", "off")]
+        jobs = [(s, pathlib.Path(a.all) / FILES[(a.glyph, s)]) for s in ("on", "off") if (a.glyph, s) in FILES]
     elif a.out:
         jobs = [(a.state, pathlib.Path(a.out))]
     else:
@@ -193,8 +279,8 @@ def main(argv):
     status = 0
     images = []
     for state, out in jobs:
-        data = encode(a.glyph, state)
-        images.append(draw(a.glyph, state))
+        data = encode(a.glyph, state, a.frame)
+        images.append(draw(a.glyph, state, a.frame))
         if a.check:
             same = out.exists() and out.read_bytes() == data
             print(f"{out}: {'same' if same else 'differs'}")
