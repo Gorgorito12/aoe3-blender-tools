@@ -1308,10 +1308,11 @@ class ZUnit:
 
     CLEAR = 0.015         # the gap the camel's head keeps from the barrel
 
-    def keep_head_clear(self, poses, times, fr):
+    def keep_head_clear(self, poses, times, fr, loop=False):
         """Where the camel's own clip swings its head into the barrel (the bored idles turn it to
         the right, where pose B puts the muzzle), the neck bent down just enough, eased in and out
-        over half a second either side: (poses, the largest bend in degrees)."""
+        over half a second either side: (poses, the largest bend in degrees). A loop's easing wraps
+        round its seam (its last frame is its first)."""
         cam = self.camel
         need = np.zeros(len(poses))
         for i, P in enumerate(poses):
@@ -1326,8 +1327,15 @@ class ZUnit:
         half = int(round(0.5 * FPS))
         kernel = [ease((k + 1) / (half + 1)) for k in range(half)] + [1.0] + \
                  [ease((half - k) / (half + 1)) for k in range(half)]
-        bend = np.array([max(need[j] * kernel[j - i + half] for j in range(max(0, i - half), min(len(need), i + half + 1)))
-                         for i in range(len(need))])
+        if loop and len(need) > 2:
+            m = len(need) - 1                   # the last frame repeats the first
+            need[:m] = np.maximum(need[:m], np.r_[need[m], np.zeros(m - 1)])
+            bend = np.array([max(need[j % m] * kernel[j - i + half] for j in range(i - half, i + half + 1))
+                             for i in range(m)])
+            bend = np.r_[bend, bend[0]]
+        else:
+            bend = np.array([max(need[j] * kernel[j - i + half] for j in range(max(0, i - half), min(len(need), i + half + 1)))
+                             for i in range(len(need))])
         return [cam.lower_head(P, float(a)) if a > 0 else P for P, a in zip(poses, bend)], float(bend.max())
 
     def limbered(self, name, anim_name, rel, gait, reins_only, look=None):
@@ -1337,7 +1345,7 @@ class ZUnit:
         b = Built(name, anim_name, times)
         poses, anim, scales = self.camel_own(rel, times)
         fr = self.gun_frames(self.limber)
-        poses, b.head_bend = self.keep_head_clear(poses, times, fr)
+        poses, b.head_bend = self.keep_head_clear(poses, times, fr, loop=name in LOOPS)
         for t, P in zip(times, poses):
             u = t / length
             R = self.seated(P, t if not gait else 0.0, length if not gait else None)
@@ -2230,6 +2238,11 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
             c["limits"] = {"sink": 0.12}
         if name.startswith("cheer"):
             c["limits"] = {"look_yaw": 85.0, "penetration": 0.10}
+        if name == "cheer_d":
+            # the stock cheer E draws the rider's left knee up; on the hump's higher seat (2026-11-26) his
+            # heel comes against the flank, inside the body's rough capsule (radius 0.45) by 21 cm: the
+            # pictures show it on the skin, not in it
+            c["limits"] = {"look_yaw": 85.0, "penetration": 0.22}
         if name == "death":
             c["limits"] = {"look_yaw": 115.0, "look_pitch_down": 80.0, "look_pitch_up": 80.0,
                            "angular_speed": 2000.0, "sink": 0.30, "slide": 0.30, "penetration": 0.30, "cross": 0.40}
@@ -2682,6 +2695,7 @@ class V2:
             b.rider.append(R)
         self.keep(b, 3.43, UNLIMBER2, "r")
         self.keep(b, 3.85, 4.25, "l", "cannon", "left palm on the cascabel")
+        b.rider = limit_arm_rates(u.rider.rig, b.rider, 1450.0)       # the hump's higher seat: 1525 deg/s
         b.camel_src = (anim, scales)
         return b
 
@@ -2755,6 +2769,7 @@ class V2:
         self.keep(b, 0.0, 3.05, "r")
         self.keep(b, 0.24, 0.42, "l", "cannon", "left palm on the cascabel (at his station)")
         self.keep(b, 1.92, 2.60, "l", "cannon", "left palm on the cascabel")
+        b.rider = limit_arm_rates(u.rider.rig, b.rider, 1450.0)       # the hump's higher seat: 1560 deg/s
         b.camel_src = (anim, scales)
         return b
 
@@ -2837,6 +2852,7 @@ class V2:
             b.gun.append(dict(fr, linstock=u.staff_design(P, W)))
             b.rider.append(R)
         self.keep(b, 0.0, FIRE, "r")
+        b.rider = limit_arm_rates(u.rider.rig, b.rider, 1450.0)       # the hump: the vent 0.03 higher, 1580 deg/s
         b.camel_src = (anim, scales)
         b.flash = [SHOT]
         return b

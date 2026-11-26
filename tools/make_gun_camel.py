@@ -1770,10 +1770,11 @@ class Unit:
         inside its body, under the saddle (the middle of the body's depth below the gunner's
         pelvis), so no clip shows it and the gun's yaw does not move it (it hangs on the root)."""
         cam, g = self.camel, self.gun
-        P0 = cam.pose(cam.anim(CLIPS["A"][0]["camel"]), 0.0)
+        # the rider's bone where the clips keep it (fix_hang: on the chest, risen with the hump)
+        P0 = cam.fix_hang(cam.pose(cam.anim(CLIPS["A"][0]["camel"]), 0.0))
         C0 = self.C(P0)
         inv0 = np.linalg.inv(C0)
-        R = self.rider.seated(self.rider.idle, 0.0, cam.seat_frame(P0))
+        R = self.rider.seated(self.rider.idle, 0.0, rigid(P0[cam.rider_bone]))
         pel = R["bip01 pelvis"][:3, 3]
         # the vertical through the body under him: the saddle's top, then the belly (the highest
         # surface well below it)
@@ -1782,7 +1783,12 @@ class Unit:
         hi = float(ys.max())
         below = ys[ys < hi - 0.25]
         lo = float(below.max()) if len(below) else hi - 0.6
-        centre = point(inv0, np.array([pel[0], 0.5 * (hi + lo), pel[2] + 0.10]))
+        # 0.27 above the spine's line (chest to pelvis), inside the body under the saddle: with the hump
+        # (2026-11-26) the surfaces under him no longer gave the middle of its depth (it came out under the
+        # belly), and the pocket it moves to as the reload begins rose with his seat (the move, out of
+        # sight, stays one frame's worth under the props' speed)
+        spine_y = 0.5 * (P0[cam.mount][1, 3] + P0["hs bone pelvis"][1, 3])
+        centre = point(inv0, np.array([pel[0], spine_y + 0.27, pel[2]]))
         mid = 0.5 * (g.mag_top + g.mag_base)
         seat = g.at["ammo"]
         g.stash = tr(centre) @ rot4(axis_matrix(X, 90.0)) @ tr(seat - mid)
@@ -2378,6 +2384,9 @@ class Unit:
             # the kush (2026-11-26) lowered the hopper 0.31 m: the left hand's carry up from the pocket
             # turned it at 1515 deg/s; held to 1450
             b.rider = limit_rates(rider.rig, b.rider, 1450.0, bones=("bip01 l hand",))
+        if self.style == "A" and do == "reload":
+            # the hump's higher seat (2026-11-26): his left forearm turned 1620 deg/s on its way to the pocket
+            b.rider = limit_rates(rider.rig, b.rider, 1450.0, bones=("bip01 l upperarm", "bip01 l forearm"))
         b.length = length
         if self.home:
             # the camel's bone_turret (the launch point and the muzzle flash, and the dead model's
