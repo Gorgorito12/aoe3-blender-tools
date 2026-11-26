@@ -3,18 +3,21 @@
 the way back from the filled templates to the game's textures.
 
     venv\\Scripts\\python -I tools/make_ui_templates.py templates --game <copy> --out <dir>
-        [--variant min|normal] [--only tex1,tex2] [--size 1920x1080] [--overview]
+        [--variant min|normal] [--only tex1,tex2 | --all] [--size 1920x1080] [--overview]
     venv\\Scripts\\python -I tools/make_ui_templates.py build --game <copy> --in <dir> --suffix <s> --out <dir>
         [--variant min|normal] [--only tex1,tex2] [--composite]
 
 `templates` maps every `ui\\ingame` texture the chosen interface draws into pieces
 (`aoe3game/uiatlas.py`: the gadget, the rectangle, how large it shows at `--size`, when the game
-shows it) and writes, per texture, `<texture>.psd` (`aoe3game/psd.py`), bottom to top:
+shows it) and writes, per texture of 65 px or more on its longer side (`--all`: the small ones
+too: 4x4 outlines, 64 px buttons, health bar bits; the README lists those left out), `<texture>.psd`
+(`aoe3game/psd.py`), bottom to top. Pieces are numbered through the big textures first, so the
+default set has no gaps and a run with `--all` or `--only` keeps those numbers:
 
 1. "Original": today's art with its alpha, hidden and locked (a reference);
 2. the group "Paint": one layer per piece holding the original's pixels at their place, named in
-   plain words with its number and gadget ("37 Minimap frame (minimapPanel)"); pieces that share
-   pixels share a layer ("34+35 Train and hold row + Command panel (...)");
+   plain words with its number and gadget ("Minimap frame (minimapPanel)" after its number);
+   pieces that share pixels share a layer ("Train and hold row + Command panel (...)");
 3. the group "Guides", hidden: each piece's outline, number and name, the areas no piece uses
    hatched in red, the pieces the screen enlarges or stretches unevenly marked in orange;
 4. Photoshop guides at the pieces' edges.
@@ -26,8 +29,8 @@ list), `pieces.json` (the map), `README.txt` (for the artists: which textures ea
 needs, how to export, the names, how to preview). `--overview` adds `<texture>.layers.png` per
 file: the layer list and each layer side by side, to check a file without Photoshop.
 
-`build` turns the filled files of `--in` (`<texture>.psd`, `<texture>.png`, or the same with
-`_<suffix>`) into `<out>\\ui\\ingame\\<texture>_<suffix>.ddt` in the original's format (size, DXT
+`build` turns the filled files of `--in` (`<texture>.psd`, `<texture>.png`, a `<texture>.ddt`
+recoloured elsewhere, or the same with `_<suffix>`) into `<out>\\ui\\ingame\\<texture>_<suffix>.ddt` in the original's format (size, DXT
 format, alpha type, mip levels: `aoe3game/ddt.write_like`; untouched blocks keep the original's
 bytes). From a PSD it composes the visible layers itself (normal blend mode, opacity, masks),
 leaving out the "Original" layer and the "Guides" group whatever their visibility; `--composite`
@@ -149,11 +152,35 @@ class Copy:
         return out
 
 
-def selected(ui_map, only):
-    """The atlases of the map, filtered by `--only` (texture names, without folder or extension)."""
+MIN_SIDE = 65          # a texture smaller than this on its longer side is left out unless --all
+
+
+def is_big(atlas):
+    return max(atlas.width, atlas.height) >= MIN_SIDE
+
+
+def renumber(ui_map, everything=False):
+    """Numbers the pieces 1.. through the big textures first (name order), then the small ones, so
+    the default set has no gaps and keeps its numbers in a run with --all or --only."""
+    atlases = list(ui_map.atlases.values())
+    n = 0
+    for a in [x for x in atlases if is_big(x)] + [x for x in atlases if not is_big(x)]:
+        for p in a.pieces:
+            n += 1
+            p.number = n
+
+
+def left_out(ui_map):
+    """The small textures a default run leaves out."""
+    return [a for a in ui_map.atlases.values() if not is_big(a)]
+
+
+def selected(ui_map, only, everything=True):
+    """The atlases of the map, filtered by `--only` (texture names, without folder or extension);
+    without it, every atlas (everything) or only the big ones."""
     atlases = list(ui_map.atlases.values())
     if not only:
-        return atlases
+        return atlases if everything else [a for a in atlases if is_big(a)]
     want = [w.strip().lower() for w in only.split(",") if w.strip()]
     found = [a for a in atlases if a.base in want or a.key in want]
     missing = sorted(set(want) - {a.base for a in found} - {a.key for a in found})
@@ -535,7 +562,7 @@ def reference_sheet(copy, ui_map, atlases, screen, culture="Eur"):
 # --------------------------------------------------------------------------------------------------
 # README
 
-def readme(copy, ui_map, atlases, screen):
+def readme(copy, ui_map, atlases, screen, omitted=()):
     skins = copy.skins()
     by_skin = {}
     for s, name, civs in FAMILIES:
@@ -563,7 +590,9 @@ def readme(copy, ui_map, atlases, screen):
     L.append("  - Keep the canvas size. Keep each piece inside its outline: the game crops exactly there.")
     L.append("  - Transparency matters: the game draws the alpha you paint (rounded edges, holes, see-through")
     L.append("    parts). Keep the outer shape of each piece unless you mean to change it.")
-    L.append("  - Hatched areas are not used by this interface: paint there is dropped.")
+    L.append("  - Hatched areas are not used by this interface: paint there is dropped. They may still hold")
+    L.append("    art (parts of the normal interface, or nothing the game uses): leave them as they are. Only")
+    L.append("    the minimised interface is styled, so there is no need to repaint them.")
     if abs(aspect - 1) > 0.02:
         L.append(f"  - The layout is made for a 4:3 screen: at {screen[0]}x{screen[1]} the game widens every piece")
         L.append(f"    {aspect:.2f} times against its height. Draw with the original's proportions, not the")
@@ -605,6 +634,12 @@ def readme(copy, ui_map, atlases, screen):
         L.append(f"  {s_}  {name} ({', '.join(civs)}): the shared ones + the "
                  f"{' and '.join(SKIN_WORDS[k] for k in by_skin[s_])} resource panel")
     L.append("")
+    if omitted:
+        L.append("LEFT OUT (small textures, under 65 px on their longer side; they keep today's look)")
+        for k in range(0, len(omitted), 3):
+            L.append("  " + ", ".join(f"{x.base} {x.width}x{x.height}" for x in omitted[k:k + 3]))
+        L.append("  (tools/make_ui_templates.py templates --all makes templates for them too.)")
+        L.append("")
     L.append("TEXTURES AND PIECES")
     for a in atlases:
         L.append(f"  {a.base}.psd  {a.width}x{a.height}")
@@ -661,7 +696,9 @@ def cmd_templates(a):
     outside_copy(a.out, a.game)
     copy = Copy(a.game)
     m = copy.ui_map(a.variant, screen)
-    atlases = selected(m, a.only)
+    renumber(m)
+    atlases = selected(m, a.only, a.all)
+    omitted = [] if a.all or a.only else left_out(m)
     os.makedirs(a.out, exist_ok=True)
     total = 0
     for atlas in atlases:
@@ -689,8 +726,9 @@ def cmd_templates(a):
     with open(os.path.join(a.out, "pieces.json"), "w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=1)
     with open(os.path.join(a.out, "README.txt"), "w", encoding="utf-8", newline="") as fh:
-        fh.write(readme(copy, m, atlases, screen))
+        fh.write(readme(copy, m, atlases, screen, omitted))
     print(f"{len(atlases)} templates, {total / 1048576:.2f} MB; reference_sheet.png, pieces.json, README.txt"
+          + (f"; left out (small): {', '.join(x.base for x in omitted)}" if omitted else "")
           + (f"; textures not found: {', '.join(sorted(m.missing))}" if m.missing else ""))
     return 0
 
@@ -699,10 +737,11 @@ SUFFIX = re.compile(r"^[a-z0-9]+(_[a-z0-9]+)*$")
 
 
 def find_input(folder, base, suffix):
-    """The filled file for a texture in `folder`: <base>_<suffix> first, then <base>; .psd or .png."""
+    """The filled file for a texture in `folder`: <base>_<suffix> first, then <base>; .psd, .png or
+    .ddt (a texture recoloured or edited elsewhere)."""
     names = {n.lower(): n for n in os.listdir(folder)}
     for stem in (f"{base}_{suffix}", base):
-        for ext in (".psd", ".png"):
+        for ext in (".psd", ".png", ".ddt"):
             if (stem + ext).lower() in names:
                 return os.path.join(folder, names[(stem + ext).lower()])
     return None
@@ -712,6 +751,8 @@ def picture_of(path, use_composite=False):
     """(H x W x 4 uint8, [notes]) of a filled template."""
     with open(path, "rb") as fh:
         data = fh.read()
+    if data[:4] == ddt.MAGIC:
+        return ddt.decode(data, 0), []
     if data[:4] == psd.SIGNATURE:
         f = psd.read(data)
         if use_composite or not f.items:
@@ -777,6 +818,7 @@ def cmd_build(a):
         raise TemplateError(f"no such folder: {a.input}")
     copy = Copy(a.game)
     m = copy.ui_map(a.variant, screen)
+    renumber(m)
     atlases = selected(m, a.only)
     written, warnings = 0, []
     for atlas in atlases:
@@ -788,8 +830,20 @@ def cmd_build(a):
         painted, notes = picture_of(src, a.composite)
         warnings += [f"{os.path.basename(src)}: {n}" for n in notes]
         final, warn = check_and_merge(atlas, original, painted)
-        warnings += warn
-        out, changed = ddt.write_like(data, final)
+        given = None
+        if src.lower().endswith(".ddt"):
+            with open(src, "rb") as fh:
+                given = fh.read()
+            if given[4:16] != data[4:16]:
+                given = None
+        if given is not None:
+            # a whole texture already in the original's format (recolour_textures.py keeps every header
+            # byte): kept as it is, unused areas included; only the transparency checks apply
+            warnings += [w for w in warn if "outside every piece" not in w]
+            out, changed = given, -2
+        else:
+            warnings += warn
+            out, changed = ddt.write_like(data, final)
         rel = atlas.key + "_" + a.suffix + ".ddt"
         path = os.path.join(a.out, *rel.split("\\"))
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -797,7 +851,8 @@ def cmd_build(a):
             fh.write(out)
         written += 1
         hd = ddt.read_header(out)
-        what = "unchanged" if changed == 0 else (f"{changed} blocks encoded" if changed > 0 else "written whole")
+        what = "unchanged" if changed == 0 else (f"{changed} blocks encoded" if changed > 0 else
+                                                 "copied as given" if changed == -2 else "written whole")
         print(f"{path}: {hd.describe()}, {what} (from {os.path.basename(src)})")
     for w in warnings:
         print("WARNING: " + w)
@@ -815,7 +870,9 @@ def main(argv):
     t.add_argument("--game", required=True, help="a game copy (read only)")
     t.add_argument("--out", required=True, help="the folder to write (outside the copy)")
     t.add_argument("--variant", choices=("min", "normal"), default="min", help="the interface (default min)")
-    t.add_argument("--only", help="texture names, comma-separated (default: every ui\\ingame texture it draws)")
+    t.add_argument("--only", help="texture names, comma-separated (default: every ui\\ingame texture it draws "
+                                  "of 65 px or more on its longer side)")
+    t.add_argument("--all", action="store_true", help="the small textures too (4x4 outlines, small buttons, ...)")
     t.add_argument("--size", default="1920x1080", help="the screen the on-screen sizes are given for")
     t.add_argument("--overview", action="store_true", help="also a picture of each file's layers")
     b = sub.add_parser("build", help="the filled templates to the game's textures")

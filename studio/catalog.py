@@ -863,9 +863,16 @@ TOOLS = [
               L("min: the minimised interface; normal: the full one.",
                 "min: la interfaz minimizada; normal: la completa."), choices=("min", "normal"), default="min"),
           Arg("only", "--only", "text", L("Only these textures", "Solo estas texturas"),
-              L("Texture names separated by commas. Empty: every ui/ingame texture the interface draws.",
+              L("Texture names separated by commas. Empty: every ui/ingame texture the interface draws (65 px or "
+                "more on its longer side, unless the next option is on).",
                 "Nombres de textura separados por comas. Vacío: todas las texturas ui/ingame que dibuja la "
-                "interfaz."), placeholder="ingame_ui_small_01_ypack"),
+                "interfaz (de 65 px o más en su lado mayor, salvo con la opción siguiente)."),
+              placeholder="ingame_ui_small_01_ypack"),
+          Arg("all", "--all", "bool", L("Small textures too", "También las texturas pequeñas"),
+              L("By default textures under 65 px on their longer side (4x4 outlines, 64 px buttons, health bar bits) "
+                "are left out and listed in the README.",
+                "Por defecto se dejan fuera las texturas de menos de 65 px en su lado mayor (contornos de 4x4, "
+                "botones de 64 px, piezas de la barra de vida), y el README las lista.")),
           Arg("size", "--size", "text", L("Screen size", "Tamaño de pantalla"),
               L("WIDTHxHEIGHT the on-screen sizes and stretch marks are measured for. Default 1920x1080.",
                 "ANCHOxALTO para el que se miden los tamaños en pantalla y las marcas de estirado. Por defecto "
@@ -889,8 +896,11 @@ TOOLS = [
            "interfaz\" (texturas a probar, el sufijo)."),
          [game_dir(),
           Arg("input", "--in", "folder", L("Filled templates", "Plantillas rellenadas"),
-              L("The folder of <texture>.psd or .png files (or <texture>_<suffix>.psd/.png).",
-                "La carpeta de archivos <textura>.psd o .png (o <textura>_<sufijo>.psd/.png)."), required=True),
+              L("The folder of <texture>.psd or .png files (or <texture>_<suffix>.psd/.png), or of whole .ddt "
+                "textures recoloured elsewhere (kept as given when in the original's format).",
+                "La carpeta de archivos <textura>.psd o .png (o <textura>_<sufijo>.psd/.png), o de texturas .ddt "
+                "enteras recoloreadas aparte (se guardan tal cual si tienen el formato del original)."),
+              required=True),
           Arg("suffix", "--suffix", "text", L("Suffix", "Sufijo"),
               L("The family's suffix: eu, an, la, ns, af, as, me, na, po; add _gw for the Great War.",
                 "El sufijo de la familia: eu, an, la, ns, af, as, me, na, po; añade _gw para la Gran Guerra."),

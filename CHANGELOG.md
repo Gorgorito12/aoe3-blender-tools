@@ -8,10 +8,10 @@ three together).
 
 - `tools/make_ui_templates.py` (two forms in Art utilities): Photoshop templates of the in-game interface's
   textures, for artists to restyle the interface per culture, and the way back. `templates` writes one `.psd` per
-  texture (the original hidden and locked; one layer per piece named in plain words with its number and gadget; a
+  texture of 65 px or more (`--all`: the small ones too; the README lists those left out) (the original hidden and locked; one layer per piece named in plain words with its number and gadget; a
   hidden Guides group with outlines, names, unused areas hatched and stretched pieces marked; Photoshop guides at the
-  pieces' edges), a reference sheet, the map as JSON and a README for artists. `build` turns the filled `.psd` or
-  exported PNG into `<texture>_<suffix>.ddt` in the original's format, with checks. New: `aoe3game/uiatlas.py` (the
+  pieces' edges), a reference sheet, the map as JSON and a README for artists. `build` turns the filled `.psd`, an
+  exported PNG or a whole `.ddt` recoloured elsewhere into `<texture>_<suffix>.ddt` in the original's format, with checks. New: `aoe3game/uiatlas.py` (the
   interface's textures as pieces; the visibility rules `ui_preview.py` draws with, moved there unchanged),
   `aoe3game/psd.py` (a minimal PSD writer and reader, pure Python and numpy), `ddt.write_like` (new pixels in an
   original's format; `panel_rows.encode_like` uses it). Test: `tests/test_make_ui_templates.py`.

@@ -25,10 +25,11 @@ from core.pngio import encode_png  # noqa: E402
 
 TOOL = os.path.join(ROOT, "tools", "make_ui_templates.py")
 
-# A main screen and a minimap panel in the 1024 x 768 space. The atlas is 64 x 64: the frame is its
-# top half (0..32), a row shares the frame's top 8 pixels, the European resource panel its bottom left
+# A main screen and a minimap panel in the 1024 x 768 space. The atlas is 128 x 128: the frame is its
+# top half (0..64), a row shares the frame's top 16 pixels, the European resource panel its bottom left
 # quarter; the bottom right quarter is used by no gadget. A Max skin never shows in the minimised
-# interface; a hidden panel shows when the game shows it; the clock waits for its moment.
+# interface; a hidden panel shows when the game shows it; the clock waits for its moment. The clock's
+# texture (32 x 16) is small: a default run of the tool leaves it out.
 MAIN = r"""<layout>
   <gadget name="SettlerCountDialog-defaultPanelEurMin" size1024="220 630 345 768" background="ui\ingame\atlas" textureCoords="0 0.5 0.5 1"/>
   <gadget name="SettlerCountDialog-defaultPanelEurMax" size1024="220 630 345 768" background="ui\ingame\atlas" textureCoords="0.5 0.5 1 1"/>
@@ -48,9 +49,9 @@ MINIMAP = r"""<layout>
 
 def atlas_rgba():
     rng = np.random.default_rng(7)
-    img = rng.integers(0, 256, (64, 64, 4)).astype(np.uint8)
+    img = rng.integers(0, 256, (128, 128, 4)).astype(np.uint8)
     img[..., 3] = 255
-    img[40:44, 10:20, 3] = 0                  # a hole in the resource panel
+    img[80:88, 20:40, 3] = 0                  # a hole in the resource panel
     img[0:2, :, 3] = 136                       # a soft top edge on the frame
     return img
 
@@ -91,10 +92,11 @@ class Pieces(unittest.TestCase):
         self.assertEqual(list(self.m.atlases), [r"ui\ingame\atlas", r"ui\ingame\clock"])
         atlas = self.m.atlases[r"ui\ingame\atlas"]
         got = [(p.number, p.rect, p.gadgets) for p in atlas.pieces]
-        self.assertEqual(got, [(1, (0, 0, 64, 8), ["trainsandcontains-row0"]),
-                               (2, (0, 0, 64, 32), ["minimapPanel"]),
-                               (3, (0, 0, 64, 64), ["menu-button"]),
-                               (4, (0, 32, 32, 64), ["SettlerCountDialog-defaultPanelEurMin"])])
+        self.assertEqual(got, [(1, (0, 0, 128, 16), ["trainsandcontains-row0"]),
+                               (2, (0, 0, 128, 64), ["minimapPanel"]),
+                               (3, (0, 0, 128, 128), ["menu-button"]),
+                               (4, (0, 64, 64, 128), ["SettlerCountDialog-defaultPanelEurMin"])])
+        self.assertEqual([mut.is_big(a) for a in self.m.atlases.values()], [True, False])
         # the Max skin is not in the minimised interface; a texture outside ui\ingame is not either
         self.assertNotIn("SettlerCountDialog-defaultPanelEurMax", [g for p in atlas.pieces for g in p.gadgets])
         clock = self.m.atlases[r"ui\ingame\clock"]
@@ -112,16 +114,16 @@ class Pieces(unittest.TestCase):
         self.assertEqual(atlas.overlaps(), [(0, 1), (0, 2), (1, 2), (2, 3)])
         self.assertEqual(atlas.clusters(), [[0, 1, 2, 3]])
         self.assertFalse(atlas.unused().any())             # the menu button covers it all
-        m2 = uiatlas.atlas_map([("main", up.parse(MINIMAP))], lambda k: (64, 64), "min")
+        m2 = uiatlas.atlas_map([("main", up.parse(MINIMAP))], lambda k: (128, 128), "min")
         unused = m2.atlases[r"ui\ingame\atlas"].unused()
-        self.assertTrue(unused[40:, :].all() and not unused[:32].any())
+        self.assertTrue(unused[64:, :].all() and not unused[:64].any())
 
     def test_stretch(self):
         atlas = self.m.atlases[r"ui\ingame\atlas"]
         frame = atlas.pieces[1]
         (sx, _), (sy, _) = frame.stretch_range()
-        self.assertAlmostEqual(sx, 342 * 1.875 / 64, places=3)   # 64 px drawn 641 px wide: enlarged
-        self.assertAlmostEqual(sy, 140 * 1.40625 / 32, places=3)
+        self.assertAlmostEqual(sx, 342 * 1.875 / 128, places=3)  # 128 px drawn 641 px wide: enlarged
+        self.assertAlmostEqual(sy, 140 * 1.40625 / 64, places=3)
         self.assertTrue(frame.enlarged)
         m = uiatlas.atlas_map([("main", up.parse(MINIMAP))], lambda k: (1024, 512), "min")
         big = m.atlases[r"ui\ingame\atlas"].pieces[1]         # 1024 x 256 px for 342 x 140 units
@@ -231,8 +233,13 @@ class Tool(unittest.TestCase):
 
     def test_templates(self):
         names = sorted(os.listdir(self.out))
-        self.assertEqual(names, ["README.txt", "atlas.layers.png", "atlas.psd", "clock.layers.png", "clock.psd",
-                                 "pieces.json", "reference_sheet.png"])
+        self.assertEqual(names, ["README.txt", "atlas.layers.png", "atlas.psd", "pieces.json", "reference_sheet.png"])
+        everything = os.path.join(self.tmp.name, "all")
+        r = run("templates", "--game", self.copy, "--out", everything, "--all")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(everything, "clock.psd")))
+        with open(os.path.join(everything, "clock.psd"), "rb") as fh:
+            self.assertTrue(psd.read(fh.read()).find("Paint").children[0].name.startswith("5 Game clock"))
         with open(os.path.join(self.out, "atlas.psd"), "rb") as fh:
             f = psd.read(fh.read())
         self.assertEqual([it.name for it in f.items], ["Original", "Paint", "Guides"])
@@ -243,30 +250,32 @@ class Tool(unittest.TestCase):
                           "(trainsandcontains-row0, minimapPanel +2)"])
         self.assertEqual([l.name for l in f.items[2].children],
                          ["Unused areas (hatched)", "Stretched pieces", "Outlines and names"])
-        self.assertIn((32.0, "h"), f.guides)
+        self.assertIn((64.0, "h"), f.guides)
         with open(os.path.join(self.out, "README.txt"), encoding="utf-8") as fh:
             text = fh.read()
         self.assertIn("af  Africans (Ethiopians, Egyptians, Zulu): the shared ones + the European and Asian", text)
         self.assertIn("na  Native Americans (XPIroquois, XPSioux, WallMapu): the shared ones + the Native", text)
         self.assertIn("European resource panel: atlas (piece 4)", text)
         self.assertIn("<texture>_<suffix>_gw.ddt", text)
+        self.assertIn("LEFT OUT (small textures", text)
+        self.assertIn("  clock 32x16", text)
+        self.assertIn("may still hold", text)
 
     def test_round_trip_and_paint(self):
         built = os.path.join(self.tmp.name, "built")
         r = run("build", "--game", self.copy, "--in", self.out, "--suffix", "as", "--out", built)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("0 warnings", r.stdout)
-        for name in ("atlas", "clock"):
-            with open(os.path.join(self.copy, "art", "ui", "ingame", name + ".ddt"), "rb") as fh:
-                original = fh.read()
-            with open(os.path.join(built, "ui", "ingame", name + "_as.ddt"), "rb") as fh:
-                self.assertEqual(fh.read(), original, name)         # untouched: byte for byte
+        with open(os.path.join(self.copy, "art", "ui", "ingame", "atlas.ddt"), "rb") as fh:
+            original = fh.read()
+        with open(os.path.join(built, "ui", "ingame", "atlas_as.ddt"), "rb") as fh:
+            self.assertEqual(fh.read(), original)                  # untouched: byte for byte
         # an exported PNG of the Paint group gives the same; a painted piece changes only its blocks
         with open(os.path.join(self.out, "atlas.psd"), "rb") as fh:
             f = psd.read(fh.read())
-        flat, _ = psd.compose([f.items[1]], 64, 64)
+        flat, _ = psd.compose([f.items[1]], 128, 128)
         flat[36:40, 36:40, :3] = (255, 0, 255)                     # inside the menu button's piece
-        flat[34:62, 2:30, 3] = 0                                    # most of the resource panel cut away
+        flat[68:124, 4:60, 3] = 0                                   # most of the resource panel cut away
         filled = os.path.join(self.tmp.name, "filled")
         os.makedirs(filled)
         with open(os.path.join(filled, "atlas_me.png"), "wb") as fh:
@@ -279,19 +288,33 @@ class Tool(unittest.TestCase):
             got = ddt.decode(fh.read())
         self.assertEqual(tuple(got[37, 37, :3]), (255, 0, 255))
         self.assertFalse(os.path.exists(os.path.join(out2, "ui", "ingame", "clock_me.ddt")))   # not handed in
+        # a whole texture recoloured elsewhere in the original's format is kept as given, unused areas too
+        recoloured = atlas_rgba()
+        recoloured[..., :3] = 255 - recoloured[..., :3]
+        given, _ = ddt.write_like(original, recoloured)
+        with open(os.path.join(filled, "atlas.ddt"), "wb") as fh:
+            fh.write(given)
+        os.remove(os.path.join(filled, "atlas_me.png"))
+        out3 = os.path.join(self.tmp.name, "built3")
+        r = run("build", "--game", self.copy, "--in", filled, "--suffix", "eu_gw", "--out", out3)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("copied as given", r.stdout)
+        self.assertIn("0 warnings", r.stdout)
+        with open(os.path.join(out3, "ui", "ingame", "atlas_eu_gw.ddt"), "rb") as fh:
+            self.assertEqual(fh.read(), given)
 
     def test_paint_outside_and_size(self):
         m = mut.Copy(self.copy).ui_map("min", (1920, 1080))
-        only_minimap = uiatlas.atlas_map([("m", up.parse(MINIMAP))], lambda k: (64, 64), "min")
+        only_minimap = uiatlas.atlas_map([("m", up.parse(MINIMAP))], lambda k: (128, 128), "min")
         atlas = only_minimap.atlases[r"ui\ingame\atlas"]
         original = atlas_rgba()
         painted = original.copy()
-        painted[50:60, 50:60, :3] = 0
+        painted[100:110, 100:110, :3] = 0
         final, warnings = mut.check_and_merge(atlas, original, painted)
         self.assertTrue(any("outside every piece" in w for w in warnings))
-        self.assertTrue((final[50:60, 50:60] == original[50:60, 50:60]).all())      # dropped
+        self.assertTrue((final[100:110, 100:110] == original[100:110, 100:110]).all())   # dropped
         with self.assertRaises(mut.TemplateError):
-            mut.check_and_merge(m.atlases[r"ui\ingame\atlas"], original, painted[:32])
+            mut.check_and_merge(m.atlases[r"ui\ingame\atlas"], original, painted[:64])
 
     def test_refusals(self):
         r = run("templates", "--game", self.copy, "--out", os.path.join(self.copy, "out"))
