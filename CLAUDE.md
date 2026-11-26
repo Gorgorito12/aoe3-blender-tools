@@ -46,7 +46,7 @@ venv/bin/python -I tests/test_stat_icons.py        # make_stat_icon: format, har
 venv/bin/python -I tests/test_panel_rows.py        # panel_rows, draw_praying_hands: rows moved, a new row, blocks kept
 venv/bin/python -I tests/test_import_icon.py       # import_icon: a drawn PNG into a 32x32 icon .ddt (aspect, scale, tint)
 venv/bin/python -I tests/test_command_icons.py     # make_command_icon: format, frame, tick and cross
-venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout file's gadgets as boxes
+venv/bin/python -I tests/test_ui_preview.py        # ui_preview: a layout's gadgets as boxes, or the screen with its textures
 python -I tests/test_uilayout.py                  # interface layouts byte for byte, fonts, string table
 python -I tests/test_unitpanel.py                 # the unit panels filled for a unit, the DLL's rows, why an item is absent
 venv/bin/python -I tools/spec_sheets.py            # the technical sheets, docs/specs/, after changing a building
