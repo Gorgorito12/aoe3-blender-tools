@@ -3474,6 +3474,9 @@ def anim_files(recipe, built, rider_head):
               "\t</component>\n",
               f"\t<component>\n\t\tDeadComp\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{name}"
               f"_camel_dead</file>\n\t\t</assetreference>\n{DECAL}"
+              "\t\t<attach a=\"rider\" frombone=\"hotspot\" tobone=\"ATTACHPOINT\" syncanims=\"1\"/>\n\t</component>\n",
+              f"\t<component>\n\t\tDeadCompDeployed\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{name}"
+              f"_camel_dead_deployed</file>\n\t\t</assetreference>\n{DECAL}"
               "\t\t<attach a=\"rider\" frombone=\"hotspot\" tobone=\"ATTACHPOINT\" syncanims=\"1\"/>\n\t</component>\n"]
     gun = [head, "<animfile>\n",
            f"\t<component>\n\t\tModelComp\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{gun_name}"
@@ -3482,8 +3485,8 @@ def anim_files(recipe, built, rider_head):
     for an, clips in ANIMS:
         gait = "".join(f"\t\t\t<tag type=\"{k}\" footprinttype=\"Horse\" footprintbone=\"HS BONE HOOF {b_}\">{v:.2f}</tag>\n"
                        for k, b_, v in GAITS.get(an, ()))
-        camel.append(anim(an, [ours("camel", c) for c in clips], tags=gait + (fire_tags if an == "Bombard_ranged_attack"
-                                                                                else "")))
+        camel.append(anim(an, [ours("camel", c) for c in clips], "DeadCompDeployed" if an == "Bombard_death" else "ModelComp",
+                          tags=gait + (fire_tags if an == "Bombard_ranged_attack" else "")))
         gun.append(anim(an, [ours("gun", c) for c in clips]))
         rider.append(anim(an, [ours("rider", c) for c in clips]))
     impact = "\t\t\t<tag type=\"SpecificSoundSet\" checkvisible=\"1\" set=\"RagdollImpact\">0.62</tag>\n"
@@ -3504,9 +3507,12 @@ def rider_head(game_folder, recipe):
     path = os.path.join(game_folder, "art", recipe["rider_xml"])
     with open(path, encoding="utf-8-sig", errors="replace") as f:
         text = f.read()
-    i = text.find("\t<anim>")
-    if i < 0:
-        i = text.find("<anim>")
+    # the first <anim> of the file itself (one tab in, at a line's start), not one inside an attachment
+    import re
+    m = re.search(r"^\t<anim>", text, re.M)
+    if m is None:
+        raise ValueError(f"{path}: no top-level <anim>")
+    i = m.start()
     return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" + text[:i].replace("<!-- converted from XMB to XML -->\n", "")
 
 
@@ -3569,9 +3575,9 @@ def aim_table(unit, built):
     return b"".join(out), [names[k] for k in bones], [(n, c) for n, _l, c, _f in tables]
 
 
-def posed_gun_bytes(design, name, source_data, state):
-    """The gun model with every part moved to `state` (its bones at that state, rest = the state):
-    the cannon as the dead model carries it."""
+def posed_gun_bytes(design, name, source_data, state, only=None, skip=()):
+    """The gun model with every part (or the `only` ones, less `skip`) moved to `state` (its bones at
+    that state, rest = the state): the cannon as a dead model carries it."""
     rest, fr = design.rest(), design.frames(state)
     keep_rest = design.rest
     keep_parts = design.parts
@@ -3579,6 +3585,8 @@ def posed_gun_bytes(design, name, source_data, state):
     def parts():
         out = {}
         for key, (p, bone) in keep_parts().items():
+            if (only is not None and key not in only) or key in skip:
+                continue
             m = fr[bone] @ np.linalg.inv(rest[bone])
             q = dict(p)
             q["positions"] = apply(m, p["positions"])
@@ -3725,8 +3733,22 @@ def main(argv):
             lim_gun = posed_gun_bytes(design, f"{recipe['name']}_gun", src.data, dict(recipe["limber"]))
             files[f"{recipe['name']}_camel_dead"] = mgc.dead_model(cut, lim_gun, camel.hang_bind,
                                                                     recipe["camel"]["mount_bone"])
+            # the unlimbered unit's dead model (seen in game 2026-11-26: the cannon as an attachment
+            # stood in the air while the corpse faded out, as the gatling camel's did): the cannon at
+            # yaw 0 on bone_turret, which the death clip holds at +90, and the linstock lying where
+            # the death clip leaves it, on the camel's root bone
+            lying = built["death"].gun[-1]["linstock"]
+            gun0 = posed_gun_bytes(design, f"{recipe['name']}_gun", src.data, {"linstock": lying})
+            sticks = {f"{recipe['name']}_gun_{k}": camel.rig.names[0] for k in ("linstock", "linstock_tip")}
+            files[f"{recipe['name']}_camel_dead_deployed"] = mgc.dead_model(cut, gun0, camel.hang_bind, "bone_turret",
+                                                                             mesh_bones=sticks)
+            names = [p["name"] for p in gr2_parts.mesh_parts(files[f"{recipe['name']}_camel_dead_deployed"])]
+            report.append("dead model (unlimbered): meshes " + ", ".join(names) + "; on the camel's root: "
+                          + ", ".join(n for n in names if n in sticks))
             for fname, data in list(clip_files.items()) + [(f"{recipe['name']}_camel_dead",
-                                                           files[f"{recipe['name']}_camel_dead"])]:
+                                                           files[f"{recipe['name']}_camel_dead"]),
+                                                          (f"{recipe['name']}_camel_dead_deployed",
+                                                           files[f"{recipe['name']}_camel_dead_deployed"])]:
                 with open(os.path.join(folder, fname + ".gr2"), "wb") as f:
                     f.write(data)
                 if runtime is not None:

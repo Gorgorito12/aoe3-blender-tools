@@ -4463,14 +4463,15 @@ def camel_precomp(camel, template, length, pose_at):
     return pre.encode()
 
 
-def dead_model(camel_bytes, gun_bytes, hang_bind, bone):
+def dead_model(camel_bytes, gun_bytes, hang_bind, bone, mesh_bones=None):
     """The camel model with the gun's parts added as rigid meshes bound to the camel's `bone` (its
     chest), at rest: the model of the dead unit, which plays the stock camel deaths. Seen in game
     (2026-11-23): a gun attached to the rider's bone turned in the air during the corpse's last
     half second of fading out, whatever clips, tag files or held anims it was given (inferred: the
     game places attachments differently while a corpse fades); a gun inside the camel's own model
     falls and fades with it. The stock death clips give the chest no scale, so a gun vertex q
-    (gun model space) goes to hang_bind @ q in the camel's bind space."""
+    (gun model space) goes to hang_bind @ q in the camel's bind space. `mesh_bones`: {a gun mesh's
+    name: another camel bone} for meshes bound elsewhere (a prop lying on the ground)."""
     from aoe3game import gr2_edit
     from aoe3game.gr2_write import Flat, W, serialize
     cdoc = gr2.load(camel_bytes)
@@ -4478,14 +4479,16 @@ def dead_model(camel_bytes, gun_bytes, hang_bind, bone):
     groot = gr2_edit.copy_tree(gr2.load(gun_bytes))
     R = hang_bind[:3, :3] / np.cbrt(abs(np.linalg.det(hang_bind[:3, :3])))
     camel_binding = croot.values["Models"][0].values["MeshBindings"][0]
-    bind_world = None
+    binds = {}
     for bw in croot.values["Skeletons"][0].values["Bones"]:
-        if bw.values.get("Name") == bone:
-            iwt = np.array(bw.values["InverseWorldTransform"], np.float64).reshape(4, 4)
-            bind_world = np.linalg.inv(iwt).T
-    if bind_world is None:
-        raise KeyError(bone)
+        iwt = np.array(bw.values["InverseWorldTransform"], np.float64).reshape(4, 4)
+        binds[bw.values.get("Name")] = np.linalg.inv(iwt).T
+    for b_ in [bone] + list((mesh_bones or {}).values()):
+        if b_ not in binds:
+            raise KeyError(b_)
     for gm in groot.values["Meshes"]:
+        mesh_bone = (mesh_bones or {}).get(gm.values.get("Name"), bone)
+        bind_world = binds[mesh_bone]
         vd = gm.values["PrimaryVertexData"]
         flat = vd.values["Vertices"]
         n = flat.count
@@ -4498,7 +4501,7 @@ def dead_model(camel_bytes, gun_bytes, hang_bind, bone):
         vd.values["Vertices"] = Flat(flat.spec, a.astype("<f4").tobytes(), n)
         local = (np.c_[a[:, 0:3], np.ones(n)] @ np.linalg.inv(bind_world).T)[:, :3]
         bb = gm.values["BoneBindings"][0]
-        bb.values["BoneName"] = bone
+        bb.values["BoneName"] = mesh_bone
         bb.values["OBBMin"] = tuple(float(v) for v in local.min(0))
         bb.values["OBBMax"] = tuple(float(v) for v in local.max(0))
         croot.values["Meshes"].append(gm)
