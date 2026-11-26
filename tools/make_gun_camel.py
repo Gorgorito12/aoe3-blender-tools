@@ -99,6 +99,11 @@ DEFAULT_RECIPE = {
     # the swivel gun: the mount bone's triangles wholly beyond x_below (its side) and above y_above;
     # its forked post (the piece that reaches lowest) is kept as the gun's mount unless keep_post is false
     "cut": {"x_below": -0.18, "y_above": 1.6, "keep_post": True},
+    # the gun's post centred over the camel's spine at the saddle's front (the user's references,
+    # 2026-11-26: a tall post rising from the front of the saddle, over the withers, the rider right
+    # behind it): the zamburak's own forked post stood at the saddle's front-left edge, 0.24 off the
+    # spine. A made iron post at x 0 under the same top (`radius`, design units); false keeps the old one
+    "post": {"centre": True, "radius": 0.032},
     "rider": {"model": "WoL\\units\\cavalry_ranged\\zamburak\\zamburak_rider_1",
               "hat": {"model": "units\\infantry_ranged\\grenadier\\grenadier_age4_hat", "frombone": "bone_hat",
                       "tobone": "Bip01 Head",
@@ -369,6 +374,57 @@ class GunDesign:
         self.part_bone = {"cannon": "cannon", "barrel": "barrel", "crank": "crank", "magazine": "ammo",
                           "magazine2": "ammo2"}
 
+    def add_post(self, base_y, radius):
+        """The gun's post made of the casing's dark iron, on the root (it does not turn): a round
+        shaft from just under the saddle's surface (`base_y`) up to the post's top, a flange on the
+        saddle and a collar under the top (recipe "post": centred over the spine)."""
+        src = self.src
+        width = src.parts["cannon"]["tangents"].shape[1]
+        top = self.post
+
+        def cylinder(a, b, r, n=12):
+            ax = unit(b - a)
+            u_ = unit(np.cross(ax, X if abs(ax @ X) < 0.9 else Z))
+            v_ = np.cross(ax, u_)
+            pos, nrm, tris = [], [], []
+            for k in range(n):
+                ang = 2 * math.pi * k / n
+                d = math.cos(ang) * u_ + math.sin(ang) * v_
+                pos += [a + r * d, b + r * d]
+                nrm += [d, d]
+            for k in range(n):
+                i0, i1, j0, j1 = 2 * k, 2 * k + 1, 2 * ((k + 1) % n), 2 * ((k + 1) % n) + 1
+                tris += [(i0, j0, i1), (i1, j0, j1)]
+            for end, sgn in ((a, -1.0), (b, 1.0)):
+                c0 = len(pos)
+                pos.append(end)
+                nrm.append(sgn * ax)
+                for k in range(n):
+                    ang = 2 * math.pi * k / n
+                    pos.append(end + r * (math.cos(ang) * u_ + math.sin(ang) * v_))
+                    nrm.append(sgn * ax)
+                for k in range(n):
+                    p0, p1 = c0 + 1 + k, c0 + 1 + (k + 1) % n
+                    tris.append((c0, p1, p0) if sgn > 0 else (c0, p0, p1))
+            return pos, nrm, tris
+
+        pieces = [cylinder(np.array([top[0], base_y - 0.06, top[2]]), top - np.array([0.0, 0.002, 0.0]), radius),
+                  cylinder(np.array([top[0], base_y - 0.01, top[2]]), np.array([top[0], base_y + 0.015, top[2]]),
+                           2.2 * radius),
+                  cylinder(top - np.array([0.0, 0.035, 0.0]), top - np.array([0.0, 0.002, 0.0]), 1.5 * radius)]
+        pos, nrm, tris = [], [], []
+        for p_, n_, t_ in pieces:
+            base = len(pos)
+            pos += list(p_)
+            nrm += list(n_)
+            tris += [(a + base, b + base, c + base) for a, b, c in t_]
+        pos, nrm = np.array(pos), np.array(nrm)
+        tan = np.array([np.r_[unit(np.cross(n, Y) if abs(n @ Y) < 0.9 else np.cross(n, X)), 1.0] for n in nrm])
+        part = (pos, nrm, np.array([src.iron_uv] * len(pos)), np.asarray(tris, np.int64),
+                [src.iron_material] * len(tris), tan[:, :width])
+        self.made["post"] = (part, "root")
+        self.post_base = float(base_y)
+
     def design_point(self, p):
         d = (np.asarray(p, np.float64) - self.src.trunnion) * self.s
         d[..., 0] *= self.mx
@@ -418,7 +474,7 @@ class GunDesign:
                  for b in self.BONES]
         parts = []
         for key, (pos, nrm, uvs, tris, mats, tan) in self.parts().items():
-            bone = self.bone_name(self.part_bone[key])
+            bone = bones[0][0] if self.part_bone[key] == "root" else self.bone_name(self.part_bone[key])
             parts.append({"name": f"{name}_{key}", "bone": bone,
                           "positions": apply(self.S, pos), "normals": nrm @ self.R, "tangents": tan @ self.R,
                           "uvs": uvs, "triangles": tris, "materials": mats})
@@ -1380,6 +1436,8 @@ class Unit:
         self.clips = clips_of(variant, recipe)
         self.gun = GunDesign(src, camel.hang_bind, recipe["_post"], scale, mirror=(self.style == "B"),
                              forward=recipe.get("forward", 0.0))
+        if recipe.get("_post_base") is not None:
+            self.gun.add_post(recipe["_post_base"], (recipe.get("post") or {}).get("radius", 0.032))
         self.scale = scale
         self.tag = f"{variant}{int(round(scale * 100)):02d}"
         self.gun_name = f"{recipe['name']}_gun_{self.tag}"
@@ -1609,7 +1667,7 @@ class Unit:
         bar = merge(cylinder(start + 0.03 * fwd_w, grip, 0.012), cylinder(grip - 0.06 * side_w, grip + 0.06 * side_w, 0.016),
                     box(start + 0.01 * fwd_w, side_w, Y, fwd_w, (0.03, 0.025, 0.012)))
         made["traversebar"] = (mesh(*bar), "cannon")
-        g.made = made
+        g.made.update(made)
         self.handles = {"out_d": out_d, "grip_d": point(inv, grip), "fwd_d": unit(inv[:3, :3] @ fwd_w),
                         "low_w": low_w, "grip_w": grip, "C": C, "P": P}
         return made
@@ -4566,14 +4624,37 @@ def cut_camel(game, recipe):
     if not pieces:
         raise ValueError("no swivel gun found on the mount bone with the recipe's cut")
     keep = ~mask
-    if cut.get("keep_post", True):
+    centre = (recipe.get("post") or {}).get("centre", False)
+    if cut.get("keep_post", True) and not centre:
         for _c, sel, is_post in pieces:
             if is_post:
                 keep[sel] = True
     out = gr2_parts.cut_triangles(data, spec["mesh"], keep)
     info = {"triangles": int(len(part["triangles"])), "cut": int((~keep).sum()),
             "pieces": [(int(len(sel)), bool(post)) for _c, sel, post in pieces]}
-    return out, info, post_top(part, pieces)
+    top = post_top(part, pieces)
+    info["old_post_top"] = top.copy()
+    if centre:
+        # the made post (GunDesign.add_post) under the same top, on the spine: from the highest
+        # surface of the kept mesh there (the saddle) up
+        top = np.array([0.0, top[1], top[2]])
+        info["post_base"] = surface_y(part["positions"], part["triangles"][keep], top[0], top[2])
+    return out, info, top
+
+
+def surface_y(pos, tris, x, z):
+    """The highest point where the vertical line through (x, z) meets the triangles (bind pose)."""
+    a, b, c = pos[tris[:, 0]], pos[tris[:, 1]], pos[tris[:, 2]]
+    d = (b[:, 2] - c[:, 2]) * (a[:, 0] - c[:, 0]) + (c[:, 0] - b[:, 0]) * (a[:, 2] - c[:, 2])
+    ok = np.abs(d) > 1e-12
+    d = np.where(ok, d, 1.0)
+    w1 = ((b[:, 2] - c[:, 2]) * (x - c[:, 0]) + (c[:, 0] - b[:, 0]) * (z - c[:, 2])) / d
+    w2 = ((c[:, 2] - a[:, 2]) * (x - c[:, 0]) + (a[:, 0] - c[:, 0]) * (z - c[:, 2])) / d
+    w3 = 1.0 - w1 - w2
+    hit = ok & (w1 >= 0) & (w2 >= 0) & (w3 >= 0)
+    if not hit.any():
+        raise ValueError(f"no surface under ({x:.3f}, {z:.3f})")
+    return float((w1 * a[:, 1] + w2 * b[:, 1] + w3 * c[:, 1])[hit].max())
 
 
 def launch_bones(cut, camel, src, recipe):
@@ -4815,6 +4896,7 @@ def main(argv):
         os.makedirs(folder, exist_ok=True)
         cut, info, post = cut_camel(game, recipe)
         recipe["_post"] = post
+        recipe["_post_base"] = info.get("post_base")
         files = {f"{recipe['name']}_camel_nogun": cut}
         report.append(f"camel {recipe['camel']['model']}: {info['triangles']} triangles, {info['cut']} cut "
                       f"(swivel gun pieces {info['pieces']}: (triangles, kept as the post)); post top "
