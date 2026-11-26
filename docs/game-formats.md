@@ -663,6 +663,28 @@ tag, 243 tag files to fix, 214 fixable, 29 refused (16 ties between heights, 12 
 tracks to take the number of keys from, 1 sampled on several models), and 390 uses of animations
 with no tag file at all (367 of a loose `.gr2`, 23 of a missing one).
 
+### Particle sets: where a muzzle flash is drawn
+
+- An anim file's `<tag type="Particles" particlename="X">` (a fraction of the clip) names a
+  **particle set**, not a bone. The sets are in `art\effects\particlesets*.xml` and the files
+  `art\effects\particleSetFileList.xml` lists (a mod adds its own file there). Each
+  `<particle filename="..." bone="B"/>` of a set names the bone the particle is drawn on. The tags
+  of the game and of one large mod have no other form: no bone or offset on the tag itself.
+- The bone names in the sets mostly follow the tag files' names without `Bip01`: the stock
+  `musketshot` and `rifleshot` draw on `R Hand`; cannons on `launchpoint`; a horse unit on
+  `HS Bone Head`.
+- **Seen in game (2026-11-26, a mod's explorers, `tools/make_fanning.py`):** a pistol held by its grip
+  in a clip whose tags named `musketshot` showed its flash at the hand, beside the grip, 0.87 m
+  (check space) from the barrel's tip. A set of the same four particles on `Prop2`, with the
+  clip keying `Bip01 Prop2` on the pistol's muzzle, showed every flash ahead of the muzzle on the
+  line of the shot, on two models (one of the mod's explorers and an older model). So a set's bone
+  name reaches a model bone the clip keys. Whether the game reads it from the tag file's track
+  (`PROP2`) or from the posed skeleton is not traced: the clip keys both alike.
+- In its first drawn frame a flash is already about half a pistol's length ahead of the muzzle
+  (seen; inferred to be the particles' own speed, 8 m/s in `musket_fire_A.particle`).
+- `tools/check_anim.py`'s `flash` check (job `flashes`) measures the set's bone against the
+  weapon's muzzle at each Particles tag.
+
 ## Collision
 
 A building's hitbox is three things, none of them its visible mesh:
