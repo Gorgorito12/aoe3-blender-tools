@@ -1674,7 +1674,10 @@ class Unit:
 
     def poles(self):
         if self.style == "A":              # elbows out to the sides: a firm grip, not tucked in
-            return {"r": np.array([1.0, -0.6, -0.4]), "l": np.array([-1.0, -0.6, -0.4])}
+            # the right one level and back (2026-11-26): with the post centred the crank's handle goes
+            # round below his right shoulder, and an elbow aimed down turned over for a frame of the
+            # fire (his hand at 3840 deg/s)
+            return {"r": np.array([1.0, 0.0, -0.6]), "l": np.array([-1.0, -0.6, -0.4])}
         return {"r": np.array([-0.4, -1.0, -1.0]), "l": np.array([-0.4, -1.0, 1.0])}
 
     def solve_hands(self, P, C, fr, want, built=None):
