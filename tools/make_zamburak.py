@@ -2813,10 +2813,12 @@ class V2:
         W_near = u.staff(W_touch[:3, 3] - 0.08 * d + 0.06 * Y, d, side=W_touch[:3, 2])
         W_up = u.staff(self.W0[:3, 3] + 0.08 * Y + 0.10 * u.facing(self.S0), self.W0[:3, 1], side=self.W0[:3, 2])
         for t in times:
-            if t <= 0.50:
-                W = u.staff_mix(self.W0, W_near, span(t, 0.0, 0.50))
+            # the kush (2026-11-26) put the vent 0.31 lower: the stick turns further on its way down, over
+            # 0.62 s (0.50 before: the hand turned at 1820 deg/s), and touches at 0.80 as before
+            if t <= 0.62:
+                W = u.staff_mix(self.W0, W_near, span(t, 0.0, 0.62))
             elif t <= 0.95:
-                W = u.staff_mix(W_near, W_touch, span(t, 0.50, 0.80))
+                W = u.staff_mix(W_near, W_touch, span(t, 0.62, 0.80))
             elif t <= 1.40:
                 W = u.staff_mix(W_touch, W_up, span(t, 0.95, 1.40))
             else:
@@ -3078,37 +3080,9 @@ ARM_BONES = ("bip01 l clavicle", "bip01 l upperarm", "bip01 l forearm", "bip01 l
 
 def limit_arm_rates(rig, poses, limit=1350.0, fps=30.0, bones=ARM_BONES):
     """The poses with each arm bone's turn against its parent held to `limit` degrees a second (a hand
-    that would whip round between two frames eases there instead); the rest of the body untouched."""
-    names = [n.lower() for n in rig.names]
-    step = math.radians(limit / fps)
-
-    def angle(A, B):
-        return math.acos(max(-1.0, min(1.0, (np.trace(A.T @ B) - 1.0) / 2.0)))
-
-    out, prev = [], None
-    for R in poses:
-        W = dict(R)
-        loc = {}
-        for i, n in enumerate(names):
-            p = rig.parents[i]
-            if n not in R or p is None or p < 0 or names[p] not in R:
-                continue
-            Lc = np.linalg.inv(R[names[p]]) @ R[n]
-            if n in bones and prev is not None and n in prev:
-                s = np.cbrt(abs(np.linalg.det(Lc[:3, :3])))
-                A, B = prev[n][:3, :3] / s, Lc[:3, :3] / s
-                if angle(A, B) > step:
-                    rel = A.T @ B
-                    axis = np.array([rel[2, 1] - rel[1, 2], rel[0, 2] - rel[2, 0], rel[1, 0] - rel[0, 1]])
-                    if np.linalg.norm(axis) > 1e-9:
-                        cands = [A @ axis_matrix(unit(axis), sgn * math.degrees(step)) for sgn in (1.0, -1.0)]
-                        Lc = Lc.copy()
-                        Lc[:3, :3] = s * min(cands, key=lambda M: angle(M, B))
-            loc[n] = Lc
-            W[n] = W[names[p]] @ Lc
-        out.append(W)
-        prev = loc
-    return out
+    that would whip round between two frames eases there instead); the rest of the body untouched
+    (make_gun_camel.limit_rates)."""
+    return mgc.limit_rates(rig, poses, limit, fps, bones)
 
 
 def keyed(keys, t, u):

@@ -817,15 +817,21 @@ class Camel:
     # ground, the cannon folded forward under the shin). So grounded() lowers the lying body until
     # its torso is KUSH_BELLY above the ground and places each leg's joints explicitly in the body's
     # frame: (height, distance from the body's midline, forward or back of the joint above).
-    KUSH_BELLY = 0.03
+    KUSH_BELLY = 0.02
     KUSH_TORSO = ("hs bone pelvis", "hs bone stomach", "hs bone chest")
     KUSH_LEGS = (
-        (("hs bone shoulder", "hs bone arm", "hs bone forearm", "hs bone hoof frnt"),     # elbow, carpus, fetlock
-         ((0.26, 0.21, 1.0), (0.07, 0.20, 1.0), (0.06, 0.18, -1.0))),
+        # the shoulders level (the sheep lies with one 15 cm higher), the elbow tucked back under the
+        # chest (ahead of it, the knees stood 0.4 m in front of the chest)
+        (("hs bone clavicle", "hs bone shoulder", "hs bone arm", "hs bone forearm", "hs bone hoof frnt"),
+         ((0.52, 0.17, 0.0), (0.26, 0.21, -1.0), (0.10, 0.20, 1.0), (0.08, 0.18, -1.0))),   # shoulder, elbow, carpus, fetlock
+        # the stifle at 0.35 (not on the ground): a lower one puts the hock 0.3 m behind the rump, the
+        # shin being longer than the thigh in this rig; the hock at 0.13, where the point of its
+        # mesh touches the ground
         (("hs bone hip", "hs bone leg", "hs bone shin", "hs bone hoof back"),            # stifle, hock, fetlock
-         ((0.20, 0.32, 1.0), (0.08, 0.28, -1.0), (0.06, 0.24, 1.0))),
+         ((0.35, 0.30, 1.0), (0.13, 0.28, -1.0), (0.08, 0.24, 1.0))),
     )
     KUSH_HOOF_CLEAR = 0.015          # a foot turned about its fetlock until it is this far above the ground
+    KUSH_HOOVES = ("hs bone hoof frnt lt", "hs bone hoof frnt rt", "hs bone hoof back lt", "hs bone hoof back rt")
 
     def _dominated(self, bones):
         """Per mesh of the cut camel: the vertices whose heaviest bone is one of `bones` (sliced
@@ -876,13 +882,53 @@ class Camel:
 
     def kush(self, P, share=1.0):
         """The grounded lying pose `P` taken `share` of the way to the kush (see KUSH_LEGS): the body
-        lowered, each leg's bones turned toward their places, each foot turned off the ground, and
-        the whole laid back on the ground."""
-        from aoe3game.gr2_pose import about, transform_branch, rotate_about
+        levelled and lowered, each leg bone turned toward its frame in the kush (on the body: found
+        once, on the lying idle's first frame, so every lying frame folds its legs the same way and
+        the lie-down ends where the lying clips begin), and the whole laid back on the ground."""
+        from aoe3game.gr2_anim import matrix_quat
+        from aoe3game.gr2_pose import about, transform_branch
         if share <= 0.0:
             return P
-        d = self.part_points(P, self.KUSH_TORSO)[:, 1].min() - self.KUSH_BELLY
-        P = {k: tr((0.0, -share * d, 0.0)) @ v for k, v in P.items()}
+        P = self._kush_body(P, share)
+        ref = self._kush_reference()
+        side_axis = self.body_frame(P)[1]
+        for side in (" lt", " rt"):
+            for chain, _places in self.KUSH_LEGS:
+                for b in chain:
+                    bone = b + side
+                    anchor, rel = ref[bone]
+                    # the turn in the world, from the whole 3 x 3s: the camel's left legs are mirrored
+                    # (determinant -1), whose nearest rotation is not one frame to the next
+                    M = rigid(P[anchor][:3, :3] @ rel @ np.linalg.inv(P[bone][:3, :3]))[:3, :3]
+                    if share < 1.0:
+                        # `share` of the turn, the shorter way round; a foot (which flexes about the
+                        # body's side axis), the way round that turns one way about it: a hind foot
+                        # nearly 180 degrees from its kush frame flipped from one frame to the next
+                        q = np.asarray(matrix_quat(M), np.float64)
+                        v = q[:3]
+                        if bone in self.KUSH_HOOVES:
+                            if float(v @ side_axis) < 0.0:
+                                q, v = -q, -v
+                        elif q[3] < 0.0:
+                            q, v = -q, -v
+                        sn = float(np.linalg.norm(v))
+                        if sn > 1e-9:
+                            deg = 2.0 * math.degrees(math.atan2(sn, float(q[3])))
+                            M = axis_matrix(v / sn, deg * share)
+                        else:
+                            M = np.eye(3)
+                    P = transform_branch(P, self.rig, bone, about(P[bone][:3, 3], M))
+        dy = -self.lowest(P)
+        return {k: tr((0.0, dy, 0.0)) @ v for k, v in P.items()}
+
+    def _kush_reference(self):
+        """{leg bone: (the body bone its leg hangs from, its rotation on that bone's)} in the kush of
+        the lying idle's first frame: each joint placed (KUSH_LEGS), each foot turned about its
+        fetlock until it is off the ground."""
+        from aoe3game.gr2_pose import about, transform_branch, rotate_about
+        if getattr(self, "_kush_ref", None) is not None:
+            return self._kush_ref
+        P = self._kush_body(self.grounded(self.anim(B_IDLE), [0.0], kush=False)[0], 1.0)
         f, s, c = self.body_frame(P)
 
         def turn_to(P, bone, child, height, lat, sign):
@@ -891,29 +937,56 @@ class Camel:
             ln = float(np.linalg.norm(a))
             dy, dl = height - o[1], lat - (o - c) @ s
             fw = math.sqrt(max(ln * ln - dy * dy - dl * dl, 0.0))
+            if sign == 0.0:                            # forward or back as it is
+                sign = 1.0 if a @ f >= 0.0 else -1.0
             b = unit(dy * Y + dl * s + sign * fw * f)
             a = unit(a)
             v = np.cross(a, b)
             sn = float(np.linalg.norm(v))
             if sn < 1e-9:
                 return P
-            deg = math.degrees(math.atan2(sn, float(a @ b))) * share
+            deg = math.degrees(math.atan2(sn, float(a @ b)))
             return transform_branch(P, self.rig, bone, about(o, axis_matrix(v / sn, deg)))
 
         for side, sg in ((" lt", -1.0), (" rt", 1.0)):
             for chain, places in self.KUSH_LEGS:
                 for i, (h, la, sign) in enumerate(places):
                     P = turn_to(P, chain[i] + side, chain[i + 1] + side, h, sg * la, sign)
-        for hoof in ("hs bone hoof frnt lt", "hs bone hoof frnt rt", "hs bone hoof back lt", "hs bone hoof back rt"):
+        for hoof in self.KUSH_HOOVES:
             if self.part_points(P, [hoof])[:, 1].min() >= self.KUSH_HOOF_CLEAR:
                 continue
             for deg in sorted(np.arange(-150.0, 151.0, 5.0), key=abs):
-                Q = rotate_about(P, self.rig, hoof, hoof, s, float(deg))
-                if self.part_points(Q, [hoof])[:, 1].min() >= self.KUSH_HOOF_CLEAR:
-                    P = Q
+                R = rotate_about(P, self.rig, hoof, hoof, s, float(deg))
+                if self.part_points(R, [hoof])[:, 1].min() >= self.KUSH_HOOF_CLEAR:
+                    P = R
                     break
-        dy = -self.lowest(P)
-        return {k: tr((0.0, dy, 0.0)) @ v for k, v in P.items()}
+        ref = {}
+        for side in (" lt", " rt"):
+            for chain, _places in self.KUSH_LEGS:
+                anchor = self.rig.names[self.rig.parents[self.rig.index[chain[0] + side]]].lower()
+                for b in chain:
+                    ref[b + side] = (anchor, np.linalg.inv(P[anchor][:3, :3]) @ P[b + side][:3, :3])
+        self._kush_ref = ref
+        return ref
+
+    def _kush_body(self, P, share):
+        """The lying body levelled and lowered `share` of the way (KUSH_BELLY)."""
+        from aoe3game.gr2_pose import about
+        # levelled: the sheep lies with its chest 5 degrees up, so its rump was the lowest point, the
+        # chest's pad 15 cm off the ground, and the gun (level on the chest) tipped up 5 degrees when
+        # turned ahead
+        f, s, c = self.body_frame(P)
+        if getattr(self, "_mount_rest_rot", None) is None:
+            self._mount_rest_rot = self.pose(self.base, 0.0)[self.mount][:3, :3].copy()
+        ahead = unit(P[self.mount][:3, :3] @ (self._mount_rest_rot.T @ Z))
+        up = math.degrees(math.asin(max(-1.0, min(1.0, float(ahead[1])))))
+        for sign in (1.0, -1.0):
+            m = about(c, axis_matrix(s, sign * up * share))
+            if up == 0.0 or abs((m[:3, :3] @ ahead)[1]) < abs(ahead[1]):
+                break
+        P = {k: m @ v for k, v in P.items()}
+        d = self.part_points(P, self.KUSH_TORSO)[:, 1].min() - self.KUSH_BELLY
+        return {k: tr((0.0, -share * d, 0.0)) @ v for k, v in P.items()}
 
     KUSH = True                      # False: the sheep's lying pose as it was before 2026-11-26 (pictures)
 
@@ -2224,6 +2297,10 @@ class Unit:
             b.gun.append(fr)
             b.rider.append(R)
         self._plan_at = None
+        if self.style == "B" and do == "reload":
+            # the kush (2026-11-26) lowered the hopper 0.31 m: the left hand's carry up from the pocket
+            # turned it at 1515 deg/s; held to 1450
+            b.rider = limit_rates(rider.rig, b.rider, 1450.0, bones=("bip01 l hand",))
         b.length = length
         if self.home:
             # the camel's bone_turret (the launch point and the muzzle flash, and the dead model's
@@ -4544,6 +4621,42 @@ def leg_gap(camel, b):
 TAG_BONES = {"ATTACHPOINT": "bone attachpoint", "MASTER": "hs bone master", "HEAD": "hs bone head",
              "PELVIS": "hs bone pelvis", "R HAND": "bip01 r hand", "HITPOINTBAR": "bone hitpointbar"}
 NECK_BONES = ("hs bone neck lower", "hs bone neck upper")
+
+
+def limit_rates(rig, poses, limit, fps=30.0, bones=()):
+    """The poses (world frames by lower-case name) with each of `bones`' turn against its parent held
+    to `limit` degrees a second (a hand that would whip round between two frames eases there
+    instead); the rest of the body untouched."""
+    names = [n.lower() for n in rig.names]
+    step = math.radians(limit / fps)
+
+    def angle(A, B):
+        return math.acos(max(-1.0, min(1.0, (np.trace(A.T @ B) - 1.0) / 2.0)))
+
+    out, prev = [], None
+    for R in poses:
+        W = dict(R)
+        loc = {}
+        for i, n in enumerate(names):
+            p = rig.parents[i]
+            if n not in R or p is None or p < 0 or names[p] not in R:
+                continue
+            Lc = np.linalg.inv(R[names[p]]) @ R[n]
+            if n in bones and prev is not None and n in prev:
+                s = np.cbrt(abs(np.linalg.det(Lc[:3, :3])))
+                A, B = prev[n][:3, :3] / s, Lc[:3, :3] / s
+                if angle(A, B) > step:
+                    rel = A.T @ B
+                    axis = np.array([rel[2, 1] - rel[1, 2], rel[0, 2] - rel[2, 0], rel[1, 0] - rel[0, 1]])
+                    if np.linalg.norm(axis) > 1e-9:
+                        cands = [A @ axis_matrix(unit(axis), sgn * math.degrees(step)) for sgn in (1.0, -1.0)]
+                        Lc = Lc.copy()
+                        Lc[:3, :3] = s * min(cands, key=lambda M: angle(M, B))
+            loc[n] = Lc
+            W[n] = W[names[p]] @ Lc
+        out.append(W)
+        prev = loc
+    return out
 
 
 def camel_precomp(camel, template, length, pose_at):

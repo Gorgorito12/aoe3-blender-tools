@@ -485,6 +485,92 @@ class Death(unittest.TestCase):
         self.assertEqual(status(rep, "death"), ac.PASS, rep.text())
 
 
+class Lying(unittest.TestCase):
+    """The kush (2026-11-26): a camel lying with its body propped on its folded legs, 0.3 m up, its
+    knees up and its hind feet splayed out, was shown to the user; a lying animal must lie on its belly
+    with its legs folded under it."""
+
+    # the game's quadruped names, every bone on the root (offsets are positions), standing
+    BONES = {"HS Bone Master": (0, 0, 0), "HS Bone Pelvis": (0, 1.5, -0.5), "HS Bone Stomach": (0, 1.5, 0.0),
+             "HS Bone Chest": (0, 1.5, 0.5),
+             "HS Bone Forearm Lt": (-0.2, 0.6, 0.5), "HS Bone Forearm Rt": (0.2, 0.6, 0.5),
+             "HS Bone Shin Lt": (-0.2, 0.6, -0.5), "HS Bone Shin Rt": (0.2, 0.6, -0.5),
+             "HS Bone Hoof Frnt Lt": (-0.2, 0.1, 0.5), "HS Bone Hoof Frnt Rt": (0.2, 0.1, 0.5),
+             "HS Bone Hoof Back Lt": (-0.2, 0.1, -0.5), "HS Bone Hoof Back Rt": (0.2, 0.1, -0.5)}
+
+    def model(self):
+        names = list(self.BONES)
+        m = ac.Model.of_dict({"basis": "metres", "bones": [
+            {"name": n, "parent": None if i == 0 else names[0], "position": list(self.BONES[n])}
+            for i, n in enumerate(names)]}, "camel")
+        bones = [{"name": n, "bind": ac.frame(np.array(self.BONES[n], float), np.array(IDQ)),
+                  "world": ac.frame(np.array(self.BONES[n], float), np.array(IDQ))} for n in names]
+        # the torso a box from 1.0 to 2.0 m (the pelvis's half behind, the chest's ahead), a foot point
+        # on the ground under each hoof bone
+        pos, idx = [], []
+        for x in (-0.35, 0.35):
+            for y in (1.0, 2.0):
+                for z in (-0.8, -0.1, 0.1, 0.8):
+                    pos.append((x, y, z))
+                    idx.append(names.index("HS Bone Pelvis" if z < 0 else "HS Bone Chest"))
+        for n in names:
+            if "Hoof" in n:
+                x, _y, z = self.BONES[n]
+                pos.append((x, 0.0, z))
+                idx.append(names.index(n))
+        k = len(pos)
+        mesh = {"file_positions": np.array(pos, float), "vertex_bones4": np.c_[np.array(idx), -np.ones((k, 3), int)],
+                "vertex_weights4": np.c_[np.ones(k), np.zeros((k, 3))], "skin_names": names}
+        return ac.Model(m.names, m.parents, m.rest, m.basis, [mesh], {"bones": bones}, "camel")
+
+    def pose(self, down, knee, hoof_out):
+        """Channels: the torso `down`, the knees at `knee` m, the hooves `hoof_out` m out to the sides."""
+        ch = {}
+        for n, (x, y, z) in self.BONES.items():
+            if n in ("HS Bone Pelvis", "HS Bone Stomach", "HS Bone Chest"):
+                ch[n] = (x, y - down, z)
+            elif "Forearm" in n or "Shin" in n:
+                ch[n] = (x, knee, z + (0.3 if "Forearm" in n else -0.3))
+            elif "Hoof" in n:
+                ch[n] = (x + (hoof_out if x > 0 else -hoof_out), 0.05, z)
+        return ch
+
+    def clip_of(self, a, b=None, length=1.0):
+        b = b or a
+        return clip(length, {n: (lambda t, n=n: tuple(np.array(a[n]) + (np.array(b[n]) - np.array(a[n]))
+                                                       * ease(t, 0.1, 0.9)), None) for n in a})
+
+    def checked(self, clips):
+        return ac.check(ac.Job({"ground": 0.0, "actors": {"camel": {"model": self.model(), "rig": "bare"}},
+                                "clips": clips}))
+
+    def test_a_propped_camel_fails_and_the_kush_passes(self):
+        kush = self.pose(0.97, 0.05, 0.0)
+        propped = self.pose(0.70, 0.40, 0.45)
+        rep = self.checked({"kush": {"anims": {"camel": self.clip_of(kush)}},
+                        "propped": {"anims": {"camel": self.clip_of(propped)}}})
+        by = {}
+        for r in results(rep, "lying"):
+            by.setdefault(r.clip, set()).add((r.item.split(":")[1].split("(")[0].strip(), r.status))
+        self.assertTrue(all(s == ac.PASS for _i, s in by["kush"]), rep.text())
+        failed = {i for i, s in by["propped"] if s == ac.FAIL}
+        self.assertEqual(failed, {"belly on the ground", "knees on the ground", "legs inside its sides"}, rep.text())
+
+    def test_judged_where_it_lies(self):
+        stand = self.pose(0.0, 0.6, 0.0)
+        for n in ("HS Bone Forearm Lt", "HS Bone Forearm Rt", "HS Bone Shin Lt", "HS Bone Shin Rt"):
+            stand[n] = self.BONES[n]
+        kush = self.pose(0.97, 0.05, 0.0)
+        rep = self.checked({"down": {"anims": {"camel": self.clip_of(stand, kush, 2.0)}, "loop": False},
+                        "idle": {"anims": {"camel": self.clip_of(stand)}},
+                        "off": {"anims": {"camel": self.clip_of(self.pose(0.7, 0.4, 0.45))}, "lying": False}})
+        items = {r.clip: r.item for r in results(rep, "lying")}
+        self.assertIn("the last frame", items["down"])
+        self.assertNotIn("idle", items)
+        self.assertNotIn("off", items)
+        self.assertEqual(status(rep, "lying"), ac.PASS, rep.text())
+
+
 class Jobs(unittest.TestCase):
     def test_bad_names_are_refused(self):
         with self.assertRaises(ac.JobError):

@@ -27,6 +27,9 @@ worst frames as risk frames):
 - `plant` and `sink`: a foot on the ground and slow must not slide; no foot below the ground.
 - `cross`: the legs never cross (the left foot passing to the right of the right one).
 - `size`: a prop's length as a share of a man's height stays in its range (props of unreal size).
+- `lying`: an animal lying down lies on its belly, its hump low, its knees on the ground and its legs
+  folded inside its body's outline (the kush); on by default for the game's quadruped rigs in the
+  clips where they lie.
 - `grip`: a hand within reach of its grip during the frames given.
 - `mount`: the point of a part that sat on its mount stays on it (the floating gun).
 - `prop`: a prop never appears or vanishes in the open from one frame to the next.
@@ -82,6 +85,13 @@ LIMITS = {
     "loop_position": 0.02,         # ... and position, beyond 1.5 times its largest step inside the clip
     "death_float": 0.05,           # a part's lowest point above the ground or its support
     "cross": 0.02,                 # the left foot this far to the right of the right foot: the legs crossed
+    # an animal lying down (the kush, 2026-11-26: the camel propped on its legs 0.32 m up was rejected)
+    "lying_detect": 0.5,           # a frame lies when its torso's lowest point is below this share of its standing one
+    "lying_belly": 0.05,           # the torso's lowest point above the ground
+    "lying_hump": 0.66,            # the torso's top as a share of its standing top (the camel's body alone is 62%)
+    "lying_knee": 0.25,            # the highest knee joint's centre above the ground (a camel's hock is 20 cm thick)
+    "lying_side": 0.05,            # a knee or foot beyond the torso's sides
+    "lying_end": 0.15,             # a knee or foot beyond the torso's chest or rump end
     "removed_travel": 0.3,         # a baseline motion this large ...
     "removed_share": 0.5,          # ... that shrank below this share was removed
     "risk_frames": 3,              # the worst frames kept per check
@@ -116,6 +126,14 @@ HUMAN = {
 BARE = {"chest": [], "look": [], "hinges": [], "feet": [], "hands": [], "torso": None, "speed": {},
         "signature": [], "sole": 0.08, "cross": []}
 PRESETS = {"human": HUMAN, "bare": BARE}
+# The game's quadruped rigs ("HS Bone" names: the camel, the horse): the lying check's bones, used for
+# any actor whose model has them all and a mesh, unless its rig says "lying": false.
+QUADRUPED_LYING = {
+    "torso": ["hs bone pelvis", "hs bone stomach", "hs bone chest"],
+    "front": "hs bone chest", "back": "hs bone pelvis",
+    "knees": ["hs bone forearm lt", "hs bone forearm rt", "hs bone shin lt", "hs bone shin rt"],   # carpus, hock
+    "hooves": ["hs bone hoof frnt lt", "hs bone hoof frnt rt", "hs bone hoof back lt", "hs bone hoof back rt"],
+}
 
 LOOP_NAMES = re.compile(r"(idle|walk|jog|run|trot|canter|gallop|bored)", re.I)
 MOVE_NAMES = re.compile(r"(walk|jog|run|trot|canter|gallop)", re.I)
@@ -1030,6 +1048,152 @@ def check_sizes(job, s):
     return out
 
 
+def lying_spec(actor):
+    """The lying check's bones of an actor (its rig's "lying": a dict, or "auto" / absent for
+    QUADRUPED_LYING when the model has all its bones and a mesh; false: none)."""
+    spec = (actor.rig or {}).get("lying", "auto")
+    if spec is False or spec is None:
+        return None
+    if spec in ("auto", True):
+        spec = QUADRUPED_LYING
+    need = list(spec["torso"]) + [spec["front"], spec["back"]] + list(spec["knees"]) + list(spec["hooves"])
+    if not all(actor.model.has(b) for b in need) or not actor.model.meshes or actor.model.skeleton is None:
+        return None
+    return spec
+
+
+def _torso_masks(actor, spec):
+    """Per mesh: the vertices whose heaviest bone is a torso bone."""
+    key = ("_torso", tuple(spec["torso"]))
+    cache = actor.__dict__.setdefault("_lying_cache", {})
+    if key not in cache:
+        want = {b.lower() for b in spec["torso"]}
+        masks = []
+        for m in actor.model.meshes:
+            vb, vw = np.asarray(m["vertex_bones4"]), np.asarray(m["vertex_weights4"])
+            dom = vb[np.arange(len(vb)), np.argmax(vw, 1)]
+            masks.append(np.array([str(m["skin_names"][int(i)]).lower() in want for i in dom], bool))
+        cache[key] = masks
+    return cache[key]
+
+
+def _standing(actor, spec):
+    """(the torso's lowest point, its highest) above the feet in the model's bind pose (the animal
+    standing), metres."""
+    cache = actor.__dict__.setdefault("_lying_cache", {})
+    if "stand" not in cache:
+        c, s = actor.to_metres
+        allp = [s * (np.asarray(m["file_positions"], np.float64) @ c.T) for m in actor.model.meshes]
+        masks = _torso_masks(actor, spec)
+        ground = min(float(p[:, 1].min()) for p in allp)
+        t = np.concatenate([p[mk] for p, mk in zip(allp, masks)])
+        cache["stand"] = (float(t[:, 1].min()) - ground, float(t[:, 1].max()) - ground)
+    return cache["stand"]
+
+
+def _torso_points(job, s, actor, k, spec):
+    pts = mesh_points(job, s, actor, k)
+    return np.concatenate([p[mk] for p, mk in zip(pts, _torso_masks(job.actors[actor], spec))])
+
+
+def check_lying(job, s):
+    """An animal lying down lies on its belly with its legs folded under it (the kush): its torso's
+    lowest point near the ground, its hump low, its knees on the ground, its knees and feet inside
+    its body's outline (the sides, and the chest and rump ends with a margin). On by default for every
+    actor with the rig's lying bones (QUADRUPED_LYING) in the clips where it lies: a clip that starts
+    and ends lying is judged at every frame; one that lies down, at its last frame; one that gets up, at
+    its first; a death, at its first frame when it starts lying (a fall from standing is not a kush).
+    A frame lies when the torso's lowest point is below `lying_detect` of its standing height. A
+    clip's "lying": false turns it off, "all" judges every frame."""
+    out = []
+    clip = job.clips[s.name]
+    mode = clip.get("lying", "auto")
+    if mode is False or job.ground is None:
+        return out
+    g = float(job.ground)
+    L = s.limits
+    n = len(s.times)
+    for name in job.order:
+        a = job.actors[name]
+        spec = lying_spec(a)
+        if spec is None or name not in clip["anims"]:
+            continue
+        stand_low, stand_top = _standing(a, spec)
+        cache = {}
+
+        def torso(k):
+            if k not in cache:
+                cache[k] = _torso_points(job, s, name, k, spec)
+            return cache[k]
+
+        def lies(k):
+            return torso(k)[:, 1].min() - g < L["lying_detect"] * stand_low
+
+        first, last = lies(0), lies(n - 1)
+        if mode == "all":
+            frames = list(range(n))
+        elif clip.get("death"):
+            frames = [0] if first else []
+        elif first and last:
+            frames = list(range(n))
+        elif last:
+            frames = [n - 1]
+        elif first:
+            frames = [0]
+        else:
+            frames = []
+        if not frames:
+            continue
+        vals = {key: np.full(n, np.nan) for key in ("belly", "hump", "knee", "side", "end")}
+        details = {key: [""] * n for key in vals}
+        points = {key: [[] for _ in range(n)] for key in vals}
+        for k in frames:
+            t = torso(k)
+            lo = int(np.argmin(t[:, 1]))
+            vals["belly"][k] = t[lo, 1] - g
+            points["belly"][k] = [t[lo]]
+            details["belly"][k] = f"the torso's lowest point {100 * (t[lo, 1] - g):.0f} cm above the ground"
+            vals["hump"][k] = (t[:, 1].max() - g) / max(stand_top, 1e-9)
+            details["hump"][k] = (f"the hump {t[:, 1].max() - g:.2f} m up, {100 * vals['hump'][k]:.0f}% of its "
+                                  f"standing {stand_top:.2f} m")
+            knees = {b: s.at(name, b)[k] for b in spec["knees"]}
+            kb = max(knees, key=lambda b: knees[b][1])
+            vals["knee"][k] = knees[kb][1] - g
+            points["knee"][k] = [knees[kb]]
+            details["knee"][k] = f"{kb} {100 * (knees[kb][1] - g):.0f} cm above the ground"
+            front, back = s.at(name, spec["front"])[k], s.at(name, spec["back"])[k]
+            f = front - back
+            f[1] = 0.0
+            f = unit(f)
+            side = unit(np.cross(UP, f))
+            c = 0.5 * (front + back)
+            lat, lon = (t - c) @ side, (t - c) @ f
+            worst_side, worst_end = (-np.inf, None, None), (-np.inf, None, None)
+            for b in list(spec["knees"]) + list(spec["hooves"]):
+                q = s.at(name, b)[k]
+                lq, fq = (q - c) @ side, (q - c) @ f
+                e_side = max(lq - lat.max(), lat.min() - lq)
+                e_end = max(fq - lon.max(), lon.min() - fq)
+                if e_side > worst_side[0]:
+                    worst_side = (e_side, b, q)
+                if e_end > worst_end[0]:
+                    worst_end = (e_end, b, q)
+            for key, (v, b, q) in (("side", worst_side), ("end", worst_end)):
+                vals[key][k] = max(v, 0.0)
+                points[key][k] = [q]
+                details[key][k] = (f"{b} {100 * max(v, 0.0):.0f} cm beyond the body's "
+                                   + ("sides" if key == "side" else "chest or rump"))
+        which = "every frame" if len(frames) == n else ("the last frame" if frames == [n - 1] else "the first frame")
+        for key, item, limit, u in (("belly", "belly on the ground", L["lying_belly"], " m"),
+                                    ("hump", "hump low", L["lying_hump"], " of standing"),
+                                    ("knee", "knees on the ground", L["lying_knee"], " m"),
+                                    ("side", "legs inside its sides", L["lying_side"], " m"),
+                                    ("end", "legs inside its ends", L["lying_end"], " m")):
+            out.append(_result(s, "lying", f"{name}: {item} ({which})", vals[key], limit, u, details[key],
+                               points[key], n=int(L["risk_frames"])))
+    return out
+
+
 def check_mounts(job, s):
     out = []
     for m in job.spec.get("mounts") or []:
@@ -1501,7 +1665,7 @@ def check_inventory(job, baseline, samples, base_samples):
 LOWER_LIMITS = ("ahead",)      # checks whose limit is a least value (fail below it)
 
 CHECKS = (check_lengths, check_look, check_hinges, check_speed, check_feet, check_cross, check_grips, check_ahead,
-          check_sizes, check_mounts, check_props, check_routes, check_penetration, check_death)
+          check_sizes, check_lying, check_mounts, check_props, check_routes, check_penetration, check_death)
 
 
 class Report:
