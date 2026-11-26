@@ -4702,18 +4702,22 @@ def hump_rise(spec, x, z, y=None):
 
 
 def hump_camel(data, mesh_name, spec):
-    """The camel model's bytes with its back lifted into a hump (HUMP), in the packed vertex stream
-    in place: the positions, and each moved vertex's normal turned as its faces turn."""
+    """The camel model's bytes with its back lifted into a hump (HUMP): the positions, and each
+    moved vertex's normal turned as its faces turn. The game's packed vertex stream edited in place
+    was not drawn at all (seen 2026-11-26: its header's unknown word must check the data), so the
+    mesh is written again in the plain skinned layout of the game's other unit meshes: Position,
+    BoneWeights (4 x u8, adding up to 255), BoneIndices (4 x u8), Normal, Tangent, UV; the same
+    vertices in the same order, the same triangles, bindings and texture."""
     from aoe3game import gr2_edit
+    from aoe3game.gr2 import NORMAL_UINT8, REAL32, UINT8
+    from aoe3game.gr2_types import Spec
     from aoe3game.gr2_write import Flat, serialize
     part = next(p for p in gr2_parts.mesh_parts(data) if p["name"] == mesh_name)
     doc = gr2.load(data)
+    src_vs = next(m for m in doc.root().get("Meshes") if m is not None and m.get("Name") == mesh_name) \
+        .get("PrimaryVertexData").get("Vertices")
     root = gr2_edit.copy_tree(doc)
     mesh = next(m for m in root.values["Meshes"] if m is not None and m.values.get("Name") == mesh_name)
-    vs = mesh.values["PrimaryVertexData"].values["Vertices"]
-    raw = bytearray(vs.raw)
-    (_m, _s, _h, count, _g, table, blocks, rigid_bytes, skinned, _sb, rigid, _n) = struct.unpack_from("<12I", raw, 0)
-    at = gr2_mesh.FD_HEADER + table
     pos = part["positions"].copy()
     names = [str(n).lower() for n in part["skin_names"]]
     spine = np.array([names[b] in spec["bones"] for b in part["vertex_bone"]])
@@ -4730,29 +4734,34 @@ def hump_camel(data, mesh_name, spec):
             np.add.at(out, tris[:, k], fn)
         return out
     n0, n1 = vnormals(pos), vnormals(new)
-    nrm = part["normals"]
-    bias = gr2_parts.NORMAL_BIAS
+    nrm = part["normals"].copy()
     for i in moved:
-        if i < rigid:
-            b, lane = divmod(int(i), 4)
-            base = at + b * gr2_mesh.FD_BLOCK
-            struct.pack_into("<f", raw, base + 16 + 4 * lane, float(new[i, 1]))
-            noff = base + 48 + 4 * lane
-        else:
-            base = at + rigid_bytes + (int(i) - rigid) * gr2_mesh.FD_SKINNED
-            struct.pack_into("<f", raw, base + 4, float(new[i, 1]))
-            noff = base + 16
         a, c = n0[i], n1[i]
         if np.linalg.norm(a) > 1e-9 and np.linalg.norm(c) > 1e-9:
             a, c = unit(a), unit(c)
             v = np.cross(a, c)
             sn = float(np.linalg.norm(v))
-            n = nrm[i]
             if sn > 1e-9:
-                n = axis_matrix(v / sn, math.degrees(math.atan2(sn, float(a @ c)))) @ n
-            for k in range(3):
-                raw[noff + k] = int(min(127, max(0, round(float(n[k]) * bias + bias))))
-    mesh.values["PrimaryVertexData"].values["Vertices"] = Flat(vs.spec, bytes(raw), vs.count)
+                nrm[i] = axis_matrix(v / sn, math.degrees(math.atan2(sn, float(a @ c)))) @ nrm[i]
+    tan, uvs = part["tangents"], part["uvs"]
+    if gr2_mesh.is_packed(src_vs):
+        bones, weights = gr2_mesh.packed_skin(src_vs.raw)
+    else:
+        bones, weights = gr2_mesh._skin_columns(src_vs)
+    count = len(new)
+    out_raw = bytearray()
+    for i in range(count):
+        ws = [int(round(255 * float(w))) if b >= 0 else 0 for b, w in zip(bones[i], weights[i])]
+        bs = [int(b) if b >= 0 else 0 for b in bones[i]]
+        if sum(ws) <= 0:
+            ws, bs = [255, 0], [bs[0], 0]
+        ws[0] += 255 - sum(ws)                       # they add up to 255
+        out_raw += struct.pack("<3f8B3f3f2f", *new[i], ws[0], ws[1], 0, 0, bs[0], bs[1], 0, 0,
+                               *nrm[i], *tan[i][:3], *uvs[i])
+    vspec = Spec("VertexPWNTT", [(REAL32, "Position", None, 3), (NORMAL_UINT8, "BoneWeights", None, 4),
+                                 (UINT8, "BoneIndices", None, 4), (REAL32, "Normal", None, 3),
+                                 (REAL32, "Tangent", None, 3), (REAL32, "TextureCoordinates0", None, 2)])
+    mesh.values["PrimaryVertexData"].values["Vertices"] = Flat(vspec, bytes(out_raw), count)
     # the bones' bounding boxes grown by the lift (the spine bones' only)
     for bb in mesh.values.get("BoneBindings") or []:
         if str(bb.values.get("BoneName")).lower() in spec["bones"]:
@@ -4764,7 +4773,7 @@ def hump_camel(data, mesh_name, spec):
     check = gr2_parts.mesh_parts(out)
     got = next(p for p in check if p["name"] == mesh_name)["positions"]
     if np.abs(got - new).max() > 1e-4:
-        raise ValueError("the hump was not written where the packed stream is read")
+        raise ValueError("the hump's vertices do not read back")
     return out, {"moved": int(len(moved)), "lift": float((new[:, 1] - pos[:, 1]).max())}
 
 
