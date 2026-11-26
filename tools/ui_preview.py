@@ -343,16 +343,9 @@ def render(root, scale=2.0, region="auto", hide=None, mark=None, title=None, str
 # --------------------------------------------------------------------------------------------------
 # The screen with its textures
 
-SKIN = re.compile(r"(Eur|Nat|Asi)(Min|Max)$")
-SCENE_RULES = os.path.join(ROOT, "aoe3_blender_tools", "aoe3game", "uidata", "hud_scene.json")
-
-
-def art_key(path):
-    """A texture path as the art folder keys it: lower case, backslashes, no art\\ and no extension."""
-    p = path.strip().replace("/", "\\").strip("\\").lower()
-    if p.startswith("art\\"):
-        p = p[4:]
-    return p[:-4] if p.endswith((".ddt", ".png")) else p
+# the visibility rules and the art path keys are shared with aoe3game/uiatlas.py (the pieces of the
+# interface's textures), so the preview and the piece map agree
+from aoe3game.uiatlas import SCENE_RULES, SKIN, Visibility, art_key, scene_rules  # noqa: E402,F401
 
 
 class Textures:
@@ -443,24 +436,6 @@ def scene_layouts(game, variant="normal"):
     return out
 
 
-def _glob(patterns):
-    parts = ["".join(".*" if ch == "*" else re.escape(ch) for ch in p) for p in patterns]
-    return re.compile("^(" + "|".join(parts) + ")$", re.I)
-
-
-def scene_rules(path=SCENE_RULES):
-    """([(id, name pattern, shown)], [(regex, the one shown)]) of hud_scene.json, or empty lists."""
-    import json
-    try:
-        with open(path, encoding="utf-8") as fh:
-            rules = json.load(fh)
-    except OSError:
-        return [], []
-    moments = [(m["id"], _glob(m["names"]), bool(m.get("on"))) for m in rules.get("moments", [])]
-    one_of = [(re.compile(o["re"]), o["show"]) for o in rules.get("oneOf", [])]
-    return moments, one_of
-
-
 def _num(v, default=0.0):
     try:
         return float(v)
@@ -511,9 +486,7 @@ def render_screen(roots, width=1024, height=768, textures=None, culture="Eur", v
     pixels, with their textures (a Textures). `rules`: scene_rules()'s pair, read by default;
     `moments_on`: {moment id: shown} over the rules' defaults."""
     textures = textures or Textures()
-    moments, one_of = rules if rules is not None else scene_rules()
-    moments = [(rx, (moments_on or {}).get(mid, on)) for mid, rx, on in moments]
-    want = (culture, "Min" if variant == "min" else "Max")
+    vis = Visibility(rules, culture, variant, show_hidden, moments_on)
     order, tops, children = {}, [], {}
     for fi, root in enumerate(roots):
         for node, _depth, _idx in gadgets(root, hide):
@@ -527,20 +500,6 @@ def render_screen(roots, width=1024, height=768, textures=None, culture="Eur", v
     def by_z(n):
         fi, k = order[id(n)]
         return (_num(n.attrs.get("z")), fi, k)
-
-    def own_shown(n):
-        if "hidden" in n.attrs and not show_hidden:
-            return False
-        m = SKIN.search(n.name)
-        if m and (m.group(1), m.group(2)) != want:
-            return False
-        if any(rx.match(n.name) and not on for rx, on in moments):
-            return False
-        for rx, show in one_of:
-            hit = rx.search(n.name)
-            if hit and hit.group(1) != show:
-                return False
-        return True
 
     canvas = np.empty((height, width, 3), np.float32)
     canvas[:] = np.array(backdrop, np.float32) / 255.0
@@ -567,7 +526,7 @@ def render_screen(roots, width=1024, height=768, textures=None, culture="Eur", v
             blit(canvas, img, uv, x, y, w, h)
 
     def visit(n):
-        if not own_shown(n):
+        if not vis.own_shown(n):
             return
         r = n.rect
         if r is not None:
