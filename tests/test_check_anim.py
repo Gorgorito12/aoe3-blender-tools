@@ -427,6 +427,40 @@ class Ordinary(unittest.TestCase):
         across = ac.check(job((0.0, 0.0, 0.0), [1, 0, 0]))
         self.assertEqual([r.status for r in results(across, "hold")], [ac.PASS, ac.FAIL])
 
+    def test_a_muzzle_flash_at_the_muzzle(self):
+        # hammer fanning (2026-11-26): the shot's particle set named the right hand, so the flash showed
+        # at the hand beside the grip, not at the barrel's tip 0.3 m ahead. A bone keyed on the muzzle
+        # passes; the hand fails; a bone that leaves the muzzle after 0.5 s fails only at the later tags,
+        # judged at the tags' own times (between frames).
+        man = rig(HUMAN_BONES + [("Bip01 Prop2", "Bip01 R Hand", (0, 0, 0.3))], "human")
+        pistol = rig([("proot", None, (0, 0, 0)), ("barrel", "proot", (0, 0, 0.3))], "pistol")
+        swing = turn(X, lambda t: -60.0 * ease(t, 0.0, 1.0))      # the arm raised to aim as it fires
+        away = clip(1.0, {"Bip01 R UpperArm": (None, swing),
+                          "Bip01 Prop2": (lambda t: (0.0, 0.0, 0.3 + 0.2 * ease(t, 0.5, 0.6)), None)})
+
+        def job(flash, times=(0.2167, 0.45, 0.7833)):
+            return ac.Job({"ground": 0.0,
+                           "actors": {"man": {"model": man, "rig": "human"},
+                                      "pistol": {"model": pistol, "attach": {"to": "man", "bone": "bip01 r hand"}}},
+                           "clips": {"fire": {"anims": {"man": clip(1.0, {"Bip01 R UpperArm": (None, swing)})}},
+                                     "away": {"anims": {"man": away}}},
+                           "flashes": [{"name": "muzzle flash", "clips": ["fire", "away"], "flash": flash,
+                                        "muzzle": "pistol:barrel", "times": list(times)}]})
+        good = ac.check(job("man:bip01 prop2"))
+        by = {r.clip: r for r in results(good, "flash")}
+        self.assertEqual(by["fire"].status, ac.PASS)
+        self.assertLess(by["fire"].value, 1e-6)
+        self.assertEqual(by["away"].status, ac.FAIL)
+        self.assertAlmostEqual(by["away"].time, 0.7667, places=3)       # the frame nearest the tag at 0.7833
+        self.assertAlmostEqual(by["away"].value, 0.2, places=3)
+        early = {r.clip: r.status for r in results(ac.check(job("man:bip01 prop2", times=(0.2167, 0.45))), "flash")}
+        self.assertEqual(early, {"fire": ac.PASS, "away": ac.PASS})       # it leaves the muzzle after the tags
+        hand = ac.check(job("man:bip01 r hand"))
+        self.assertEqual(status(hand, "flash"), ac.FAIL)
+        self.assertAlmostEqual(results(hand, "flash")[0].value, 0.3, places=3)
+        none = ac.check(job("man:bip01 prop2", times=()))
+        self.assertEqual({r.status for r in results(none, "flash")}, {ac.SKIP})
+
     def test_hands_ahead_of_the_chest(self):
         # arms raised forward to a grip pass; an arm swung back behind the chest's plane fails, and
         # a frame range leaves out the beat where the hand goes back on purpose

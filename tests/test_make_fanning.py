@@ -74,6 +74,23 @@ class Tags(unittest.TestCase):
         self.assertEqual(attack, [round(t / 2.2, 3) for t in mf.shot_times(6)])
         self.assertEqual(attack, [0.191, 0.31, 0.428, 0.547, 0.666, 0.785])
 
+    def test_the_flash_is_drawn_on_the_muzzle_bone_not_the_hand(self):
+        # the stock musketshot draws on "R Hand": the flash showed at the hand (in game, 2026-11-26)
+        lines = mf.tag_lines(6)
+        particles = [x for x in lines if 'type="Particles"' in x]
+        self.assertEqual(len(particles), 6)
+        self.assertTrue(all(f'particlename="{mf.PARTICLE_SET}"' in x for x in particles))
+        self.assertNotIn("musketshot", "\n".join(lines))
+        block = mf.particleset_block()
+        self.assertIn(f'<particleset name="{mf.PARTICLE_SET}">', block)
+        self.assertEqual(block.count(f'bone="{mf.PARTICLE_BONE}"'), 4)
+        self.assertIn("effects\\weapon_fire\\musket_fire_A.particle", block)
+        self.assertNotIn("R Hand", block)
+        self.assertEqual(mf.FLASH_BONE, "bip01 " + mf.PARTICLE_BONE.lower())
+        # the check's times are the tags' as written (fractions rounded to 3 places)
+        tagged = [float(re.search(r">([0-9.]+)<", x).group(1)) * 2.2 for x in particles]
+        self.assertTrue(np.allclose(mf.flash_times(6), tagged))
+
     def test_the_anim_blocks_name_both_clips(self):
         xml = mf.anim_blocks(6)
         self.assertIn("RangedAttackSharpshoot", xml)
