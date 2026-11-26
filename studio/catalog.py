@@ -750,6 +750,23 @@ TOOLS = [
          [Arg("colour", "--colour", "color", L("Colour", "Color"), default="FF8C00"),
           Arg("out", "--out", "save", L("Texture to write", "Textura a escribir"), filters=DDT, work="health_bar.ddt")],
          outputs=("out",)),
+    Tool("make_pie", "tools/make_pie.py", "art",
+         L("Progress pie frames", "Fotogramas del gráfico de progreso"),
+         L("The frames of the small progress pie a unit panel row shows after its text (pie_00.ddt ... for "
+           "art/ui/uhc/pie): the training overlay's blue at half alpha in a thin gold frame, a clear wedge "
+           "turning clockwise from 12 o'clock. No pixel comes from the game.",
+           "Los fotogramas del pequeño gráfico de progreso que una fila del panel de unidad muestra tras su texto "
+           "(pie_00.ddt ... para art/ui/uhc/pie): el azul del entrenamiento a media transparencia en un marco "
+           "dorado fino, una cuña clara que gira en sentido horario desde las 12. Ningún píxel sale del juego."),
+         [out_dir(),
+          Arg("frames", "--frames", "int", L("Frames", "Fotogramas"),
+              L("How many steps the pie has (frame k shows k/N done).",
+                "Cuántos pasos tiene el gráfico (el fotograma k muestra k/N hecho)."), default=32),
+          Arg("png", "--png", "save", L("Sheet of the frames", "Hoja de los fotogramas"),
+              L("Optional: every frame enlarged, and the frames at the panel's sizes on its brown.",
+                "Opcional: cada fotograma ampliado, y los fotogramas a los tamaños del panel sobre su marrón."),
+              filters=PNG)],
+         outputs=("out", "png")),
     Tool("ui_preview", "tools/ui_preview.py", "art",
          L("Preview an interface layout", "Vista previa de una disposición de la interfaz"),
          L("Draws a game UI layout file (ui*.xml or its .xmb) as a picture: every gadget's box numbered and "
