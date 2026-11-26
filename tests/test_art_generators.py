@@ -24,6 +24,10 @@ try:
 except ImportError:          # plain Python without numpy
     np = None
 
+# The files of make_rings that are not range rings; each size adds range_<N>.xml and .gr2, and with the dashed rings
+# range_<N>_ships.xml and .gr2.
+OTHER_RING_FILES = 252
+
 
 def run_tool(script, *args):
     return subprocess.run([sys.executable, "-I", os.path.join(ROOT, "tools", script), *args],
@@ -60,7 +64,7 @@ class Rings(unittest.TestCase):
             for player in make_rings.RANGE_FILL_PLAYERS:
                 self.assertIn(f"rangefill_{radius}_p{player}.xml", names)
         fills = len(make_rings.RANGES) * len(make_rings.RANGE_FILL_PLAYERS) * 2 + len(make_rings.RANGE_FILL_PLAYERS)
-        self.assertEqual(len(names), 298 + 2 * len(make_rings.RANGES) + fills)
+        self.assertEqual(len(names), OTHER_RING_FILES + 4 * len(make_rings.RANGES) + fills)
 
     def test_markers_show_their_ring_and_their_own_icon(self):
         for marker, (ring, _) in make_rings.MARKERS.items():
@@ -410,7 +414,7 @@ class Rings(unittest.TestCase):
             make_rings.RANGE_FILLS = True
             make_rings.RANGE_SHIP_RINGS = True
         self.assertFalse([n for n in names if n.startswith("rangefill_") or "_ships." in n])
-        self.assertEqual(len(names), 298)
+        self.assertEqual(len(names), OTHER_RING_FILES + 2 * len(make_rings.RANGES))
 
 
 class AuraRings(unittest.TestCase):

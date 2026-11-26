@@ -701,7 +701,8 @@ def rank_ddt(rank):
 # Range rings, by radius in metres, a thin line of RANGE_LINE metres in a neutral colour. Up to 100 m, the longest
 # range of a mod's unit (a monitor in Wars of Liberty): a radius shows on the ring nearest to it. A texture of 256
 # texels up to 16 m, 512 above; the line widens with the radius so it stays about 1.5 texels wide on the largest.
-RANGES = (4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 45, 50, 60, 70, 80, 100)
+# Every metre from 4 to 50, so that a ring drawn at the nearest size is at most half a metre off; then by 5 and 10 m.
+RANGES = tuple(range(4, 51)) + (55, 60, 65, 70, 80, 90, 100)
 RANGE_LINE = 0.30
 RANGE_LINE_PER_METRE = 0.006
 RANGE_COLOURS = ((245, 245, 235), (255, 255, 255))
@@ -718,9 +719,15 @@ RANGE_COLOURS = ((245, 245, 235), (255, 255, 255))
 # channel and the normal's X from its alpha (a stock flat bump is R 0, G 128, B 255, A 128); a bump of R 128 and A 255
 # (until 2026-11-23) asked for half shine on a normal tilted along the ring, and the sun's shine then added white over
 # the colour: a pale lavender for blue, pink for red.
-RANGE_MESH_LINE = 0.5             # the line's width in metres, at least: about a selection circle's line on screen
-RANGE_MESH_LINE_PER_METRE = 0.008  # and widening with the radius
-RANGE_MESH_HEIGHT = 0.25          # metres over the unit's feet
+# The game reads a model's vertices as its own metres and does not apply the file's UnitsPerMeter (the stock basis
+# says 0.615): measured in game on 2026-11-24, rings written in that basis showed 0.615 of their radius (the 26 m ring
+# passed a marker 16 m from the unit's centre, the 55 m ring passed between markers at 32 and 34 m). So the range
+# meshes are written with one unit a metre. The widths and heights below keep what was seen and approved until then
+# (0.5 m, 0.008 m a metre and 0.25 m in the old basis).
+RANGE_MESH_UNITS = 1.0
+RANGE_MESH_LINE = 0.31            # the line's width in metres, at least: about a selection circle's line on screen
+RANGE_MESH_LINE_PER_METRE = 0.005  # and widening with the radius
+RANGE_MESH_HEIGHT = 0.15          # metres over the unit's feet
 RANGE_MESH_STEP = 2.0             # metres of circumference a segment, from 48 to 256 segments
 RANGE_MESH_CORE = 255             # the line's grey: white, so the shader gives the owner's colour unchanged
 RANGE_PARTICLES = False           # set by --range-particles
@@ -739,7 +746,7 @@ RANGE_SHIP_RINGS = True           # set by --no-ship-rings
 # RANGE_FILL_LIGHT of the owner's colour. The placement ghost of a building gets no fill from the caller: a ghost that
 # cannot be placed is tinted, and the shader's tint draws the disc opaque. --no-range-fills leaves them out.
 RANGE_FILLS = True                # set by --no-range-fills
-RANGE_FILL_HEIGHT = 0.22          # under the line (RANGE_MESH_HEIGHT)
+RANGE_FILL_HEIGHT = 0.135         # under the line (RANGE_MESH_HEIGHT)
 RANGE_FILL_START = 0.2
 RANGE_FILL_POWER = 1.2
 RANGE_FILL_LIGHT = 0.6
@@ -1034,7 +1041,8 @@ def range_mesh(radius, dashes=0):
     name = f"range_{radius}_ships" if dashes else f"range_{radius}"
     art = f"E:\\uhc\\Art\\effects\\{FOLDER}\\"
     return gr2_write.static_model(name, pos, nor, uv, tris, texture=art + "range_line.ddt",
-                                  bump=art + "range_line_bump.ddt", player_colour=True)
+                                  bump=art + "range_line_bump.ddt", player_colour=True,
+                                  units_per_meter=RANGE_MESH_UNITS)
 
 
 def range_fill_radius(radius):
@@ -1060,7 +1068,7 @@ def range_fill_mesh(radius, player):
     art = f"E:\\uhc\\Art\\effects\\{FOLDER}\\"
     return gr2_write.static_model(f"rangefill_{radius}_p{player}", pos, nor, uv, tris,
                                   texture=art + f"rangefill_p{player}.ddt", bump=art + "range_line_bump.ddt",
-                                  effect="alphablend")
+                                  effect="alphablend", units_per_meter=RANGE_MESH_UNITS)
 
 
 def range_fill_alpha(r, peak):
