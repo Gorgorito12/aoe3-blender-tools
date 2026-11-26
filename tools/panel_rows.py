@@ -30,7 +30,18 @@ The spec (JSON; paths relative to the spec's folder):
   the first row's top (or `header.top` + the new header height) to `bottom` evenly;
 - `blank_from`: the painted row the new rows are made from (its plank and wood, its icon and smear removed);
 - `header` (optional): a header box above the rows (a minimized panel's population box) is made shorter: its
-  top `keep_top` texels stay, then its bottom part, so the rows start `shrink` texels higher.
+  top `keep_top` texels stay, then its bottom part, so the rows start `shrink` texels higher;
+- `keep_bars` (optional, false by default): a moved row keeps its rope bar at its own height (`BAR` texels) and
+  only its body is resampled, its icon zone by the body's factor. Use it when rows get taller (a row left out
+  of `order`, the others spread over its space), so the bars do not get thicker than the panel's other bars;
+- `icon_scale_max` (optional): the most a moved row's icon zone is scaled up. A taller row's body is still
+  stretched to its height, but its icon (with the plank's arrow and the smear around it) is scaled by at most
+  this factor and centred in the body, feathered on all sides, so the icons do not grow into the numbers that
+  the layout puts to their right.
+
+A row left out of `order` is dropped: the remaining rows share its space. A texture may name `out`, the path
+(relative to `--out`) to write it to instead of `file`, so a variant of a texture (a panel without a row) can sit
+beside the original; `--positions` then names that path as the panel's texture.
 
 How a row is moved: its strip is resampled to the new height; its icon zone (the plank's arrow, the smear and
 the icon) is scaled by the same factor in both directions and laid over it around the icon's centre, with
@@ -166,9 +177,27 @@ def paint_new_row(strip, x0, dx, icon, height, smear):
     return s
 
 
-def move_row(strip, h_t, x0, dx):
-    """A row strip at a new height: resampled, its icon zone scaled the same in both directions."""
+def move_row(strip, h_t, x0, dx, keep_bar=False, icon_max=None, blank=None):
+    """A row strip at a new height: resampled, its icon zone scaled the same in both directions. keep_bar: the
+    rope bar (the first BAR rows) stays as it is and only the body under it is moved. icon_max: the icon zone is
+    scaled up by at most this factor, centred in the row and feathered on every side, over the row without its
+    icon (blank: that row, else blank_strip's)."""
     h_s, w = strip.shape[:2]
+    if keep_bar and h_t != h_s:
+        bl = blank_strip(strip, x0, dx)[BAR:] if icon_max is not None else None
+        body = move_row(strip[BAR:], h_t - BAR, x0, dx, icon_max=icon_max, blank=bl)
+        return np.concatenate([np.asarray(strip[:BAR], np.float32), body], 0)
+    if icon_max is not None and h_t > icon_max * h_s:
+        bg = _resize(blank_strip(strip, x0, dx) if blank is None else blank, w, h_t)
+        c = icon_max
+        zl, zr = ZONE[0] + dx - x0, ZONE[1] + dx - x0
+        cx = ICON_CX + dx - x0
+        zw, zh = max(2, int(round(c * (zr - zl)))), max(2, int(round(c * h_s)))
+        patch = _resize(strip[:, zl:zr], zw, zh)
+        px, py = int(round(cx - c * (cx - zl))), int(round((h_t - zh) / 2))
+        ramp = (_ramp(zh, FEATHER)[:, None] * _ramp(zw, FEATHER)[None, :])[..., None]
+        bg[py:py + zh, px:px + zw] = bg[py:py + zh, px:px + zw] * (1 - ramp) + patch * ramp
+        return bg
     bg = _resize(strip, w, h_t)
     if h_t == h_s:
         return bg
@@ -235,7 +264,8 @@ def build_panel(img, panel, icons, base):
             strip[:BAR] = first_bar
         elif k > 0 and had_first:
             strip[:BAR] = inner_bar
-        out[tops[k]:tops[k + 1], x0:x1] = move_row(strip, tops[k + 1] - tops[k], x0, dx)
+        out[tops[k]:tops[k + 1], x0:x1] = move_row(strip, tops[k + 1] - tops[k], x0, dx,
+                                                   panel.get("keep_bars", False), panel.get("icon_scale_max"))
     return out, tops
 
 
@@ -286,20 +316,20 @@ def main():
         img = ddt.decode(data).astype(np.float32)
         for panel in t["panels"]:
             img, tops = build_panel(img, panel, icons, base)
-            positions[panel["id"]] = {"texture": t["file"], "row_tops": tops, "order": panel["order"],
+            positions[panel["id"]] = {"texture": t.get("out", t["file"]), "row_tops": tops, "order": panel["order"],
                                       "header_top": panel.get("header", {}).get("top"),
                                       "x": panel["x"]}
         rgba = np.clip(img + 0.5, 0, 255).astype(np.uint8)
         out_data, changed = encode_like(data, hd, rgba)
-        dst = os.path.join(a.out, t["file"])
+        dst = os.path.join(a.out, t.get("out", t["file"]))
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         with open(dst, "wb") as f:
             f.write(out_data)
         if a.png:
-            p = os.path.join(a.png, os.path.splitext(os.path.basename(t["file"]))[0] + ".png")
+            p = os.path.join(a.png, os.path.splitext(os.path.basename(t.get("out", t["file"])))[0] + ".png")
             os.makedirs(a.png, exist_ok=True)
             Image.fromarray(ddt.decode(out_data), "RGBA").save(p)
-        print(f"panel_rows: {t['file']}: {', '.join(p['id'] for p in t['panels'])} ({changed} blocks re-encoded)")
+        print(f"panel_rows: {t.get('out', t['file'])}: {', '.join(p['id'] for p in t['panels'])} ({changed} blocks re-encoded)")
     if a.positions:
         with open(a.positions, "w", encoding="utf-8") as f:
             json.dump(positions, f, indent=1)
