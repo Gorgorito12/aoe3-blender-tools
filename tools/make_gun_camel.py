@@ -70,6 +70,7 @@ import json
 import math
 import os
 import shutil
+import struct
 import sys
 import tempfile
 
@@ -648,8 +649,23 @@ class Camel:
                                     if int(t["flags"]) & 4 else np.eye(3))
         self.base = self.anim(spec.get("idle", ZAMB + "zamburak_camel_idle00"))
         P0 = self.pose(self.base, 0.0)
-        self.hang_local = np.linalg.inv(rigid(P0[self.mount])) @ rigid(P0[self.hang])   # the hang bone on the chest
+        hang0 = rigid(P0[self.hang])
+        # the rider's seat risen with the hump under it (HUMP; the gun hung on the same bone is placed
+        # in the camel's space, so it does not move with it)
+        self.seat_rise = 0.0
+        if spec.get("hump", True) and self.hang == self.rider_bone:
+            s = hang0[:3, 3]
+            self.seat_rise = hump_rise(HUMP, s[0], s[2])
+            hang0 = tr((0.0, self.seat_rise, 0.0)) @ hang0
+        self.hang_local = np.linalg.inv(rigid(P0[self.mount])) @ hang0   # the hang bone on the chest
+        self.seat_local = rigid(P0[self.mount])[:3, :3].T @ np.array([0.0, self.seat_rise, 0.0])
         self.hang_bind = self.bind @ self.hang_local      # the hang bone at the bind pose (the chest's scale)
+
+    def seat_frame(self, pose):
+        """The rider's bone in `pose` as the clip has it, risen with the hump (on the chest's up)."""
+        m = rigid(pose[self.rider_bone])
+        m[:3, 3] += rigid(pose[self.mount])[:3, :3] @ self.seat_local
+        return m
 
     def fix_hang(self, pose):
         """The pose with the hang bone (and the rider on it) where the idle has it on the chest."""
@@ -1757,7 +1773,7 @@ class Unit:
         P0 = cam.pose(cam.anim(CLIPS["A"][0]["camel"]), 0.0)
         C0 = self.C(P0)
         inv0 = np.linalg.inv(C0)
-        R = self.rider.seated(self.rider.idle, 0.0, rigid(P0[cam.rider_bone]))
+        R = self.rider.seated(self.rider.idle, 0.0, cam.seat_frame(P0))
         pel = R["bip01 pelvis"][:3, 3]
         # the vertical through the body under him: the saddle's top, then the belly (the highest
         # surface well below it)
@@ -2294,7 +2310,7 @@ class Unit:
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
         stock_attach = None
         if clip.get("do") == "fall":
-            stock_attach = [rigid(P[cam.rider_bone]) for P in poses]
+            stock_attach = [cam.seat_frame(P) for P in poses]
         if clip.get("do") == "foot_death" or clip.get("roll"):
             poses = [cam.pin_hang(P, poses[0]) for P in poses]
             scales = cam.hang_scale(poses[0], scales)
@@ -4635,14 +4651,112 @@ def cut_camel(game, recipe):
     out = gr2_parts.cut_triangles(data, spec["mesh"], keep)
     info = {"triangles": int(len(part["triangles"])), "cut": int((~keep).sum()),
             "pieces": [(int(len(sel)), bool(post)) for _c, sel, post in pieces]}
+    hump = HUMP if spec.get("hump", True) else None
+    if hump:
+        out, info["hump"] = hump_camel(out, spec["mesh"], hump)
     top = post_top(part, pieces)
     info["old_post_top"] = top.copy()
     if centre:
-        # the made post (GunDesign.add_post) under the same top, on the spine: from the highest
-        # surface of the kept mesh there (the saddle) up
+        # the made post (GunDesign.add_post) on the spine: from the highest surface of the kept mesh
+        # there (the saddle, on the hump) up to the old post's top, risen with the rider's seat (the
+        # gun keeps its place in front of him)
         top = np.array([0.0, top[1], top[2]])
-        info["post_base"] = surface_y(part["positions"], part["triangles"][keep], top[0], top[2])
+        hp = next(p for p in gr2_parts.mesh_parts(out) if p["name"] == spec["mesh"])
+        info["post_base"] = surface_y(hp["positions"], hp["triangles"], top[0], top[2])
+        if hump:
+            info["seat_rise"] = Camel(game, spec, out).seat_rise
+            top[1] += info["seat_rise"]
     return out, info, top
+
+
+# The hump (2026-11-26, the user: "make the camels at least have a bit of a hump"). The stock zamburak
+# camel's back is flat from the rump to the withers (its midline at 2.11 to 2.14 over 1.1 of its length,
+# under the saddle cloth): a dromedary's single hump is made by lifting the back's vertices skinned to
+# the spine bones (so the existing skin deforms it): `height` at (x 0, z `z`), falling off as a gaussian
+# along the body (`length`) and across it (`width`), and from nothing at `from_y` to all of it at
+# `to_y` up the flanks (the belly and legs stay). No vertex, triangle or bone is added. The rider's
+# seat (bone attachpoint) rises with the back under it (Camel.seat_rise).
+HUMP = {"height": 0.28, "z": 0.0, "length": 0.30, "width": 0.25, "from_y": 1.5, "to_y": 2.1,
+        "bones": ("hs bone chest", "hs bone stomach", "hs bone pelvis")}
+
+
+def hump_rise(spec, x, z, y=None):
+    """How far the hump lifts the camel's surface at (x, z) (and height y, when given)."""
+    if not spec:
+        return 0.0
+    r = spec["height"] * math.exp(-((z - spec["z"]) ** 2) / (2 * spec["length"] ** 2)) \
+        * math.exp(-(x ** 2) / (2 * spec["width"] ** 2))
+    if y is not None:
+        u = min(1.0, max(0.0, (y - spec["from_y"]) / (spec["to_y"] - spec["from_y"])))
+        r *= u * u * (3 - 2 * u)
+    return r
+
+
+def hump_camel(data, mesh_name, spec):
+    """The camel model's bytes with its back lifted into a hump (HUMP), in the packed vertex stream
+    in place: the positions, and each moved vertex's normal turned as its faces turn."""
+    from aoe3game import gr2_edit
+    from aoe3game.gr2_write import Flat, serialize
+    part = next(p for p in gr2_parts.mesh_parts(data) if p["name"] == mesh_name)
+    doc = gr2.load(data)
+    root = gr2_edit.copy_tree(doc)
+    mesh = next(m for m in root.values["Meshes"] if m is not None and m.values.get("Name") == mesh_name)
+    vs = mesh.values["PrimaryVertexData"].values["Vertices"]
+    raw = bytearray(vs.raw)
+    (_m, _s, _h, count, _g, table, blocks, rigid_bytes, skinned, _sb, rigid, _n) = struct.unpack_from("<12I", raw, 0)
+    at = gr2_mesh.FD_HEADER + table
+    pos = part["positions"].copy()
+    names = [str(n).lower() for n in part["skin_names"]]
+    spine = np.array([names[b] in spec["bones"] for b in part["vertex_bone"]])
+    new = pos.copy()
+    for i in np.nonzero(spine)[0]:
+        new[i, 1] += hump_rise(spec, pos[i, 0], pos[i, 2], pos[i, 1])
+    moved = np.nonzero(np.abs(new[:, 1] - pos[:, 1]) > 1e-6)[0]
+    tris = part["triangles"]
+
+    def vnormals(p):
+        out = np.zeros_like(p)
+        fn = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
+        for k in range(3):
+            np.add.at(out, tris[:, k], fn)
+        return out
+    n0, n1 = vnormals(pos), vnormals(new)
+    nrm = part["normals"]
+    bias = gr2_parts.NORMAL_BIAS
+    for i in moved:
+        if i < rigid:
+            b, lane = divmod(int(i), 4)
+            base = at + b * gr2_mesh.FD_BLOCK
+            struct.pack_into("<f", raw, base + 16 + 4 * lane, float(new[i, 1]))
+            noff = base + 48 + 4 * lane
+        else:
+            base = at + rigid_bytes + (int(i) - rigid) * gr2_mesh.FD_SKINNED
+            struct.pack_into("<f", raw, base + 4, float(new[i, 1]))
+            noff = base + 16
+        a, c = n0[i], n1[i]
+        if np.linalg.norm(a) > 1e-9 and np.linalg.norm(c) > 1e-9:
+            a, c = unit(a), unit(c)
+            v = np.cross(a, c)
+            sn = float(np.linalg.norm(v))
+            n = nrm[i]
+            if sn > 1e-9:
+                n = axis_matrix(v / sn, math.degrees(math.atan2(sn, float(a @ c)))) @ n
+            for k in range(3):
+                raw[noff + k] = int(min(127, max(0, round(float(n[k]) * bias + bias))))
+    mesh.values["PrimaryVertexData"].values["Vertices"] = Flat(vs.spec, bytes(raw), vs.count)
+    # the bones' bounding boxes grown by the lift (the spine bones' only)
+    for bb in mesh.values.get("BoneBindings") or []:
+        if str(bb.values.get("BoneName")).lower() in spec["bones"]:
+            lo, hi = bb.values.get("OBBMin"), bb.values.get("OBBMax")
+            if lo is not None and hi is not None:
+                bb.values["OBBMin"] = tuple(float(v) - spec["height"] for v in lo)
+                bb.values["OBBMax"] = tuple(float(v) + spec["height"] for v in hi)
+    out = serialize(root, type_tag=doc.c.type_tag)
+    check = gr2_parts.mesh_parts(out)
+    got = next(p for p in check if p["name"] == mesh_name)["positions"]
+    if np.abs(got - new).max() > 1e-4:
+        raise ValueError("the hump was not written where the packed stream is read")
+    return out, {"moved": int(len(moved)), "lift": float((new[:, 1] - pos[:, 1]).max())}
 
 
 def surface_y(pos, tris, x, z):

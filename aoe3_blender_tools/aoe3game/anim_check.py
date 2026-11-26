@@ -1062,6 +1062,17 @@ def lying_spec(actor):
     return spec
 
 
+def _drawn(m):
+    """The vertices a mesh's triangles use (a cut model keeps the vertices of the triangles it cut)."""
+    n = len(m["file_positions"])
+    tris = m.get("triangles")
+    if tris is None or not len(tris):
+        return np.ones(n, bool)
+    used = np.zeros(n, bool)
+    used[np.unique(np.asarray(tris))] = True
+    return used
+
+
 def _torso_masks(actor, spec):
     """Per mesh: the vertices whose heaviest bone is a torso bone."""
     key = ("_torso", tuple(spec["torso"]))
@@ -1072,7 +1083,7 @@ def _torso_masks(actor, spec):
         for m in actor.model.meshes:
             vb, vw = np.asarray(m["vertex_bones4"]), np.asarray(m["vertex_weights4"])
             dom = vb[np.arange(len(vb)), np.argmax(vw, 1)]
-            masks.append(np.array([str(m["skin_names"][int(i)]).lower() in want for i in dom], bool))
+            masks.append(np.array([str(m["skin_names"][int(i)]).lower() in want for i in dom], bool) & _drawn(m))
         cache[key] = masks
     return cache[key]
 
@@ -1085,7 +1096,7 @@ def _standing(actor, spec):
         c, s = actor.to_metres
         allp = [s * (np.asarray(m["file_positions"], np.float64) @ c.T) for m in actor.model.meshes]
         masks = _torso_masks(actor, spec)
-        ground = min(float(p[:, 1].min()) for p in allp)
+        ground = min(float(p[_drawn(m), 1].min()) for p, m in zip(allp, actor.model.meshes) if _drawn(m).any())
         t = np.concatenate([p[mk] for p, mk in zip(allp, masks)])
         cache["stand"] = (float(t[:, 1].min()) - ground, float(t[:, 1].max()) - ground)
     return cache["stand"]
