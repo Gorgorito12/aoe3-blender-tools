@@ -30,7 +30,9 @@ saying so. Each of those is now a rule below and a check of `tools/check_anim.py
    and a capsule of the torso measured on the mesh); a held prop held by its handle (`holds`: a
    pistol's grip in the palm, its axis along the closed fingers; a pistol held by the top of its frame,
    its grip hanging below the hand, was sent once and rejected, and the borrowed clip it replaced had
-   the same fault).
+   the same fault); a muzzle flash drawn at the muzzle (`flashes`: the bone the Particles tag's
+   particle set names, at each tag's time, on the weapon's barrel tip; a pistol's flash drawn on the
+   stock `musketshot`'s `R Hand`, at the hand beside the grip, reached the game once).
 
 **The pictures are drawn as the game draws them.** The game's space is left-handed: a unit facing +z
 has its right hand at +x (its R bones), and the game shows it as its right. Seen from the front, the
@@ -121,6 +123,7 @@ the first actor (set `ground` to `null` for a lone rider whose space has no grou
 | `cross` | The legs crossed: a human's left foot (or toe) passing to the right of the right one, along the pelvis's right made level (the shuffle of a turn on the spot) | 2 cm |
 | `grip` | A hand point from its grip during the frames given | 3 cm |
 | `hold` | A held prop's handle: its centre from the palm's, and its axis from the line of the closed fingers, every frame (job `holds`) | 3 cm, 30 deg (the job's `max`, `max_angle`) |
+| `flash` | At each Particles tag of a shot (the clip time of the tag), the point the game draws the muzzle flash on (the bone the tag's particle set names) from the weapon's muzzle, between the two frames around the tag (job `flashes`) | 3 cm (the job's `max`) |
 | `ahead` | A point (a palm) in front of another (a shoulder) along an actor's facing, its chest's forward made level: a hand behind the chest's plane reads as an arm pulled back | the job's `min` (no default rule) |
 | `size` | The job's `sizes`: the distance between two points (a prop's ends) at a frame, as a share of an actor's height (its lowest foot bone to its head bone at rest), within the job's `min` and `max`: a prop of unreal size | the job's range |
 | `lying` | An animal lying down lies in the kush: its torso's lowest point (the skinned vertices of the pelvis, stomach and chest) near the ground, its hump (the torso's top) low against its standing one (the bind pose), its knees (carpus and hock) on the ground, its knees and feet inside the torso's sides and within its chest and rump ends. On by default for any actor with the game's quadruped bones (`HS Bone ...`) and a mesh: a clip that starts and ends lying is judged at every frame, a lie-down at its last frame, a get-up at its first, a death that starts lying at its first (a fall from standing is not a kush). A frame lies when the torso's lowest point is below half its standing height. A rig's `"lying": false` or a clip's `"lying": false` turns it off; a clip's `"lying": "all"` judges every frame | belly 5 cm; hump 66% (the camel's body alone is 62% of its height); knee joints' centres 25 cm (a camel's hock is 20 cm thick); 5 cm beyond the sides, 15 cm beyond the ends |
@@ -197,6 +200,12 @@ A JSON file beside the outputs (paths relative to it). Only `actors` and `clips`
   "hand_axis": {"bone", "dir"} (the line of the closed fingers, index to little finger, in the hand
   bone's frame), "grip_axis": {"bone", "dir"} (the handle from its top to its butt), "max", "max_angle",
   "clips"}`: a prop held by the wrong part fails from the first frame.
+- **Flashes.** `{"flash": <the point the flash is drawn on: the bone its particle set names>,
+  "muzzle": <the weapon's barrel tip>, "times": [clip seconds of the Particles tags], "max", "clips"}`.
+  A particle set (`art\effects\particlesets*.xml`) names a bone per particle, and the Particles tag
+  of the anim file names the set: the flash shows where that bone is at the tag. A hand-held weapon
+  whose barrel is far from the hand needs a set on a bone keyed on the muzzle (`make_fanning.py`
+  keys `Bip01 Prop2`); a set on `R Hand` draws it at the hand.
 - **Ahead.** `point` must stay at least `min` metres in front of `of`, measured along the facing
   of `actor` (default: the actor of `of`): its chest's forward at rest, carried by the chest and
   made level. `clips` and `frames` narrow it as for grips. Use it where a hand must work in front
