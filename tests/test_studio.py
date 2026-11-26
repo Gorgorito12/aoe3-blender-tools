@@ -1159,6 +1159,16 @@ class Forms(unittest.TestCase):
                              ["--out", os.path.join(tmp, "ui_preview", "ui_preview.png")])
             self.assertIn("--text", cmd)
             self.assertEqual(cmd[cmd.index("--mark") + 1], "uhcRow")
+            # the screen with its textures: no layout, the scene of a game folder, textures to try, moments
+            cmd, *_ = catalog.command(st, "ui_preview", {"game": tmp, "scene": "min", "size": "1920x1080",
+                                                         "culture": "Asi", "override": [tmp], "suffix": "asi",
+                                                         "moment": "selected=off clock=on", "boxes": True})
+            self.assertEqual(cmd[cmd.index("--scene") + 1], "min")
+            self.assertEqual(cmd[cmd.index("--culture") + 1], "Asi")
+            self.assertEqual([cmd[i + 1] for i, x in enumerate(cmd) if x == "--moment"], ["selected=off", "clock=on"])
+            self.assertEqual(cmd[cmd.index("--override") + 1], tmp)
+            self.assertIn("--boxes", cmd)
+            self.assertNotIn("--show-hidden", cmd)
             cmd, *_ = catalog.command(st, "make_stat_icon", {"glyph": "eye", "style": "bold"})   # as the page sends it
             self.assertEqual(cmd[cmd.index("--style") + 1], "bold")
             self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_stat_icon", "stat_icon.ddt"))
