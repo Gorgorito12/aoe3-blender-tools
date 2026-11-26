@@ -808,11 +808,120 @@ class Camel:
         d = pose[self.mount][:3, 3] - pose["hs bone pelvis"][:3, 3]
         return math.degrees(math.atan2(d[0], d[2]))
 
-    def grounded(self, anim, times):
+    # The kush (2026-11-26). The sheep's lying clips fold a sheep's legs at a sheep's angles: on the
+    # camel's long legs they stay struts, and the body lying on them is 0.32 m off the ground (the
+    # hump at 75% of its standing height; the user: "the camel isn't properly lying on the ground").
+    # A camel lies as the reference shows it: the belly and the chest's pad on the ground, the
+    # forelegs folded under the chest on their carpal knees (the cannon folded back under the
+    # forearm), the hind legs folded beside the belly (the stifle forward, the hock back on the
+    # ground, the cannon folded forward under the shin). So grounded() lowers the lying body until
+    # its torso is KUSH_BELLY above the ground and places each leg's joints explicitly in the body's
+    # frame: (height, distance from the body's midline, forward or back of the joint above).
+    KUSH_BELLY = 0.03
+    KUSH_TORSO = ("hs bone pelvis", "hs bone stomach", "hs bone chest")
+    KUSH_LEGS = (
+        (("hs bone shoulder", "hs bone arm", "hs bone forearm", "hs bone hoof frnt"),     # elbow, carpus, fetlock
+         ((0.26, 0.21, 1.0), (0.07, 0.20, 1.0), (0.06, 0.18, -1.0))),
+        (("hs bone hip", "hs bone leg", "hs bone shin", "hs bone hoof back"),            # stifle, hock, fetlock
+         ((0.20, 0.32, 1.0), (0.08, 0.28, -1.0), (0.06, 0.24, 1.0))),
+    )
+    KUSH_HOOF_CLEAR = 0.015          # a foot turned about its fetlock until it is this far above the ground
+
+    def _dominated(self, bones):
+        """Per mesh of the cut camel: the vertices whose heaviest bone is one of `bones` (sliced
+        arrays for gr2_skin.deform)."""
+        if getattr(self, "_dom", None) is None:
+            self._dom = {}
+        key = tuple(bones)
+        if key not in self._dom:
+            self.mesh_points(self.pose(self.base, 0.0))
+            meshes, _skel = self._mesh
+            out = []
+            for m in meshes:
+                vb, vw = np.asarray(m["vertex_bones4"]), np.asarray(m["vertex_weights4"])
+                dom = vb[np.arange(len(vb)), np.argmax(vw, 1)]
+                names = np.array([str(m["skin_names"][int(i)]).lower() for i in dom])
+                mask = np.isin(names, [b.lower() for b in bones])
+                if mask.any():
+                    out.append((np.asarray(m["file_positions"])[mask], vb[mask], vw[mask], m["skin_names"]))
+            self._dom[key] = out
+        return self._dom[key]
+
+    def part_points(self, P, bones):
+        """The posed vertices whose heaviest bone is one of `bones`."""
+        parts = self._dominated(bones)              # (reads the mesh first)
+        skel = self._mesh[1]
+        exact = {b["name"]: P[b["name"].lower()] for b in skel["bones"] if b["name"].lower() in P}
+        pts = [gr2_skin.deform(p, vb, vw, sn, skel, exact) for p, vb, vw, sn in parts]
+        return np.concatenate(pts) if pts else np.zeros((0, 3))
+
+    def body_frame(self, P):
+        """The body's level forward, its right, and the point between chest and pelvis."""
+        c, p = P[self.mount][:3, 3], P["hs bone pelvis"][:3, 3]
+        f = c - p
+        f[1] = 0.0
+        f = unit(f)
+        return f, unit(np.cross(Y, f)), 0.5 * (c + p)
+
+    def lying_share(self, P):
+        """How far a grounded pose is from standing (0) to lying (1): its pelvis height between the
+        camel's standing one and the sheep's lying clip's, eased."""
+        from aoe3game.gr2_pose import smooth as ease
+        if getattr(self, "_lie_ref", None) is None:
+            stand = self.pose(self.base, 0.0)
+            lie = self.grounded(self.anim(B_IDLE), [0.0], kush=False)[0]
+            self._lie_ref = (stand["hs bone pelvis"][1, 3] - self.lowest(stand), lie["hs bone pelvis"][1, 3])
+        hs, hl = self._lie_ref
+        return ease((hs - P["hs bone pelvis"][1, 3]) / (hs - hl))
+
+    def kush(self, P, share=1.0):
+        """The grounded lying pose `P` taken `share` of the way to the kush (see KUSH_LEGS): the body
+        lowered, each leg's bones turned toward their places, each foot turned off the ground, and
+        the whole laid back on the ground."""
+        from aoe3game.gr2_pose import about, transform_branch, rotate_about
+        if share <= 0.0:
+            return P
+        d = self.part_points(P, self.KUSH_TORSO)[:, 1].min() - self.KUSH_BELLY
+        P = {k: tr((0.0, -share * d, 0.0)) @ v for k, v in P.items()}
+        f, s, c = self.body_frame(P)
+
+        def turn_to(P, bone, child, height, lat, sign):
+            o = P[bone][:3, 3]
+            a = P[child][:3, 3] - o
+            ln = float(np.linalg.norm(a))
+            dy, dl = height - o[1], lat - (o - c) @ s
+            fw = math.sqrt(max(ln * ln - dy * dy - dl * dl, 0.0))
+            b = unit(dy * Y + dl * s + sign * fw * f)
+            a = unit(a)
+            v = np.cross(a, b)
+            sn = float(np.linalg.norm(v))
+            if sn < 1e-9:
+                return P
+            deg = math.degrees(math.atan2(sn, float(a @ b))) * share
+            return transform_branch(P, self.rig, bone, about(o, axis_matrix(v / sn, deg)))
+
+        for side, sg in ((" lt", -1.0), (" rt", 1.0)):
+            for chain, places in self.KUSH_LEGS:
+                for i, (h, la, sign) in enumerate(places):
+                    P = turn_to(P, chain[i] + side, chain[i + 1] + side, h, sg * la, sign)
+        for hoof in ("hs bone hoof frnt lt", "hs bone hoof frnt rt", "hs bone hoof back lt", "hs bone hoof back rt"):
+            if self.part_points(P, [hoof])[:, 1].min() >= self.KUSH_HOOF_CLEAR:
+                continue
+            for deg in sorted(np.arange(-150.0, 151.0, 5.0), key=abs):
+                Q = rotate_about(P, self.rig, hoof, hoof, s, float(deg))
+                if self.part_points(Q, [hoof])[:, 1].min() >= self.KUSH_HOOF_CLEAR:
+                    P = Q
+                    break
+        dy = -self.lowest(P)
+        return {k: tr((0.0, dy, 0.0)) @ v for k, v in P.items()}
+
+    KUSH = True                      # False: the sheep's lying pose as it was before 2026-11-26 (pictures)
+
+    def grounded(self, anim, times, kush=None):
         """Poses of a borrowed clip at `times`, each turned back to the camel's own heading over the
         same spot (the sheep the lying-down clips were made for turns, slides and rolls onto its
         flank as it lies down), upright, and lifted or lowered so the body's lowest point is on the ground (it sits at another
-        height)."""
+        height); with `kush`, taken toward the kush as far as the pose is lying (lying_share)."""
         ref = self.pose(self.base, 0.0)
         h0 = self.heading(ref)
         root = self.rig.names[0].lower()
@@ -830,7 +939,10 @@ class Camel:
             fwd = unit(np.array([math.sin(math.radians(h0)), 0.0, math.cos(math.radians(h0))]))
             p = {k: tr(c) @ rot4(axis_matrix(fwd, -roll)) @ tr(-c) @ v for k, v in p.items()}
             dy = -self.lowest(p)
-            out.append({k: tr((0.0, dy, 0.0)) @ v for k, v in p.items()})
+            p = {k: tr((0.0, dy, 0.0)) @ v for k, v in p.items()}
+            if self.KUSH if kush is None else kush:
+                p = self.kush(p, self.lying_share(p))
+            out.append(p)
         return out
 
     def track_bytes(self, name, times, poses, like, scales):
