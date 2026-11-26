@@ -1152,7 +1152,8 @@ def check_lying(job, s):
     and ends lying is judged at every frame; one that lies down, at its last frame; one that gets up, at
     its first; a death, at its first frame when it starts lying (a fall from standing is not a kush).
     A frame lies when the torso's lowest point is below `lying_detect` of its standing height. A
-    clip's "lying": false turns it off, "all" judges every frame."""
+    clip's "lying": false turns it off, "all" judges every frame, "ends" its first and last frames
+    only (an animal that rises and lies down again within the clip, such as a turn on the spot)."""
     out = []
     clip = job.clips[s.name]
     mode = clip.get("lying", "auto")
@@ -1180,6 +1181,8 @@ def check_lying(job, s):
         first, last = lies(0), lies(n - 1)
         if mode == "all":
             frames = list(range(n))
+        elif mode == "ends":
+            frames = sorted({0, n - 1})
         elif clip.get("death"):
             frames = [0] if first else []
         elif first and last:
@@ -1231,7 +1234,8 @@ def check_lying(job, s):
                 points[key][k] = [q]
                 details[key][k] = (f"{b} {100 * max(v, 0.0):.0f} cm beyond the body's "
                                    + ("sides" if key == "side" else "chest or rump"))
-        which = "every frame" if len(frames) == n else ("the last frame" if frames == [n - 1] else "the first frame")
+        which = ("every frame" if len(frames) == n else "the last frame" if frames == [n - 1] else
+                 "the first frame" if frames == [0] else "the first and last frames")
         for key, item, limit, u in (("belly", "belly on the ground", L["lying_belly"], " m"),
                                     ("hump", "hump low", L["lying_hump"], " of standing"),
                                     ("knee", "knees on the ground", L["lying_knee"], " m"),

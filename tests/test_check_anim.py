@@ -593,6 +593,22 @@ class Lying(unittest.TestCase):
         self.assertNotIn("off", items)
         self.assertEqual(status(rep, "lying"), ac.PASS, rep.text())
 
+    def test_ends_judges_only_the_first_and_last_frames(self):
+        """A turn on the spot (2026-11-27): it lies, rises to step round, and lies down again; "ends"
+        judges the first and last frames, so the risen middle is not read as a bad kush, and a clip
+        that does not lie down again fails at its last frame."""
+        kush = self.pose(0.97, 0.05, 0.0)
+        propped = self.pose(0.70, 0.40, 0.45)
+        rep = self.checked({"still": {"anims": {"camel": self.clip_of(kush)}, "lying": "ends"},
+                            "up": {"anims": {"camel": self.clip_of(kush, propped, 1.0)}, "loop": False,
+                                   "lying": "ends"}})
+        by = {}
+        for r in results(rep, "lying"):
+            self.assertIn("the first and last frames", r.item)
+            by.setdefault(r.clip, set()).add(r.status)
+        self.assertEqual(by["still"], {ac.PASS}, rep.text())
+        self.assertIn(ac.FAIL, by["up"], rep.text())
+
 
 class Jobs(unittest.TestCase):
     def test_bad_names_are_refused(self):
