@@ -572,7 +572,8 @@ def draw(items, width=360, height=300, azimuth=-40.0, elevation=18.0, span=4.0, 
     for p, t, uv, tex, col in items:
         out.append((np.asarray(p) @ flip, t, uv, tex, col))
     c = np.asarray(centre, np.float64) @ flip
-    img = ra.draw(out, width=width, height=height, azimuth=-azimuth, elevation=elevation, span=span, centre=c)
+    img = ra.draw(out, width=width, height=height, azimuth=-azimuth, elevation=elevation, span=span, centre=c,
+                  mirror=False)       # x already flipped here
     if marks:
         az, el = math.radians(-azimuth), math.radians(elevation)
         view = np.array([math.sin(az) * math.cos(el), math.sin(el), math.cos(az) * math.cos(el)])

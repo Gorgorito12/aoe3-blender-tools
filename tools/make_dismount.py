@@ -701,6 +701,7 @@ class Scene:
         right = np.cross([0.0, 1.0, 0.0], view)
         right /= np.linalg.norm(right)
         up = np.cross(view, right)
+        right = -right      # the game's left-handed space, as retarget_anims.draw
         canvas = np.full((size, size, 3), 236.0)
         zbuf = np.full((size, size), np.inf)
         light = view * 0.6 + up * 0.5 + right * 0.2

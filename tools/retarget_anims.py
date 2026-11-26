@@ -346,14 +346,20 @@ def raster(canvas, zbuf, pts2, depth, tris, uvs, tex, shade, colour):
 
 
 def draw(items, width=200, height=240, azimuth=-60.0, elevation=15.0, span=3.4, centre=(0.0, 1.0, 0.5),
-         marks=None):
+         marks=None, mirror=True):
     """The items seen from `azimuth` (degrees about the vertical; file axes: y up, z the unit's
-    front); `marks` [(point, colour)] drawn as small crosses over them."""
+    front, x its right: 90 is on its right); `marks` [(point, colour)] drawn as small crosses over
+    them. The game's space is left-handed (a unit facing +z has its right hand at +x; its R bones are
+    there and the game shows them as its right, seen in game on 2026-11-26), so the picture is drawn
+    as the game draws it: seen from the front, the unit's right is on the screen's left. `mirror`
+    False draws it right-handed (the mirror image; for callers that flip x themselves)."""
     az, el = math.radians(azimuth), math.radians(elevation)
     view = np.array([math.sin(az) * math.cos(el), math.sin(el), math.cos(az) * math.cos(el)])
     right = np.cross([0.0, 1.0, 0.0], view)
     right /= np.linalg.norm(right)
     up = np.cross(view, right)
+    if mirror:
+        right = -right
     canvas = np.full((height, width, 3), 236.0)
     zbuf = np.full((height, width), np.inf)
     light = view * 0.6 + up * 0.5 + right * 0.2
