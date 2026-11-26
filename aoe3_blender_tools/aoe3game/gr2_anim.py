@@ -322,9 +322,13 @@ def _constant(values, eps):
 
 
 def animation_file(name, duration, group_name, tracks, *, basis=STOCK, accumulation=2,
-                   timestep=1 / 60, source=""):
+                   timestep=1 / 60, source="", scales=None):
     """Bytes of a .gr2 animation. `tracks`: [(bone name, times, positions N x 3, quaternions N x 4)]
-    in `basis`; each part becomes a degree-1 curve on those times, or degree 0 when it never moves."""
+    in `basis`; each part becomes a degree-1 curve on those times, or degree 0 when it never moves.
+    `scales`: {bone name (any case): 9 floats} a constant scale/shear for that track (degree 0, one
+    knot); the others get an empty curve, which the runtime takes as no scale (**measured**: the
+    stock camel idle's tags in its .gr2.precomp match the bones posed with no scale to 1e-3, and not
+    with the skeleton's rest scales)."""
     S = schema()
 
     def curve(deg, knots, controls):
@@ -347,8 +351,9 @@ def animation_file(name, duration, group_name, tracks, *, basis=STOCK, accumulat
                 quats[i] = -quats[i]
         pc = curve(0, [0.0], pos[:1]) if _constant(pos, 1e-5) else curve(1, times, pos)
         oc = curve(0, [0.0], quats[:1]) if _constant(quats, 1e-6) else curve(1, times, quats)
+        sc = (scales or {}).get(bone.lower())
         out.append(W(S["TransformTrack"], Name=bone, PositionCurve=pc, OrientationCurve=oc,
-                     ScaleShearCurve=curve(0, [], [])))
+                     ScaleShearCurve=curve(0, [0.0], sc) if sc is not None else curve(0, [], [])))
     group = W(S["TrackGroup"], Name=group_name, VectorTracks=[], TransformTracks=out,
               TransformLODErrors=[], TextTracks=[], InitialPlacement=IDENTITY_TRANSFORM,
               AccumulationFlags=accumulation, LoopTranslation=(0.0, 0.0, 0.0))

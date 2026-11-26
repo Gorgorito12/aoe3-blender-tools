@@ -135,6 +135,13 @@ of plain meshes. `gr2_mesh.packed` reads it.
   the group table's bone **is** an index into the bindings; the skinned vertices' two weights add up
   to 255 and their indices name neighbouring bones (thigh and calf, upper arm and forearm).
 - Plain meshes give the same from their `BoneIndices` and `BoneWeights` (the two heaviest).
+- The packed normals and tangents are three bytes x, y, z biased by 64 out of 127 and a fourth byte 255
+  (**measured** on the stock Gatling gun: they agree with the faces; `gr2_parts.packed_normals`).
+- **The stream must start 16-byte aligned** (**seen in game**, 2026-11-23: a model written with it at a
+  4-byte offset was not drawn; the stock files give it a section of its own aligned to 16).
+  `gr2_write.serialize` aligns it and its section.
+- A plain unit mesh without tangents drew far too bright under the bump shaders (seen in game):
+  `gr2_parts.rigid_model` writes the source's tangents (VertexPNTT, as the stock Gatling's magazine).
 
 ### Attachments at rest
 

@@ -138,13 +138,18 @@ def ik_reach(pose, upper, middle, end, target):
     return float(np.linalg.norm(np.asarray(target) - a)), float(np.linalg.norm(b - a) + np.linalg.norm(c - b))
 
 
-def two_bone_ik(pose, rig, upper, middle, end, target, pole, hinge_upper, hinge_middle, end_frame=None):
+def two_bone_ik(pose, rig, upper, middle, end, target, pole, hinge_upper, hinge_middle, end_frame=None,
+                bend_normal=None):
     """`pose` with the chain upper -> middle -> end solved so that `end` reaches `target` (world
     point), the middle joint toward `pole` (a world direction). `hinge_upper`: the upper bone's
     hinge axis in its local frame (`local_axis`), used when the limb is straight; `hinge_middle` is
     kept for symmetry (the middle bone bends in the limb's plane). `end_frame`: the end bone's world rotation
     (3 x 3), else it keeps its frame relative to the middle bone. Branches below the end bone follow
-    it. Returns the new pose."""
+    it. `bend_normal`: the normal of the limb's plane when it bends the way it bends, in the
+    upper bone's local frame (cross(upper bone, middle bone) of a pose bent that way): the limb
+    is then turned so that it bends that way toward the pole, whatever the pose it starts from (a
+    limb straight or bent the wrong way in the source pose can neither flip its twist from one
+    frame to the next nor bend backward). Returns the new pose."""
     out = dict(pose)
     a, b, c = (pose[n][:3, 3] for n in (upper, middle, end))
     la, lb = np.linalg.norm(b - a), np.linalg.norm(c - b)
@@ -166,11 +171,16 @@ def two_bone_ik(pose, rig, upper, middle, end, target, pole, hinge_upper, hinge_
     # axis when the limb is straight
     d_old = unit(c - a)
     bend = (b - a) - ((b - a) @ d_old) * d_old
-    if np.linalg.norm(bend) > 1e-3 * la:
+    if bend_normal is not None:
+        old = unit(pose[upper][:3, :3] @ np.asarray(bend_normal, np.float64))
+        # the bent limb's plane normal, cross(upper, middle) = -cross(dirn, p): from the pole, so it
+        # stays the same as the limb straightens (no flip near straight)
+        plane = -unit(np.cross(dirn, p))
+    elif np.linalg.norm(bend) > 1e-3 * la:
         old = unit(np.cross(d_old, bend))
     else:
         old = pose[upper][:3, :3] @ hinge_upper
-    if plane @ old < 0:
+    if bend_normal is None and plane @ old < 0:
         plane = -plane
     r_upper = align(unit(b - a), old, unit(b_new - a), plane)
     m_upper = about(a, r_upper)
