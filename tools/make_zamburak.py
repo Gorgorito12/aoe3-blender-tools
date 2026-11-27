@@ -29,9 +29,10 @@ What it writes below --out (`art\\<recipe "folder">\\`):
   the camel's own deaths), and in the folder the check_anim jobs: the new clips with today's as
   their baseline (every removal named), the limbered deaths, the unlimbered death. `--textured`
   draws every clip, textured, at eight moments from both sides. With `--pack` too: the camel clips'
-  tag files (the shot's with `LAUNCHPOINT`, where the game bursts its muzzle smoke), the turretArc
-  aim table, the three anim files, and the fuse's two particle files (FUSE_FX: the game's grenadier
-  fuse sparks and smoke, timed from the touch to the shot, attached on the gun's vent in its fire anim).
+  tag files (the shot's with `LAUNCHPOINT`), the turretArc aim table, the three anim files, and the
+  particle files attached in the gun's fire anim: the fuse's two (FUSE_FX: the game's grenadier fuse
+  sparks and smoke, timed from the touch to the shot, on the vent) and the muzzle's six (MUZZLE_FX: the
+  game's small cannon smoke, from the shot, on the muzzle, so it bursts along the barrel).
 - with `--fire-stills <folder>`: the shot (the touch, the burning fuse, the kick, the camel's rock)
   and the loading by hand (the charge and the ball at his fingertips), textured.
 
@@ -3633,24 +3634,36 @@ FUSE_FX = (
         "emissiontime": FUSE - 0.10,         # until the shot
         "scale": 0.5}),
 )
+# The shot's smoke, flash and sparks at the muzzle: the game's smallCannonMuzzle set (effects\particlesets.xml,
+# the falconet's) as particles attached on the gun's bone_launchpoint in its fire anim, each delayed to SHOT.
+# As a Particles tag on the camel's clip they burst the way the unit faces, not the way the barrel points
+# (seen in game 2026-11-27 with the gun square to the camel: the smoke went off along the camel's spine, 90
+# degrees from the barrel; JTMaston: "the smoke rotated by 90 degrees"); attached on the bone they follow
+# the barrel (the same probe). (our name, the game's particle, {field: ("+", added to the game's value)})
+MUZZLE_FX = tuple(
+    (f"muzzle_{n}", "units\\artillery\\cannon\\cannon_small_" + n, {"initialdormancy": ("+", SHOT)})
+    for n in ("smoking_barrel", "smoke_puff_ring", "barrel_explosion", "sparks", "smoke_puff_a", "smoke_puff_b"))
 
 
-def fuse_particles(raw):
-    """{file name: text} of the FUSE_FX particles, each the game's file with only the named fields
-    changed. `raw(stored path)` returns a game file's bytes (its compiled .particle.xmb)."""
+def fuse_particles(raw, table=None):
+    """{file name: text} of the FUSE_FX and MUZZLE_FX particles (or `table`), each the game's file with
+    only the named fields changed: to a value, or by ("+", x) to the game's value plus x. `raw(stored
+    path)` returns a game file's bytes (its compiled .particle.xmb)."""
     import re
     import xmbedit
     out = {}
-    for name, stock, fields in FUSE_FX:
+    for name, stock, fields in (FUSE_FX + MUZZLE_FX if table is None else table):
         text = xmbedit.to_xml(*xmbedit.parse(xmbedit.decode(raw(stock + ".particle.xmb"))))
         text = "\n".join(line for line in text.splitlines() if line.strip()) + "\n"
         for key, value in fields.items():
             # the scale section's <scale> is its only one at that depth; the stage scales sit deeper
-            pat = (r"(<scale>\s*<loopingcycle>.*?<numstages>\d+</numstages>\s*<scale>)[^<]*(</scale>)"
-                   if key == "scale" else rf"(<{key}>)[^<]*(</{key}>)")
-            text, n = re.subn(pat, rf"\g<1>{value:.3f}\g<2>", text, count=1, flags=re.S)
-            if n != 1:
+            pat = (r"(<scale>\s*<loopingcycle>.*?<numstages>\d+</numstages>\s*<scale>)([^<]*)(</scale>)"
+                   if key == "scale" else rf"(<{key}>)([^<]*)(</{key}>)")
+            m = re.search(pat, text, flags=re.S)
+            if m is None:
                 raise ValueError(f"{stock}.particle: no <{key}> to change")
+            v = float(m.group(2)) + value[1] if isinstance(value, tuple) else value
+            text = text[:m.start(2)] + f"{v:.3f}" + text[m.end(2):]
         out[f"{name}.particle"] = text
     return out
 
@@ -3682,9 +3695,10 @@ def anim_files(recipe, built, rider_head):
             "zamburak's camel without its swivel gun, a bronze cannon on a swivel on its withers, its rider, who "
             "limbers and unlimbers it. Made with aoe3-blender-tools tools/make_zamburak.py. -->\n")
     shot = SHOT / FIRE
+    # the muzzle's smoke is attached on the gun (MUZZLE_FX), not a Particles tag: a tag's set bursts the
+    # way the unit faces
     fire_tags = (f"\t\t\t<tag type=\"Attack\">{shot:.2f}</tag>\n"
-                 f"\t\t\t<tag type=\"SpecificSoundSet\" checkvisible=\"1\" set=\"FalconetShoot\">{shot:.2f}</tag>\n"
-                 f"\t\t\t<tag type=\"Particles\" particlename=\"smallcannonmuzzle\">{shot:.2f}</tag>\n")
+                 f"\t\t\t<tag type=\"SpecificSoundSet\" checkvisible=\"1\" set=\"FalconetShoot\">{shot:.2f}</tag>\n")
     camel = [head, "<animfile>\n"]
     camel += [f"\t<definebone>HS Bone Hoof {w}</definebone>\n" for w in ("Frnt Lt", "Frnt Rt", "Back Lt", "Back Rt")]
     camel += ["\t<definebone>bone_launchpoint</definebone>\n\t<definebone>bone_muzzle</definebone>\n",
@@ -3701,14 +3715,16 @@ def anim_files(recipe, built, rider_head):
               f"\t<component>\n\t\tDeadCompDeployed\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{name}"
               f"_camel_dead_deployed</file>\n\t\t</assetreference>\n{DECAL}"
               "\t\t<attach a=\"rider\" frombone=\"hotspot\" tobone=\"ATTACHPOINT\" syncanims=\"1\"/>\n\t</component>\n"]
-    # the fuse's sparks and smoke on the vent, in the shot only (FUSE_FX)
-    gun = [head, "<animfile>\n", "\t<definebone>bone_fuse</definebone>\n"]
+    # the fuse's sparks and smoke on the vent (FUSE_FX) and the shot's smoke at the muzzle (MUZZLE_FX), in
+    # the shot only
+    fxs = [(fx, "bone_fuse") for fx, _s, _f in FUSE_FX] + [(fx, "bone_launchpoint") for fx, _s, _f in MUZZLE_FX]
+    gun = [head, "<animfile>\n", "\t<definebone>bone_fuse</definebone>\n\t<definebone>bone_launchpoint</definebone>\n"]
     gun += [f"\t<attachment>\n\t\t{fx}\n\t\t<component>\n\t\t\t{fx}\n\t\t\t<assetreference type=\"ParticleSystem\">\n"
             f"\t\t\t\t<file>{folder}\\{fx}.particle</file>\n\t\t\t</assetreference>\n\t\t</component>\n"
             f"\t\t<anim>\n\t\t\tNone\n\t\t\t<component>{fx}</component>\n\t\t</anim>\n\t</attachment>\n"
-            for fx, _s, _f in FUSE_FX]
-    fuse = "".join(f"\t\t<attach a=\"{fx}\" frombone=\"bone_fuse\" tobone=\"bone_fuse\" syncanims=\"0\"/>\n"
-                   for fx, _s, _f in FUSE_FX)
+            for fx, _b in fxs]
+    fuse = "".join(f"\t\t<attach a=\"{fx}\" frombone=\"{bone}\" tobone=\"{bone}\" syncanims=\"0\"/>\n"
+                   for fx, bone in fxs)
     gun += [f"\t<component>\n\t\tModelComp\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{gun_name}"
             "</file>\n\t\t</assetreference>\n\t</component>\n"]
     rider = [rider_head]
@@ -4020,7 +4036,8 @@ def main(argv):
                     def pose_at(t, b=b, frames=frames):
                         return frames[min(len(frames) - 1, int(round(t / max(b.length, 1e-9) * (len(frames) - 1))))]
                     with open(os.path.join(folder, b.camel_name + ".gr2.precomp"), "wb") as f:
-                        # the shot's muzzle smoke (its Particles tag) is placed on LAUNCHPOINT
+                        # the shot's LAUNCHPOINT (where a Particles tag would burst; the muzzle's smoke is
+                        # attached on the gun instead, MUZZLE_FX)
                         extra = (("LAUNCHPOINT", "bone_launchpoint"),) if b.name == "fire" else ()
                         f.write(mgc.camel_precomp(camel, template, b.length, pose_at, extra=extra))
                     n_tags += 1

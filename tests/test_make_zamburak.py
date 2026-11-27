@@ -171,6 +171,19 @@ class Shot(unittest.TestCase):
         self.assertLess(mz.recoil(mz.SHOT + 0.35), 0.0)
 
 
+class _BuiltStub:
+    """The least of a built clip anim_files reads: its file names."""
+
+    def __init__(self, name):
+        self.camel_name = self.gun_name = self.rider_name = name
+        self.stock_rider = name
+
+    @staticmethod
+    def all():
+        names = {c for _an, clips in mz.ANIMS for c in clips}
+        return {c: _BuiltStub(c) for c in names}
+
+
 class FuseParticles(unittest.TestCase):
     """fuse_particles changes only the named fields of the game's particle files."""
 
@@ -183,7 +196,7 @@ class FuseParticles(unittest.TestCase):
     def test_the_fields_change_and_nothing_else(self):
         import xmbedit
         raw = xmbedit.encode(*xmbedit.from_xml(self.STOCK.encode("utf-8")))
-        out = mz.fuse_particles(lambda stored: raw)
+        out = mz.fuse_particles(lambda stored: raw, mz.FUSE_FX)
         self.assertEqual(sorted(out), ["fuse_smoke.particle", "fuse_sparks.particle"])
         sparks, smoke = out["fuse_sparks.particle"], out["fuse_smoke.particle"]
         self.assertIn(f"<initialdormancy>{mz.TOUCH:.3f}</initialdormancy>", sparks)
@@ -194,6 +207,25 @@ class FuseParticles(unittest.TestCase):
         self.assertIn(f"<initialdormancy>{mz.TOUCH + 0.10:.3f}</initialdormancy>", smoke)
         self.assertIn(f"<emissiontime>{mz.FUSE - 0.10:.3f}</emissiontime>", smoke)
         self.assertIn("<particlelife>0.950</particlelife>", smoke)
+
+    def test_the_muzzle_smoke_is_delayed_to_the_shot(self):
+        # the game's six smallCannonMuzzle particles, each starting SHOT later than the game's own start
+        import xmbedit
+        raw = xmbedit.encode(*xmbedit.from_xml(self.STOCK.encode("utf-8")))
+        out = mz.fuse_particles(lambda stored: raw, mz.MUZZLE_FX)
+        self.assertEqual(len(out), 6)
+        for text in out.values():
+            self.assertIn(f"<initialdormancy>{0.9 + mz.SHOT:.3f}</initialdormancy>", text)
+            self.assertIn("<emissiontime>0.100</emissiontime>", text)
+        self.assertEqual(sorted(mz.fuse_particles(lambda stored: raw)),
+                         sorted([f"{n}.particle" for n, _s, _f in mz.FUSE_FX + mz.MUZZLE_FX]))
+
+    def test_the_muzzle_smoke_is_attached_on_the_gun_not_tagged(self):
+        files = mz.anim_files({"folder": "f", "name": "z"}, _BuiltStub.all(), "")
+        self.assertNotIn("particlename=\"smallcannonmuzzle\"", files["z.xml"])
+        gun = files["z_gun.xml"]
+        for n, _s, _f in mz.MUZZLE_FX:
+            self.assertIn(f"<attach a=\"{n}\" frombone=\"bone_launchpoint\" tobone=\"bone_launchpoint\"", gun)
 
     def test_a_missing_field_is_refused(self):
         import xmbedit
