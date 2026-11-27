@@ -2325,6 +2325,12 @@ class Unit:
         else:   # the rider's bone (the gun's attach bone) kept on the chest in every clip
             poses = [cam.fix_hang(P) for P in poses]
             scales = cam.hang_scale(poses[0], scales)
+            kind = {"stand": "idle", "fire": "fire", "reload": "reload"}.get(clip.get("do"))
+            if self.home and kind:
+                # the kneeling camel kept alive (alive), and shaken by each shot of the burst (SHUDDER):
+                # before the gunner is placed, so his hands follow the gun it carries
+                shots = self.shots(length) if kind == "fire" else ()
+                poses = [alive(cam, P, t, length, kind, shots=shots, shudder=SHUDDER) for t, P in zip(times, poses)]
             b.camel_bytes = cam.track_bytes(cname, times, poses, anim, scales)
         b.scales = scales
         do = clip.get("do")
@@ -4876,11 +4882,99 @@ def limit_rates(rig, poses, limit, fps=30.0, bones=()):
     return out
 
 
-def camel_precomp(camel, template, length, pose_at):
+# The kneeling camel kept alive (the user, 2026-11-26: "que no se sienta como una masa inerte"): sizes
+# in degrees (the zamburak's V2 and the gatling's B lying clips share them)
+ALIVE = {"breath": 0.8, "tail_sway": 14.0, "tail_flick": 35.0, "ears_pin": 40.0, "ear_flick": 25.0,
+         "chew_open": 7.0, "chew_side": 4.0, "watch": 15.0}
+SHUDDER = 0.6             # the gatling's kneeling camel rocked this far (degrees) by each shot of a burst
+
+
+def alive(cam, P, t, length, kind, shots=(), shudder=0.0, edge=0.35, sizes=ALIVE):
+    """The lying camel's pose `P` at time `t` of a clip `length` long with a layer of life that is
+    nothing at the clip's first and last frames, so the idle, the shot and the reload follow each
+    other without a jump. The chest is turned only by `shudder`: the gun hangs on it.
+    - every clip: one breath (the belly about the stomach) and the tail swaying lazily;
+    - "fire": the ears pinned back and the tail flicked up at the first of `shots` (one shot: settled
+      0.55 s and 0.70 s after it; a burst: the ears held to its last shot); `shudder` degrees of a rock
+      onto the far knees (`edge` left of the midline, the gun firing to the right) at each shot;
+    - "reload": three chews of the cud (1.00-2.20), an ear flicked at 0.80 and the other at 2.20, the
+      head turned toward the gunner on its left (0.45 to 2.75 of a 3 s clip);
+    - "idle": two chews (0.60-1.40) and an ear flicked at 1.10."""
+    from aoe3game.gr2_pose import about, rotate_about
+    A = sizes
+    if t <= 0.0 or t >= length:
+        return P
+
+    def span(a, b):
+        return smooth(min(1.0, max(0.0, (t - a) / max(b - a, 1e-9))))
+
+    def bump(a, rise, hold, fall):
+        return span(a, a + rise) * (1.0 - span(a + rise + hold, a + rise + hold + fall))
+
+    def turn(P, bone, axis, deg):
+        return rotate_about(P, cam.rig, bone, bone, axis, deg) if abs(deg) > 1e-6 else P
+
+    f, r, c = cam.body_frame(P)
+    if kind == "fire" and shudder and shots:
+        w = max(bump(s, 0.02, 0.0, 0.10) for s in shots)
+        if w:
+            pivot = c - edge * r
+            pivot[1] = 0.0
+            M = about(pivot, axis_matrix(f, shudder * w))
+            P = {k: M @ v for k, v in P.items()}
+            f, r, c = cam.body_frame(P)
+    # the belly rises (the pelvis' end up: +about the side axis lifts what is behind the pivot)
+    # (a clip under 2 s breathes less deep: the gatling's 1 s burst, else a quick pant)
+    P = turn(P, "hs bone stomach", r, A["breath"] * min(1.0, length / 2.0) * math.sin(math.pi * t / length) ** 2)
+    sway = A["tail_sway"] * math.sin(2.0 * math.pi * (2 if kind == "reload" else 1) * t / length)
+    flick = 0.0
+    ears = {"hs bone ear left": 0.0, "hs bone ear right": 0.0}
+    if kind == "fire" and shots:
+        first, last = shots[0], shots[-1]
+        # the tail hangs down: a turn about the side axis the other way swings its tip back and up
+        if len(shots) == 1:
+            flick = -A["tail_flick"] * bump(first, 0.10, 0.15, 0.45)
+            pin = -A["ears_pin"] * bump(first - 0.02, 0.08, 0.20, 0.35)
+        else:
+            flick = -A["tail_flick"] * bump(first, 0.08, 0.10, 0.30)
+            pin = -A["ears_pin"] * bump(first - 0.02, 0.06, max(0.0, last - first - 0.04),
+                                        max(0.03, length - 0.005 - last))
+        ears = {k: pin for k in ears}
+    P = turn(P, "hs bone tail_01", f, sway)
+    P = turn(P, "hs bone tail_01", r, flick)
+    if kind == "reload":
+        P = turn(P, "hs bone neck lower", Y, -A["watch"] * bump(0.45, 0.45, length - 1.60, 0.45))
+    # the head's own axes (the neck is turned aside): its forward toward the jaw, its side level
+    hf = P["hs bone jaw"][:3, 3] - P["hs bone head"][:3, 3]
+    hf[1] = 0.0
+    hf = unit(hf)
+    hs = unit(np.cross(Y, hf))
+    flicks = {"reload": (("hs bone ear left", 0.80), ("hs bone ear right", 2.20)),
+              "idle": (("hs bone ear right", 1.10),)}.get(kind, ())
+    for ear, at in flicks:
+        if at + 0.30 < length:
+            ears[ear] += A["ear_flick"] * math.sin(math.pi * min(1.0, max(0.0, (t - at) / 0.30)))
+    for ear, deg in ears.items():
+        P = turn(P, ear, hs, deg)
+    chews = {"reload": (1.00, 3), "idle": (0.60, 2)}.get(kind)
+    if chews and chews[0] + 0.40 * chews[1] < length:
+        a, n = chews
+        u = (t - a) / (0.40 * n)
+        if 0.0 < u < 1.0:
+            s = math.sin(math.pi * n * u)
+            P = turn(P, "hs bone jaw", hs, A["chew_open"] * s * s)
+            P = turn(P, "hs bone jaw", Y, A["chew_side"] * math.sin(2.0 * math.pi * n * u))
+    return P
+
+
+def camel_precomp(camel, template, length, pose_at, extra=()):
     """The tag file (.gr2.precomp) of a camel clip of ours: the stock idle's tags (ATTACHPOINT, the
     rider's and the gun's tag, MASTER, HEAD, NECK, R HAND, PELVIS), sampled from our clip (ten keys
     a second as the stock files). The game reads an animation's tags from this file; a clip
-    without one left the gun to jump off the corpse when it began to fade (seen in game)."""
+    without one left the gun to jump off the corpse when it began to fade (seen in game).
+    `extra`: (tag, bone) pairs the template lacks, added and sampled the same way (the zamburak's
+    LAUNCHPOINT: the game places a Particles tag's set on its bone from this file, and without it
+    the stock muzzle smoke burst at a fixed spot ahead of the camel, seen in game 2026-11-26)."""
     from aoe3game import precomp
     from aoe3game.gr2_anim import matrix_quat
     import struct as st
@@ -4901,6 +4995,13 @@ def camel_precomp(camel, template, length, pose_at):
         if len(pre.positions[tr]) != keys:
             pre.positions[tr] = [pre.positions[tr][0]] * keys
             pre.rotations[tr] = [pre.rotations[tr][0]] * keys
+    for tag, bone in extra:
+        if bone not in poses[0] or pre.has(tag):
+            continue
+        pre.add_constant(tag, (0.0, 0.0, 0.0), bytes(16))
+        tr = len(pre.positions) - 1
+        pre.positions[tr] = [tuple(float(v) for v in P[bone][:3, 3]) for P in poses]
+        pre.rotations[tr] = [st.pack("<4f", *matrix_quat(rigid(P[bone])[:3, :3])) for P in poses]
     pre.duration = float(length)
     return pre.encode()
 
