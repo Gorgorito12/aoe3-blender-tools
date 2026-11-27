@@ -147,12 +147,13 @@ sit at 0.37 — 1.4 widths out — and 0.41 after the fit.
 ## A LoRA of the mod's own hand
 
 The words of a prompt can only say so much. `tools/lora_dataset.py` cuts 512 px pieces out of the
-textures the mod itself made and its models wear — never the original game's — and
+textures the models wear — the mod's own by default, the original game's with `--origins stock`
+(or both, `own,stock`; the owner's decision, 2026-11-27) — and
 `tools/train_lora.py` trains a LoRA on them with ComfyUI's own training nodes (0.43 and later; no
 custom pack). The LoRA lands in ComfyUI's `models/loras`; **LoRA** in the AI panel, or `--lora
 <file>`, draws with it (its trigger word is added to the prompt).
 
-It is the mod's art in another form: the dataset and the LoRA stay on the PC that made them,
+It is the mod's (or the game's) art in another form: the dataset and the LoRA stay on the PC that made them,
 outside every repository, and are the team's to share or not. Whether it helps is measured, not
 assumed — the same prompts and seeds with and without it, by the distance above
 ([art-findings.md](art-findings.md)).

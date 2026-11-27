@@ -389,8 +389,11 @@ HELP = {
             "A model survey report: with it, only textures a model actually wears are used, leaving out icons, decals and other loose pictures.",
             "Un informe del estudio de modelos: con él solo se usan texturas que lleva algún modelo, dejando fuera iconos, calcomanías y otras imágenes sueltas."),
         'report': (
-            "The textures.json of a texture survey. Only the mod's own diffuse textures, 512 pixels and up, are used, never the original game's.",
-            "El textures.json de un estudio de texturas. Solo se usan las texturas difusas propias del mod, de 512 píxeles o más, nunca las del juego original."),
+            "The textures.json of a texture survey (made with the original game's folder as reference, so each texture is tagged). Diffuse textures of 512 pixels and up are used, of the origins chosen below.",
+            "El textures.json de un estudio de texturas (hecho con la carpeta del juego original como referencia, para que cada textura quede marcada). Se usan texturas difusas de 512 píxeles o más, de los orígenes elegidos abajo."),
+        'origins': (
+            "Whose textures: own (made by the mod, default), stock (the original game's), changed (the game's, altered by the mod), or several, comma-separated, e.g. own,stock. The dataset and the LoRA stay on your PC, outside the public repository.",
+            "De quién son las texturas: own (hechas por el mod, por defecto), stock (las del juego original), changed (las del juego, retocadas por el mod), o varias separadas por comas, p. ej. own,stock. El dataset y el LoRA se quedan en tu PC, fuera del repositorio público."),
         'seed': (
             "Sets the random order of textures and pieces: the same seed gives the same dataset. Default 1.",
             "Fija el orden al azar de texturas y fragmentos: la misma semilla da el mismo dataset. Por defecto 1."),

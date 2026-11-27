@@ -4,16 +4,18 @@ report: pieces of the textures the mod itself made and its models wear.
 
     venv\\Scripts\\python -I tools\\lora_dataset.py <textures.json> --out <folder>
         [--categories buildings,buildingsets,homecity,objects,nuggets,other] [--side 512]
-        [--max 900] [--trigger aoe3bt] [--seed 1]
+        [--max 900] [--trigger aoe3bt] [--seed 1] [--origins own]
 
-Only textures tagged `own` are used: never the original game's, which are its publisher's. Only
+--origins: which textures of the survey to take, by the tag it gave them: `own` (the mod made
+them, the default: a LoRA of the mod's hand), `stock` (the original game's), `changed` (the
+game's, altered by the mod), or several, comma-separated. Only
 skins (role diffuse: a texture a model names), 512 pixels and up, so nothing is enlarged. A
 texture larger than --side gives several pieces, taken where there is something drawn (a piece
 that is mostly the flat ground between the strips is skipped).
 
 Each piece is written as <n>.png with <n>.txt beside it: the trigger word, what it is for, the
-material when the name says it. The folder holds the mod's art: it belongs outside any
-repository, and so does the LoRA trained on it.
+material when the name says it. The folder holds the mod's or the game's art: it belongs outside
+this repository, and so does the LoRA trained on it.
 """
 import json
 import os
@@ -32,12 +34,15 @@ WHAT = {"buildings": "a building", "buildingsets": "a building", "homecity": "a 
         "objects": "a map object", "nuggets": "a map object", "units": "a unit", "other": "a model"}
 
 
-def pick(records, categories, side=512):
-    """The records a dataset may use: own, worn by a model, big enough, in the categories, each
-    distinct texture once."""
+ORIGINS = ("own", "stock", "changed")
+
+
+def pick(records, categories, side=512, origins=("own",)):
+    """The records a dataset may use: of the origins asked for, worn by a model, big enough, in
+    the categories, each distinct texture once."""
     out, seen = [], set()
     for r in records:
-        if "error" in r or r.get("origin") != "own" or r.get("role") != "diffuse":
+        if "error" in r or r.get("origin") not in origins or r.get("role") != "diffuse":
             continue
         if r["category"] not in categories or min(r["w"], r["h"]) < side or r["md5"] in seen:
             continue
@@ -77,10 +82,10 @@ def caption(record, trigger):
     return ", ".join(words)
 
 
-def build(records, out, categories, side=512, limit=900, trigger="aoe3bt", seed=1):
+def build(records, out, categories, side=512, limit=900, trigger="aoe3bt", seed=1, origins=("own",)):
     os.makedirs(out, exist_ok=True)
     rng = np.random.default_rng(seed)
-    chosen = pick(records, categories, side)
+    chosen = pick(records, categories, side, origins)
     order = rng.permutation(len(chosen))
     n = used = 0
     for i in order:
@@ -111,6 +116,11 @@ def main(argv):
     if not src or not out:
         print(__doc__)
         return 2
+    origins = tuple(o.strip() for o in opt("--origins", "own").split(",") if o.strip())
+    wrong = [o for o in origins if o not in ORIGINS]
+    if wrong or not origins:
+        print(f"--origins takes {', '.join(ORIGINS)}; not {', '.join(wrong) or 'nothing'}")
+        return 2
     with open(src, encoding="utf-8") as fh:
         data = json.load(fh)
     records = ts.name(data["textures"])
@@ -119,8 +129,8 @@ def main(argv):
             ts.mark_use(records, json.load(fh)["models"])
     cats = opt("--categories", "buildings,buildingsets,homecity,objects,nuggets,other").split(",")
     n, used, pool = build(records, out, cats, int(opt("--side", "512")), int(opt("--max", "900")),
-                          opt("--trigger", "aoe3bt"), int(opt("--seed", "1")))
-    print(f"{n} pieces from {used} of {pool} of the mod's own textures -> {out}")
+                          opt("--trigger", "aoe3bt"), int(opt("--seed", "1")), origins)
+    print(f"{n} pieces from {used} of {pool} textures ({', '.join(origins)}) -> {out}")
     return 0
 
 

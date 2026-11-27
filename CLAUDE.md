@@ -21,8 +21,10 @@ and destroyed in game (`docs/game-test.md`), then more styles and units (README,
   (the owner's decision, 2026-11-13); still do not link private documents.
 - Never commit survey reports (`report.json`, `summary.md`) of a mod: they name its files. They
   belong to the user's private repository.
-- Reference images of a style guide may come from other games: they guide the composition only.
-  Never copy a model, texture or layout from them, and never name them in the repository.
+- Models, textures and layouts of the game, of mods or of other games may be copied, adapted, and
+  used to train a LoRA or to guide a generator (the owner's decision, 2026-11-27). What is copied
+  or trained on them stays out of this public repository: it lives on the user's PC (the cache,
+  scratch folders) or in the mod's own repository.
 - License: GPL-3.0-or-later (Blender's requirement for add-ons). New source files start with
   `# SPDX-License-Identifier: GPL-3.0-or-later`.
 
@@ -208,8 +210,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
   common base. Doors, props and walls are out of proportion to a person together: draw at human size
   and scale the whole model (`sizes.SCALE`). A closed yard is rare (20 of 322): keep it for forts,
   palaces and the like. What a building holds follows from what it is for (`program.py`).
-  Never judge a design from our own renders alone. These models guide shape and proportion only:
-  never copy one, and nothing of them goes into the repository.
+  Never judge a design from our own renders alone. These models may be copied or adapted for a mod
+  (see "Public repository rules"); nothing of them goes into this repository.
 - AI repaint: the tests never need a GPU (they use `tests/fake_comfy.py`); never commit a model
   or an AI-generated image other than the examples; never use a community checkpoint or LoRA
   without reading its licence. ComfyUI is at `C:\ComfyUI\ComfyUI_windows_portable` on the

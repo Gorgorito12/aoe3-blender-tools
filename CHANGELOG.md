@@ -6,6 +6,11 @@ three together).
 
 ## Unreleased
 
+- **Rules relaxed (the owner's decision, 2026-11-27):** models, textures and layouts of the game, of
+  mods or of other games may be copied, adapted and trained on for a mod's work; what comes of them
+  still stays out of this public repository. `tools/lora_dataset.py --origins own,stock,changed` (the
+  form's **Textures of**) builds a LoRA dataset of the original game's textures too; the mod's own
+  stay the default.
 - **A copy's fonts** (`tools/game_fonts.py`, two forms in Art utilities): which letters each typeface of
   `fonts3.xml` lacks, and every font with a file extended at once (`extend_font.py`) under a new family
   name, with `fonts3.xml` pointed at them, ready to deploy to the test copy and undo. What the Wars of

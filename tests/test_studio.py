@@ -1144,6 +1144,18 @@ class Forms(unittest.TestCase):
             self.assertEqual(cmd[cmd.index("--colour") + 1], "11AA22")
             # an output left empty goes to the work folder, never the tool's default in this program
             self.assertEqual(cmd[cmd.index("--out") + 1], os.path.join(tmp, "make_bar", "health_bar.ddt"))
+            # a LoRA dataset of the mod's own textures, or of the original game's too (owner, 2026-11-27)
+            cmd, *_ = catalog.command(st, "lora_dataset", {"report": "textures.json", "origins": "own,stock"})
+            self.assertEqual(cmd[cmd.index("--origins") + 1], "own,stock")
+            cmd, *_ = catalog.command(st, "lora_dataset", {"report": "textures.json"})
+            self.assertNotIn("--origins", cmd)                   # the tool's default: the mod's own
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import lora_dataset
+            recs = [{"origin": o, "role": "diffuse", "category": "buildings", "w": 512, "h": 512, "md5": o}
+                    for o in ("own", "stock", "changed")]
+            self.assertEqual([r["origin"] for r in lora_dataset.pick(recs, ["buildings"])], ["own"])
+            self.assertEqual([r["origin"] for r in lora_dataset.pick(recs, ["buildings"], origins=("own", "stock"))],
+                             ["own", "stock"])
             cmd, *_ = catalog.command(st, "extend_font", {"input": "f.ttf", "family": "F Plus", "no_kern": True})
             work = os.path.join(tmp, "extend_font")
             i = cmd.index("f.ttf")                           # the input, then the output
