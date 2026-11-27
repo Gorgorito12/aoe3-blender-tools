@@ -81,6 +81,21 @@ class Lint(unittest.TestCase):
         self.assertEqual(counts["unconverted"], 0)                         # written in the stock basis
         self.assertEqual(counts["textures"], 2)                            # 5 levels for 6 asked (two under its rule)
 
+    def test_a_kept_player_colour_mask_passes(self):
+        # a DXT1 rule that keeps the player-colour mask accepts DXT3 with alpha 1, nothing else
+        rules = {"rules": [{"name": "portrait", "match": r"_portrait\.ddt$", "tuple": [0, 0, 4, 1], "max": 64,
+                            "keep": ["player_colour"]}]}
+        put(self.tmp.name, "pc.json", json.dumps(rules))
+        loaded = art_lint.reencode_textures.load_rules(os.path.join(self.tmp.name, "pc.json"))
+        art = os.path.join(self.pkg, "art")
+        pic = np.full((64, 64, 4), 128, np.uint8)
+        put(art, r"mod\units\a\a_portrait.ddt", ddt.write_dxt(pic, ddt.DXT3, alpha=1, mips=False))
+        put(art, r"mod\units\a\b_portrait.ddt", ddt.write_dxt(pic, ddt.DXT3, alpha=0, mips=False))
+        found, _n = art_lint.lint(self.pkg, LINT, loaded, [], [])
+        bad = [t.split(":")[0] for t in found["textures"]]
+        self.assertNotIn(r"mod\units\a\a_portrait.ddt", bad)
+        self.assertIn(r"mod\units\a\b_portrait.ddt", bad)
+
     def test_every_decal_texture_is_named(self):
         # a decal's <noncinematictexture> (the ring drawn outside cinematics) is a texture too: one
         # left on the source mod's path drew as a black square under a hero

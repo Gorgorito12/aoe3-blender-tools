@@ -1100,9 +1100,14 @@ TOOLS = [
                 "las metrópolis originales\": el límite es el doble."), filters=JSON),
           Arg("rules", "--rules", "file", L("Exact formats per path (rules.json)", "Formatos exactos por ruta (rules.json)"),
               L("Instead of a limit: per path pattern, the header's (usage, alpha, format, mips) to write and the "
-                "largest side, as a mod's art lead specifies them. The first rule that matches wins.",
+                "largest side, as a mod's art lead specifies them. The first rule that matches wins. A rule's "
+                "\"keep\" carries over from the source: alpha_test, transparency, and player_colour (a portrait "
+                "or icon keeps its player-colour mask under a DXT1 rule, else its clothes show grey in game).",
                 "En vez de un límite: por patrón de ruta, el (uso, alfa, formato, mips) de cabecera que se escribe y "
-                "el lado máximo, como los fija el responsable de arte de un mod. Gana la primera regla que coincide."),
+                "el lado máximo, como los fija el responsable de arte de un mod. Gana la primera regla que coincide. "
+                "El \"keep\" de una regla conserva del original: alpha_test, transparency y player_colour (un "
+                "retrato o icono conserva su máscara de color de jugador bajo una regla DXT1; si no, su ropa se ve "
+                "gris en el juego)."),
               filters=JSON),
           Arg("smallest", "--smallest", "int", L("Smallest mip", "Mip más pequeño"),
               L("The chain goes down to this many pixels on the short side. Default 4, as the stock game.",

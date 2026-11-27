@@ -28,8 +28,8 @@ Checks (each one a count, with up to 20 examples, in --out and on screen):
 - duplicate: two files of the package with the same bytes;
 - overrides: a file at a path the game already serves (the package must only add files);
 - textures (with --textures, aoe3-blender-tools' reencode rules): a texture whose header tuple or size
-  breaks its rule (an alpha-test bit or a transparent alpha kept from the source is accepted where
-  the rule says `keep`);
+  breaks its rule (an alpha-test bit, a transparent alpha or a player-colour mask kept from the
+  source is accepted where the rule says `keep`);
 - normals: a material whose shader reads a bump map (`bumpspec...`) and has none, drawing a
   texture of the package's own (tools/add_normal_maps.py gives it one);
 - unreadable: a compressed model the lint could not expand (give the bridge: --granny);
@@ -211,9 +211,11 @@ def lint(package, spec, rules, game_arts, source_arts=(), bridge=None, caches=()
                 continue
             want_m = min(m, ddt.chain_length(hd.width, hd.height, 1))
             ok_u = hd.usage == u or ("alpha_test" in keep and hd.usage == (u | 1))
-            ok_a = hd.alpha == al or ("transparency" in keep and hd.alpha in (4, 8)) or \
+            # a player-colour mask kept over a DXT1 rule: DXT3 with alpha 1
+            pc = "player_colour" in keep and f == ddt.DXT1 and hd.format == ddt.DXT3 and hd.alpha == 1
+            ok_a = hd.alpha == al or ("transparency" in keep and hd.alpha in (4, 8)) or pc or \
                 (f == ddt.DXT1 and hd.format == ddt.DXT3 and hd.alpha in (4, 8))
-            ok_f = hd.format == f or (f == ddt.DXT1 and hd.format == ddt.DXT3 and hd.alpha in (4, 8))
+            ok_f = hd.format == f or pc or (f == ddt.DXT1 and hd.format == ddt.DXT3 and hd.alpha in (4, 8))
             if not (ok_u and ok_a and ok_f and len(hd.levels) == want_m) or max(hd.width, hd.height) > side:
                 found["textures"].append(f"{key}: ({hd.usage},{hd.alpha},{hd.format},{len(hd.levels)}) "
                                          f"{hd.width}x{hd.height}, rule {rname} ({u},{al},{f},{want_m}) <= {side}")

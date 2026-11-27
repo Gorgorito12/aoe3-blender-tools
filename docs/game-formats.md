@@ -472,6 +472,24 @@ does the same: the string courses between storeys and the shutters are painted l
 get alpha 0 (about 1 % of the White House's texture). The bundle then switches the model to the
 `pixelxform` shader by itself, whenever the texture's alpha drops below 255.
 
+**A rules file per path** (`--rules`, a mod art lead's exact tuples). Measured on the WoL copy
+(2026-11-27, headers per category), each tuple of the WoL lead's rules is the game's own most common
+one: building colour (0,1,8,7) 426 of 1,370, building normals (6,0,9,7) 212 of 624, unit colour
+(0,1,8,5) and (0,1,8,6) 809 of 2,012, unit normals (6,0,9,1) 773 of 1,035, icons at 64 px 1,183 of
+1,515. A building's normal map is the size of its colour texture in 393 of 445 pairs. The one tuple
+that loses something is DXT1 for portraits and icons: **seen in game** (2026-11-27, WoL test copy,
+the same Struggle of Indonesia portrait as the Musketeer's in DXT3 with alpha 1 and as the
+Crossbowman's in DXT1, each selected as player 1 and player 2), the masked clothes showed blue and
+red, the DXT1 ones grey for both. 126 of SoI's 209 portraits and 129 of its 210 icons carry such a
+mask (4.7 % of the picture at the median). `keep: ["player_colour"]` in a rule writes those DXT3
+with alpha 1 (an exception in the report; `art_lint.py` accepts it).
+
+## Icons and portraits
+
+The interface tints a portrait or icon whose alpha is 1 (player colour): where its alpha is low,
+the light grey under it takes the player's colour (**seen in game**, above). The game uses that
+mask in 247 of its 927 portraits, WoL in 333 of its 538.
+
 ## Variants
 
 Beside the main model the export writes, as the stock buildings have them:
@@ -482,7 +500,7 @@ Beside the main model the export writes, as the stock buildings have them:
   missing, cracks; the alpha mask kept), under `p1` of a `Destruction` logic, the intact model
   under `p99`.
 
-## Icons and portraits
+## Icons and portraits of a building
 
 The stock house has a 64 x 64 icon and a 128 x 128 portrait, both DXT1: the building in three
 quarters view on a dark, warm background inside a bevelled frame. The export renders the

@@ -44,7 +44,11 @@ each result is compared with its original; a result that strays too far is not u
 `{"rules": [{"name": "unit colour", "match": "<regex on the relative path, lower case>",
 "tuple": [0, 1, 8, 6], "max": 1024, "keep": ["alpha_test", "transparency"]}, ...]}`, the first
 match winning; `keep` carries the source's alpha-test bit (usage 1) and a transparent or blended
-alpha (4, 8) over the tuple, so a fence or a leaf stays cut out (reported as an exception). The tuple is the header's
+alpha (4, 8) over the tuple, so a fence or a leaf stays cut out (reported as an exception);
+`player_colour` keeps the player-colour mask of a source with alpha 1 whose mask is real (at least
+0.5 % of its pixels under half alpha) when the tuple is DXT1: it is written DXT3 with alpha 1 and
+reported as an exception. Seen in game (2026-11-27, WoL): a portrait with its mask shows its
+clothes in each player's colour; the same portrait in DXT1 shows them grey. The tuple is the header's
 (usage, alpha, format, mips) as a mod's art lead writes it; the mips are cut to what the size
 allows (to 1 px; the report says so), the sides are halved until both fit `max`, and a DXT1
 target for a texture declared transparent or blended (alpha 4 or 8) whose alpha is not opaque is
@@ -533,7 +537,17 @@ def load_rules(path):
     return out
 
 
-KEEPS = {"alpha_test", "transparency"}
+KEEPS = {"alpha_test", "transparency", "player_colour"}
+# A player-colour mask is real when this share of the pixels is under half alpha. Measured on SoI's
+# portraits and icons (2026-11-27): those with a mask hold it on 4.7 % of the picture at the median;
+# 9 of 135 non-opaque portraits held only stray pixels under 0.5 %.
+PLAYER_MASK_SHARE = 0.005
+
+
+def has_player_mask(rgba):
+    """True when a picture's alpha marks player colour on a real share of it."""
+    a = rgba[..., 3]
+    return bool((a < 128).mean() >= PLAYER_MASK_SHARE)
 
 
 def rule_for(rules, rel):
@@ -541,12 +555,17 @@ def rule_for(rules, rel):
     return next(((t, m, name, keep, check) for rx, t, m, name, keep, check in rules if rx.search(key)), None)
 
 
-def kept_bits(target, keep, hd):
+def kept_bits(target, keep, hd, rgba=None):
     """The target with what `keep` asks to carry over from the source header: its alpha-test bit
-    (usage 1: fences, leaves) and a transparent or blended alpha (4, 8), which a player-colour
-    alpha would turn solid. (target, what was kept)."""
+    (usage 1: fences, leaves), a transparent or blended alpha (4, 8), which a player-colour
+    alpha would turn solid, and (rgba: the source's top level) a real player-colour mask that a
+    DXT1 target would drop. (target, what was kept)."""
     usage, alpha, fmt, mips = target
     kept = []
+    if ("player_colour" in keep and fmt == ddt.DXT1 and hd.alpha == 1 and rgba is not None
+            and has_player_mask(rgba)):
+        alpha, fmt = 1, ddt.DXT3
+        kept.append("player colour")
     if "alpha_test" in keep and hd.usage & 1 and not usage & 1:
         usage |= 1
         kept.append("alpha test")
@@ -582,7 +601,10 @@ def run(items, out, limit, smallest=4, refine=True, max_mean=MAX_MEAN, max_block
         kept = []
         try:
             if target is not None:
-                target, kept = kept_bits(target, keep, ddt.read_header(data))
+                hd0 = ddt.read_header(data)
+                top = (ddt.decode(data, 0) if "player_colour" in keep and target[2] == ddt.DXT1
+                       and hd0.alpha == 1 else None)
+                target, kept = kept_bits(target, keep, hd0, top)
             new, rec = reencode(data, lim, smallest, refine, mm, mb, target=target)
         except ddt.DdtError as exc:
             new, rec = None, {"action": "kept", "reason": f"not readable: {exc}"}

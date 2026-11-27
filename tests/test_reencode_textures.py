@@ -276,6 +276,35 @@ class Targets(unittest.TestCase):
         self.assertEqual(kept, ["alpha test", "alpha 8"])
         self.assertEqual(rt.kept_bits((0, 1, ddt.DXT3, 7), set(), hd)[0], (0, 1, ddt.DXT3, 7))
 
+    def test_keep_player_colour(self):
+        # a portrait whose alpha marks its clothes: a DXT1 rule would draw them grey in game (seen
+        # 2026-11-27); with keep player_colour it stays DXT3 with alpha 1
+        masked = picture(64, 64)
+        masked[40:, 10:50, 3] = 0                                   # 15.6 % of the picture
+        stray = picture(64, 64)
+        stray[0, 0, 3] = 0                                          # one pixel: no mask
+        with tempfile.TemporaryDirectory() as tmp:
+            rules = os.path.join(tmp, "r.json")
+            with open(rules, "w", encoding="utf-8") as fh:
+                json.dump({"rules": [{"name": "portrait", "match": r"_portrait\.ddt$", "tuple": [0, 0, 4, 1],
+                                      "max": 64, "keep": ["player_colour"]}]}, fh)
+            src = os.path.join(tmp, "in")
+            os.makedirs(src)
+            for name, pic in (("a_portrait.ddt", masked), ("b_portrait.ddt", stray)):
+                with open(os.path.join(src, name), "wb") as fh:
+                    fh.write(ddt.write_bgra(pic, alpha=1, mips=False))
+            with open(os.path.join(src, "c_portrait.ddt"), "wb") as fh:   # alpha 0: nothing to keep
+                fh.write(ddt.write_bgra(masked, alpha=0, mips=False))
+            recs = {r["path"]: r for r in rt.run(rt.inputs(src, src), os.path.join(tmp, "out"), (0, 0),
+                                                 log=lambda *_: None, rules=rt.load_rules(rules))}
+        self.assertEqual(recs["a_portrait.ddt"]["after"], "0,1,8,1")
+        self.assertTrue(recs["a_portrait.ddt"]["exception"])
+        self.assertIn("player colour", recs["a_portrait.ddt"]["reason"])
+        self.assertEqual(recs["b_portrait.ddt"]["after"], "0,0,4,1")
+        self.assertNotIn("exception", recs["b_portrait.ddt"])
+        self.assertNotEqual(recs["c_portrait.ddt"]["after"], "0,1,8,1")
+        self.assertIn("player_colour", rt.KEEPS)
+
 
 class Select(unittest.TestCase):
     def test_only_building_only_textures(self):

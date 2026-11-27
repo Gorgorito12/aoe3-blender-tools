@@ -6,6 +6,11 @@ three together).
 
 ## Unreleased
 
+- **Portraits and icons keep their player colour** under a rules file: `keep: ["player_colour"]` in a
+  rule of `tools/reencode_textures.py --rules` writes DXT3 with alpha 1 where the tuple says DXT1 and
+  the source has a real mask; `art_lint.py` accepts it. Seen in game first: a masked portrait shows
+  its clothes in each player's colour, the same in DXT1 grey. The WoL lead's other tuples measured
+  against the game's own, category by category: each is its most common (`docs/game-formats.md`).
 - **Rules relaxed (the owner's decision, 2026-11-27):** models, textures and layouts of the game, of
   mods or of other games may be copied, adapted and trained on for a mod's work; what comes of them
   still stays out of this public repository. `tools/lora_dataset.py --origins own,stock,changed` (the
