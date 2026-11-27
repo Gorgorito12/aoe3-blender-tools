@@ -183,6 +183,8 @@ validators print emoji, and `-I` ignores PYTHONIOENCODING.
 - `docs/animation-rules.md`: how a unit's animations are made and reviewed: the script (beat list)
   first, `tools/check_anim.py` (`aoe3game/anim_check.py`) before any preview, the fixed preview format
   and its checklist, the in-game frames after.
+- `docs/animation-script-guide.md`: for whoever asks for an animation: how to write its script
+  (seconds optional), a template, and the zamburak's camel as the worked example.
 - `docs/specs/`: the technical sheet of every building, generated, with an index.
 - `studio/`: AoE3 Mod Studio (`docs/studio.md`), a local web application: `server.py` (API on
   127.0.0.1 with a token, the page), `engine.py` (previews and sheets in process, no Blender),

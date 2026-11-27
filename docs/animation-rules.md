@@ -48,6 +48,10 @@ Before any key pose, write the **beat list** of every clip in plain words and ge
 the person who asked. A beat is one thing the figure does, with its start and end time in seconds
 (the clip's length is the game's: the tactics file says it).
 
+The person who asks does not need to give seconds: beats in order, in words, are enough, and we set
+the times in the beat list they approve. [animation-script-guide.md](animation-script-guide.md) is
+the guide to share with them, with the zamburak's camel as its worked example.
+
 1. **Each action is complete, as a person would do it.** For every object that moves, say where it
    comes from and where it goes: out of which pocket, onto which ground, into which socket. For
    every beat, say what the hands do (which hand holds what), what the feet do (planted, stepping,
