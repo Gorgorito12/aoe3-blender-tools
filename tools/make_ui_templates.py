@@ -69,8 +69,9 @@ LABEL_BG = (0, 0, 0, 170)
 ALPHA_MEAN_LIMIT = 16          # mean change of a piece's alpha (0-255) above which build warns
 ALPHA_SHARE_LIMIT = 0.05       # share of a piece's pixels whose alpha moved by 64 or more
 
-# Wars of Liberty's culture families (its Great War technologies, request #104): suffix, name, civs
-# (the names of data\civs.xml). The resource panel skin each civ sees is read from the copy.
+# Wars of Liberty's culture families (its Great War technologies, request #104; the Egyptians with the
+# Middle East, the mod's choice): suffix, name, civs (the names of data\civs.xml). The resource panel skin
+# each civ sees is read from the copy, so a family can need more than one.
 FAMILIES = (
     ("eu", "Europeans", ("Austrohungarians", "Belgians", "British", "Danish", "Dutch", "French", "Germans",
                          "Italians", "Portuguese", "Russians", "Spanish", "Swedish", "Ottomans")),
@@ -78,9 +79,9 @@ FAMILIES = (
     ("la", "Latin Americans", ("Argentineans", "Bolivians", "Brazilians", "Centralamericans", "Chileans",
                                "Colombians", "Haitians", "Mexicans", "Paraguayans", "Peruvians", "Uruguayans")),
     ("ns", "Nation states", ("Bulgarians", "Greeks", "Romanians", "Serbians")),
-    ("af", "Africans", ("Ethiopians", "Egyptians", "Zulu")),
+    ("af", "Africans", ("Ethiopians", "Zulu")),
     ("as", "Asians", ("Chinese", "Indians", "Japanese", "Koreans")),
-    ("me", "Middle East", ("Afghans", "Persians", "Saudis", "Uzbeks")),
+    ("me", "Middle East", ("Afghans", "Egyptians", "Persians", "Saudis", "Uzbeks")),
     ("na", "Native Americans", ("XPIroquois", "XPSioux", "WallMapu")),
     ("po", "Polynesians", ("Maori",)),
 )
