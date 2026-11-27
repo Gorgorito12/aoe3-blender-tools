@@ -253,7 +253,9 @@ class Tool(unittest.TestCase):
         self.assertIn((64.0, "h"), f.guides)
         with open(os.path.join(self.out, "README.txt"), encoding="utf-8") as fh:
             text = fh.read()
-        self.assertIn("af  Africans (Ethiopians, Egyptians, Zulu): the shared ones + the European and Asian", text)
+        self.assertIn("af  Africans (Ethiopians, Zulu): the shared ones + the European and Asian", text)
+        self.assertIn("me  Middle East (Afghans, Egyptians, Persians, Saudis, Uzbeks): the shared ones + the European "
+                      "and Asian resource panel", text)
         self.assertIn("na  Native Americans (XPIroquois, XPSioux, WallMapu): the shared ones + the Native", text)
         self.assertIn("European resource panel: atlas (piece 4)", text)
         self.assertIn("<texture>_<suffix>_gw.ddt", text)
