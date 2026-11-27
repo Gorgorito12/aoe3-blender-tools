@@ -28,7 +28,12 @@ What it writes below --out (`art\\<recipe "folder">\\`):
   dead model (`<name>_camel_dead`: the cannon in its limber pose and the linstock built in, playing
   the camel's own deaths), and in the folder the check_anim jobs: the new clips with today's as
   their baseline (every removal named), the limbered deaths, the unlimbered death. `--textured`
-  draws every clip, textured, at eight moments from both sides.
+  draws every clip, textured, at eight moments from both sides. With `--pack` too: the camel clips'
+  tag files (the shot's with `LAUNCHPOINT`, where the game bursts its muzzle smoke), the turretArc
+  aim table, the three anim files, and the fuse's two particle files (FUSE_FX: the game's grenadier
+  fuse sparks and smoke, timed from the touch to the shot, attached on the gun's vent in its fire anim).
+- with `--fire-stills <folder>`: the shot (the touch, the burning fuse, the kick, the camel's rock)
+  and the loading by hand (the charge and the ball at his fingertips), textured.
 
 The barrel (`barrel` of the recipe): the triangles of one bone of the source model, its axis from
 the centre of its breech ring to the centre of its muzzle ring; `length` shortens it (2/3: the chase
@@ -389,7 +394,7 @@ class Source:
             self.patches.setdefault(key, (raw["uvs"][raw["triangles"][0]].mean(0), self.material))
         # a patch of the field gun's gunner's white cloth (for the powder charge's bag), and of the red
         # on his texture (the linstock's hot tip)
-        self.cloth = self.hot = None
+        self.cloth = self.hot = self.shot = None
         gpart = next((p for p in gr2_parts.mesh_parts(self.data) if p["name"] in recipe["gunner"]["meshes"]), None)
         if gpart is not None:
             gtex = next((n for n in gr2_mesh.read(self.data)["textures"] if n and "gunner" in n.lower()
@@ -404,6 +409,12 @@ class Source:
                 hit = texel_patch(gimg, gsub, lambda c: opaque(c) and c[:3].mean() > 170 and np.ptp(c[:3]) < 30)
                 if hit is not None:
                     self.cloth = (hit[0], gpart["materials"][gi])
+                # a grey for the ball (the midfa's iron is near black: in game the ball did not show
+                # against the bore and his coat, 2026-11-26). The darker greys of his texture are its
+                # player colour mask (alpha below 250): the only opaque grey is light, about 176
+                hit = texel_patch(gimg, gsub, lambda c: opaque(c) and 150 < c[:3].mean() < 195 and np.ptp(c[:3]) < 18)
+                if hit is not None:
+                    self.shot = (hit[0], gpart["materials"][gi])
                 self.hot = red_texel(gimg, gpart["materials"][gi])
         # the linstock
         lspec = recipe["linstock"]
@@ -472,7 +483,8 @@ class CannonDesign:
              "muzzle": "bone_launchpoint", "linstock": "bone_linstock", "match": "bone_match",
              "ball": "bone_ball", "charge": "bone_charge"}
     FLAME = (0.10, 0.024)                   # world units: the game's fuse fire at the tip, as the pictures draw it
-    BALL = 0.040                            # the ball's radius (the bore at the muzzle: about 0.05)
+    BALL = 0.045                            # the ball's radius (the bore at the muzzle: about 0.05; 0.040 until
+                                            # 2026-11-26, too small to see in his hand from the game's camera)
     CHARGE = (0.042, 0.10)                  # the powder bag: radius, length
 
     def __init__(self, src, hang_bind, saddle_y, recipe):
@@ -530,7 +542,8 @@ class CannonDesign:
         # its rest frame: the ball and the bag round their centres
         bs = self.bind_scale
         rest = self.rest()
-        self.made["ball"] = (apply_part(sphere(self.BALL * bs), rest["ball"], P["iron"][0]), P["iron"][1], "ball")
+        shot = getattr(src, "shot", None) or P["iron"]
+        self.made["ball"] = (apply_part(sphere(self.BALL * bs), rest["ball"], shot[0]), shot[1], "ball")
         cr, cl = (v * bs for v in self.CHARGE)
         cloth = src.cloth or P["wood"]
         self.made["charge"] = (apply_part(cylinder((0, 0, -cl / 2), (0, 0, cl / 2), cr, sides=8), rest["charge"],
@@ -596,10 +609,11 @@ class CannonDesign:
         (design units back along the barrel), `linstock` (its frame, None: in its holder)."""
         rest = self.rest()
         pitch = state.get("pitch", 0.0)
-        # positive pitch puts the muzzle down: the turn about the side axis that lowers +z
-        Rp = axis_matrix(X, pitch)
-        if (Rp @ Z)[1] > 0 and pitch:
-            Rp = axis_matrix(X, -pitch)
+        # positive pitch puts the muzzle down: the turn about the side axis that lowers +z, and negative
+        # pitch the other way (the shot's kick; until 2026-11-26 the sign was chosen from the pitch itself,
+        # so a negative pitch lowered the muzzle too and the kick dipped it)
+        down = 1.0 if (axis_matrix(X, 1.0) @ Z)[1] < 0 else -1.0
+        Rp = axis_matrix(X, down * pitch)
         cannon = tr(self.trunnion) @ rot4(Rp) @ tr((0.0, 0.0, -state.get("recoil", 0.0)))
         rel = cannon @ tr(-self.trunnion)
         out = {"root": rest["root"], "post": rest["post"], "yaw": rest["yaw"], "cannon": cannon,
@@ -915,7 +929,17 @@ CHEERS = [("cheer_a", mgc.ZAMB + "zamburak_camel_idle02", mgc.LIB + "cavalry\\sw
           ("cheer_c", Z_IDLE, mgc.LIB + "cavalry\\sword_bored_A"),
           ("cheer_d", mgc.ZAMB + "zamburak_camel_idle06", mgc.LIB + "cavalry\\sword_cheer_E")]
 UNLIMBER, LIMBER_T, DEPLOYED, FIRE, RELOAD, DEATH_B = 6.3333, 5.1667, 2.0, 2.0, 3.0, 3.0
-SHOT = 0.90
+# The shot (z-fuse script, 2026-11-26: the artist asked for a longer fuse, more recoil, fuse sparks):
+# the hot tip on the vent at TOUCH, held there until TOUCH_END, the fuse burns FUSE seconds, the
+# shot at SHOT; the muzzle jumps KICK degrees, the lying camel rocks ROCK degrees away from the shot
+# on its far knees and its neck nods NOD degrees, all settled by SHOT + 0.60 (the clip's end). The
+# reach takes TOUCH - 0.08 s, the stick's way down 0.08 s: faster, his arm lags the stick (its 1450
+# deg/s limit; a touch at 0.55 left the palm 11 cm off it, a reach of 0.58 s 3.3 cm)
+TOUCH, TOUCH_END, FUSE = 0.70, 0.82, 0.70
+SHOT = TOUCH + FUSE
+# 10 and 2 at first: in game the jolt barely showed from the camera above (the user: more visible)
+KICK, ROCK, NOD = 15.0, 4.0, 5.0
+ROCK_EDGE = 0.35         # the far knees' distance from the body's midline (metres): the rock's pivot
 RELEASE = 0.10           # killed unlimbered: the linstock leaves his hand as he is hit
 STAFF_R = 0.035          # the staff's radius (game units): the palm sits this far from its axis
 
@@ -927,6 +951,20 @@ def ease(u):
 def span(t, a, b):
     """0 before a, 1 after b, eased between."""
     return ease((t - a) / max(b - a, 1e-9))
+
+
+def recoil(t, at=0.0):
+    """The shot's jolt at time `t` (the shot at SHOT + `at`): 0 before, up to 1 in 0.10 s, back
+    through 0 to a rebound of -0.3 by 0.35 s after it, settled at 0 by 0.55 s."""
+    s = SHOT + at
+    return span(t, s, s + 0.10) - 1.3 * span(t, s + 0.10, s + 0.35) + 0.3 * span(t, s + 0.35, s + 0.55)
+
+
+def kick(t):
+    """The muzzle's jump (degrees): KICK in 0.08 s, back past rest to -15% of it, settled 0.60 s
+    after the shot."""
+    return KICK * (span(t, SHOT, SHOT + 0.08) - 1.15 * span(t, SHOT + 0.08, SHOT + 0.40)
+                   + 0.15 * span(t, SHOT + 0.40, SHOT + 0.60))
 
 
 def vslerp(a, b, w):
@@ -2243,6 +2281,10 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
             # heel comes against the flank, inside the body's rough capsule (radius 0.45) by 21 cm: the
             # pictures show it on the skin, not in it
             c["limits"] = {"look_yaw": 85.0, "penetration": 0.22}
+        if name == "fire":
+            # the shot rocks the kneeling camel ROCK degrees onto its far knees for 0.3 s (the user,
+            # 2026-11-26: a visible recoil): its near side, belly and knees, lifts with it
+            c["limits"] = {"lying_belly": 0.08, "lying_knee": 0.30}
         if name == "death":
             c["limits"] = {"look_yaw": 115.0, "look_pitch_down": 80.0, "look_pitch_up": 80.0,
                            "angular_speed": 2000.0, "sink": 0.30, "slide": 0.30, "penetration": 0.30, "cross": 0.40}
@@ -2265,7 +2307,7 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
         if t1 is not None:
             g["frames"] = [[t0, t1]]
         grips.append(g)
-    grips.append({"name": "the match on the vent", "clips": ["fire"], "frames": [[0.80, 0.95]], "max": 0.03,
+    grips.append({"name": "the match on the vent", "clips": ["fire"], "frames": [[TOUCH, TOUCH_END]], "max": 0.03,
                   "hand": "gun:bone_match", "grip": "gun:bone_fuse"})
     del staff_m
     # the ring: where the staff's foot sits on the camel's chest (metres, in the chest's frame)
@@ -2302,7 +2344,7 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
                       {"name": "the trunnions in the fork", "part": "gun:bone_cannon",
                        "mount": {"bone": "gun:bone_yaw", "at": "gun:bone_cannon"}}],
            "grips": grips,
-           "ahead": [{"name": "right palm in front of his chest", "clips": ["fire"], "frames": [[0.5, 1.4]],
+           "ahead": [{"name": "right palm in front of his chest", "clips": ["fire"], "frames": [[0.45, 1.50]],
                       "point": hand["r"], "of": "rider:bip01 r upperarm", "min": 0.15}] + ahead,
            "sizes": sizes,
            "penetration_points": barrel_pts + [tip_pt],
@@ -2328,6 +2370,10 @@ def write_checks(folder, check, game, unit, built, gun_path, camel_path, dead_pa
                        "prop bones exempt": "the rider's Prop1 and Prop2 bones hold nothing in this unit; the "
                                             "seated and standing stances give them different turns",
                        "ear speed 2100": "the camel's own idles (idle02, idle03) flick its ears at 2013 deg/s",
+                       "fire lying belly 0.08, knee 0.30": "the shot rocks the kneeling camel 4 deg onto its far knees "
+                                                            "for 0.3 s: its near side lifts the belly 7 cm and the "
+                                                            "near knee to 28 cm, then it settles (a visible recoil, "
+                                                            "the user, 2026-11-26)",
                        "cheer look 85, penetration 0.10": "today's rider cheers, unchanged: they turn his head 84 deg "
                                                            "and swing a heel 9 cm into the crude capsule round the "
                                                            "camel's body as the stock rider does",
@@ -2783,6 +2829,39 @@ class V2:
         anim = u.camel.anim(mgc.B_IDLE)
         return [self.P] * len(times), anim, u.camel.hang_scale(self.P, u.camel.borrowed_scales(anim))
 
+    def rocked(self, P, t):
+        """The lying pose `P` jolted by the shot at time `t`: rocked ROCK degrees away from the gun at
+        rest (it fires square to the camel's right) about its far knees on the ground (ROCK_EDGE
+        left of the midline: the near side lifts, nothing sinks), and the neck nodding NOD degrees
+        0.05 s behind it (the head lifted back by a third, as lower_head). The gun on the hang bone,
+        the rider bone and the gunner's tables go with the body; the gunner on foot does not."""
+        from aoe3game.gr2_pose import about, rotate_about
+        w = recoil(t)
+        if not w:
+            return P
+        cam = self.u.camel
+        f, r, c = cam.body_frame(P)
+        pivot = c - ROCK_EDGE * r
+        pivot[1] = 0.0
+        M = about(pivot, axis_matrix(f, ROCK * w))      # about the forward axis: the top to the left
+        P = {k: M @ v for k, v in P.items()}
+        nod = NOD * recoil(t, 0.05)
+        if nod:
+            side = cam.body_frame(P)[1]
+            P = rotate_about(P, cam.rig, "hs bone neck lower", "hs bone neck lower", side, nod)
+            P = rotate_about(P, cam.rig, "hs bone head", "hs bone head", side, -nod / 3.0)
+        return P
+
+    def alive(self, P, t, clip):
+        """The kneeling camel kept alive (make_gun_camel.alive, shared with the gatling camel): one
+        breath and the tail swaying in every clip; at SHOT the ears pinned back and the tail flicked up;
+        in the reload three chews, an ear flicked at 0.80 and the other at 2.20, the head turned toward
+        the gun as it comes round to him; in the deployed idle two chews and an ear. Nothing at a clip's
+        first and last frames; never the chest, which carries the gun."""
+        L = {"fire": FIRE, "reload": RELOAD2, "deployed": DEPLOYED}[clip]
+        kind = {"fire": "fire", "reload": "reload", "deployed": "idle"}[clip]
+        return mgc.alive(self.u.camel, P, t, L, kind, shots=(SHOT,) if clip == "fire" else ())
+
     def stand(self, t=0.0, lean=0.0):
         u = self.u
         R = u.standing(self.at, self.h, t)
@@ -2807,7 +2886,7 @@ class V2:
             w = math.sin(math.pi * min(1.0, max(0.0, (t - 0.8) / 0.6))) if 0.8 < t < 1.4 else 0.0
             look = lerp(self.downrange(P, fr), point(self.W0, (0.0, u.src.linstock_length, 0.0)), w)
             R = u.look(R, look, max_pitch=30.0)
-            b.camel.append(P)
+            b.camel.append(self.alive(P, t, "deployed"))
             b.gun.append(dict(fr, linstock=u.staff_design(P, self.W0)))
             b.rider.append(R)
         self.keep(b, 0.0, DEPLOYED, "r")
@@ -2821,34 +2900,37 @@ class V2:
         times = u.times(FIRE)
         b = Built("fire", "Bombard_ranged_attack", times)
         poses, anim, scales = self.lying(times, borrow=False)
-        P = self.P
         _Rt, W_touch, _m = self.r2.touch(yaw, stand_yaw=REST_YAW)
         vent = self.r2.station(yaw)[2]
         d = W_touch[:3, 1]
         W_near = u.staff(W_touch[:3, 3] - 0.08 * d + 0.06 * Y, d, side=W_touch[:3, 2])
         W_up = u.staff(self.W0[:3, 3] + 0.08 * Y + 0.10 * u.facing(self.S0), self.W0[:3, 1], side=self.W0[:3, 2])
+        # the z-fuse script (2026-11-26): the stick to just short of the vent (0.00-TOUCH-0.08), the tip
+        # down onto it (by TOUCH), held there (TOUCH-TOUCH_END), taken up and back to his side
+        # (TOUCH_END-1.25) while the fuse burns, held up through the shot, home (1.55-1.95); he leans in
+        # (0.00-0.50) and straightens as he takes it away; he looks at the vent, turns his head 45
+        # degrees away (TOUCH_END-1.05) until the shot has passed, and back down the gun's line (1.55-1.95)
+        near = TOUCH - 0.08
         for t in times:
-            # the kush (2026-11-26) put the vent 0.31 lower: the stick turns further on its way down, over
-            # 0.62 s (0.50 before: the hand turned at 1820 deg/s), and touches at 0.80 as before
-            if t <= 0.62:
-                W = u.staff_mix(self.W0, W_near, span(t, 0.0, 0.62))
-            elif t <= 0.95:
-                W = u.staff_mix(W_near, W_touch, span(t, 0.62, 0.80))
-            elif t <= 1.40:
-                W = u.staff_mix(W_touch, W_up, span(t, 0.95, 1.40))
+            if t <= near:
+                W = u.staff_mix(self.W0, W_near, span(t, 0.0, near))
+            elif t <= TOUCH_END:
+                W = u.staff_mix(W_near, W_touch, span(t, near, TOUCH))
+            elif t <= 1.55:
+                W = u.staff_mix(W_touch, W_up, span(t, TOUCH_END, 1.25))
             else:
-                W = u.staff_mix(W_up, self.W0, span(t, 1.40, 1.80))
-            kick = 6.0 * (span(t, SHOT, 1.00) - span(t, 1.00, 1.50))
-            fr = u.gun_frames({"yaw": yaw, "pitch": -kick})
-            R = self.stand(0.0, lean=-4.0 * span(t, 0.0, 0.5) * (1.0 - span(t, 1.4, 2.0)))
+                W = u.staff_mix(W_up, self.W0, span(t, 1.55, 1.95))
+            P = self.rocked(self.P, t)
+            fr = u.gun_frames({"yaw": yaw, "pitch": -kick(t)})
+            R = self.stand(0.0, lean=-4.0 * span(t, 0.0, 0.5) * (1.0 - span(t, TOUCH_END, 1.25)))
             R = u.hands(R, {"r": u.grip_on(R, W, self.G, "r"), "l": u.hang_hand(R, "l")}, b, False)
-            away = math.sin(math.pi * min(1.0, max(0.0, (t - 0.92) / 0.48))) if 0.92 < t < 1.40 else 0.0
-            look = vent if t < 1.40 else self.downrange(P, fr)
+            away = span(t, TOUCH_END, 1.05) * (1.0 - span(t, 1.55, 1.95))
+            look = lerp(vent, self.downrange(self.P, fr), span(t, 1.55, 1.95))
             if away > 0:
                 hpos = R["bip01 head"][:3, 3]
                 look = hpos + axis_matrix(Y, -45.0 * away) @ (look - hpos)
             R = u.look(R, look, max_yaw=60.0, max_pitch=35.0)
-            b.camel.append(P)
+            b.camel.append(self.alive(P, t, "fire"))
             b.gun.append(dict(fr, linstock=u.staff_design(P, W)))
             b.rider.append(R)
         self.keep(b, 0.0, FIRE, "r")
@@ -2867,8 +2949,9 @@ class V2:
     B_SWING = (0.55, 1.15)            # it swings on to CATCH; he steps forward out of its way (0.60-0.90)
                                       # and reaches for the chase (0.95-1.15)
     B_CATCH = (1.15, 1.27)            # he catches the chase and pulls the muzzle to him (LOAD_YAW)
-    B_CHARGE = (1.27, 1.57)           # pouch (1.37), at the muzzle (1.49), pushed in (1.57)
-    B_BALL = (1.57, 1.87)             # pouch (1.67), at the muzzle (1.79), pushed in (1.87)
+    B_CHARGE = (1.27, 1.52)           # pouch (1.35), at the muzzle (1.45), pushed in (1.52)
+    B_BALL = (1.52, 1.87)             # pouch (1.60), shown over the muzzle (1.71-1.76), at it (1.81), pushed in (1.87)
+    PINCH = 0.07                      # the charge and the ball held this far ahead of his palm's centre
     B_BACK = (1.87, 2.70)             # both hands on the chase (1.87-2.00), pushed off (2.00-2.08); it swings
                                       # back to PUSH (2.08-2.50) as he steps back to his station (2.12-2.40);
                                       # he catches the cascabel (2.42-2.56) and sets it at the rest (2.58-2.70)
@@ -2993,10 +3076,13 @@ class V2:
                 pel = R["bip01 pelvis"][:3, 3]
                 pouch = (pel - 0.13 * rt + 0.12 * f_ - 0.02 * Y, f_, -Y)
                 front = (pel + 0.32 * f_ + 0.18 * Y + 0.04 * rt, f_, -Y)     # his hand passes in front of him
-                goals["r"] = keyed([(1.27, bar(fr, 0.04)), (1.32, front), (1.37, pouch), (1.39, pouch),
-                                    (1.49, mouth), (1.54, inside_mouth), (1.57, mouth), (1.62, front),
-                                    (1.67, pouch), (1.69, pouch), (1.79, mouth), (1.84, inside_mouth),
-                                    (1.87, mouth)], t, u)
+                # the ball shown: held up over the muzzle, dark against the bronze, before it goes in
+                # (2026-11-26: below the muzzle and beside him his arm and the barrel hid it from above)
+                show = (m + 0.10 * ax + 0.15 * Y, -ax, -Y)
+                goals["r"] = keyed([(1.27, bar(fr, 0.04)), (1.31, front), (1.35, pouch), (1.37, pouch),
+                                    (1.45, mouth), (1.49, inside_mouth), (1.52, mouth), (1.56, front),
+                                    (1.60, pouch), (1.62, pouch), (1.71, show), (1.76, show), (1.81, mouth),
+                                    (1.85, inside_mouth), (1.87, mouth)], t, u)
             elif t < 2.08:
                 goals["r"] = u.blend_goal(mouth, bar(fr, 0.04), span(t, 1.87, 2.00))
                 goals["l"] = u.blend_goal(hang_l, bar(fr, 0.15), span(t, 1.87, 2.00), arc=-0.10 * rt)
@@ -3015,16 +3101,20 @@ class V2:
                 goals["l"] = u.blend_goal(self.cascabel2(P, fr, -0.04), hang_l, span(t, 2.70, 2.90))
             R = u.hands(R, goals, b, False)
             # the charge and the ball: hidden inside him (the pouch at his left hip), in his right hand,
-            # into the muzzle and down the bore (out of sight there)
+            # into the muzzle and down the bore (out of sight there). He holds each at his fingertips
+            # (PINCH ahead of the palm along his fingers): at the palm's centre his hand hid the ball
+            # from the game's camera above (the user, 2026-11-26: "que se vea la bala que mete")
             inside = R["bip01 pelvis"][:3, 3] + 0.12 * Y - 0.03 * u.right_of(R)
             palm = u.rider.palm_of(R, "r")
-            for prop, (t_draw, t_in, t_gone) in (("charge", (1.37, 1.49, 1.57)), ("ball", (1.67, 1.79, 1.87))):
+            fingers = unit(palm - R["bip01 r hand"][:3, 3])
+            held = palm + self.PINCH * fingers
+            for prop, (t_draw, t_in, t_gone) in (("charge", (1.35, 1.45, 1.52)), ("ball", (1.60, 1.81, 1.87))):
                 if t < t_draw:
                     pos = inside
                 elif t < t_in:
-                    pos = lerp(inside, palm, span(t, t_draw, t_draw + 0.03))
+                    pos = lerp(inside, held, span(t, t_draw, t_draw + 0.03))
                 elif t < t_gone:
-                    pos = lerp(palm, m - 0.25 * ax, span(t, t_in, t_gone))
+                    pos = lerp(held, m - 0.25 * ax, span(t, t_in, t_gone))
                 else:
                     pos = None
                 if pos is not None:
@@ -3039,7 +3129,7 @@ class V2:
             else:
                 look = m
             R = u.look(R, look, max_yaw=60.0, max_pitch=28.0)
-            b.camel.append(P)
+            b.camel.append(self.alive(P, t, "reload"))
             b.gun.append(fr)
             b.rider.append(R)
         self.keep(b, 0.0, 0.10, "r")
@@ -3277,6 +3367,110 @@ def textured_sheets(folder, game, recipe, unit, built, gun_bytes, moments=8):
     return out
 
 
+def fire_stills(folder, game, recipe, unit, gun_bytes):
+    """The shot of the z-fuse script (2026-11-26), textured, from the unit's front and back: the
+    reach, the touch (the fuse's sparks start: an orange star on bone_fuse while they burn), the burning
+    fuse with the stick taken away, the shot, the kick at its height, the rebound, settled. Returns
+    ([png], report lines: how far the jolt moves the camel and the muzzle)."""
+    from PIL import Image
+    os.makedirs(folder, exist_ok=True)
+    u = unit
+    scene = mgc.Scene(game, recipe, u.camel, u.rider)
+    pic = Picture(game, recipe, u.camel, u.rider, scene, u.d, gun_bytes, None)
+    b = V2(u).fire()
+    ORANGE = (255, 120, 40)
+
+    def at(t):
+        k = min(len(b.times) - 1, int(round(t * FPS)))
+        P, R, fr = b.camel[k], b.rider[k], b.gun[k]
+        hang = rigid(P[u.camel.hang])
+        fr = dict(fr, match=fr["linstock"] @ tr((0.0, u.src.linstock_length * u.d.ls, 0.0)))
+        G = {u.d.NAMES.get(key, f"bone_{u.gun_name}").lower(): hang @ u.d.to_model(v) for key, v in fr.items()}
+        G[pic.gun_rig.names[0].lower()] = hang
+        return P, R, G, pic.gun_fig.items(G) + scene.camel_fig.items(P) + scene.rider_fig.items(R) + scene.hat_items(R)
+
+    moments = ((TOUCH - 0.08, "THE TIP ABOVE THE VENT"), (TOUCH, "TOUCH: THE FUSE CATCHES"),
+               (1.10, "THE FUSE BURNS, STICK AWAY"), (SHOT, "THE SHOT"), (SHOT + 0.10, "THE KICK AT ITS HEIGHT"),
+               (SHOT + 0.35, "THE REBOUND"), (FIRE, "SETTLED (= FRAME 0)"))
+    P0, _R0, G0, _ = at(0.0)
+    tiles = []
+    for az, side in ((0.0, "FRONT"), (180.0, "BACK")):
+        for t, text in moments:
+            P, R, G, items = at(t)
+            marks = [(G["bone_fuse"][:3, 3], ORANGE, 7)] if TOUCH <= t < SHOT else None
+            centre = 0.5 * (P0["hs bone chest"][:3, 3] + G0["bone_fuse"][:3, 3])
+            img = mgc.draw(items, 300, 280, az, 8.0, span=3.0, centre=tuple(centre), marks=marks)
+            tiles.append(mgc.caption(img, f"{t:.2f} S {side}: {text}"))
+    sheet = mgc.grid(tiles, len(moments))
+    head = mgc.title(sheet.shape[1], f"ZAMBURAK CANNON - THE SHOT: TOUCH {TOUCH:.2f} S, FUSE {FUSE:.2f} S, SHOT {SHOT:.2f} S, "
+                                     f"KICK {KICK:.0f} DEG, THE CAMEL ROCKED {ROCK:.0f} DEG, ITS NECK {NOD:.0f} DEG. "
+                                     "ORANGE: THE FUSE'S SPARKS ON THE VENT", back=(70, 40, 20))
+    path = os.path.join(folder, "z5-fire.png")
+    Image.fromarray(np.concatenate([head, sheet], 0)).save(path)
+    # the loading by hand, from above as the game's camera sees it: the charge and the ball held at his
+    # fingertips (a blue star on each while it shows)
+    fire_b = b
+    b = V2(u).reload()
+    BLUE = (60, 200, 255)
+    load = ((1.30, "TO THE POUCH"), (1.40, "THE CHARGE IN HIS HAND"), (1.46, "THE CHARGE AT THE MUZZLE"),
+            (1.66, "THE BALL IN HIS HAND"), (1.73, "THE BALL SHOWN OVER THE MUZZLE"), (1.81, "THE BALL AT THE MUZZLE"),
+            (1.85, "PUSHED IN"))
+    P0, R0, G0, _ = at(1.46)
+    tiles = []
+    for az, el, side in ((0.0, 60.0, "FROM ABOVE, FRONT"), (180.0, 60.0, "FROM ABOVE, BACK")):
+        for t, text in load:
+            P, R, G, items = at(t)
+            marks = [(G[k][:3, 3], BLUE, 6) for k in ("bone_charge", "bone_ball")
+                     if np.linalg.norm(G[k][:3, 3] - G["bone_cannon"][:3, 3]) > 0.35]
+            centre = 0.5 * (R0["bip01 r hand"][:3, 3] + G0["bone_launchpoint"][:3, 3])
+            img = mgc.draw(items, 300, 280, az, el, span=1.6, centre=tuple(centre), marks=marks or None)
+            tiles.append(mgc.caption(img, f"{t:.2f} S {side}: {text}"))
+    for t, k, text in ((1.40, "bone_charge", "THE CHARGE"), (1.66, "bone_ball", "THE BALL"), (1.74, "bone_ball", "THE BALL SHOWN")):
+        P, R, G, items = at(t)
+        for az in (0.0, 90.0, 180.0, -90.0):
+            img = mgc.draw(items, 300, 280, az, 60.0, span=0.45, centre=tuple(G[k][:3, 3]))
+            tiles.append(mgc.caption(img, f"{t:.2f} S CLOSE, AZIMUTH {az:.0f}: {text}"))
+    tiles = tiles[:2 * len(load)] + tiles[2 * len(load):] + [np.full_like(tiles[0], 255)] * (
+        (-len(tiles)) % len(load))
+    sheet = mgc.grid(tiles, len(load))
+    head = mgc.title(sheet.shape[1], f"ZAMBURAK CANNON - THE RELOAD BY HAND: THE CHARGE AND THE BALL (RADIUS "
+                                     f"{CannonDesign.BALL:.3f}) HELD {V2.PINCH:.2f} AHEAD OF HIS PALM. BLUE: "
+                                     "THEM, OUT OF THE BORE", back=(70, 40, 20))
+    path2 = os.path.join(folder, "z5-ball.png")
+    Image.fromarray(np.concatenate([head, sheet], 0)).save(path2)
+    # the camel kept alive (V2.alive): its head and its tail, close, at the moments of the layer
+    reload_b = b
+    rows = [("fire", fire_b, ((0.0, "AT REST"), (SHOT - 0.05, "BEFORE THE SHOT"), (SHOT + 0.10, "EARS PINNED, TAIL UP"),
+                              (SHOT + 0.30, "THE TAIL HIGHEST"), (1.95, "SETTLED"))),
+            ("reload", reload_b, ((0.30, "TAIL SWAYS"), (0.95, "EAR FLICK, HEAD TURNS"), (1.20, "CHEWING, MOUTH OPEN"),
+                                  (1.40, "CHEWING, SHUT"), (2.30, "EAR FLICK, HEAD TURNING BACK")))]
+    tiles = []
+    for clip, bb, moments in rows:
+        b = bb
+        for t, text in moments:
+            P, R, G, items = at(t)
+            for name, centre, az in (("HEAD", P["hs bone head"][:3, 3], 150.0), ("TAIL", P["hs bone tail_01"][:3, 3] - np.array([0.0, 0.25, 0.0]), -120.0)):
+                img = mgc.draw(items, 260, 240, az, 15.0, span=0.9, centre=tuple(centre))
+                tiles.append(mgc.caption(img, f"{clip.upper()} {t:.2f} S {name}: {text}"))
+    sheet = mgc.grid(tiles, 10)
+    head = mgc.title(sheet.shape[1], "ZAMBURAK CANNON - THE CAMEL KEPT ALIVE: BREATH, TAIL, EARS, CHEWING, THE HEAD "
+                                     "WATCHING THE GUN (SIZES IN MAKE_GUN_CAMEL.ALIVE)", back=(70, 40, 20))
+    path3 = os.path.join(folder, "z5-alive.png")
+    Image.fromarray(np.concatenate([head, sheet], 0)).save(path3)
+    b = fire_b
+    Pk, _Rk, Gk, _ = at(SHOT + 0.10)
+    f, r, _c = u.camel.body_frame(P0)
+    d = Pk["hs bone chest"][:3, 3] - P0["hs bone chest"][:3, 3]
+    hump = Pk[u.camel.hang][:3, 3] - P0[u.camel.hang][:3, 3]
+    m0 = G0["bone_launchpoint"][:3, 3] - G0["bone_cannon"][:3, 3]
+    mk = Gk["bone_launchpoint"][:3, 3] - Gk["bone_cannon"][:3, 3]
+    rise = math.degrees(math.asin(mk[1] / np.linalg.norm(mk))) - math.degrees(math.asin(m0[1] / np.linalg.norm(m0)))
+    report = [f"fire stills: at the kick's height ({SHOT + 0.10:.2f} s) the chest moves {d @ r:+.3f} right, "
+              f"{d[1]:+.3f} up; the gun's hang bone {hump @ r:+.3f} right, {hump[1]:+.3f} up; the muzzle "
+              f"{rise:+.1f} deg up"]
+    return [path, path2, path3], report
+
+
 def round3_stills(folder, game, recipe, unit, gun_bytes, reload=True):
     """Stop 0 of the no-rammer reload (the user, 2026-11-26): its key poses as built and the swing from
     above (unless not `reload`); the plain linstock with its hot tip (holster, hand, on the vent, beside
@@ -3335,16 +3529,16 @@ def round3_stills(folder, game, recipe, unit, gun_bytes, reload=True):
     tiles.append(tile(it, -100.0, 5.0, "IN HIS HAND, THE WHOLE MAN FOR SCALE", span=2.6,
                       centre=R["bip01 spine1"][:3, 3] - np.array([0, 0.25, 0])))
     f = v2.fire()
-    P, R, fr = at(f, 0.85)
+    P, R, fr = at(f, TOUCH + 0.05)
     it, G = items(P, R, fr)
     tip, vent = G["bone_match"][:3, 3], G["bone_fuse"][:3, 3]
-    report.append(f"fire 0.85 s: the tip {np.linalg.norm(tip - vent):.3f} from the vent")
+    report.append(f"fire {TOUCH + 0.05:.2f} s: the tip {np.linalg.norm(tip - vent):.3f} from the vent")
     for az, el, name, fl, sp in ((30.0, 45.0, "FROM THE FRONT, ABOVE", False, 1.0),
                                  (30.0, 45.0, "CLOSE UP", False, 0.4),
                                  (30.0, 45.0, "WITH THE GAME'S FUSE FIRE", True, 1.0)):
-        tiles.append(tile(it + (flame(G) if fl else []), az, el, f"FIRE 0.85 S: TIP ON THE VENT, {name}", span=sp,
+        tiles.append(tile(it + (flame(G) if fl else []), az, el, f"FIRE {TOUCH + 0.05:.2f} S: TIP ON THE VENT, {name}", span=sp,
                           centre=vent))
-    tiles.append(tile(it, -70.0, 15.0, "FIRE 0.85 S: THE WHOLE MAN", span=2.6,
+    tiles.append(tile(it, -70.0, 15.0, f"FIRE {TOUCH + 0.05:.2f} S: THE WHOLE MAN", span=2.6,
                       centre=0.5 * (vent + R["bip01 spine1"][:3, 3])))
     sheets.append(("z4-linstock.png", np.concatenate([
         mgc.title(4 * 330, f"THE LINSTOCK: A PLAIN WOODEN STICK {u.src.linstock_length:.2f} LONG, ITS TIP HOT RED, "
@@ -3423,20 +3617,59 @@ ANIMS = (("Idle", ("idle",)), ("Walk", ("walk",)), ("Jog", ("jog",)), ("Run", ("
          ("Bombard_ranged_attack", ("fire",)), ("Bombard_reload", ("reload",)), ("Bombard_death", ("death",)))
 
 
+# The burning fuse on the gun's vent (bone_fuse), from the touch to the shot: the game's grenadier's fuse
+# sparks and smoke (Art1.bar, effects\spc), attached in the gun's fire anim as the grenadier attaches
+# them (seen in game on this gun, 2026-11-26: they show and follow the gun's yaw). A particle attached
+# in one anim starts with it: its own initialdormancy places it in the clip. (our name, the game's
+# particle, {field: value} changed)
+FUSE_FX = (
+    ("fuse_sparks", "effects\\spc\\fusesparks", {
+        "initialdormancy": TOUCH,            # sparks from the touch
+        "particlelife": FUSE,                # to the shot
+        "framespersecond": 16 / FUSE,        # its 16 frames once over the burn (15 a second in the game's)
+        "scale": 0.7}),                      # a small vent (the grenadier's fuse is in his hand, 1.0)
+    ("fuse_smoke", "effects\\spc\\fusesmoke", {
+        "initialdormancy": TOUCH + 0.10,     # a thread of smoke once it has caught
+        "emissiontime": FUSE - 0.10,         # until the shot
+        "scale": 0.5}),
+)
+
+
+def fuse_particles(raw):
+    """{file name: text} of the FUSE_FX particles, each the game's file with only the named fields
+    changed. `raw(stored path)` returns a game file's bytes (its compiled .particle.xmb)."""
+    import re
+    import xmbedit
+    out = {}
+    for name, stock, fields in FUSE_FX:
+        text = xmbedit.to_xml(*xmbedit.parse(xmbedit.decode(raw(stock + ".particle.xmb"))))
+        text = "\n".join(line for line in text.splitlines() if line.strip()) + "\n"
+        for key, value in fields.items():
+            # the scale section's <scale> is its only one at that depth; the stage scales sit deeper
+            pat = (r"(<scale>\s*<loopingcycle>.*?<numstages>\d+</numstages>\s*<scale>)[^<]*(</scale>)"
+                   if key == "scale" else rf"(<{key}>)[^<]*(</{key}>)")
+            text, n = re.subn(pat, rf"\g<1>{value:.3f}\g<2>", text, count=1, flags=re.S)
+            if n != 1:
+                raise ValueError(f"{stock}.particle: no <{key}> to change")
+        out[f"{name}.particle"] = text
+    return out
+
+
 def anim_files(recipe, built, rider_head):
     """{file name: text} of the unit's three anim files (the camel's, the gun's, the rider's): one unit
     with both modes. Limbered: idle, gaits, bored, cheer, the stock camel deaths on the dead model (the
     cannon built in; the three that keep it out of the ground). Unlimbered: the unlimber and limber,
-    the idle at the gun, the shot (its attack, sound and smoke at SHOT), the reload, the death.
+    the idle at the gun, the shot (its attack, sound and smoke at SHOT; the fuse's sparks and smoke on
+    the gun's vent from TOUCH, FUSE_FX), the reload, the death.
     `rider_head`: today's rider anim file up to its first <anim> (his model by rank, his hats)."""
     folder, name = recipe["folder"], recipe["name"]
     gun_name = f"{name}_gun"
 
-    def anim(an, files, comp="ModelComp", tags=""):
+    def anim(an, files, comp="ModelComp", tags="", attach=""):
         out = []
         for f in files:
             out.append(f"\t<anim>\n\t\t{an}\n\t\t<assetreference type=\"GrannyAnim\">\n\t\t\t<file>{f}</file>\n"
-                       f"{tags}\t\t</assetreference>\n\t\t<component>{comp}</component>\n\t</anim>\n")
+                       f"{tags}\t\t</assetreference>\n\t\t<component>{comp}</component>\n{attach}\t</anim>\n")
         return "".join(out)
 
     def ours(kind, clip):
@@ -3468,16 +3701,23 @@ def anim_files(recipe, built, rider_head):
               f"\t<component>\n\t\tDeadCompDeployed\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{name}"
               f"_camel_dead_deployed</file>\n\t\t</assetreference>\n{DECAL}"
               "\t\t<attach a=\"rider\" frombone=\"hotspot\" tobone=\"ATTACHPOINT\" syncanims=\"1\"/>\n\t</component>\n"]
-    gun = [head, "<animfile>\n",
-           f"\t<component>\n\t\tModelComp\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{gun_name}"
-           "</file>\n\t\t</assetreference>\n\t</component>\n"]
+    # the fuse's sparks and smoke on the vent, in the shot only (FUSE_FX)
+    gun = [head, "<animfile>\n", "\t<definebone>bone_fuse</definebone>\n"]
+    gun += [f"\t<attachment>\n\t\t{fx}\n\t\t<component>\n\t\t\t{fx}\n\t\t\t<assetreference type=\"ParticleSystem\">\n"
+            f"\t\t\t\t<file>{folder}\\{fx}.particle</file>\n\t\t\t</assetreference>\n\t\t</component>\n"
+            f"\t\t<anim>\n\t\t\tNone\n\t\t\t<component>{fx}</component>\n\t\t</anim>\n\t</attachment>\n"
+            for fx, _s, _f in FUSE_FX]
+    fuse = "".join(f"\t\t<attach a=\"{fx}\" frombone=\"bone_fuse\" tobone=\"bone_fuse\" syncanims=\"0\"/>\n"
+                   for fx, _s, _f in FUSE_FX)
+    gun += [f"\t<component>\n\t\tModelComp\n\t\t<assetreference type=\"GrannyModel\">\n\t\t\t<file>{folder}\\{gun_name}"
+            "</file>\n\t\t</assetreference>\n\t</component>\n"]
     rider = [rider_head]
     for an, clips in ANIMS:
         gait = "".join(f"\t\t\t<tag type=\"{k}\" footprinttype=\"Horse\" footprintbone=\"HS BONE HOOF {b_}\">{v:.2f}</tag>\n"
                        for k, b_, v in GAITS.get(an, ()))
         camel.append(anim(an, [ours("camel", c) for c in clips], "DeadCompDeployed" if an == "Bombard_death" else "ModelComp",
                           tags=gait + (fire_tags if an == "Bombard_ranged_attack" else "")))
-        gun.append(anim(an, [ours("gun", c) for c in clips]))
+        gun.append(anim(an, [ours("gun", c) for c in clips], attach=fuse if an == "Bombard_ranged_attack" else ""))
         rider.append(anim(an, [ours("rider", c) for c in clips]))
     impact = "\t\t\t<tag type=\"SpecificSoundSet\" checkvisible=\"1\" set=\"RagdollImpact\">0.62</tag>\n"
     melee = [d for d in DEATHS_KEPT if d[0].startswith("death_melee")]
@@ -3621,10 +3861,12 @@ def main(argv):
                                               "vent, scale)")
     ap.add_argument("--round3-stills", help="a folder for stop 0 of the no-rammer reload (its key poses, the swing "
                                             "from above, the linstock's burning tip, the props' sizes)")
+    ap.add_argument("--fire-stills", help="a folder for the shot's stills (the z-fuse script: the touch, the burning "
+                                          "fuse, the kick, the camel's rock), textured, front and back")
     args = ap.parse_args(argv)
     try:
         for p in (args.out, args.sheet, args.barrel_sheet, args.limber_options, args.sizes, args.clips, args.textured,
-                  args.round2_stills, args.round3_stills, args.linstock_stills):
+                  args.round2_stills, args.round3_stills, args.linstock_stills, args.fire_stills):
             if p:
                 refuse_steam(p)
     except RefusedPath as exc:
@@ -3688,6 +3930,14 @@ def main(argv):
                                          reload=bool(args.round3_stills))
             report += rep3
             for p in paths3:
+                print(p)
+        if args.fire_stills:
+            rider = mgc.Rider(game, recipe["rider"])
+            foot_rig = Rig.of(gr2.load(game.granny(mgc.FOOT_MODEL)).root())
+            unit5 = ZUnit(game, recipe, camel, rider, design, foot_rig)
+            paths5, rep5 = fire_stills(args.fire_stills, game, recipe, unit5, gun)
+            report += rep5
+            for p in paths5:
                 print(p)
         if args.round2_stills:
             rider = mgc.Rider(game, recipe["rider"])
@@ -3770,19 +4020,23 @@ def main(argv):
                     def pose_at(t, b=b, frames=frames):
                         return frames[min(len(frames) - 1, int(round(t / max(b.length, 1e-9) * (len(frames) - 1))))]
                     with open(os.path.join(folder, b.camel_name + ".gr2.precomp"), "wb") as f:
-                        f.write(mgc.camel_precomp(camel, template, b.length, pose_at))
+                        # the shot's muzzle smoke (its Particles tag) is placed on LAUNCHPOINT
+                        extra = (("LAUNCHPOINT", "bone_launchpoint"),) if b.name == "fire" else ()
+                        f.write(mgc.camel_precomp(camel, template, b.length, pose_at, extra=extra))
                     n_tags += 1
                 data, bones, tabs = aim_table(unit_, built)
                 aim_path = os.path.join(folder, f"{recipe['name']}.aim")
                 with open(aim_path, "wb") as f:
                     f.write(data)
-                for fname, text in anim_files(recipe, built, rider_head(args.game, recipe)).items():
+                files = anim_files(recipe, built, rider_head(args.game, recipe))
+                files.update(fuse_particles(lambda stored: game._g.raw(stored, "")))
+                for fname, text in files.items():
                     with open(os.path.join(folder, fname), "w", encoding="utf-8", newline="\r\n") as f:
                         f.write(text)
                 report.append(f"pack: {n_tags} tag files; aim table {os.path.basename(aim_path)} {len(data)} B, "
                               f"yaws {AIM_YAWS[0]:.0f}..{AIM_YAWS[-1]:.0f} every 2, rest {REST_YAW:.0f}, "
                               f"{len(bones)} rider bones, clips " + ", ".join(f"{n} ({c} frames)" for n, c in tabs)
-                              + "; anim files written")
+                              + "; anim files and the fuse's particles written")
             if args.textured:
                 for p in textured_sheets(args.textured, game, recipe, unit_, built, gun):
                     print(p)

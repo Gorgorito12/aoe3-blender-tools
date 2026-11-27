@@ -139,11 +139,68 @@ class Pitch(unittest.TestCase):
         self.assertAlmostEqual(math.degrees(math.atan2(level[1] - down[1], down[2] - d.trunnion[2])) +
                                math.degrees(math.asin(0)), 30.0, places=4)
         self.assertGreater(right[0], 0.0)      # +x: the unit's right
+        # negative pitch puts it up as far (the shot's kick: it used to dip the muzzle as well)
+        up = d.frames({"pitch": -30.0})["muzzle"][:3, 3]
+        self.assertGreater(up[1], level[1])
+        self.assertAlmostEqual(up[1] - level[1], level[1] - down[1], places=6)
         # the pivot and the post never move
         for st in ({"pitch": 40.0, "yaw": 60.0}, {}):
             f = d.frames(st)
             np.testing.assert_allclose(f["post"][:3, 3], d.saddle)
             np.testing.assert_allclose(f["yaw"][:3, 3], d.pivot)
+
+
+class Shot(unittest.TestCase):
+    """The z-fuse script's timing: the touch, the burning fuse, the shot and its jolt in the 2.0 s clip."""
+
+    def test_the_fuse_burns_from_the_touch_to_the_shot(self):
+        self.assertLess(mz.TOUCH, mz.TOUCH_END)
+        self.assertLess(mz.TOUCH_END, mz.SHOT)
+        self.assertAlmostEqual(mz.SHOT, mz.TOUCH + mz.FUSE)
+        self.assertGreaterEqual(mz.FUSE, 0.5)          # the artist asked for a slower fuse (0.10 s before)
+        self.assertAlmostEqual(round(mz.SHOT / mz.FIRE, 2), 0.70)
+
+    def test_the_jolt_rises_and_settles_inside_the_clip(self):
+        for f in (mz.recoil, lambda t: mz.recoil(t, 0.05), mz.kick):
+            self.assertEqual(f(0.0), 0.0)
+            self.assertEqual(f(mz.SHOT), 0.0)
+            self.assertAlmostEqual(f(mz.FIRE), 0.0, places=9)   # the last frame is the first (the reload follows)
+        self.assertAlmostEqual(mz.recoil(mz.SHOT + 0.10), 1.0)
+        self.assertAlmostEqual(mz.kick(mz.SHOT + 0.08), mz.KICK)
+        self.assertLess(min(mz.kick(mz.SHOT + k / 100.0) for k in range(60)), 0.0)   # the rebound past rest
+        self.assertLess(mz.recoil(mz.SHOT + 0.35), 0.0)
+
+
+class FuseParticles(unittest.TestCase):
+    """fuse_particles changes only the named fields of the game's particle files."""
+
+    STOCK = ("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<particlefile>\n<emitter>\n"
+             "<particlelife>0.950</particlelife>\n<initialdormancy>0.900</initialdormancy>\n"
+             "<emissiontime>0.100</emissiontime>\n</emitter>\n<appearance>\n<framespersecond>15.000</framespersecond>\n"
+             "</appearance>\n<scale>\n<loopingcycle>0</loopingcycle>\n<numstages>2</numstages>\n<scale>1.000</scale>\n"
+             "</scale>\n<scalestages>\n<stage>\n<scale>0.200</scale>\n</stage>\n</scalestages>\n</particlefile>\n")
+
+    def test_the_fields_change_and_nothing_else(self):
+        import xmbedit
+        raw = xmbedit.encode(*xmbedit.from_xml(self.STOCK.encode("utf-8")))
+        out = mz.fuse_particles(lambda stored: raw)
+        self.assertEqual(sorted(out), ["fuse_smoke.particle", "fuse_sparks.particle"])
+        sparks, smoke = out["fuse_sparks.particle"], out["fuse_smoke.particle"]
+        self.assertIn(f"<initialdormancy>{mz.TOUCH:.3f}</initialdormancy>", sparks)
+        self.assertIn(f"<particlelife>{mz.FUSE:.3f}</particlelife>", sparks)
+        self.assertIn("<emissiontime>0.100</emissiontime>", sparks)
+        self.assertIn("<scale>0.700</scale>", sparks)
+        self.assertIn("<scale>0.200</scale>", sparks)              # a stage's scale is not the base's
+        self.assertIn(f"<initialdormancy>{mz.TOUCH + 0.10:.3f}</initialdormancy>", smoke)
+        self.assertIn(f"<emissiontime>{mz.FUSE - 0.10:.3f}</emissiontime>", smoke)
+        self.assertIn("<particlelife>0.950</particlelife>", smoke)
+
+    def test_a_missing_field_is_refused(self):
+        import xmbedit
+        bare = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<particlefile>\n<emitter/>\n</particlefile>\n"
+        raw = xmbedit.encode(*xmbedit.from_xml(bare.encode("utf-8")))
+        with self.assertRaises(ValueError):
+            mz.fuse_particles(lambda stored: raw)
 
 
 if __name__ == "__main__":
