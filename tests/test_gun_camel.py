@@ -268,6 +268,37 @@ class Design(unittest.TestCase):
         self.assertTrue(np.allclose(back[:3, 3], rest["crank"][:3, 3]))
 
 
+class Flash(unittest.TestCase):
+    """The stock gun's muzzle flash, attached on the gun's bone_launchpoint once a shot (not a Particles tag on the
+    camel's clip, which burst the way the camel faced)."""
+
+    def test_four_particles_a_shot_delayed_to_it(self):
+        names = gc.flash_names("gun", 1.0)
+        self.assertEqual(len(names), gc.SHOTS * len(gc.FLASH_FX))
+        self.assertEqual(sorted({t for _n, _s, t in names}), gc.Unit.shots(1.0))
+        self.assertEqual(len({n for n, _s, _t in names}), len(names))
+        self.assertTrue(all(s.startswith("units\\artillery\\organ_gun\\organ_muzzle_") for _n, s, _t in names))
+
+    def test_the_xml_attaches_each_on_the_guns_launch_bone(self):
+        blocks, lines = gc.flash_xml("WoL\\x", "gun", 1.0)
+        n = gc.SHOTS * len(gc.FLASH_FX)
+        self.assertEqual(blocks.count("<attachment>"), n)
+        self.assertEqual(lines.count('frombone="bone_launchpoint" tobone="bone_launchpoint" syncanims="0"'), n)
+        self.assertIn("<file>WoL\\x\\flash_gun_0_flame.particle</file>", blocks)
+
+    def test_no_particles_tag_on_the_camel(self):
+        tags = gc._tags({"do": "fire"}, 1.0)
+        self.assertNotIn("Particles", tags)
+        self.assertEqual(tags.count('type="Attack"'), gc.SHOTS)
+
+    def test_the_launch_bone_keeps_the_stock_axes(self):
+        # the flash's particles leave along the bone's +z, down the barrels (the stock bone_muzzle's axes)
+        g = gc.GunDesign(FakeSource(), np.eye(4), np.zeros(3), 0.55)
+        for st in ({}, {"yaw": 40.0}):
+            f = g.frames(st)
+            self.assertTrue(np.allclose(f["muzzle"][:3, :3], f["cannon"][:3, :3]))
+
+
 class Rhythm(unittest.TestCase):
     def test_whole_turns_so_shots_join(self):
         u = gc.Unit.__new__(gc.Unit)

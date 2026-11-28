@@ -210,11 +210,13 @@ def with_turn(aim, section):
     """The aim file with `section` (TURN, and RISE after it) after its other sections, in place of a TURN
     (and its RISE) it had at its end."""
     turn, end = aim_sections(aim)
-    if end != len(aim):
+    tail = b""
+    if aim[end:end + 4] == b"WALK":              # camel_walk.py's section, last: kept after the new TURN
+        tail = aim[end:]
+    elif end != len(aim):
         raise ValueError(f"the aim file has {len(aim) - end} bytes after its sections")
-    if turn is not None:
-        aim = aim[:turn]
-    return aim + section
+    aim = aim[:turn] if turn is not None else aim[:end]
+    return aim + section + tail
 
 
 # --------------------------------------------------------------------------------------------------
