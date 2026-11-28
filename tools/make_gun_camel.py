@@ -4603,6 +4603,43 @@ def aim_table(unit, built, traverse=None):
 # The anim file blocks
 
 
+# The stock Gatling's muzzle flash at each shot: the game's OrganGunMuzzle01 set (flame, glow, smoke and sparks
+# on its bone_muzzle, effects\weapon_fire\CannonMuzzleFX.xml), attached on the gun's bone_launchpoint in its
+# fire anims, one copy of each particle a shot, delayed to it. As Particles tags on the camel's clip (until
+# 2026-11-28) the set burst the way the camel faced, not the way the turned gun pointed, so its long flame (the
+# streak of the other gatling guns: JTMaston, "I think that it still misses the tracer") went off to the camel's
+# side or into it. Attached on the gun's own bone it turns with the gun. Each particle leaves along a fixed axis of
+# its bone (its offaxis and offplane): these four, made for the stock gun's bone_muzzle, along +z, down the barrels
+# of our gun's bone_launchpoint too (its axes are the camel's at rest, +z ahead, as the stock bone's); the cannon's
+# smoke of the zamburak, along +x (make_zamburak MUZZLE_AXES). Seen in game 2026-11-28: the flame, sparks and smoke
+# left 90 degrees to the barrels' left with the bone's x laid down them, and along them with its z.
+FLASH_FX = ("flame", "glow", "smoke", "sparks")
+
+
+def flash_names(tag, length):
+    """[(attachment name, game particle, shot time)]: FLASH_FX once a shot of a fire clip `length` long."""
+    return [(f"flash_{tag}_{k}_{n}", "units\\artillery\\organ_gun\\organ_muzzle_" + n, t)
+            for k, t in enumerate(Unit.shots(length)) for n in FLASH_FX]
+
+
+def flash_particles(raw, tag, length):
+    """{file name: text} of the flash particles of one gun (`tag`, as A55): each the game's file with its
+    initialdormancy moved by its shot's time. `raw(stored path)` returns a game file's bytes."""
+    import make_zamburak as mz
+    return mz.fuse_particles(raw, [(n, stock, {"initialdormancy": ("+", t)}) for n, stock, t in flash_names(tag, length)])
+
+
+def flash_xml(folder, tag, length):
+    """(the attachment blocks of the gun's anim file, the attach lines for each of its fire anims)."""
+    names = [n for n, _s, _t in flash_names(tag, length)]
+    blocks = "".join(f"\t<attachment>\n\t\t{n}\n\t\t<component>\n\t\t\t{n}\n\t\t\t<assetreference type=\"ParticleSystem\">\n"
+                     f"\t\t\t\t<file>{folder}\\{n}.particle</file>\n\t\t\t</assetreference>\n\t\t</component>\n"
+                     f"\t\t<anim>\n\t\t\tNone\n\t\t\t<component>{n}</component>\n\t\t</anim>\n\t</attachment>\n" for n in names)
+    lines = "".join(f"\t\t<attach a=\"{n}\" frombone=\"bone_launchpoint\" tobone=\"bone_launchpoint\" syncanims=\"0\"/>\n"
+                    for n in names)
+    return blocks, lines
+
+
 def _tags(clip, length):
     if clip.get("do") != "fire":
         return ""
@@ -4610,7 +4647,6 @@ def _tags(clip, length):
     for k, t in enumerate(Unit.shots(length)):
         u = t / length
         out.append(f'\t\t\t<tag type="Attack">{u:.2f}</tag>')
-        out.append(f'\t\t\t<tag type="Particles" particlename="organgunmuzzle01">{u:.2f}</tag>')
         if k == 0:
             out.append(f'\t\t\t<tag type="SpecificSoundSet" checkvisible="1" set="GatlingGunShoot">{u:.2f}</tag>')
     return "\n".join(out) + "\n"
