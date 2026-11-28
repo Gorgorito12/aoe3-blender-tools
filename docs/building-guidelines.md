@@ -85,7 +85,9 @@ is under a pixel: **to verify** in game, it is geometry, not a measurement of th
 
 **Textures.** Cost is what most often goes unseen: a building of 1,600 triangles can carry 20 MB of
 textures. Real wonders use 0.3 to 2.7 MB. A 2048 colour texture with its mips is 5.3 MB, a 1024 one 1.3
-MB, a 512 one 0.33 MB; a DXT5 bump without mips is 4, 1 and 0.25 MB.
+MB, a 512 one 0.33 MB; a DXT5 bump is 4, 1 and 0.25 MB without mips, a third more with them. The
+export writes seven levels of each, the game's own most common count for buildings ((0,1,8,7)
+and (6,0,9,7), measured on a WoL copy, 2026-11-27; a mod's art lead asked for them).
 
 - Paint large and export small: `sizes.TEXTURE_BUDGET` paints at 2048 and halves to 1024, with a 512
   bump. Halving gives exactly the mip level the game would show. Painting at 1024 instead gives another
@@ -198,7 +200,7 @@ pots, stacks, finials and some fences, and is under half of medium.
 | Market | Market | 5.0 | 10x10 | 1,890 / 2,019 | 184 / 174 |
 | War camp | WarHut | 4.0 | 8x8 | 1,532 / 1,701 | 190 / 184 |
 | Stockade (stone) | ypVillage | 4.0 | 8x8 | 1,554 / 1,656 (1,618 / 1,672) | 286 / 264 |
-| Armory | Arsenal | 4.0 | 8x8 | 1,511 / 1,562 | 144 / 102 |
+| Armory (Sahel: Djenne) | Arsenal | 4.0 | 8x8 | 1,511 / 2,028 | 144 / 380 |
 | Depot | ArtilleryDepot | 4.0 | 8x8 | 1,578 / 1,717 | 130 / 60 |
 | Quarry | House | 4.0 | 8x8 | 1,420 / 1,423 | 130 / 102 |
 | Dock | Dock | 4.0 | 8x8 | 1,804 / 1,852 | 476 / 430 |
@@ -215,6 +217,39 @@ corner logs, stone walls end in piers, and the palace's walls sink into its towe
 across the sides, also in the game mesh): they light as one surface instead of facets, with no
 extra triangles; flat tops and bottoms stay flat. The Dock
 template only places on water.
+
+**The Djenne armoury (Sahel armory, 2026-11-27).** Wars of Liberty has no African arsenal (its
+`Arsenal` has European, Andean and modern models only), so the Sahel armory was redrawn after the
+Sudano-Sahelian houses of Djenne and Timbuktu of the nineteenth century: all earth, no lime, soft
+edges. One mass on one base, its face theirs: a tall gate tower over the door, its pilasters
+rising past the parapet into earth cones, between two lower wings that end inside it (as
+`core/joints.py` wants), cones along every parapet, two rows of *toron* (palm beams left in the
+walls to climb on when the plaster is renewed), a small room on the left wing, a palm ladder from
+the right wing up the tower, a round
+powder magazine of coiled clay under a dome, the smith's hearth under a sunshade of palm mats, and
+a low earth wall closing the yard, its gate in line with the store's Timbuktu door; a cloth of the
+owner's colour hangs over that door. The yard holds a gun on a field carriage, the cavalry's
+quilted horse armour (*lifidi*) airing, spear racks, shields, clay jars and leather sacks (no
+crates or barrels). A first version after the Hausa emirates, lime-white with blue bands, read as a
+cartoon rather than earth and was dropped (the owner's review).
+
+Its finish is `core/styles/african/djenne.py`, for this building only (`djenne.BUILDINGS`), and each
+part weathers its own way: the store's walls freshly plastered by hand (lumps lit from the upper
+left, palm smears, pores, straw, hairline cracks, rain gullies, drips under the toron, the foot
+eroded to its bricks in places), the upper room older, greyer and patched, the pilasters paler and
+run with rain, the parapets and cones darker where they shed water, the yard's wall the oldest and
+roughest, the magazine's coils showing under its plaster, trodden roofs, gravel in the yard, split
+palm for the toron, woven mats, fired clay jars; a Timbuktu door of planks with iron plates and
+studs in a stepped earthen frame, small windows behind wooden lattices. No photo swatch lies under
+it. Every relief is also raised on the painter's height layer (`Painter.relief`) and the bump map
+is made from it, so a lump or a brick catches the light and a painted shadow does not
+(`ddt.normal_from_texture(height=...)`). Against WoL's own building textures
+(`tools/style_check.py`): grain −0.47, saturation +0.28 quartile widths. Its texture budget is the
+Sahel palace's (1024, bump 512, the damaged model sharing the main texture). Its triangle budget is
+its own (`sizes.EXACT`: 2,000, from 1,800 to 2,200; 2,028 at medium detail): the tower, the wings
+and the cones cost more than its class's target of 1,639, and the yard still holds the smithy, the
+racks and the gun; it stays under the class's 90th percentile, 2,221 (the owner's choice,
+2026-11-27).
 
 The footprint class is the measured class (10 buildings or more) whose median model side is
 closest to the building's longer side; a non-square class also needs a building-like obstruction

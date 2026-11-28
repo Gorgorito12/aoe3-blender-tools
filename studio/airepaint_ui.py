@@ -44,11 +44,14 @@ def regions(data):
 class Run:
     """One repaint in its thread."""
 
-    def __init__(self, data, url, *, strength=0.45, seed=1, regions=None, blend=1.0, prompt="", extra="", guard=True):
+    def __init__(self, data, url, *, strength=0.45, seed=1, regions=None, blend=1.0, prompt="", extra="", guard=True,
+                 lora="", lora_strength=0.8):
         if not 0.05 <= float(strength) <= 0.95:
             raise AiError("strength: 0.05 to 0.95")
         if not 0.0 <= float(blend) <= 1.0:
             raise AiError("blend: 0 to 1")
+        if lora and not 0.0 <= float(lora_strength) <= 1.5:
+            raise AiError("LoRA strength: 0 to 1.5")
         self.params = schema.params_from_dict(data)
         self.client = comfy.Client(url, timeout=180)
         if not self.client.alive():
@@ -64,8 +67,11 @@ class Run:
             unknown = set(regions) - set(names)
             if unknown:
                 raise AiError("no such region: " + ", ".join(sorted(unknown)))
+        if lora and lora not in self.client.loras():
+            raise AiError(f"ComfyUI has no LoRA {lora} in models/loras")
         self.args = {"strength": float(strength), "seed": int(seed), "regions": regions, "blend": float(blend),
-                     "prompt": prompt or None, "extra": extra or "", "guard": bool(guard)}
+                     "prompt": prompt or None, "guard": bool(guard),
+                     **airepaint.lora_args(lora or None, lora_strength, extra)}
         self.status, self.error, self.report = "running", None, None
         self.progress = {"done": 0, "of": len(regions) if regions is not None else len(names), "region": None}
         self.latest, self.version, self.result = None, 0, None

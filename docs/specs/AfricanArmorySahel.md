@@ -16,7 +16,7 @@ Computed from the model by `tools/spec_sheets.py`. Do not edit: regenerate it.
 |---|---|---|
 | Width, with everything on it | 14.53 | 8.94 |
 | Depth | 14.79 | 9.10 |
-| Height, to the highest point | 11.25 | 6.92 |
+| Height, to the highest point | 12.68 | 7.80 |
 
 One game unit is 1.626 m in Blender.
 
@@ -24,32 +24,34 @@ One game unit is 1.626 m in Blender.
 
 | Model | Count |
 |---|---|
-| Medium detail | 1,642 |
-| Low detail, the game's low-poly model | 276 |
-| Faces at medium detail | 875 |
-| Target and accepted range | 1,639 (1,393 to 1,885) |
+| Medium detail | 2,028 |
+| Low detail, the game's low-poly model | 380 |
+| Faces at medium detail | 1,046 |
+| Target and accepted range | 2,000 (1,800 to 2,200) |
 
 Where they go, at medium detail:
 
 | Part | Triangles | Share |
 |---|---|---|
-| wood | 568 | 35 % |
-| trim | 288 | 18 % |
-| barrel | 160 | 10 % |
-| parapet | 150 | 9 % |
-| crate | 110 | 7 % |
-| hide | 80 | 5 % |
-| walls | 61 | 4 % |
-| pot | 40 | 2 % |
-| cloth | 35 | 2 % |
-| thatch | 34 | 2 % |
-| stone | 28 | 2 % |
-| reveal | 26 | 2 % |
-| iron | 24 | 1 % |
+| pot | 430 | 21 % |
+| wood | 416 | 21 % |
+| coping | 196 | 10 % |
+| palm | 168 | 8 % |
+| thatch | 150 | 7 % |
+| dome | 132 | 7 % |
+| rib | 110 | 5 % |
+| court | 100 | 5 % |
+| hide | 80 | 4 % |
+| iron | 70 | 3 % |
+| walls | 52 | 3 % |
+| rw5 | 24 | 1 % |
 | yard | 22 | 1 % |
+| stone | 18 | 1 % |
+| trim | 18 | 1 % |
+| reveal | 16 | 1 % |
+| banner | 10 | 0 % |
 | ember | 8 | 0 % |
-| roof_flat | 6 | 0 % |
-| planks | 2 | 0 % |
+| roof_flat | 8 | 0 % |
 
 ## Texture
 
@@ -57,9 +59,9 @@ Where they go, at medium detail:
 |---|---|
 | Size | 1024 x 1024 |
 | Painted at | 1024 x 1024 |
-| Bump map | 1024 x 1024 |
-| All its textures | 5.25 MB |
-| Texels per game unit | 50 |
+| Bump map | 512 x 512 |
+| All its textures | 2.17 MB |
+| Texels per game unit | 48 |
 | Swatches under the paint | yes |
 
 ## Collision and footprint
@@ -79,19 +81,19 @@ Where they go, at medium detail:
 
 | Measure | This building | Low | Median | High |
 |---|---|---|---|---|
-| Height, game units | 6.92 | 6.17 | 8.5 | 10.785 |
-| Height over longest side | 0.761 | 0.589 | 0.852 | 1.01 |
+| Height, game units | 7.8 | 6.17 | 8.5 | 10.785 |
+| Height over longest side | 0.857 | 0.589 | 0.852 | 1.01 |
 | Share of the obstruction covered | 1.0 | 0.575 | 0.712 | 0.811 |
 | Share of what stands outside it | 0.204 | 0.017 | 0.119 | 0.278 |
 | Share in its largest part | 1.0 | 0.979 | 0.999 | 1.0 |
-| Share of the edge lined | 0.967 | 0.28 | 0.661 | 0.851 |
-| Flat levels | 10 | 2.0 | 3.0 | 6.5 |
-| Triangles in the lower third | 0.548 | 0.334 | 0.477 | 0.622 |
-| Triangles in the middle third | 0.293 | 0.207 | 0.349 | 0.466 |
-| Triangles in the upper third | 0.16 | 0.085 | 0.156 | 0.215 |
+| Share of the edge lined | 0.918 | 0.28 | 0.661 | 0.851 |
+| Flat levels | 7 | 2.0 | 3.0 | 6.5 |
+| Triangles in the lower third | 0.615 | 0.334 | 0.477 | 0.622 |
+| Triangles in the middle third | 0.209 | 0.207 | 0.349 | 0.466 |
+| Triangles in the upper third | 0.177 | 0.085 | 0.156 | 0.215 |
 
 ## Attach points
 
 | Name | x, y, z in metres |
 |---|---|
-| flag_attach | -2.74, 3.12, 8.19 |
+| flag_attach | -2.42, 3.12, 10.22 |

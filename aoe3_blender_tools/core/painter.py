@@ -33,6 +33,7 @@ class Painter:
         self.roles = {}             # region -> the material role of its swatch (tools/style_check.py)
         self.bleeds = False         # spread the regions over the empty atlas at the end
         self._factors = {}
+        self.hm = None              # relief: a height layer a style may paint (see `relief`)
 
     def P(self, region, u, v):
         return self.at.px(region, u, v)
@@ -241,6 +242,33 @@ class Painter:
         k = 1.0 - depth * edge * gate
         self.cv.a[y0:y0 + h, x0:x0 + w] *= k[:, :, None]
 
+    def relief(self, region, u0, v0, u1, v1, dh, soft=0.0):
+        """Raises (dh > 0) or sinks a rect of a region on the height layer, in metres: what the
+        bump map is made from when a style paints one, so a modelled-in-plaster relief catches the
+        game's light and a painted shadow does not. `soft`: metres over which its edge slopes."""
+        if self.hm is None:
+            self.hm = np.zeros(self.cv.a.shape[:2], np.float32)
+        (x0, y0), (x1, y1) = self.P(region, u0, v1), self.P(region, u1, v0)
+        xa, ya, xb, yb = self.cv._box(x0, y0, x1, y1)
+        if xb <= xa or yb <= ya:
+            return
+        if soft <= 0:
+            self.hm[ya:yb, xa:xb] += dh
+            return
+        s = max(1.0, soft * self.px_per_m)
+        ys, xs = np.arange(ya, yb, dtype=np.float32), np.arange(xa, xb, dtype=np.float32)
+        fy = np.clip(np.minimum(ys - ya + 0.5, yb - ys - 0.5) / s, 0.0, 1.0)[:, None]
+        fx = np.clip(np.minimum(xs - xa + 0.5, xb - xs - 0.5) / s, 0.0, 1.0)[None, :]
+        self.hm[ya:yb, xa:xb] += dh * np.minimum(fx, fy)
+
+    def relief_mask(self, region, mask, dh):
+        """Raises the pixels of a region where `mask` (an array the region's size, 0..1) says, by
+        dh metres at 1."""
+        if self.hm is None:
+            self.hm = np.zeros(self.cv.a.shape[:2], np.float32)
+        r = self.at[region]
+        self.hm[r.y:r.y + r.h, r.x:r.x + r.w] += dh * mask
+
     def bleed(self, reach=32):
         """Spreads the edge of each region over the empty atlas round it, picture and mask, so
         that halving the texture and its mipmaps never brings the background into a seam."""
@@ -273,6 +301,9 @@ class Painter:
             self.bleed()
         self.cv.noise(5, seed=p.seed)
         rgb = self.cv.downsample(k)
+        if self.hm is not None:                 # the relief, at the texture's size and in its texels
+            n = self.hm.shape[0] // k
+            self.model.height = self.hm[:n * k, :n * k].reshape(n, k, n, k).mean(axis=(1, 3)) * (self.px_per_m / k)
         alpha = self.mk.downsample(k)[:, :, 0] if self.mk is not None else np.full(rgb.shape[:2], 255, np.uint8)
         if cover is None:
             cov = np.zeros(rgb.shape[:2], np.uint8)

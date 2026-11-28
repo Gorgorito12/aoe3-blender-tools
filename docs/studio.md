@@ -64,7 +64,9 @@ own process and answer as you move a control (a ComfyUI step runs in a thread, a
   runs as `tools/make_texture.py`.
 - **AI repaint, region by region** (a card of the Buildings screen; `studio/airepaint_ui.py`,
   `web/js/airepaint.js`). Each region with the material ComfyUI is asked for; all, walls, roofs or
-  one by one; strength, seed, mix, an own description, the edge guard. The model shows each
+  one by one; strength, seed, mix, an own description, a LoRA of ComfyUI and its strength (one it
+  does not have is refused), the edge guard. The export forms take the same LoRA (`--ai-lora`,
+  `--ai-lora-strength`, `--ai-extra`). The model shows each
   region as it is done; **Stop** ends it between two regions (and interrupts ComfyUI). **Use it
   for the export** keeps the texture as a PNG that `scripts/game_export.py --texture-png` puts in
   place of the painted one; a change to the building drops it.

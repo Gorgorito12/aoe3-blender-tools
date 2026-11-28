@@ -80,9 +80,12 @@ The repainted texture is what Game Export writes (and what the damaged texture i
 **Generate Building** builds the texture again and loses the repaint, like any hand touch-up.
 The low-poly model keeps its drawn texture (its atlas is laid out differently).
 
-From the command line: `scripts/game_export.py ... --ai 0.45 [--ai-seed N]`, and
-`tools/ai_sweep.py` repaints presets at several strengths and measures each result (edge
-shift, colour drift, local contrast).
+From the command line: `scripts/game_export.py ... --ai 0.45 [--ai-seed N] [--ai-lora <file>]
+[--ai-lora-strength 0.8] [--ai-extra "words"]` (the same in `scripts/game_export_noblender.py`
+and in both export forms of the studio), and `tools/ai_sweep.py` repaints presets at several
+strengths and measures each result (edge shift, colour drift, local contrast). `--ai-lora` paints
+with a LoRA of ComfyUI's `models/loras` (`tools/train_lora.py`), its trigger word added to every
+prompt; the studio's AI repaint card has the same field.
 
 ## A model the generator did not make
 

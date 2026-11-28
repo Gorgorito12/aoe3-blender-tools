@@ -46,6 +46,24 @@ class AfricanPrompts(unittest.TestCase):
         self.assertIn("front", airepaint.group(wh, "WALLS"))
 
 
+    def test_the_djenne_armoury_has_its_own_words_for_each_part(self):
+        p = building.PRESETS["AFRICAN_ARMORY_SAHEL"]
+        words = {r: airepaint.material_of(r, p) for r in ("bk1_front", "rib", "coping", "court", "palm", "yard")}
+        self.assertIn("Djenne", words["bk1_front"])
+        self.assertTrue(all(words.values()), words)
+        self.assertEqual(len(set(words.values())), len(words))               # each part its own
+        self.assertNotIn("Djenne", airepaint.material_of("bk1_front", building.PRESETS["AFRICAN_MARKET_SAHEL"]))
+        self.assertIsNone(airepaint.material_of("yard", building.PRESETS["AFRICAN_MARKET_SAHEL"]))
+
+    def test_lora_args_as_the_exports_take_them(self):
+        self.assertEqual(airepaint.lora_args(), {"extra": ""})
+        self.assertEqual(airepaint.lora_args(None, None, "weathered"), {"extra": "weathered"})
+        a = airepaint.lora_args("own.safetensors", "0.6", "weathered")
+        self.assertEqual(a["workflow_args"], {"lora": "own.safetensors", "lora_strength": 0.6})
+        self.assertTrue(a["extra"].startswith("aoe3bt") and a["extra"].endswith("weathered"))
+        self.assertEqual(airepaint.lora_args("own.safetensors")["workflow_args"]["lora_strength"], 0.8)
+
+
 class Helpers(unittest.TestCase):
     def test_tiles_cover_and_stay_short(self):
         for w, h in ((300, 100), (100, 300), (90, 90), (1000, 41)):

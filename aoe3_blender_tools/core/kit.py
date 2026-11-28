@@ -42,6 +42,7 @@ class Model:
     dims: dict                # computed sizes, for the painter and the stats
     notes: list = field(default_factory=list)   # values the geometry had to change
     boxes: list = field(default_factory=list)   # its own collision: (x0, x1, y0, y1, z0, z1), metres
+    height: object = None     # the painter's relief at the texture's size (metres), when the style paints one
 
 
 

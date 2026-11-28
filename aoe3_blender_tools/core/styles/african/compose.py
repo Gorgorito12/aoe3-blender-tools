@@ -23,7 +23,7 @@ SIZE = {"pot": (0.7, 0.7), "basket": (0.7, 0.7), "sack": (0.6, 0.6), "drum": (0.
         "dummy": (1.1, 0.4), "weigh": (1.7, 0.7), "boat": (3.1, 0.9), "fish_rack": (1.8, 0.3), "wheel": (0.9, 0.3),
         "rack": (1.8, 0.4), "fire": (1.2, 1.2), "well": (1.6, 1.6), "stones": (2.0, 0.7), "crane": (1.9, 2.0),
         "cart": (4.1, 1.7), "chest": (0.9, 0.7), "rock": (1.8, 1.8), "tent": (2.7, 2.2), "heap": (1.0, 1.0),
-        "ruin": (3.0, 3.0), "pole": (1.2, 0.3)}
+        "ruin": (3.0, 3.0), "pole": (1.2, 0.3), "cannon": (2.0, 1.1), "lifidi": (1.4, 0.9)}
 _costs = {}
 
 
@@ -284,7 +284,7 @@ def compose(layout, p, S):
     must, more = program.items(p)
     if not must and not more:                             # all of it is built in
         return structure
-    target, _, hi = sizes.tris_target(p.building_type)
+    target, _, hi = sizes.tris_target(p.building_type, p.architecture)
     g = survey(layout, S)
     rng = np.random.default_rng(int(p.seed) + 7919 * sizes.TYPES.index(p.building_type))
     out = list(structure)

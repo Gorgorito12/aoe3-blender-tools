@@ -258,6 +258,15 @@ HELP = {
         'ai_url': (
             "Address of the local ComfyUI the AI repaint uses; default http://127.0.0.1:8188.",
             "Dirección del ComfyUI local que usa el repintado IA; por defecto http://127.0.0.1:8188."),
+        'ai_lora': (
+            "A LoRA file of ComfyUI's models/loras folder the AI repaint paints with (tools/train_lora.py makes one from a mod's or the game's textures); its trigger word joins the prompts. Empty: none.",
+            "Un archivo LoRA de la carpeta models/loras de ComfyUI con el que pinta el repintado IA (tools/train_lora.py hace uno con las texturas de un mod o del juego); su palabra clave se añade a los textos. Vacío: ninguno."),
+        'ai_lora_strength': (
+            "How much the LoRA weighs, 0 to 1; default 0.8.",
+            "Cuánto pesa el LoRA, de 0 a 1; por defecto 0,8."),
+        'ai_extra': (
+            "Words added to every AI prompt, e.g. weathered, sun-bleached.",
+            "Palabras añadidas a cada texto de la IA, p. ej. weathered, sun-bleached."),
         'detail': (
             "LOW: flat walls with painted windows; MEDIUM: recessed windows and doors, finer trim. Empty: the preset's own detail.",
             "LOW: muros planos con ventanas pintadas; MEDIUM: ventanas y puertas empotradas, molduras más finas. Vacío: el detalle propio del preset."),

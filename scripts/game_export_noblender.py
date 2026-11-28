@@ -146,7 +146,8 @@ def main():
     if "--ai" in argv:
         from core import airepaint, comfy
         texture, report = airepaint.repaint(texture, model, comfy.Client(opt("--ai-url", comfy.DEFAULT_URL), timeout=120),
-                                            strength=float(opt("--ai", "0.45")), seed=int(opt("--ai-seed", "1")))
+                                            strength=float(opt("--ai", "0.45")), seed=int(opt("--ai-seed", "1")),
+                                            **airepaint.lora_args(opt("--ai-lora"), opt("--ai-lora-strength"), opt("--ai-extra")))
         print("AI repaint:", ", ".join(r["region"] for r in report if "skipped" not in r))
     if opt("--texture-png"):
         from core import pngio
@@ -198,7 +199,7 @@ def main():
         display_name=opt("--display"), template=opt("--template", "House"), kind=kind, folder=folder,
         v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"),
         obstruction=building.obstruction(p), ground_rgba=ground, collision_boxes=model.boxes,
-        rubble=building.rubble(p), texture_max=texture_max, bump_max=bump_max, profile=prof)
+        rubble=building.rubble(p), texture_max=texture_max, bump_max=bump_max, profile=prof, height=model.height)
     import spec_sheets
     spec_sheets.write_bundle_sheet(out, p, desc, len(positions), len(tris), opt("--proto"))
     print(f"{p.name}: {len(tris)} triangles, {len(positions)} vertices; "

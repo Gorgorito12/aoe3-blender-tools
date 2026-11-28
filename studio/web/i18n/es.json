@@ -933,5 +933,7 @@
   "i.bone.help": "Colorear los vértices según el peso de este hueso (azul nada, rojo todo); otra vez para quitarlo",
   "i.bind.ok": "Su pose de reposo es su pose de enlace: las animaciones del juego de estos huesos le sirven.",
   "i.bind.no": "Su pose de reposo difiere de la de enlace en algún hueso: necesita sus propias animaciones (por verificar).",
-  "i.skin.help": "{n} huesos mueven vértices (el número junto a cada uno); hasta {most} huesos por vértice. Elige un hueso para ver sus pesos."
+  "i.skin.help": "{n} huesos mueven vértices (el número junto a cada uno); hasta {most} huesos por vértice. Elige un hueso para ver sus pesos.",
+  "a.lora": "LoRA (y su fuerza)",
+  "a.lora.help": "Un LoRA de models/loras de ComfyUI con el que pintar, p. ej. uno entrenado con las texturas del juego o del mod (tools/train_lora.py). Vacío: ninguno."
 }

@@ -843,6 +843,21 @@ class Server(unittest.TestCase):
             try:
                 self.assertEqual(self.call("/api/ai/start", {"params": p, "regions": ["nowhere"]})[0], 400)
                 self.assertEqual(self.call("/api/ai/start", {"params": p, "strength": 3})[0], 400)
+                # a LoRA ComfyUI has: painted with it, its trigger word in the prompts; one it has not: refused
+                self.assertEqual(self.call("/api/ai/start", {"params": p, "lora": "missing.safetensors"})[0], 400)
+                status, sl = self.call("/api/ai/start", {"params": p, "regions": usable[:1], "strength": 0.4, "guard": False,
+                                                         "lora": "own_hand.safetensors", "lora_strength": 0.6})
+                self.assertEqual(status, 200, sl)
+                for _ in range(200):
+                    if self.call("/api/ai/state", {"session": sl["session"]})[1]["status"] != "running":
+                        break
+                    time.sleep(0.1)
+                used = [wf for wf in fake.prompts if "lora" in wf]
+                self.assertTrue(used, "no workflow carried the LoRA")
+                self.assertEqual(used[-1]["lora"]["inputs"]["lora_name"], "own_hand.safetensors")
+                self.assertAlmostEqual(used[-1]["lora"]["inputs"]["strength_model"], 0.6)
+                texts = [n["inputs"]["text"] for n in used[-1].values() if n.get("class_type") == "CLIPTextEncode"]
+                self.assertTrue(any("aoe3bt" in t for t in texts), texts)
                 status, s = self.call("/api/ai/start", {"params": p, "regions": usable[:2], "strength": 0.4, "guard": False})
                 self.assertEqual(status, 200, s)
                 for _ in range(200):

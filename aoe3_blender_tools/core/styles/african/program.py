@@ -65,13 +65,17 @@ PROGRAM = {
                        I("bellows", near="furnace", need=True, to=(0.0, 0.6)), *SMITHY,
                        I("rack", 2, at="wall", need=True), I("shields", at="wall", need=True),
                        I("logs", at="edge", length=1.8, n=4), I("crate", 2, at="wall", stacked=True), I("barrel", at="wall")],
-        # an adobe hearth with its chimney, round shields of the Sahel
-        "SAHEL": [I("forge", at="wall", name="forge", need=True), I("anvil", near="forge", name="anvil", need=True),
+        # a Djenne armoury: the smith's clay hearth under the palm-mat shade, round shields, a gun bought
+        # from the north on its carriage, the quilted armour (lifidi) of the cavalry airing, powder in
+        # clay jars and leather sacks rather than crates and barrels
+        "SAHEL": [I("forge", at="shade", name="forge", need=True, h=1.6), I("anvil", near="forge", name="anvil", need=True),
                   I("trough", near="anvil", need=True, w=0.55),
                   I("bellows", near="forge", need=True, to=(0.0, 0.5)),
-                  I("rack", 2, at="wall", need=True), I("shields", at="wall", need=True, a=0.34, c=0.34),
-                  I("crate", 2, at="wall", stacked=True), I("barrel", 2, at="wall"), I("logs", at="edge", length=1.8, n=3)],
+                  I("shields", at="wall", need=True, a=0.34, c=0.34), I("rack", at="wall", need=True),
+                  I("cannon", at="yard", need=True), I("lifidi", at="yard"), I("rack", at="wall"),
+                  I("pot", 3, at="wall"), I("sack", 2, at="wall"), I("basket", at="wall"), I("logs", at="edge", length=1.8, n=3)],
         "more": [I("barrel", at="wall"), I("crate", at="wall"), I("crate", on="roof"), I("barrel", on="roof")],
+        "more_SAHEL": [I("pot", at="wall"), I("sack", at="wall"), I("pot", on="roof"), I("basket", on="roof")],
     },
     "DEPOT": {
         "SUBSAHARAN": [I("frame", at="shade", name="engine", need=True, w=3.0, d=1.6, h=2.2),
@@ -124,4 +128,4 @@ def items(p):
     if p.building_type == "PALACE" and p.architecture == "SAHEL":
         return [], []                                     # all of it is built in: nothing stands round it
     prog = PROGRAM[p.building_type]
-    return prog[p.architecture], prog["more"]
+    return prog[p.architecture], prog.get("more_" + p.architecture, prog["more"])

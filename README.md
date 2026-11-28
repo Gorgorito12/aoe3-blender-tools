@@ -222,7 +222,9 @@ venv\Scripts\python -I tools\model_survey.py --from survey/mod/models.json --tex
   armory, depot, quarry, plot, dock, customs house, palace) and an architecture. Sub-Saharan:
   round mud huts with tiered thatch cones and finials, granaries on stilts, palisades, open
   sheds, hill compounds. Sahel: adobe blocks with parapets, merlons and projecting beams, dome
-  granaries, towers and a crenellated fortress. Props at medium detail (baskets, sacks, pots,
+  granaries, towers and a crenellated fortress; its armory is a Djenne armoury of the
+  nineteenth century (hand-laid earth, cones and toron, a coiled-clay powder magazine, each part
+  weathered its own way, reliefs raised in its bump map). Props at medium detail (baskets, sacks, pots,
   drums, spear racks, log piles, wells, fires, cut stone, a shear-legs crane, millet on the
   ridges of a plot). Player colour on wall bands, awnings and doors. Each type takes the exact
   obstruction radius and proto template of the stock building it stands for. Presets:

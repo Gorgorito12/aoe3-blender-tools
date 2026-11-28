@@ -6,6 +6,19 @@ three together).
 
 ## Unreleased
 
+- **The Djenne armoury**: the Sahel armory redrawn after the Sudano-Sahelian houses of Djenne and
+  Timbuktu: all earth, a tall gate tower between two lower wings, pilasters ending in cones, cones
+  along the parapets, two rows of toron, a room on a wing, a palm ladder, a coiled-clay powder
+  magazine, the smith under palm mats, a Timbuktu door; a gun, quilted horse armour, clay jars and
+  sacks in the yard (three new props: cannon, lifidi, ladder). Its own finish
+  (`core/styles/african/djenne.py`), each part weathered its own way. 2,028 triangles on its own
+  budget (`sizes.EXACT`, under its class's 90th percentile), textures of 2.17 MB, was 5.25.
+- **Reliefs in the bump map**: a style may paint a height layer (`Painter.relief`); the bump map is
+  made from it, so a modelled ornament catches the light and a painted shadow does not.
+- **Seven mip levels** for a building's textures and bump maps, `(0,1,8,7)` and `(6,0,9,7)`, the
+  game's own most common count; the bump maps had one.
+- **A LoRA in the exports**: `--ai-lora`, `--ai-lora-strength`, `--ai-extra` on both game exports
+  and their forms, and a LoRA field on the studio's AI repaint card.
 - **Portraits and icons keep their player colour** under a rules file: `keep: ["player_colour"]` in a
   rule of `tools/reencode_textures.py --rules` writes DXT3 with alpha 1 where the tuple says DXT1 and
   the source has a real mask; `art_lint.py` accepts it. Seen in game first: a masked portrait shows

@@ -82,6 +82,18 @@ MATERIALS = {
 AFRICAN_WALLS = {"rw": "ochre hand-smoothed mud wall of a round hut, fine cracks, a wooden door",
                  "bk_SUBSAHARAN": "ochre hand-smoothed mud wall, fine cracks, small dark openings, a wooden door",
                  "bk_SAHEL": "pale sun-dried adobe wall with trowel marks, small dark windows, a wooden door"}
+# the Djenne finish (styles/african/djenne.py): each part of the building in its own words
+DJENNE = {"bk": "Sudano-Sahelian mud plaster wall of Djenne smoothed by hand, finger grooves and palm sweeps, "
+                "straw in the earth, rain gullies, a small wooden lattice window",
+          "rw": "coiled clay granary wall of the Sahel under smooth mud plaster, rain runs",
+          "rib": "mud plaster pilaster of a Djenne wall, rain gullies running down it",
+          "coping": "worn rounded mud parapet of the Sahel, stained by rain",
+          "court": "old eroded mud brick wall of the Sahel, plaster fallen in places showing the bricks",
+          "roof_flat": "trodden earth flat roof of the Sahel, fine cracks",
+          "dome": "smooth sun-dried mud plaster dome",
+          "yard": "swept sandy ground with small pebbles",
+          "palm": "split palm trunk wood, grey fibrous",
+          "thatch": "woven palm leaf mat"}
 GROUND = {"STONE": "grey rubble stone wall with small windows and a plank door",
           "BRICK": "old red brick wall with small windows and a plank door",
           "TIMBER": "European half-timbered wall, dark oak beams over cream plaster infill"}
@@ -95,6 +107,12 @@ def material_of(region, params):
     style = str(getattr(params, "style", "NEOCLASSICAL")).upper()
     if style == "TIMBER" and region in ("front_g", "back_g", "side_g"):
         return GROUND.get(str(getattr(params, "ground_floor", "STONE")).upper())
+    if style == "AFRICAN":
+        from .styles.african import djenne
+        if djenne.finish(params):
+            key = region[:2] if region[:2] in ("rw", "bk") and region[2:3].isdigit() else region
+            if key in DJENNE:
+                return DJENNE[key]
     if style == "AFRICAN" and region[:2] in ("rw", "bk") and region[2:3].isdigit():
         if region.startswith("rw"):
             return AFRICAN_WALLS["rw"]
@@ -117,6 +135,18 @@ def group(model, which):
     if which == "ROOFS":
         return [n for n in names if n in ROOFS]
     return [n for n in names if n in WALLS or (n[:2] in ("rw", "bk") and n[2:3].isdigit())]
+
+
+def lora_args(lora=None, strength=None, extra=None):
+    """The keywords of `repaint` for a LoRA of ComfyUI's models/loras and words added to every
+    prompt, as the export scripts take them (--ai-lora, --ai-lora-strength, --ai-extra): the LoRA's
+    trigger word joins the words, as the AI panel does."""
+    out = {"extra": (extra or "").strip()}
+    if lora:
+        from .texmaker import TRIGGER
+        out["workflow_args"] = {"lora": lora, "lora_strength": float(strength if strength not in (None, "") else 0.8)}
+        out["extra"] = ", ".join(w for w in (TRIGGER, out["extra"]) if w)
+    return out
 
 
 def prompt_for(material, extra=""):

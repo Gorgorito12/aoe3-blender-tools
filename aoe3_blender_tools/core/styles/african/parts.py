@@ -82,7 +82,7 @@ def declare(b, layout, medium):
             facades[wall] = {"kind": "round", "bays": [du] if du is not None else [], "door": du,
                              "storeys": 1, "door_w": piece.get("door_w", 1.0), "door_h": piece.get("door_h", 1.9),
                              "tops": [piece.get("door_h", 1.9)], "bands": piece.get("bands", True),
-                             "sahel": piece.get("sahel", False)}
+                             "sahel": piece.get("sahel", False), "djenne": piece.get("djenne", False)}
         elif k == "block":
             w, d, h = piece["x1"] - piece["x0"], piece["y1"] - piece["y0"], piece["h"]
             for face, length in (("front", w), ("back", w), ("left", d), ("right", d)):
@@ -98,6 +98,8 @@ def declare(b, layout, medium):
                                  "gate": bool(door and piece.get("gate")), "foot": piece.get("foot", False),
                                  "shutters": piece.get("shutters", False),
                                  "band": piece.get("band", True), "art": piece.get("art", {}).get(face),
+                                 "djenne": piece.get("djenne", False), "z": piece.get("z", 0.0),
+                                 "beam_rows": piece.get("beam_rows", ()),
                                  "closed": {},
                                  "openings": _block_openings(bays, length / 2 if door else None, h,
                                                              piece.get("gate", (1.1, 2.1)), piece.get("sill"))}
@@ -106,8 +108,10 @@ def declare(b, layout, medium):
                     if closed:
                         facades[name]["closed"][u - ww / 2] = closed
             want("roof_flat", max(w, d) + 0.2, min(w, d) + 0.2)
-            want("trim", 2.0, h + 1.2)
-            if piece.get("parapet"):
+            want("rib" if piece.get("djenne") else "trim", 2.0, h + 1.2)
+            if piece.get("djenne"):
+                want("palm", 1.2, 1.6)                     # the toron: split palm wood
+            if piece.get("parapet") and not (piece.get("djenne") and piece.get("coping")):
                 want("parapet", max(w, d) + 0.4, piece["parapet"] + 0.4)
             if piece.get("painted"):
                 want("step", 2.0, 1.0)
@@ -173,6 +177,9 @@ def declare(b, layout, medium):
                 want(name, w, h)
         elif k == "plinth":
             want("plinth", max(piece["x1"] - piece["x0"], piece["y1"] - piece["y0"]) + 0.2, 1.0)
+    for piece in layout:                                   # a round wall's toron are palm wood too
+        if piece["kind"] in ("hut", "granary", "tower") and piece.get("djenne") and piece.get("beams"):
+            want("palm", 1.2, 1.6)
     want("wood", 2.0, 3.0)
     for name in sorted(need, key=lambda n: (not n.startswith(("rw", "bk")), n)):
         b.region(name, *need[name])
@@ -195,7 +202,9 @@ PROPS = {"balcony": [("slab", 6.0, 1.2), ("rail", 6.0, 1.0)], "basket": [("thatc
          "cart": [("planks", 3.2, 1.6), ("wood", 2.0, 3.0)], "chest": [("chest", 1.6, 1.2), ("iron", 0.8, 0.8)],
          "rock": [("stone", 4.0, 1.2)], "tent": [("canvas", 3.0, 2.4), ("wood", 2.0, 3.0)],
          "heap": [("fruit", 1.6, 1.2)], "ruin": [("char", 4.0, 2.0), ("wood", 2.0, 3.0)],
-         "pole": [("wood", 2.0, 3.0), ("cloth", 1.6, 1.2)]}
+         "pole": [("wood", 2.0, 3.0), ("cloth", 1.6, 1.2)],
+         "cannon": [("iron", 0.8, 0.8), ("wood", 2.0, 3.0)], "lifidi": [("cloth", 1.6, 1.2), ("wood", 2.0, 3.0)],
+         "ladder": [("palm", 1.2, 1.6), ("wood", 2.0, 3.0)]}
 
 
 def _bays(length, windows, door):
@@ -512,7 +521,8 @@ def _round(b, p, medium):
         m = p.get("beam_n", 12)
         for f in p["beams"]:                               # each row at a share of the wall's height
             for j in range(m):
-                _radial_beam(b, x, y, 2 * math.pi * (j + 0.5) / m, inner, r + 0.35, z0 + f * p["wall_h"], 0.14)
+                _radial_beam(b, x, y, 2 * math.pi * (j + 0.5) / m, inner, r + 0.35, z0 + f * p["wall_h"], 0.14,
+                             "palm" if p.get("djenne") else "wood")
     if medium and p.get("door"):                           # the door's frame: jambs and lintel
         dx, dy = x, y - r
         w = p.get("door_w", 1.0) / 2
@@ -590,7 +600,11 @@ def _block(b, p, medium):
                           runs_on=p.get("runs_on", ()))
     if medium and p.get("sahel", True) and roof != "thatch" and not p.get("plain"):
         _buttresses(b, p, z0, h, top)
-    if p.get("pinnacles"):                                 # finials on the parapet's corners
+    cap = "coping" if p.get("djenne") else "parapet"       # a Djenne parapet's cones are its own worn earth
+    if p.get("pinnacles") == "cones":                      # Djenne: earth cones all along the parapet
+        for px, py in _cone_spots(x0, x1, y0, y1, open_sides, medium):
+            b.cone_roof(px, py, 0.17, top - 0.05, 0.55, 5 if medium else 4, cap, overhang=0.0)
+    elif p.get("pinnacles"):                               # finials on the parapet's corners
         i = 0.14
         spots = [(x0 + i, y0 + i), (x1 - i, y0 + i), (x1 - i, y1 - i), (x0 + i, y1 - i)]
         if medium and x1 - x0 > 5.0:                       # and halfway along a long side
@@ -601,31 +615,62 @@ def _block(b, p, medium):
                 continue
             step = medium and p.get("pinnacles") == "stepped"
             if step:                                       # two steps, then the point
-                b.box(px - 0.2, px + 0.2, py - 0.2, py + 0.2, top, top + 0.2, "parapet", "parapet")
-                b.box(px - 0.13, px + 0.13, py - 0.13, py + 0.13, top + 0.2, top + 0.42, "parapet", "parapet", skip=("top",))
-                b.pyramid(px - 0.13, px + 0.13, py - 0.13, py + 0.13, top + 0.42, 0.3, "parapet")
+                b.box(px - 0.2, px + 0.2, py - 0.2, py + 0.2, top, top + 0.2, cap, cap)
+                b.box(px - 0.13, px + 0.13, py - 0.13, py + 0.13, top + 0.2, top + 0.42, cap, cap, skip=("top",))
+                b.pyramid(px - 0.13, px + 0.13, py - 0.13, py + 0.13, top + 0.42, 0.3, cap)
             else:
-                b.box(px - 0.17, px + 0.17, py - 0.17, py + 0.17, top, top + 0.3, "parapet", "parapet", skip=("top",))
-                b.pyramid(px - 0.17, px + 0.17, py - 0.17, py + 0.17, top + 0.3, 0.32, "parapet")
+                b.box(px - 0.17, px + 0.17, py - 0.17, py + 0.17, top, top + 0.3, cap, cap, skip=("top",))
+                b.pyramid(px - 0.17, px + 0.17, py - 0.17, py + 0.17, top + 0.3, 0.32, cap)
     if medium and p.get("beams"):                          # toron: beam ends on the front and sides
-        zb = z0 + h - 0.45
-        # along the sides they stop short of a joined end
-        # (off the pilasters' spacing, or a beam's side falls flush on a pilaster's)
-        a0, a1 = y0 + (1.2 if "-y" in open_sides else 0.337), y1 - (1.2 if "+y" in open_sides else 0.3)
-        c0, c1 = x0 + (1.2 if "-x" in open_sides else 0.337), x1 - (1.2 if "+x" in open_sides else 0.3)
-        gap = p.get("beam_gap", 0.9)
-        ln, sz = (0.2, 0.15) if p.get("painted") else (0.35, 0.14)
-        beam = "frame" if p.get("painted") else "wood"
-        sides = p["beams"] if isinstance(p["beams"], tuple) else ("-y", "-x", "+x")
-        if "-y" not in open_sides and "-y" in sides:
-            b.beam_ends("-y", y0, c0, c1, zb, max(3, int((c1 - c0) / gap)), ln, beam, size=sz)
-        if "-x" not in open_sides and "-x" in sides:
-            b.beam_ends("-x", x0, a0, a1, zb, max(2, int((a1 - a0) / gap)), ln, beam, size=sz)
-        if "+x" not in open_sides and "+x" in sides:
-            b.beam_ends("+x", x1, a0, a1, zb, max(2, int((a1 - a0) / gap)), ln, beam, size=sz)
-        if "+y" in sides:                                  # few at the back, where they cost and show least
-            b.beam_ends("+y", y1, c0, c1, zb, max(2, int((c1 - c0) / (gap * 1.7))), ln, "wood", size=sz)
+        for zb in [z0 + h * f for f in p.get("beam_rows", ())] or [z0 + h - 0.45]:   # one row, or several
+            # along the sides they stop short of a joined end
+            # (off the pilasters' spacing, or a beam's side falls flush on a pilaster's)
+            a0, a1 = y0 + (1.2 if "-y" in open_sides else 0.337), y1 - (1.2 if "+y" in open_sides else 0.3)
+            c0, c1 = x0 + (1.2 if "-x" in open_sides else 0.337), x1 - (1.2 if "+x" in open_sides else 0.3)
+            gap = p.get("beam_gap", 0.9)
+            ln, sz = (0.2, 0.15) if p.get("painted") else (0.35, 0.14)
+            beam = "frame" if p.get("painted") else ("palm" if p.get("djenne") else "wood")
+
+            def count(span, step, least):
+                """How many beams on a span: at least `least`; a Djenne wall puts only what fits
+                (none on a stub left beside a joined end), 0.35 m apart at the least."""
+                if not p.get("djenne"):
+                    return max(least, int(span / step))
+                return 0 if span < 0.3 else max(1, min(int(span / step) + 1, int(span / 0.35)))
+            sides = p["beams"] if isinstance(p["beams"], tuple) else ("-y", "-x", "+x")
+            if "-y" not in open_sides and "-y" in sides and p.get("djenne") and p.get("door") is True:
+                cx = (x0 + x1) / 2                         # Djenne: the door and the cloth over it stay clear
+                for a, c in ((c0, cx - 1.05), (cx + 1.05, c1)):
+                    if c - a > 0.3:
+                        b.beam_ends("-y", y0, a, c, zb, max(1, int((c - a) / gap) + 1), ln, beam, size=sz)
+            elif "-y" not in open_sides and "-y" in sides:
+                b.beam_ends("-y", y0, c0, c1, zb, count(c1 - c0, gap, 3), ln, beam, size=sz)
+            if "-x" not in open_sides and "-x" in sides:
+                b.beam_ends("-x", x0, a0, a1, zb, count(a1 - a0, gap, 2), ln, beam, size=sz)
+            if "+x" not in open_sides and "+x" in sides:
+                b.beam_ends("+x", x1, a0, a1, zb, count(a1 - a0, gap, 2), ln, beam, size=sz)
+            if "+y" in sides:                                  # few at the back, where they cost and show least
+                b.beam_ends("+y", y1, c0, c1, zb, count(c1 - c0, gap * 1.7, 2), ln, beam if p.get("djenne") else "wood",
+                            size=sz)
     return top
+
+
+def _cone_spots(x0, x1, y0, y1, open_sides, medium):
+    """Where a Djenne parapet's cones stand: its corners and every 1.3 m along each side that is
+    not joined (every 2.6 m at low detail)."""
+    i, step = 0.16, 1.6 if medium else 3.2
+    out = []
+    for side, (ax, ay), (bx, by) in (("-y", (x0 + i, y0 + i), (x1 - i, y0 + i)), ("+y", (x0 + i, y1 - i), (x1 - i, y1 - i)),
+                                     ("-x", (x0 + i, y0 + i), (x0 + i, y1 - i)), ("+x", (x1 - i, y0 + i), (x1 - i, y1 - i))):
+        if side in open_sides:
+            continue
+        n = max(1, int(round(math.hypot(bx - ax, by - ay) / step)))
+        for k in range(n + 1):
+            pt = (round(ax + (bx - ax) * k / n, 4), round(ay + (by - ay) * k / n, 4))
+            near = {"-y": pt[1] < y0 + 1.0, "+y": pt[1] > y1 - 1.0, "-x": pt[0] < x0 + 1.0, "+x": pt[0] > x1 - 1.0}
+            if pt not in out and not any(near[s] for s in open_sides):
+                out.append(pt)
+    return out
 
 
 def _buttresses(b, p, z0, h, top):
@@ -634,11 +679,13 @@ def _buttresses(b, p, z0, h, top):
     x0, x1, y0, y1 = p["x0"], p["x1"], p["y0"], p["y1"]
     zt = max(top, z0 + h) + 0.35
     out = 0.18
+    rib = "rib" if p.get("djenne") else "trim"             # a Djenne wall's pilasters have their own skin
+    cone = p.get("djenne")                                  # and end in earth cones, not pyramids
     joined = tuple(SIDE_OF[j] for j in p.get("joined", ()))
     near = {"-y": ("-x", "+x"), "+y": ("-x", "+x"), "-x": ("-y", "+y"), "+x": ("-y", "+y")}
     for side, a0, a1 in (("-y", x0, x1), ("+y", x0, x1), ("-x", y0, y1), ("+x", y0, y1)):
-        if side in joined:
-            continue
+        if side in joined or side not in p.get("ribs", ("-y", "+y", "-x", "+x")):
+            continue                                        # `ribs`: the sides that have them (a wing may hide the rest)
         lo, hi = near[side]                                 # keep clear of a joined end
         a0, a1 = a0 + (1.2 if lo in joined else 0.0), a1 - (1.2 if hi in joined else 0.0)
         L = a1 - a0
@@ -651,14 +698,20 @@ def _buttresses(b, p, z0, h, top):
                 if p.get("door") is True and side == "-y" and abs(a - (x0 + x1) / 2) < 0.9:
                     continue
                 ya, yb = (y0 - out, y0) if side == "-y" else (y1, y1 + out)
-                b.box(a - 0.15, a + 0.15, ya, yb, z0, zt, "trim", "trim",
+                b.box(a - 0.15, a + 0.15, ya, yb, z0, zt, rib, rib,
                       skip=(("+y",) if side == "-y" else ("-y",)) + ("top",))
-                b.pyramid(a - 0.15, a + 0.15, ya, yb, zt, 0.35, "trim")
+                if cone:
+                    b.cone_roof(a, (ya + yb) / 2, 0.17, zt, 0.6, 5, rib, overhang=0.0)
+                else:
+                    b.pyramid(a - 0.15, a + 0.15, ya, yb, zt, 0.35, rib)
             else:
                 xa, xb = (x0 - out, x0) if side == "-x" else (x1, x1 + out)
-                b.box(xa, xb, a - 0.15, a + 0.15, z0, zt, "trim", "trim",
+                b.box(xa, xb, a - 0.15, a + 0.15, z0, zt, rib, rib,
                       skip=(("+x",) if side == "-x" else ("-x",)) + ("top",))
-                b.pyramid(xa, xb, a - 0.15, a + 0.15, zt, 0.35, "trim")
+                if cone:
+                    b.cone_roof((xa + xb) / 2, a, 0.17, zt, 0.6, 5, rib, overhang=0.0)
+                else:
+                    b.pyramid(xa, xb, a - 0.15, a + 0.15, zt, 0.35, rib)
     zs = z0 + h + 0.1                                       # waterspouts on the front and back
     for yy, (ya, yb) in ((y0, (y0 - 0.6, y0)), (y1, (y1, y1 + 0.6))):
         if ("-y" if yy == y0 else "+y") in joined:
@@ -865,7 +918,7 @@ def _prop(b, p):
         b.disc(x, y, 0.3, h, 8, "iron")
         b.box(x - 0.17, x + 0.17, y - 0.6, y - 0.44, 0.0, 0.34, "iron", "iron")
     elif k == "forge":                                     # a hearth with a tapering chimney
-        b.box(x - 0.8, x + 0.8, y - 0.6, y + 0.6, 0.0, 0.62, "trim", "trim")
+        b.box(x - 0.8, x + 0.8, y - 0.6, y + 0.6, 0.0, 0.62, "trim", "trim", skip=("bottom",))
         b.frustum(x, y + 0.1, 0.6, 0.24, 0.62, p.get("h", 5.0), 4, "trim", phase=math.pi / 4)
         b.disc(x, y + 0.1, 0.24, p.get("h", 5.0), 4, "iron", phase=math.pi / 4)
         b.box(x - 0.42, x + 0.42, y - 0.66, y - 0.6, 0.2, 0.56, "ember", "ember", skip=("+y",))
@@ -921,6 +974,43 @@ def _prop(b, p):
             fx = x - 0.56 + 0.28 * j
             b.face_out([(fx - 0.06, y - 0.03, 1.38), (fx + 0.06, y - 0.03, 1.38), (fx, y - 0.03, 0.92)], "hide",
                        (0.0, -1.0, 0.0))
+    elif k == "cannon":                                    # a gun bought from the north, on a field carriage
+        d = p.get("along", 1.0)                            # the muzzle looks +x (1) or -x (-1)
+        for sy in (-1, 1):                                 # its two wheels and the carriage's cheeks
+            b.log(x - 0.15 * d, y + sy * 0.36, x - 0.15 * d, y + sy * 0.44, 0.42, 0.42, 8, "wood")
+            b.box(x - 0.75, x + 0.35, y + sy * 0.2 - 0.05, y + sy * 0.2 + 0.05, 0.12, 0.52, "wood", "wood")
+        b.box(x - 0.95 if d > 0 else x + 0.55, x - 0.55 if d > 0 else x + 0.95, y - 0.12, y + 0.12, 0.0, 0.2,
+              "wood", "wood")                              # the trail on the ground
+        x0, x1 = (x - 0.55, x + 0.75) if d > 0 else (x + 0.55, x - 0.75)
+        b.log(x0, y, x1, y, 0.66, 0.11, 8, "iron")         # the barrel, and its breech
+        b.log(x0 - 0.1 * d, y, x0 + 0.12 * d, y, 0.66, 0.15, 8, "iron")
+    elif k == "lifidi":                                    # quilted horse armour of the Hausa cavalry, airing
+        for px in (x - 0.6, x + 0.6):
+            b.box(px - 0.04, px + 0.04, y - 0.04, y + 0.04, 0.0, 1.45, "wood", "wood")
+        b.log(x - 0.65, y, x + 0.65, y, 1.4, 0.035, 4, "wood")
+        for sy in (-1, 1):                                 # it hangs down both sides of the bar
+            b.face_out([(x - 0.5, y + sy * 0.32, 0.35), (x + 0.5, y + sy * 0.32, 0.35), (x + 0.52, y + sy * 0.04, 1.38),
+                        (x - 0.52, y + sy * 0.04, 1.38)], "cloth", (0.0, float(sy), 0.6))
+    elif k == "ladder":                                    # a palm-wood ladder leaning on a wall
+        h, (tx, ty), w = p.get("h", 2.0), p.get("to", (0.0, 0.6)), p.get("w", 0.42)
+        L = math.hypot(tx, ty) or 1.0
+        ax, ay = -ty / L * w / 2, tx / L * w / 2              # half across the ladder
+        ex, ey = -ty / L * 0.035, tx / L * 0.035              # half a rail's width
+        nx, ny = -tx / L, -ty / L                            # it faces away from the wall
+        for s in (-1, 1):                                    # the two rails: a front and an outer side each
+            bx, by = x + s * ax, y + s * ay
+            q = [(bx - ex, by - ey, 0.0), (bx + ex, by + ey, 0.0), (bx + tx + ex, by + ty + ey, h),
+                 (bx + tx - ex, by + ty - ey, h)]
+            b.face_out(q, "palm", (nx, ny, 0.3))
+            ox, oy = bx + s * ex, by + s * ey                # the outer edge, and 5 cm back toward the wall
+            side = [(ox, oy, 0.0), (ox + tx, oy + ty, h), (ox + tx - nx * 0.05, oy + ty - ny * 0.05, h),
+                    (ox - nx * 0.05, oy - ny * 0.05, 0.0)]
+            b.face_out(side, "palm", (s * ax, s * ay, 0.0))
+        n = max(2, int(h / 0.38))
+        for j in range(1, n):                                # the rungs
+            f = j / n
+            cx, cy = x + tx * f, y + ty * f
+            b.log(cx - ax, cy - ay, cx + ax, cy + ay, h * f, 0.025, 4, "wood")
     elif k == "wheel":                                     # a cartwheel waiting for its axle
         b.log(x, y - 0.05, x, y + 0.05, p.get("r", 0.42), p.get("r", 0.42), 8, "wood")
     elif k == "balcony":                                     # a gallery on posts in front of a wall at -Y

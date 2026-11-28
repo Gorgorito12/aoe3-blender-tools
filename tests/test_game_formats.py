@@ -508,6 +508,52 @@ class DdtTest(unittest.TestCase):
         for c in (1, 2, 3):
             self.assertLess(abs(back[..., c] - nm[..., c]).mean(), 3.0)
 
+    def test_exact_mip_counts_and_a_relief_made_bump(self):
+        img = np.full((64, 64, 4), 160, np.uint8)
+        self.assertEqual(ddt.read_header(ddt.write(img, ddt.DXT3, mips=7)).mips, 5)       # 64 px: 5 to 4 px
+        self.assertEqual(ddt.read_header(ddt.write(np.full((512, 512, 4), 9, np.uint8), ddt.DXT3, mips=7)).mips, 7)
+        self.assertEqual(ddt.read_header(ddt.write(img, ddt.DXT3, mips=True)).mips, 5)
+        self.assertEqual(ddt.read_header(ddt.write(img, ddt.DXT3, mips=False)).mips, 1)
+        # a relief on a flat picture: its edge leans, the flat picture alone does not
+        height = np.zeros((64, 64), np.float32)
+        height[:, 32:] = 1.0                                  # one texel higher on the right
+        flat = ddt.normal_from_texture(img, blur=0)
+        raised = ddt.normal_from_texture(img, blur=0, height=height)
+        self.assertTrue((abs(flat[..., 3].astype(int) - 128) <= 1).all())
+        self.assertLess(raised[10, 31, 3], 100)               # the step's edge leans toward -X
+        self.assertTrue((abs(raised[10, 5:25, 3].astype(int) - 128) <= 1).all())
+        half = ddt.height_at(height, (32, 32))
+        self.assertEqual(half.shape, (32, 32))
+        self.assertAlmostEqual(float(half.max()), 0.5)        # texels of the smaller texture
+        with self.assertRaises(ddt.DdtError):
+            ddt.normal_from_texture(img, height=np.zeros((8, 8), np.float32))
+
+    def test_bundle_writes_the_leads_tuples_and_uses_the_relief(self):
+        P, N, UV, T = box()
+        tex = np.full((128, 128, 4), 200, np.uint8)
+        height = np.zeros((128, 128), np.float32)
+        height[40:80, 40:80] = 2.0
+        with tempfile.TemporaryDirectory() as tmp:
+            base = os.path.join(tmp, "art", "mod", "buildings", "box", "box")
+            bundle.write(tmp, name="Box", prefix="mod", positions=P, normals=N, uvs=UV, triangles=T,
+                         texture_rgba=tex, footprint_m=(4, 3))
+            with open(base + ".ddt", "rb") as f:
+                self.assertEqual(list(f.read()[4:8]), [0, 1, 8, 6])          # 128 px: 6 levels to 4 px
+            with open(base + "_b.ddt", "rb") as f:
+                plain = f.read()
+            self.assertEqual(list(plain[4:8]), [6, 0, 9, 6])
+            bundle.write(tmp, name="Box", prefix="mod", positions=P, normals=N, uvs=UV, triangles=T,
+                         texture_rgba=tex, footprint_m=(4, 3), height=height)
+            with open(base + "_b.ddt", "rb") as f:
+                raised = f.read()
+            self.assertNotEqual(plain, raised)
+            nm = ddt.decode(raised, 0).astype(int)
+            self.assertLess(nm[60, 38:42, 3].mean(), 110)                    # the square's left edge
+            bundle.write(tmp, name="Box", prefix="mod", positions=P, normals=N, uvs=UV, triangles=T,
+                         texture_rgba=tex, footprint_m=(4, 3), height=np.zeros((8, 8)))   # another size: ignored
+            with open(base + "_b.ddt", "rb") as f:
+                self.assertEqual(f.read(), plain)
+
     def test_bundle_variants(self):
         P, N, UV, T = box()
         tex = np.full((32, 32, 4), 255, np.uint8)

@@ -31,7 +31,10 @@ TOLERANCE = 0.15
 TOP = {"PLOT": 1024}
 # the Sahel palace keeps the level of the real forts it stands for (1,458 to 1,719), not of its class:
 # its windows are painted and its detail is in the texture (the owner's choice)
-EXACT = {("PALACE", "SAHEL"): (1600, 1450, 1720)}
+# the Djenne armoury: its gate tower, two wings and cones along every parapet cost more than its
+# class's target, and its yard still holds the smithy, the racks and the gun; held under the class's
+# 90th percentile (2,221 for 8x8), the owner's choice (2026-11-27)
+EXACT = {("PALACE", "SAHEL"): (1600, 1450, 1720), ("ARMORY", "SAHEL"): (2000, 1800, 2200)}
 # the model is a little larger than its obstruction, as the stock ones are (measured per class:
 # obstruction / half side 0.72 for 2 units, 0.82 for 3, 0.9 for 4 and more)
 RATIO = {2.0: 0.72, 3.0: 0.82}
@@ -41,7 +44,9 @@ RATIO = {2.0: 0.72, 3.0: 0.82}
 # stands 6 to 11 units high with doors to match (measured on the stock and the mod's models), against
 # 3 of a plan drawn at human size. Layouts are drawn at human size and all of it is scaled up.
 SCALE = 1.7
-TEXTURE_BUDGET = {("PALACE", "SAHEL"): (1024, 512)}   # painted at 2048 and halved: largest side, of the texture and its bump
+# largest side, of the texture and its bump; the texture is painted at twice its size and halved,
+# and with a budget the damaged model shares the main texture. The Hausa armoury: 2.2 MB, was 5.25
+TEXTURE_BUDGET = {("PALACE", "SAHEL"): (1024, 512), ("ARMORY", "SAHEL"): (1024, 512)}
 RUBBLES = {("PALACE", "SAHEL"): "BuildingRubble6x6"}   # as the stock fort of its size, not its class's 4x4
 OBSTRUCTIONS = {("PALACE", "SAHEL"): (6.5, 6.0)}   # leaves out of it what the stock fort leaves out of its own
 SCALES = {("PALACE", "SAHEL"): 1.95}   # it stood at the lowest height of its class (median 11.1 units)

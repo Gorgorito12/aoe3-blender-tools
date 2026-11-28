@@ -7,7 +7,7 @@ import { api, clear, fmt, h, storeGet, storeSet, t, toast } from './core.js';
 // ctx: params() -> the building's parameters; show(url) -> put a texture on the model;
 // use(path, key) -> the export takes this texture; restore() -> back to the painted texture
 export function aiCard(app, ctx) {
-  const o = storeGet('ai', { strength: 0.45, seed: 1, blend: 1, prompt: '', guard: true });
+  const o = storeGet('ai', { strength: 0.45, seed: 1, blend: 1, prompt: '', guard: true, lora: '', loraStrength: 0.8 });
   const card = h('details', { class: 'card stack' });
   const body = h('div', { class: 'stack' });
   card.append(h('summary', {}, h('strong', { text: t('a.title') })), body);
@@ -54,6 +54,10 @@ export function aiCard(app, ctx) {
         t('a.blend'), num('blend', 0, 1, 0.1)),
       h('div', { class: 'field' }, h('label', { class: 'small', text: t('a.prompt') }), h('div', { class: 'ctl' },
         h('input', { type: 'text', value: o.prompt, placeholder: t('a.prompt.ph'), onchange: e => { o.prompt = e.target.value; storeSet('ai', o); } }))),
+      h('div', { class: 'field', title: t('a.lora.help') }, h('label', { class: 'small', text: t('a.lora') }), h('div', { class: 'ctl row' },
+        h('input', { type: 'text', value: o.lora || '', placeholder: 'aoe3bt_buildings.safetensors', class: 'grow',
+          onchange: e => { o.lora = e.target.value.trim(); storeSet('ai', o); } }),
+        num('loraStrength', 0, 1.5, 0.05))),
       h('label', { class: 'row small', title: t('a.guard.help') }, h('input', { type: 'checkbox', checked: o.guard,
         onchange: e => { o.guard = e.target.checked; storeSet('ai', o); } }), t('a.guard')),
       h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary', text: t('a.start'), onclick: () => start(status) })),
@@ -66,7 +70,7 @@ export function aiCard(app, ctx) {
     key = JSON.stringify(ctx.params());
     try {
       const r = await api('/api/ai/start', { params: ctx.params(), regions: [...chosen], strength: o.strength, seed: o.seed,
-        blend: o.blend, prompt: o.prompt, guard: o.guard });
+        blend: o.blend, prompt: o.prompt, guard: o.guard, lora: o.lora || '', lora_strength: o.loraStrength ?? 0.8 });
       session = r.session;
     } catch (e) { status.append(h('p', { class: 'bad small', text: e.message })); return; }
     const bar = h('i', { style: { width: '0%' } });

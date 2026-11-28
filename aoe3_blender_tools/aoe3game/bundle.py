@@ -66,7 +66,7 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
           template="House", v_flip=True, player_colour=None, chimney_bone=None, profile=None,
           texture_format="DXT3", variants=None, death_animation=None, relief=True, obstruction=None,
           ground_rgba=None, collision_boxes=None, rubble=None, texture_max=None, bump_max=None,
-          kind="BUILDING", folder=None):
+          kind="BUILDING", folder=None, height=None, levels=7):
     """Writes the bundle into `out` and returns the bundle description.
 
     variants: {"lowpoly": {...}, "damaged": {...}}, each with positions, normals, uvs and
@@ -86,6 +86,10 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
 
     relief: also write a bump map for each texture (`<texture>_b.ddt`, DXT5 as the game's own),
     made from the texture's brightness; without it the models use the stock flat normal map.
+    height: the relief the painter left (`kit.Model.height`, texels of the main texture): the
+    main and damaged textures' bump maps are made from it (the low-poly one has its own atlas).
+    levels: the mip levels of each texture and bump map, 7 as the game's own buildings have them
+    most often ((0,1,8,7) and (6,0,9,7), measured on a WoL copy; a mod's art lead asks for them).
 
     player_colour: None decides from the texture: an alpha below 255 anywhere means the
     player-colour shader (the low alpha shows the owner's colour). texture_format: "DXT3" (the
@@ -119,20 +123,24 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
         with open(os.path.join(art_dir, base + ".gr2"), "wb") as f:
             f.write(model)
 
-    def texture_file(base, pixels):
+    def texture_file(base, pixels, relief_map=None):
         """Writes the texture and, with `relief`, its bump map; returns both stored names.
         `texture_max`, `bump_max`: the largest side of each, reached by halving the painting."""
         pixels = np.asarray(pixels)
         with open(os.path.join(art_dir, base + ".ddt"), "wb") as f:
-            f.write(ddt.write(ddt.fitted(pixels, texture_max) if texture_max else pixels, fmt, alpha=1, usage=0, mips=True))
+            f.write(ddt.write(ddt.fitted(pixels, texture_max) if texture_max else pixels, fmt, alpha=1, usage=0, mips=levels))
         bump = FLAT_BUMP_TEXTURE
         if relief:
+            small = ddt.fitted(pixels, bump_max) if bump_max else pixels
+            hm = ddt.height_at(relief_map, small.shape) if relief_map is not None else None
             with open(os.path.join(art_dir, base + "_b.ddt"), "wb") as f:
-                f.write(ddt.write_normal_map(ddt.normal_from_texture(ddt.fitted(pixels, bump_max) if bump_max else pixels)))
+                f.write(ddt.write_normal_map(ddt.normal_from_texture(small, height=hm), mips=levels))
             bump = f"C:\\aoe3bt\\art\\{rel_dir}\\{base}_b.ddt"
         return f"C:\\aoe3bt\\art\\{rel_dir}\\{base}.ddt", bump
 
-    main_textures = texture_file(low, rgba)
+    if height is not None and tuple(np.shape(height)[:2]) != rgba.shape[:2]:
+        height = None                                     # a texture of another size: its own relief is unknown
+    main_textures = texture_file(low, rgba, height)
     model_file(low, {"positions": positions, "normals": normals, "uvs": uvs,
                      "triangles": triangles}, main_textures)
     refs = {}
@@ -141,7 +149,8 @@ def write(out, *, name, prefix, positions, normals, uvs, triangles, texture_rgba
         if not v:
             continue
         own = v.get("texture_rgba")
-        textures = texture_file(low + suffix, own) if own is not None else main_textures
+        same = variant == "damaged" and own is not None and np.shape(own)[:2] == rgba.shape[:2]
+        textures = texture_file(low + suffix, own, height if same else None) if own is not None else main_textures
         model_file(low + suffix, v, textures)
         refs[variant] = f"{rel_dir}\\{low}{suffix}"
     if death_animation:

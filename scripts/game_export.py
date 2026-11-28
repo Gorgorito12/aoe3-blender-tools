@@ -9,6 +9,7 @@ fields and strings) for `tools/game_deploy.py`.
                                   [--no-v-flip] [--player-colour]
                                   [--texture DXT3|DXT1|BGRA] [--no-icons] [--no-lowpoly] [--no-damaged]
                                   [--materials] [--ai <strength>] [--ai-seed N] [--ai-url URL]
+                                  [--ai-lora <file>] [--ai-lora-strength 0.8] [--ai-extra "words"]
                                   [--texture-png <file>]  (this texture in place of the painted one)
                                   [--profile <profile.json> | --no-profile] [--proto <protoy.xml>]
     python scripts/game_export.py --out DIR --set GOODS|CAMP [--prefix mod] [--texture-size 256]
@@ -108,7 +109,8 @@ def main():
         from aoe3_blender_tools.core import airepaint, comfy
         repainted, report = airepaint.repaint(blender_io.texture_rgba(obj), model,
                                         comfy.Client(opt("--ai-url", comfy.DEFAULT_URL), timeout=120),
-                                        strength=float(opt("--ai", "0.45")), seed=int(opt("--ai-seed", "1")))
+                                        strength=float(opt("--ai", "0.45")), seed=int(opt("--ai-seed", "1")),
+                                        **airepaint.lora_args(opt("--ai-lora"), opt("--ai-lora-strength"), opt("--ai-extra")))
         blender_io.set_texture_rgba(obj, repainted)
         print("AI repaint:", ", ".join(r["region"] for r in report if "skipped" not in r))
     if opt("--texture-png"):        # a texture made for this building elsewhere (the studio's AI repaint)
@@ -151,7 +153,8 @@ def main():
         display_name=opt("--display"), template=opt("--template", "House"),
         kind=kind, folder=folder,
         v_flip="--no-v-flip" not in argv, texture_format=opt("--texture", "DXT3"), obstruction=obstruction,
-        ground_rgba=ground, collision_boxes=building.build(p).boxes, rubble=building.rubble(p), texture_max=texture_max, bump_max=bump_max, profile=None if "--no-profile" in argv else calibration.load(opt("--profile")))
+        ground_rgba=ground, collision_boxes=building.build(p).boxes, rubble=building.rubble(p), texture_max=texture_max, bump_max=bump_max, profile=None if "--no-profile" in argv else calibration.load(opt("--profile")),
+        height=model.height)
     write_sheet(out, p, desc, len(positions), len(tris))
     print(f"{p.name}: {len(tris)} triangles, {len(positions)} vertices; "
           f"obstruction {desc['size']['radius']}, decal {desc['size']['decal']}, "

@@ -72,6 +72,17 @@ def mip_chain(rgba, smallest=4, bump=False):
     return levels
 
 
+def _levels(a, mips, bump=False):
+    """The levels to write: `mips` False the top one only, True a full chain to 4 px, a number at
+    most that many (a mod's art lead may ask for exactly 7: buildings (0,1,8,7) and (6,0,9,7))."""
+    if not mips:
+        return [a]
+    chain = mip_chain(a, bump=bump)
+    if isinstance(mips, bool):
+        return chain
+    return chain[:max(1, int(mips))]
+
+
 def chain_length(width, height, smallest=4):
     """The number of levels of a full chain: halvings until the short side would drop below
     `smallest` (the game's own textures stop at 4 px, some at 8: 512 x 512 -> 8 or 7 levels)."""
@@ -167,7 +178,7 @@ def write_bgra(rgba, *, alpha=1, usage=0, mips=True):
         a = np.concatenate([a, np.full(a.shape[:2] + (1,), 255, a.dtype)], axis=2)
     a = a.astype(np.uint8)
     h, w = a.shape[:2]
-    levels = mip_chain(a) if mips else [a]
+    levels = _levels(a, mips)
     blobs = [np.ascontiguousarray(lv[:, :, [2, 1, 0, 3]]).tobytes() for lv in levels]
     out = bytearray(MAGIC + bytes([usage, alpha, BGRA, len(blobs)]) + struct.pack("<II", w, h))
     off = 16 + 8 * len(blobs)
@@ -453,7 +464,7 @@ def write_dxt(rgba, fmt=DXT3, *, alpha=1, usage=0, mips=True, refine=False):
         a = np.concatenate([a, np.full(a.shape[:2] + (1,), 255, a.dtype)], axis=2)
     a = a.astype(np.uint8)
     h, w = a.shape[:2]
-    levels = mip_chain(a) if mips else [a]
+    levels = _levels(a, mips)
     blobs = [encode_level(lv, fmt, refine) for lv in levels]
     return pack(usage, alpha if fmt in (DXT3, DXT5) else 0, fmt, w, h, blobs)
 
@@ -514,6 +525,17 @@ def compress_dxt5(rgba, refine=False):
                           axis=1).tobytes()
 
 
+def height_at(height, shape):
+    """A relief layer (texels of its own size) brought to `shape` by area average, its values in
+    texels of the new size, as `fitted` brings a texture to the size the game shows."""
+    np = _np()
+    hm = np.asarray(height, np.float32)
+    if hm.shape[:2] == tuple(shape[:2]):
+        return hm
+    k = shape[0] / hm.shape[0]
+    return area_resize(hm[:, :, None], shape[0], shape[1])[:, :, 0] * k
+
+
 def write_normal_map(rgba, *, mips=False):
     """Bytes of a bump texture as the game's own (DXT5, usage 6 = low detail + bump, alpha 0)
     from an H x W x 4 array packed like them: R specular (0 = none), G the normal's Y, B its Z,
@@ -521,19 +543,29 @@ def write_normal_map(rgba, *, mips=False):
     np = _np()
     a = np.asarray(rgba).astype(np.uint8)
     h, w = a.shape[:2]
-    levels = mip_chain(a, bump=True) if mips else [a]
+    levels = _levels(a, mips, bump=True)
     return pack(6, 0, DXT5, w, h, [compress_dxt5(lv) for lv in levels])
 
 
-def normal_from_texture(rgba, strength=6.0, blur=1):
+def normal_from_texture(rgba, strength=6.0, blur=1, height=None, relief=3.0, grain=0.35):
     """A bump map from the diffuse texture: its brightness taken as height (joints, frames and
-    openings are darker, so they come out sunk), packed as `write_normal_map` expects."""
+    openings are darker, so they come out sunk), packed as `write_normal_map` expects.
+
+    height: the relief a style painted (an H x W array in texels of this texture, as
+    `kit.Model.height` holds it, brought to this size by `height_at`). Then the shape comes from
+    it, `relief` times steeper, and the brightness only adds a `grain` share of its fine detail,
+    so a shadow painted on a wall stays flat and a relief modelled in the plaster stands out."""
     np = _np()
     lum = np.asarray(rgba)[..., :3].astype(np.float32).mean(axis=2) / 255.0
     for _ in range(blur):                                  # a light 3 x 3 box blur
         p = np.pad(lum, 1, mode="edge")
         lum = sum(p[dy:dy + lum.shape[0], dx:dx + lum.shape[1]]
                   for dy in range(3) for dx in range(3)) / 9.0
+    if height is not None:
+        hm = np.asarray(height, np.float32)
+        if hm.shape != lum.shape:
+            raise DdtError(f"height {hm.shape} and texture {lum.shape} differ")
+        lum = lum * grain + hm * relief / strength
     p = np.pad(lum, 1, mode="edge")
     dx = (p[1:-1, 2:] - p[1:-1, :-2]) / 2
     dy = (p[2:, 1:-1] - p[:-2, 1:-1]) / 2

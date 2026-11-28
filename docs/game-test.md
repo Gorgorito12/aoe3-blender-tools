@@ -55,6 +55,19 @@ yet seen.
 "Sarja Ro?ior · Călăra?i Ăă???? őł" before and with every letter in the game's own typeface after.
 Each test was taken out afterwards: the copy came back identical to a snapshot taken before.
 
+**A portrait's player colour in game (2026-11-27).** The same Struggle of Indonesia portrait as the
+Musketeer's (DXT3, its alpha the player-colour mask) and as the Crossbowman's (DXT1), each selected
+as player 1 and player 2 in a scripted scene: the masked clothes showed blue and red, the DXT1 ones
+grey for both (`tools/reencode_textures.py` `keep: player_colour`, `docs/game-formats.md`).
+
+**The Djenne armoury in game (2026-11-27).** `AFRICAN_ARMORY_SAHEL` exported with player colour and
+its files deployed over the earlier armoury (`--files`), placed beside the stock arsenal: to scale,
+its gate tower, cones, toron, the owner's cloth over the door, the yard and its gun as drawn; at
+60 % damage it stands as before (with a texture budget the damaged model shares the main texture);
+killed, it went. Seen there: the game's sun bleached the first plaster, so every earth colour was
+darkened about 12 % (`djenne.py`). Not looked at yet: the bump map's reliefs up close, the low
+detail model, player 2's colour on it.
+
 ## 3. Look at it
 
 The data is read once, at start: close the game before deploying again.

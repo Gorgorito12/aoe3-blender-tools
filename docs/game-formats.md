@@ -428,6 +428,15 @@ c0 == c1 as the 3-colour mode whose index 3 is transparent black), `level_blocks
 `alpha_blocks`, `pack`. `fitted()` halves until the **longer** side fits (it looked at the height
 only, so a 2:1 texture was never reduced).
 
+**What a building bundle writes** (2026-11-27): its colour textures and bump maps with **seven**
+levels (`mips=7` on the writers: at most that many), the game's own most common count for
+buildings, `(0,1,8,7)` and `(6,0,9,7)`; a small texture stops at 4 px first. The bump map comes
+from the texture's brightness, or, when the style painted a relief (`kit.Model.height`, texels of
+the texture; `Painter.relief`), from that relief, three times steeper, plus a third of the
+brightness's fine detail (`normal_from_texture(height=...)`, `height_at` brings it to the bump's
+size): a painted shadow no longer reads as a hollow. **To verify in game**: how the Djenne
+armoury's reliefs catch the light next to a stock building.
+
 **The game's own home-city building textures** (**measured**, `tools/reencode_textures.py tad`:
 the home-city files in `Data*.bar`, each `<building><visual>`, its anim files and models, the
 `.ddt` each model stores, people standing in for buildings left out): 215 textures of 98 models,

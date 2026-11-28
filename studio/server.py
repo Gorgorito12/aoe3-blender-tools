@@ -749,7 +749,7 @@ def r_ai_start(st, rest, q, b):
         run = ai.Run(b.get("params") or {}, st.settings.get("comfy_url") or "http://127.0.0.1:8188",
                      strength=b.get("strength", 0.45), seed=b.get("seed", 1), regions=which,
                      blend=b.get("blend", 1.0), prompt=b.get("prompt") or "", extra=b.get("extra") or "",
-                     guard=b.get("guard", True))
+                     guard=b.get("guard", True), lora=b.get("lora") or "", lora_strength=b.get("lora_strength", 0.8))
     except ai.AiError as e:
         raise ApiError(str(e)) from None
     return {"session": st.sessions.add(run)}

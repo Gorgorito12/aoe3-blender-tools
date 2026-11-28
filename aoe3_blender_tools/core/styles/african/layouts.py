@@ -107,9 +107,9 @@ def ring_points(r, n, cx=0.0, cy=0.0, start=0.0):
             for i in range(n)]
 
 
-def earth_wall(points, h, crenels=False):
+def earth_wall(points, h, crenels=False, material="trim"):
     """A plain wall of earth between two parts of a compound."""
-    return {"kind": "fence", "points": points, "h": h, "stone": True, "crenels": crenels, "material": "trim"}
+    return {"kind": "fence", "points": points, "h": h, "stone": True, "crenels": crenels, "material": material}
 
 
 def yard(**kw):
@@ -117,13 +117,13 @@ def yard(**kw):
     return {"kind": "yard", **kw}
 
 
-def court(P, back, gate, h=1.5, kind="earth", width=2.0):
+def court(P, back, gate, h=1.5, kind="earth", width=2.0, material="trim"):
     """The wall of a compound from a building at y = back, round the front of the plot at P, with
-    a gate of `width` centred on x = gate."""
+    a gate of `width` centred on x = gate. `material`: the region an earth wall is painted with."""
     a = [(-P, back), (-P, -P), (gate - width / 2, -P)]
     c = [(gate + width / 2, -P), (P, -P), (P, back)]
     if kind == "earth":
-        return [earth_wall(a, h), earth_wall(c, h)]
+        return [earth_wall(a, h, material=material), earth_wall(c, h, material=material)]
     return [{"kind": "fence", "points": a, "h": h, "type": kind}, {"kind": "fence", "points": c, "h": h, "type": kind}]
 
 
@@ -245,13 +245,33 @@ def armory(p, P, medium):
         return [block(-P, 1.2, 0.6, P, 3.7, door=True, roof="thatch", sahel=False, windows=1, flag=True),
                 shed(1.3, P, -1.0, P, 2.7, 2.1, slope="+x", rafters=4, posts=(False, True))] + \
             court(P, 0.6, -1.3, 1.5, kind="PALISADE") + [yard(x0=-P + 0.3, y0=-P + 0.3, x1=P - 0.3, y1=P)]
-    # two levels of roof, the workshop's in boards on rafters, the yard under a tarp on bare beams
-    return [block(-P, 0.6, 0.0, P, 3.4, door=True, parapet=0.4, merlons=0.8, beams=True, windows=1, flag=True),
-            block(-3.1, -1.1, 1.1, 3.2, 1.2, z=3.4, parapet=0.25, windows=1, plain=True),
-            block(0.3, P, 1.2, 3.6, 2.5, door="front", parapet=0.3, windows=0, joined=("left",)),
-            shed(0.9, 3.5, 1.4, 3.4, 3.3, 2.9, rafters=4, z=2.5),
-            canopy(0.9, 3.5, -1.5, 1.0, 2.2, 1.8, cloth=True, rafters=3)] + \
-        court(P, 0.0, -1.6, 1.6) + [yard(x0=-P + 0.3, y0=-P + 0.3, x1=P - 0.3, y1=1.1)]
+    # a Djenne armoury, as the Sudano-Sahelian builders of Djenne and Timbuktu left their great
+    # houses in the nineteenth century: all earth, its edges soft. Its face is theirs: a tall gate
+    # tower over the door, its pilasters rising past the parapet into earth cones, between two lower
+    # wings that end inside it, cones all along every parapet, two rows of toron (palm beams left in
+    # the walls to climb on when the plaster is renewed), a small room on the left wing's roof; the
+    # powder kept apart in a round magazine under a dome; the smith under a sunshade of palm mats; a
+    # low earth wall closing the yard, its gate in line with the door. A cloth of the owner's colour
+    # hangs over the door. DJENNE in the pieces asks the painter for that finish (djenne.py).
+    D = {"djenne": True}
+    gx0, gx1 = -2.45, -0.4                                 # the gate tower, the door in its middle
+    door_x = (gx0 + gx1) / 2
+    wing = dict(parapet=0.5, coping="coping", pinnacles="cones", beams=True, beam_rows=(0.48, 0.8), beam_gap=1.2,
+                foot=True, **D)
+    return [block(gx0, gx1, 0.0, P, 4.2, door=True, gate=(1.3, 2.25), parapet=0.55, coping="coping",
+                  pinnacles="cones", beams=("+y",), beam_rows=(0.5, 0.78), beam_gap=1.1, windows=0,
+                  ribs=("-y", "+y"), foot=True, flag=True, **D),           # its sides are inside the wings
+            block(-P, gx0 + 0.35, 0.3, P - 0.1, 3.3, windows=1, joined=("right",), **wing),
+            block(gx1 - 0.35, 1.0, 0.3, P - 0.1, 3.3, windows=1, joined=("left",), **wing),
+            block(-P + 0.35, gx0 - 0.3, 1.6, P - 0.45, 1.4, z=3.3, parapet=0.4, coping="coping", pinnacles="cones",
+                  windows=1, beams=("-y",), beam_gap=1.0, **D),
+            tower(2.6, 2.5, 0.95, 2.6, roof="dome", roof_h=0.8, bands=False, sahel=True, beams=(0.5,), beam_n=6,
+                  sides=12, **D),
+            canopy(1.35, P, -1.1, 1.2, 2.5, 2.15, cloth=False, slope="+x", rafters=4),
+            {"kind": "banner", "x": door_x - 0.4, "y": -0.02, "w": 0.8, "z1": 4.55, "h": 1.3},
+            # a palm ladder from the right wing's roof up the gate tower's side
+            {"kind": "ladder", "x": gx1 + 0.75, "y": 2.2, "z": 3.3 * sizes.TALL, "h": 0.9 * sizes.TALL + 0.3, "to": (-0.6, 0.0)}] + \
+        court(P, 0.3, door_x, 1.5, width=2.0, material="court") + [yard(x0=-P + 0.3, y0=-P + 0.3, x1=P - 0.3, y1=0.25)]
 
 
 def depot(p, P, medium):

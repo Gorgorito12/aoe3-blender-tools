@@ -12,7 +12,7 @@ import numpy as np
 
 from ...kit import Builder
 from ...painter import PLAYER_GREY, _shade
-from . import facade, layouts, parts, sizes, skin
+from . import djenne, facade, layouts, parts, sizes, skin
 
 NAME = "AFRICAN"
 CHOICES = {"building_type": sizes.TYPES, "architecture": ("SUBSAHARAN", "SAHEL"), "wall_upgrade": ("WOOD", "STONE")}
@@ -184,9 +184,16 @@ def paint(pr, model):
             cx, cy = pr.P(region, u, h - w / 2)
             pr.cv.ellipse(cx, cy, w / 2 * pr.px_per_m, w / 2 * pr.px_per_m, DARK, upper_half=True)
 
+    djenne_finish = any(spec.get("djenne") for spec in model.facades.values())
     for region, spec in model.facades.items():
         r = at[region]
         w, h = r.world_w, r.world_h
+        if spec.get("djenne"):                                # the Djenne finish (djenne.py)
+            if spec["kind"] == "round":
+                djenne.round_wall(pr, region, w, h, pr.p.seed)
+            else:
+                djenne.block_wall(pr, region, spec, w, h, pr.p.seed, WOOD)
+            continue
         if spec["kind"] == "round":
             earth = ADOBE if spec.get("sahel") else MUD
             skin.coat(pr, region, "wall_adobe" if spec.get("sahel") else "wall_mud", SKIN)
@@ -480,3 +487,5 @@ def paint(pr, model):
         rh2 = at["crop_head"]
         pr.fill("crop_head", (168, 124, 56))
         stains("crop_head", rh2.world_w, rh2.world_h, 6, 0.3, 0.15)
+    if djenne_finish:                                         # each of its other parts in its own way
+        djenne.extras(pr, pr.p.seed)
